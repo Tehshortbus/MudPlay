@@ -60,8 +60,17 @@ public sealed class CombatSpellChooser
     // RawName keys of the mobs present when each AoE debuff cast went out this room.
     // The AoE debuff casts ONCE and "tags" the room; it re-fires (up to its per-room
     // MaxCasts cap) only for a mob that wasn't tagged — a new arrival / summon — rather
-    // than repeatedly like an attack spell. Per-room, keyed like _singleDebuffedTargets;
-    // reset at room-clear.
+    // than repeatedly like an attack spell. Per-room, keyed like _singleDebuffedTargets.
+    //
+    // The tags survive a wave-clear roster reset (an AoE multi-kill emptying the listed
+    // pack while hidden same-species SURVIVORS still attack — report
+    // paradigm-20260902-160110, "ISTO fired twice in the same fight"), so a survivor
+    // that reveals a round later isn't re-debuffed. They're cleared on a PHYSICAL room
+    // change (ResetForNewRoom) AND when the room is confirmed genuinely CLEARED of all
+    // hostiles — signalled by the player entering a rest (NoteRoomCleared, wired to a
+    // rest posture: you only rest once nothing is left to fight). That lets a same-room
+    // RESPAWN be re-debuffed (report paradigm-20260903-070438) without touching the
+    // survivor case (a survivor reveals within a round, long before any rest).
     private readonly HashSet<string> _areaDebuffedMobs =
         new(StringComparer.OrdinalIgnoreCase);
 
@@ -110,6 +119,18 @@ public sealed class CombatSpellChooser
     public void ResetForNewRoom()
     {
         ResetForRosterClear();
+        ResetAreaDebuffTags();
+    }
+
+    // Clear the AoE area-debuff room tags + per-room cap so the next wave is debuffed
+    // afresh — on a PHYSICAL room change (ResetForNewRoom) or when the room is confirmed
+    // genuinely CLEARED of all hostiles (NoteRoomCleared, wired to a rest posture: you
+    // only rest once nothing is left to fight, so a same-room RESPAWN after that is a new
+    // wave — report paradigm-20260903-070438). NOT called on a mid-fight wave-clear
+    // roster reset, where hidden same-species survivors must stay tagged (report
+    // paradigm-20260902-160110).
+    public void ResetAreaDebuffTags()
+    {
         _areaDebuffCasts = 0;
         _areaDebuffedMobs.Clear();
     }
@@ -288,7 +309,7 @@ public sealed class CombatSpellChooser
     {
         if (ctx.RoomMobKeys is not { } keys) return _areaDebuffCasts == 0;
         foreach (string key in keys)
-            if (!_areaDebuffedMobs.Contains(key)) return true;
+            if (!_areaDebuffedMobs.Contains(key)) return true;   // untagged — a new arrival / summon
         return false;
     }
 

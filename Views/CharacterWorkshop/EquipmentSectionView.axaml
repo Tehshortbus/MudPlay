@@ -54,7 +54,9 @@
     <Grid Margin="22" ColumnDefinitions="220,*">
 
         <!-- ===== Left: the fixed trigger-set list ===== -->
-        <Grid Grid.Column="0" RowDefinitions="Auto,*" Margin="0,0,16,0">
+        <!-- Only four fixed sets, so the list sizes to its content (Auto) rather than
+             filling the column; the freed space below holds the combat-swap option. -->
+        <Grid Grid.Column="0" RowDefinitions="Auto,Auto,Auto,*" Margin="0,0,16,0">
 
             <!-- Enable / Disable act on the selected set. -->
             <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="6" Margin="0,0,0,8">
@@ -64,12 +66,13 @@
                         ToolTip.Tip="Disable the selected set — automation leaves it alone."/>
             </StackPanel>
 
-            <Border Grid.Row="1"
+            <Border Grid.Row="1" VerticalAlignment="Top"
                     Background="{StaticResource ChromeBgSunkenBrush}"
                     BorderBrush="{StaticResource ChromeBorderBrush}"
                     BorderThickness="1" CornerRadius="4">
                 <ListBox ItemsSource="{Binding SetRows}"
                          SelectedItem="{Binding SelectedSetRow, Mode=TwoWay}"
+                         MaxHeight="240"
                          Background="Transparent" BorderThickness="0">
                     <ListBox.ItemTemplate>
                         <DataTemplate DataType="vm:EquipmentSetRowViewModel">
@@ -89,6 +92,17 @@
                     </ListBox.ItemTemplate>
                 </ListBox>
             </Border>
+
+            <!-- Combat-swap behavior. Checked (default) = keep the pre-rest loadout
+                 through a rest-interrupting fight, the long-standing behavior.
+                 Unchecked opts into fighting in the Default set and swapping back. -->
+            <CheckBox Grid.Row="2" Margin="0,14,0,0"
+                      IsChecked="{Binding DontSwapToDefaultOnCombat, Mode=TwoWay}"
+                      IsVisible="{Binding HasProfile}"
+                      ToolTip.Tip="Checked (default): if a fight interrupts a rest you keep your pre-rest gear until you've recovered.&#10;Unchecked: as soon as monsters enter, swap to your Default set to fight; once the room is clear — if you haven't yet reached your rest-max HP/mana — swap back to the rest set and resume resting.">
+                <TextBlock Text="Don't swap to default upon entering combat"
+                           TextWrapping="Wrap"/>
+            </CheckBox>
         </Grid>
 
         <!-- ===== Right: the selected set's slot grid ===== -->

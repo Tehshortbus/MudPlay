@@ -1003,6 +1003,11 @@ public sealed class RoomGraphManager
                         RawHint: "greet teleport",
                         TextCommands: new[] { t.Command },
                         MinLevel: t.MinLevel,
+                        // A class-restricted transport (a `class N` directive in the
+                        // greet chain) is stamped as the edge's ClassGate so
+                        // MovementFilter.IsClassGateBlocked drops it for every class
+                        // but N — the wrong class never routes through it (issue #455).
+                        ClassGate: t.RequiredClass,
                         GatewayTeleport: false);
                     var rebuilt = new Dictionary<Direction, RoomExit>(room.Exits)
                     {
@@ -1013,7 +1018,9 @@ public sealed class RoomGraphManager
                     _log?.Log(LogSeverity.Info, "RoomGraph",
                         $"Room {key}: synthesised NPC ask-transport Teleport edge "
                         + $"'{t.Command}' → {t.Destination}"
-                        + (t.MinLevel > 0 ? $" (Level {t.MinLevel}+)." : "."));
+                        + (t.MinLevel > 0 ? $" (Level {t.MinLevel}+)" : "")
+                        + (t.RequiredClass > 0 ? $" (class {t.RequiredClass} only)" : "")
+                        + ".");
                     minted = true;
                     break; // one Direction.Teleport slot per room
                 }

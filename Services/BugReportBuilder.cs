@@ -185,6 +185,11 @@ public static class BugReportBuilder
         // armed and how the last pile resolved (Recovered / Partial / Missing).
         Kv(sb, "Auto-recover deathpiles", svc.DeathRecovery.AutoRecover ? "on" : "off");
         Kv(sb, "Auto-equip on recovery", svc.DeathRecovery.AutoEquip ? "on" : "off");
+        // Whether a rest-interrupting fight swaps to the Default set (then back on
+        // room-clear if still gated). Off = the pre-rest loadout is kept through the
+        // fight. Answers a "why did/didn't my gear swap when a mob showed up" report.
+        Kv(sb, "Swap to Default on combat",
+            (svc.Profile.Current?.Equipment?.SwapToDefaultOnCombat ?? false) ? "on" : "off");
         // Non-zero while an in-combat recovery is still pacing its re-equip across
         // rounds — shows a "recovered but not fully re-equipped" report mid-burst.
         if (svc.DeathRecovery.PendingReequipCount > 0)

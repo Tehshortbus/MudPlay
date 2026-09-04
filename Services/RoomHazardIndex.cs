@@ -80,12 +80,23 @@ public sealed class RoomHazardIndex
         // but the buff must actually be raised with `use` to survive entry.
         public IReadOnlyList<BuffCounter> BuffCounters { get; }
 
+        // True when the unprotected outcome is survivable damage — a plain damage
+        // hit (a Damage ability, or a textblock `cast` of a damage-only spell) with
+        // NO death-timer (EndCast), forced relocation (teleport / transfer), or
+        // buff-gate drown / heat chain (checkspell / failspell). Only a survivable
+        // hazard is safe to offer a "cross unprotected — take the damage" choice
+        // for; a grave hazard (drown, freeze-to-death, a teleport into the deep) is
+        // never offered that — the crosser can only pass it with a counter in hand.
+        public bool IsSurvivableDamage { get; }
+
         public RoomHazard(
             IReadOnlyList<IReadOnlyList<int>> groups,
-            IReadOnlyList<BuffCounter>? buffCounters = null)
+            IReadOnlyList<BuffCounter>? buffCounters = null,
+            bool isSurvivableDamage = false)
         {
             RequirementGroups = groups;
             BuffCounters = buffCounters ?? Array.Empty<BuffCounter>();
+            IsSurvivableDamage = isSurvivableDamage;
         }
 
         // Every distinct protecting item across all groups — the set the route
@@ -269,7 +280,64 @@ public sealed class RoomHazardIndex
 
         // Only index a genuinely harmful spell — a benign one that happens to carry a
         // failitem/checkspell counter is not a hazard (see `harmful` above).
-        return harmful && groups.Count > 0 ? new RoomHazard(groups, buffCounters) : null;
+        if (!harmful || groups.Count == 0) return null;
+
+        bool survivable = IsSurvivableHazardDamage(rootSpell, spellAbils, tbActions);
+        return new RoomHazard(groups, buffCounters, survivable);
+    }
+
+    // Classify a room-entry hazard's unprotected outcome as survivable damage or
+    // not. Survivable = the harm reaches a Damage ability (directly, or via a
+    // textblock `cast` of a damage-carrying spell) AND never reaches a death-timer
+    // (EndCast), a forced relocation (teleport / transfer), or a buff-gate
+    // drown/heat chain (checkspell / failspell) — any of which can end or displace
+    // the crosser rather than just hurt them. Deliberately conservative: an
+    // EndCast delayed effect or a checkspell branch is treated as grave even though
+    // some are survivable, because "take the damage" must never be offered for a
+    // hazard that might kill. Walks the same spell / textblock chains as the
+    // counter decode, bounded by depth + visited sets.
+    private bool IsSurvivableHazardDamage(
+        int rootSpell,
+        Dictionary<int, (int[] Abil, int[] Val, int TbBase)> spellAbils,
+        Dictionary<int, string> tbActions)
+    {
+        bool damage = false, grave = false;
+        HashSet<int> seenSpell = new();
+        HashSet<int> seenTb = new();
+
+        void WalkSpell(int spell, int depth)
+        {
+            if (depth > MaxChainDepth || spell <= 0 || !seenSpell.Add(spell)) return;
+            if (!spellAbils.TryGetValue(spell, out (int[] Abil, int[] Val, int TbBase) ab)) return;
+            for (int k = 0; k < SpellAbilSlots; k++)
+            {
+                int a = ab.Abil[k], v = ab.Val[k];
+                if (a == AbilDamage) damage = true;
+                else if (a == AbilEndCast && v > 0) { grave = true; WalkSpell(v, depth + 1); }
+                else if (a == AbilTextBlock) WalkTb(v > 0 ? v : ab.TbBase, depth + 1);
+            }
+        }
+
+        void WalkTb(int tb, int depth)
+        {
+            if (depth > MaxChainDepth || tb <= 0 || !seenTb.Add(tb)) return;
+            if (!tbActions.TryGetValue(tb, out string? action) || string.IsNullOrWhiteSpace(action)) return;
+            foreach (string line in action.Split('\n'))
+                foreach (string raw in line.Split(':'))
+                {
+                    string tok = raw.Trim();
+                    if (tok.Length == 0) continue;
+                    if (StartsWith(tok, "cast")) WalkSpell(FirstIntAfter(tok, "cast"), depth + 1);
+                    else if (StartsWith(tok, "teleport") || StartsWith(tok, "transfer")
+                        || StartsWith(tok, "checkspell") || StartsWith(tok, "failspell")) grave = true;
+                    else
+                        foreach (string flow in BranchFlowDirectives)
+                            if (StartsWith(tok, flow)) WalkTb(FirstIntAfter(tok, flow), depth + 1);
+                }
+        }
+
+        WalkSpell(rootSpell, 0);
+        return damage && !grave;
     }
 
     // Directives in a textblock branch that mean the unprotected outcome harms the

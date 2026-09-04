@@ -71,6 +71,23 @@ it isn't here and you're unsure, ask.
   order** with per-mob respawn clocks (per "Lair respawn timers" below), not assume a uniform per-lap
   fire rate — that's what the Exp/Hr estimator now does.
 
+**Monster swings per round — energy budget & rollover** *([CONFIRMED] 2026-09-03, user)*
+- A monster works like a player: it has a **per-round energy budget** (the Monsters-table
+  **`Energy`** field, typically ~1000) and each swing of an attack costs that attack's
+  **`AttEnergy`**. It spends its whole budget each round, landing `floor(available ÷ AttEnergy)`
+  swings.
+- **Leftover energy ROLLS OVER:** round 1 starts at `Energy`, and every round after is
+  `(leftover) + Energy`. So over a long window the mean swing rate is the **FRACTIONAL**
+  `Energy ÷ AttEnergy`, not the single-round integer floor (e.g. 1000/300 = 3.33/round, not 3).
+  This is the same model the player swing calc already uses (`CombatCalculator`: `remaining =
+  (remaining % energy) + 1000`).
+- **No realm swing cap for monsters** — unlike the player's 5 (Stock) / 6 (Paradigm) ceiling,
+  a monster is limited only by energy ÷ attack cost.
+- Damage-per-minute = `hit% × avg-dmg(after DR) × (Energy ÷ AttEnergy) × 12` (12 rounds/min, a
+  round being 5s). Monster Intel's per-attack incoming DPM + the melee threat line use this;
+  `MonsterMatchupCalculator.AverageMonsterSwingsPerRound` / `RoundsPerMinute`. Related:
+  [[project_monster_intel_matchup_arc_20260902]].
+
 ## Equipment & gear
 
 **Equip / remove verbs** *(all [CONFIRMED])*
@@ -93,8 +110,11 @@ it isn't here and you're unsure, ask.
   names are fine — a *silver bracelet* and an *ivory bracelet* equip together.
 - The **finger** and **wrist** families each hold **two** physical pieces (Finger1/Finger2,
   Wrist1/Wrist2), so long as the two are distinct names. Every other slot holds one.
-- **Eviction order when both slots are full** *([CONFIRMED] 2026-08-27, user — report `paradigm-20260827-082305`)*: with both paired slots occupied (e.g. bracelet1 + bracelet2), the **first** `wear` of a new piece evicts the **first-worn** member (the one listed first in `i`), and a **second** `wear` then evicts the **most-recently-worn** piece (the one you just put on). So to swap BOTH members (1,2 → 3,4) you can't just wear both — the second wear would knock off the third you just equipped. The minimal sequence is `wear 3` (evicts 1), `rem 2`, `wear 4` — **one** `rem`, not two. The client's swap builder (`EquipmentManager.ComposePairedSlotCommands`) emits exactly that for a both-members paired swap. Note the client only sees both worn pieces as `(Wrist)` / `(Finger)` in `i`, so it relies on `i`-list order to pick which one to `rem`.
-- **Slot-1 swaps ride the wear; only slot-2 swaps need a `rem`** *([CONFIRMED] 2026-09-01, user — report `paradigm-20260901-130100`, with in-game example)*: the `i`-list order **is** physical slot order — first-listed = slot 1, second-listed = slot 2. Because `wear`/`eq` into a full family auto-evicts the **slot-1** (first-listed) member, swapping slot 1 needs **only** the wear (e.g. worn `ring-A`(slot1)+`ring-B`(slot2), set wants `ring-C`(slot1)+`ring-B`(slot2) → just `eq ring-C`; the game evicts ring-A and keeps ring-B). Swapping **slot 2** while keeping slot 1 needs the `rem` first (`rem ring-B`, `eq ring-D`), else the wear would evict the slot-1 ring the set keeps. User's example: worn white gold(1)+adamantite(2) → `eq silver` (evicts white gold, no rem), then `rem ada`, `eq amethyst`. The old builder emitted a redundant `rem` for slot-1 swaps too.
+- **`i`-list order IS physical slot order, and it's reliable** *([CONFIRMED] 2026-09-03, user in-game tests, both realms)*: the first-listed paired piece is slot 1, the second is slot 2, on both Stock and Paradigm.
+- **`eq` and `wear` are identical, and target-swap ONE physical slot in place** *([CONFIRMED] 2026-09-03, user)*: an `eq`/`wear` of a new paired piece into a FULL family evicts one slot's occupant and the new piece takes that slot; into a family with a free slot it fills the empty slot. **Which slot is evicted is realm-specific:**
+  - **Paradigm evicts SLOT 1** (the first-listed): e.g. worn `[adamantite, white gold]` + `eq silver` → removes adamantite → `[silver, white gold]`.
+  - **Stock evicts SLOT 2** (the second-listed): e.g. worn `[amethyst, silver]` + `eq copper` → removes silver → `[amethyst, copper]`.
+- **Consequences for a set swap** (per realm): a set pick bound for the **evicted** slot rides the eq (no `rem` — it drops the odd-out sitting there); a pick bound for the **other** slot needs its odd-out `rem`med first (else the eq drops the member the set keeps). To swap BOTH members: `eq 3` (evicts the odd in the evicted slot), `rem <other odd>`, `eq 4` — **one** `rem`, not two. `EquipmentManager.ComposePairedSlotCommands` takes a realm flag (Paradigm ⇒ evict slot 1) and reasons off the reliable `i` order. Paired items are equipped with **`eq`** (`wear` on Paradigm appended the new ring to slot 2 and shuffled the survivor into slot 1, scrambling the order across a swap cycle and forcing a needless `rem` — report `paradigm-20260903-111522`).
 
 **Other**
 - **[CONFIRMED]** A weapon equip / swap prints a **single** line — `You are now holding <new>.`.
@@ -960,6 +980,22 @@ ability, or a TextBlock `cast` of a damaging spell), gate on a survival buff (`c
 desert heat, the drown chain), or `teleport`/`transfer` you out (the sea/ice/pit rooms). *(Encoded in
 `RoomHazardIndex` — see the harm gate in `BuildHazard`.)*
 
+#### Hazard severity — survivable damage vs grave *([CONFIRMED] 2026-09-02, user + game-data trace, Paradigm 1.9.1)*
+
+Among protectable hazards, a further split governs whether the navigator may offer to **cross it
+unprotected** (walk in and eat the effect on the user's say-so):
+- **Survivable damage** — the unprotected outcome is only a `Damage` hit: a direct `Damage` ability, OR a
+  TextBlock `cast` of a spell whose own chain is `Damage`-only. Example: the **Silver River** (`Rooms.Spell
+  753`) → TB `failitem 690/691/1181/3609` (any raft) `: cast 754`, where spell **754 "battered"** is a plain
+  `Damage` spell. You just take the hit and keep walking, so "cross unprotected — take the damage" is a
+  legitimate choice. (Lava / magma heat, `Spell 526`, is the same shape — a direct `Damage` ability.)
+- **Grave** — the chain reaches an `EndCast` death-timer, a `teleport`/`transfer` (forced relocation), or a
+  `checkspell`/`failspell` buff-gate (drown / suffocation / desert-heat-death). These can END or DISPLACE
+  you, not just hurt you, so the counter is the only safe way past — the navigator must **never** offer to
+  cross them unprotected. (Conservatively, ANY `EndCast` or buff-gate is treated as grave.)
+
+*(Encoded as `RoomHazard.IsSurvivableDamage`; classifier `RoomHazardIndex.IsSurvivableHazardDamage`.)*
+
 ## Mana regeneration & the ManaRgn breakpoints *([CONFIRMED] 2026-08-08, against the engine's own reference formula)*
 
 Passive (non-resting, non-meditating) mana regen ticks **every 30 s** (6 rounds) and adds a whole-MP amount computed by one integer formula. `CharacterCalculator.CalcManaRegen` implements it; the Level Projection grid already relies on it.
@@ -1290,6 +1326,16 @@ Some gates are opened by a **winch** in the room (a `MultiActionHidden` exit who
   leader/follower divergence). The client keys on the `Location:` line to re-anchor `RoomTracker`
   via `SetLocated`; if that (map,room) isn't in the imported graph, `SetLocated` logs a warning and
   refuses rather than writing a stale anchor.
+  - **[CONFIRMED, user 2026-09-02] `rm` is reliable — the ONLY way it fails to answer is a
+    confusion fumble eating the command.** There's no game-side throttle or refusal; a `rm` that
+    returns no `Location:` line means the send was consumed by a confusion fumble (same mechanic as
+    a fumbled move / eaten `@wait`), not that the game declined. So on Paradigm the recovery gate
+    treats an *unanswered* forced `rm` as "confused, try again" — re-asking until the confusion
+    self-clears and a `Location:` lands — rather than a genuine failure. This is why the heuristic
+    reverse-walk / "Lost" dialog should essentially never be reached on Paradigm: at every give-up
+    boundary (before the backtrack, and again before Lost) the gate spends a forced `rm` first, and
+    only a `rm` that *answers* with a room the loaded map set doesn't contain — not a fumble-eaten
+    one — is a real dead end (report paradigm-20260902-223159, `EngineRecoveryGate.HandleResyncFailure`).
 - **[CONFIRMED]** **A refused ("bonked") move always prints an explicit line and never
   redisplays the room.** When a move command can't be honoured — no exit that way, a shut
   door, an impairment — the game emits a one-line refusal *instead of* a room display. The
@@ -1482,6 +1528,20 @@ Some gates are opened by a **winch** in the room (a `MultiActionHidden` exit who
   `ask <noun> <keyword>`); gated keywords are skipped because the client can't verify the gate and a
   failed transport would strand the walker. **Party behaviour is unverified** — treat a greet teleport
   the same as a CMD teleport (moves only the asker, likely party-splitting) until captured.
+  - **Class gate + skill roll (issue #455, from Paradigm map 1 data).** Two directive kinds on a greet
+    chain are NOT treated as "unverifiable, skip": a **`class N`** gate (N = `Classes.Number`) restricts
+    the transport to one class — the barmaid (`#248`, `1/391`) carries `class 12:testskill …:teleport
+    391 1`, a **bard-only** ask-transport. This is surfaced as the edge's `ClassGate` so
+    `MovementFilter.IsClassGateBlocked` keeps it routable for that class and drops it for every other,
+    rather than letting non-bards route through a transport they can't use. A **`testskill <skill>
+    <amount> <failTB>`** in the same block is a per-use **skill roll** (like the winch's `testskill
+    strength`) that can fail even for the right class — the client does NOT model the odds; instead the
+    walker treats a greet teleport as a **verify-and-retry** step: after asking, it checks it actually
+    landed in the destination and, if not (a failed roll leaves the asker put — sometimes with no fresh
+    room render at all, so no tracker transition comes), **re-asks until it arrives.** The class gate
+    guarantees only a class that CAN eventually pass the roll ever reaches the step, so the retry
+    converges. (Ordinary CMD teleports — chime / boat / item-cast — stay fire-once; only the
+    `ask`-transport edge, `RawHint` `"greet teleport"`, gets the retry watchdog.)
 - **[CONFIRMED, capture 2026-07-10]** A follower client that receives `@join` while it is **already
   following someone** answers the telepath with **`I'm following someone; denied.`** — `@join` is not
   idempotent against an existing follow. This surfaces as a downstream symptom when a reform re-invite
@@ -2305,6 +2365,30 @@ single-space string. Each row is `Level Mana Short <Spell Name…>`; the obtaine
 Name (not the Short cast-code). `You have no spells.` is the authoritative empty list. A parse that
 opens on the header but reads zero rows is a **format miss, not an empty book** — it must not clear
 the obtained set. (SpellListParser + report "sp didn't update spellbook".)
+
+## The `health` command output *([CONFIRMED] 2026-09-03, user captures, stock + Paradigm)*
+
+`health` works on **both realms** (stock + Paradigm) and prints a single compact line of the
+character's HP + power-pool, current/max with a percent — far less scroll than the full `stat`
+screen, so it's the cheap way to re-anchor the authoritative max HP/mana (e.g. after a gear swap
+drifts the high-water mark). The pool field's **label is class-dependent, not realm-dependent**:
+`Mana` for a mana class, `Kai` for a Kai class (mystic), and the pool field is **absent entirely**
+for a class that has only HP.
+
+```
+Health:    593/593  [100%]  Mana:  619/619  [100%]  (mana class → Mana)
+Health:      91/91  [100%]  Kai:  6/10  [60%]       (mystic → Kai)
+Health:    137/137  [100%]                          (HP-only class → no pool field)
+```
+
+Parsing points: the line is anchored at line start with `Health:` and both HP and the pool are
+`cur/max` followed by `[pct%]`; inter-column padding varies, so match whitespace-tolerantly. The
+`Health:` label here is the **HP pool** — note that `stat` labels the HP pool `Hits:` and has its
+own separate `Health:` field, which is the **Health core stat** (a bare number like `Health: 71`,
+alongside Strength / Agility / etc.). The two `Health:` labels collide, so the health-command line
+is parsed on its own outbound gate (`health` observed) and never through the stat-screen field scan.
+(HP/MA **regen** — `HP Regen` / `MA Regen` — only appears in Paradigm's `stat all`, which the client
+does NOT parse; regen is computed from stats in the Player Workshop.) (StatParser.TryHealthCommandLine.)
 
 ## BBS actions / emotes (the `action list` socials) *([CONFIRMED] 2026-08-14, user + live capture)*
 

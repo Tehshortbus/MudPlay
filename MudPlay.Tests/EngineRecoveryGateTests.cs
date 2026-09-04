@@ -703,4 +703,226 @@ public sealed class EngineRecoveryGateTests : IDisposable
         Assert.Equal(0, engine.AbortCount);
         Assert.Equal(TierLevel.Tier1, gate.CurrentTier);
     }
+
+    // ----- Paradigm: `rm` before the heuristic backtrack / "Lost" (issue #455 --
+    //       the follow-up report paradigm-20260902-223159). On a realm that can
+    //       answer `rm`, the gate must exhaust an authoritative resync before it
+    //       ever backtracks blindly or pops the Lost dialog.
+
+    // Drive a tier-3 escalation on a gate whose standing resync is unavailable
+    // (throttled / stock-style false) but whose FORCED resync is available: it
+    // must fire the forced `rm` and defer, NOT start the reverse-walk.
+    private (EngineRecoveryGate Gate, RecordingEngine Engine) EscalateWithForcedRm(
+        RoomGraphManager graph, RoomTracker tracker, System.Collections.Generic.List<string> resyncReasons)
+    {
+        var gate = new EngineRecoveryGate(graph, tracker)
+        {
+            TryResync = _ => false,                       // standing resync unavailable (throttled)
+            TryResyncForced = r => { resyncReasons.Add(r); return true; },
+        };
+        var engine = new RecordingEngine();
+        gate.Attach(engine);                              // Unknown tracker → null anchor
+        for (int i = 0; i < EngineRecoveryGate.Tier2StepBudget; i++)
+            gate.NoteEngineStepSent(Direction.N);
+        gate.NoteSuspectedMismatch("budget exceeded on paradigm");
+        return (gate, engine);
+    }
+
+    [Fact]
+    public void EscalateToTier3_Paradigm_FiresForcedRmAndDefers_NoBacktrack()
+    {
+        (RoomGraphManager graph, RoomTracker tracker) = NewGraphAndTracker();
+        var reasons = new System.Collections.Generic.List<string>();
+        (EngineRecoveryGate gate, RecordingEngine engine) = EscalateWithForcedRm(graph, tracker, reasons);
+
+        // Deferred to `rm`: awaiting the reply, engine paused, nothing reversed,
+        // no abort — the heuristic backtrack never started.
+        Assert.True(gate.AwaitingAuthoritativeResync);
+        Assert.NotEmpty(engine.Pauses);
+        Assert.Empty(engine.Backtracks);
+        Assert.Equal(0, engine.AbortCount);
+        Assert.Single(reasons);                            // exactly one forced `rm`
+        Assert.False(gate.MayProceedWithPlannedStep());    // steps held while awaiting
+    }
+
+    [Fact]
+    public void EscalationForcedRm_Resolves_ReanchorsAndResumes_NeverBacktracks()
+    {
+        (RoomGraphManager graph, RoomTracker tracker) = NewGraphAndTracker();
+        var reasons = new System.Collections.Generic.List<string>();
+        (EngineRecoveryGate gate, RecordingEngine engine) = EscalateWithForcedRm(graph, tracker, reasons);
+
+        // The game answered `rm` → hard re-anchor + resume, no backtrack, no Lost.
+        gate.NoteAuthoritativePosition(new RoomKey(1, 1));
+
+        Assert.False(gate.AwaitingAuthoritativeResync);
+        Assert.Equal(new RoomKey(1, 1), Assert.Single(engine.Resumes));
+        Assert.Empty(engine.Backtracks);
+        Assert.Equal(0, engine.AbortCount);
+        Assert.Equal(TierLevel.Tier1, gate.CurrentTier);
+    }
+
+    [Fact]
+    public void TerminalRm_Resolves_AvoidsLostDialog()
+    {
+        // The headline of the report: the heuristic exhausted, but `rm` could have
+        // said where we are. Escalation `rm` fails (no anchor → straight to the
+        // terminal), the TERMINAL `rm` then resolves — and the Lost dialog is
+        // avoided entirely.
+        (RoomGraphManager graph, RoomTracker tracker) = NewGraphAndTracker();
+        var reasons = new System.Collections.Generic.List<string>();
+        (EngineRecoveryGate gate, RecordingEngine engine) = EscalateWithForcedRm(graph, tracker, reasons);
+
+        gate.OnAuthoritativeResyncFailed();   // escalation `rm` missed → backtrack impossible (null anchor)
+        Assert.True(gate.AwaitingAuthoritativeResync);  // terminal `rm` now in flight
+        Assert.Equal(0, engine.AbortCount);             // NOT Lost yet
+        Assert.Equal(2, reasons.Count);                 // escalation + terminal forced `rm`
+
+        gate.NoteAuthoritativePosition(new RoomKey(1, 1));   // game answered the terminal `rm`
+
+        Assert.Equal(0, engine.AbortCount);             // Lost dialog avoided
+        Assert.Equal(new RoomKey(1, 1), Assert.Single(engine.Resumes));
+        Assert.Equal(TierLevel.Tier1, gate.CurrentTier);
+    }
+
+    [Fact]
+    public void EscalationThenTerminalRm_BothFail_DeclaresLostWithDeferredDetail()
+    {
+        (RoomGraphManager graph, RoomTracker tracker) = NewGraphAndTracker();
+        var reasons = new System.Collections.Generic.List<string>();
+        (EngineRecoveryGate gate, RecordingEngine engine) = EscalateWithForcedRm(graph, tracker, reasons);
+
+        RecoveryFailedEvent? failed = null;
+        gate.RecoveryFailed += e => failed = e;
+
+        gate.OnAuthoritativeResyncFailed();   // escalation `rm` missed → heuristic → null anchor → terminal `rm`
+        Assert.True(gate.AwaitingAuthoritativeResync);
+        Assert.Equal(0, engine.AbortCount);
+
+        gate.OnAuthoritativeResyncFailed();   // terminal `rm` also missed → NOW genuinely Lost
+
+        Assert.False(gate.AwaitingAuthoritativeResync);
+        Assert.Equal(1, engine.AbortCount);
+        Assert.NotNull(failed);
+        // The Lost reason is the real backtrack failure, not the resync bookkeeping.
+        Assert.Contains("backtrack impossible", failed!.Value.Detail);
+    }
+
+    [Fact]
+    public void Terminal_StockRealm_NoForcedRm_DeclaresLostImmediately()
+    {
+        // Stock realms have no `rm` (TryResyncForced returns false) — the terminal
+        // failure declares Lost at once, never awaiting a resync that can't come.
+        (RoomGraphManager graph, RoomTracker tracker) = NewGraphAndTracker();
+        var gate = new EngineRecoveryGate(graph, tracker)
+        {
+            TryResync = _ => false,
+            TryResyncForced = _ => false,
+        };
+        var engine = new RecordingEngine();
+        RecoveryFailedEvent? failed = null;
+        gate.RecoveryFailed += e => failed = e;
+
+        gate.Attach(engine);                              // null anchor
+        for (int i = 0; i < EngineRecoveryGate.Tier2StepBudget; i++)
+            gate.NoteEngineStepSent(Direction.N);
+        gate.NoteSuspectedMismatch("budget exceeded on stock");
+
+        Assert.False(gate.AwaitingAuthoritativeResync);   // never waited on `rm`
+        Assert.Equal(1, engine.AbortCount);
+        Assert.NotNull(failed);
+    }
+
+    // The only way `rm` fails to answer on Paradigm is a confusion fumble eating
+    // the command (confirmed mechanic). So an UNANSWERED forced `rm` while confused
+    // must re-ask — the position is fine, the confusion self-clears — not drop to a
+    // heuristic guess or "Lost".
+    [Fact]
+    public void ForcedRm_UnansweredWhileConfused_ReAsksThenRecoversWhenItClears()
+    {
+        (RoomGraphManager graph, RoomTracker tracker) = NewGraphAndTracker();
+        var reasons = new System.Collections.Generic.List<string>();
+        bool confused = true;
+        var gate = new EngineRecoveryGate(graph, tracker)
+        {
+            TryResync = _ => false,
+            TryResyncForced = r => { reasons.Add(r); return true; },
+            IsConfused = () => confused,
+        };
+        var engine = new RecordingEngine();
+        gate.Attach(engine);
+        for (int i = 0; i < EngineRecoveryGate.Tier2StepBudget; i++)
+            gate.NoteEngineStepSent(Direction.N);
+        gate.NoteSuspectedMismatch("budget exceeded while confused");   // escalation `rm`
+        Assert.Single(reasons);
+        Assert.True(gate.AwaitingAuthoritativeResync);
+
+        // `rm` went unanswered (fumble) — re-asked, still holding, NOT failing out.
+        gate.OnAuthoritativeResyncFailed();
+        Assert.Equal(2, reasons.Count);
+        Assert.True(gate.AwaitingAuthoritativeResync);
+        Assert.Equal(0, engine.AbortCount);
+        Assert.Empty(engine.Backtracks);
+
+        // Confusion passes; the next `rm` lands → recovered, no Lost.
+        confused = false;
+        gate.NoteAuthoritativePosition(new RoomKey(1, 1));
+        Assert.False(gate.AwaitingAuthoritativeResync);
+        Assert.Equal(new RoomKey(1, 1), Assert.Single(engine.Resumes));
+        Assert.Equal(0, engine.AbortCount);
+    }
+
+    [Fact]
+    public void ForcedRm_StuckConfused_FallsThroughAtCap_NoInfiniteLoop()
+    {
+        (RoomGraphManager graph, RoomTracker tracker) = NewGraphAndTracker();
+        var gate = new EngineRecoveryGate(graph, tracker)
+        {
+            TryResync = _ => false,
+            TryResyncForced = _ => true,
+            IsConfused = () => true,          // never clears — the pathological stuck flag
+        };
+        var engine = new RecordingEngine();
+        gate.Attach(engine);                  // null anchor → terminal path ends in Lost
+        for (int i = 0; i < EngineRecoveryGate.Tier2StepBudget; i++)
+            gate.NoteEngineStepSent(Direction.N);
+        gate.NoteSuspectedMismatch("budget exceeded, permanently confused");
+
+        // Drive the unanswered-`rm` loop; the retry cap must eventually let it fail
+        // out rather than re-ask forever.
+        int guard = 0;
+        while (gate.AwaitingAuthoritativeResync && guard++ < 500)
+            gate.OnAuthoritativeResyncFailed();
+
+        Assert.False(gate.AwaitingAuthoritativeResync);
+        Assert.Equal(1, engine.AbortCount);
+    }
+
+    [Fact]
+    public void ForcedRm_AnsweredOutOfGraph_NotConfusionRetried_EvenWhileConfused()
+    {
+        // `rm` that ANSWERS with a room the map set lacks is not a fumble — replaying
+        // it just returns the same unusable room. So it must NOT enter the confused
+        // re-ask loop; two such answers resolve to Lost, not an infinite loop.
+        (RoomGraphManager graph, RoomTracker tracker) = NewGraphAndTracker();
+        var gate = new EngineRecoveryGate(graph, tracker)
+        {
+            TryResync = _ => false,
+            TryResyncForced = _ => true,
+            IsConfused = () => true,
+        };
+        var engine = new RecordingEngine();
+        gate.Attach(engine);
+        for (int i = 0; i < EngineRecoveryGate.Tier2StepBudget; i++)
+            gate.NoteEngineStepSent(Direction.N);
+        gate.NoteSuspectedMismatch("budget");                 // escalation `rm`
+
+        gate.NoteAuthoritativePosition(new RoomKey(9, 999));  // out-of-graph → fall through → terminal `rm`
+        Assert.Equal(0, engine.AbortCount);                   // terminal `rm` still in flight, not Lost yet
+        Assert.True(gate.AwaitingAuthoritativeResync);
+
+        gate.NoteAuthoritativePosition(new RoomKey(9, 999));  // terminal `rm` also out-of-graph → Lost
+        Assert.False(gate.AwaitingAuthoritativeResync);
+        Assert.Equal(1, engine.AbortCount);
+    }
 }

@@ -159,20 +159,27 @@ public sealed class BossTimerStore
     // specific death-line candidate name, matched against a boss whose rooms include
     // the current room. key/engagedName are read live at the death (the event itself
     // carries neither location nor the engaged name).
+    // Fires when a death is attributed to a tracked boss in the current room — the
+    // matched BossDef (whichever respawn type). Fires for EVERY matched boss; a
+    // subscriber (the Grab-All engine) gates on def.GrabAll. Kept separate from the
+    // timer marking so a cleanup boss (no timer) still notifies.
+    public event Action<BossDef>? BossKilled;
+
     public void OnMonsterDied(MonsterDeathEvent evt, RoomKey? key, string? engagedName)
     {
         if (key is not { } here) return;   // can't confirm placement
 
         foreach (BossDef def in _bosses.Resolve())
         {
-            if (def.RespawnType != BossRespawnType.Timed) continue;
             if (!RoomsContain(def, here)) continue;
-            if (NameMatches(def.Name, engagedName)
-                || evt.Candidates.Any(c => NameMatches(def.Name, c.Name)))
-            {
-                MarkKilled(def.Name);
-                return;
-            }
+            if (!(NameMatches(def.Name, engagedName)
+                  || evt.Candidates.Any(c => NameMatches(def.Name, c.Name)))) continue;
+
+            // A timed boss starts its respawn countdown; a cleanup boss has none. Both
+            // notify BossKilled so Grab-All can fire regardless of respawn type.
+            if (def.RespawnType == BossRespawnType.Timed) MarkKilled(def.Name);
+            BossKilled?.Invoke(def);
+            return;
         }
     }
 

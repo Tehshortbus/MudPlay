@@ -297,6 +297,13 @@ public sealed class CharacterProfile
     // settings. Managed by CombatProfileManager.
     public CombatProfileSettings? CombatProfiles { get; set; }
 
+    // Per-character route-Details monster colouring — the "Color monsters by hit %"
+    // toggle and the green / yellow / red band split, set from the Details window's
+    // own checkbox + slider. Saved here so each character keeps its own preference
+    // and the window opens the way that character last left it. null means off with
+    // the factory 15 / 45 bands.
+    public MonsterHitColorSettings? MonsterHitColors { get; set; }
+
     // How the Buff Watchdog window arranges its config table vs the timer bars —
     // stacked (config top / bottom) or side-by-side (config left / right).
     public BuffWatchdogLayout BuffWatchdogLayout { get; set; } = BuffWatchdogLayout.ConfigTop;

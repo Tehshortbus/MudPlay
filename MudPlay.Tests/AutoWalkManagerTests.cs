@@ -347,6 +347,60 @@ public sealed class AutoWalkManagerTests : IDisposable
         Assert.Contains(h.Events, e => e.Kind == WalkEventKind.Failed);
     }
 
+    [Fact]
+    public void PersistentBlock_WhileConfused_DoesNotExhaustReplanBudget()
+    {
+        // Report paradigm-20260902-173754: LoopRunner's own recovery budget was
+        // already exempted from confusion fumbles (paradigm-20260902-113201),
+        // but it can hand off into this walker's separate replan budget (e.g.
+        // via BlockedTwice_HandsOffToReplan above), which had no such exemption
+        // — a short burst of confusion fumbles during that fallback could still
+        // exhaust MaxReplansPerWalk and fail the whole walk while the character
+        // was otherwise fine, just waiting out the status effect.
+        Harness h = NewHarness();
+        h.Walker.SetConfusedCheck(() => true);
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Walker.WalkTo(new RoomKey(1, 3));
+
+        for (int i = 0; i < 10; i++)
+        {
+            h.Tracker.NoteMoveBlocked();
+        }
+
+        Assert.Equal(WalkState.Walking, h.Walker.State);
+        Assert.DoesNotContain(h.Events, e => e.Kind == WalkEventKind.Failed);
+    }
+
+    [Fact]
+    public void ReplanBudget_ConfusionClearing_GenuineBlockAfterwardStillFails()
+    {
+        // Confusion exempting replan attempts from the budget must not leak into
+        // a real problem once the status clears — a persistently blocked exit
+        // hit right after confusion wears off still fails eventually, exactly
+        // like PersistentBlock_StillFailsCleanly_OnceReplanBudgetAlsoExhausts.
+        Harness h = NewHarness();
+        bool confused = true;
+        h.Walker.SetConfusedCheck(() => confused);
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Walker.WalkTo(new RoomKey(1, 3));
+
+        for (int i = 0; i < 10; i++)
+        {
+            h.Tracker.NoteMoveBlocked();
+        }
+        Assert.Equal(WalkState.Walking, h.Walker.State);   // unaffected while confused
+
+        confused = false;
+        for (int i = 0; i < 20; i++)
+        {
+            if (h.Walker.State == WalkState.Idle) break;
+            h.Tracker.NoteMoveBlocked();
+        }
+
+        Assert.Equal(WalkState.Idle, h.Walker.State);
+        Assert.Contains(h.Events, e => e.Kind == WalkEventKind.Failed);
+    }
+
     // ----- desync ---------------------------------------------------
 
     [Fact]

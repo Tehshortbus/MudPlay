@@ -546,4 +546,136 @@ public sealed class StatParserTests
         Assert.Equal(80, s.Agility);
         Assert.Equal(0,  s.Tracking);
     }
+
+    // ===== Compact `health`-command re-anchor =====
+
+    // Arm ONLY the health gate — the stat-screen gate stays closed, exactly as a
+    // real `health` send leaves it. That closed stat gate is what stops the
+    // health line's HP value bleeding into the stat sheet's `Health:` attribute
+    // (a core stat; the sheet labels the HP pool `Hits:`).
+    private static (StatParser parser, PlayerStats stats) HealthSetup()
+    {
+        PlayerStats stats = new();
+        StatParser parser = new(stats);
+        parser.TestArmHealth();
+        return (parser, stats);
+    }
+
+    [Fact]
+    public void HealthCommand_Stock_Kai_ReanchorsHpAndKai()
+    {
+        // Stock realm: "Health: 91/91 [100%] Kai: 6/10 [60%]".
+        var (p, s) = HealthSetup();
+        (int MaxHits, int PoolMax) captured = default;
+        bool fired = false;
+        p.HealthReanchored += (maxHits, poolMax) => { captured = (maxHits, poolMax); fired = true; };
+
+        p.FeedTestLine("Health:      91/91  [100%]  Kai:  6/10  [60%]");
+
+        Assert.Equal(91, s.Hits);
+        Assert.Equal(91, s.MaxHits);
+        Assert.Equal(6,  s.Kai);
+        Assert.Equal(10, s.MaxKai);
+        Assert.Equal(0,  s.Mana);          // a kai class never writes the mana pool
+        Assert.True(fired);
+        Assert.Equal((91, 10), captured);  // poolMax is the kai ceiling
+        Assert.Equal(0, s.Health);         // the Health core-stat attribute is NOT clobbered by the HP value
+        Assert.True(p.HasParsed);
+    }
+
+    [Fact]
+    public void HealthCommand_Paradigm_Mana_ReanchorsHpAndMana()
+    {
+        // Paradigm realm: "Health: 593/593 [100%] Mana: 619/619 [100%]".
+        var (p, s) = HealthSetup();
+        (int MaxHits, int PoolMax) captured = default;
+        p.HealthReanchored += (maxHits, poolMax) => captured = (maxHits, poolMax);
+
+        p.FeedTestLine("Health:    593/593    [100%]    Mana:    619/619    [100%]");
+
+        Assert.Equal(593, s.Hits);
+        Assert.Equal(593, s.MaxHits);
+        Assert.Equal(619, s.Mana);
+        Assert.Equal(619, s.MaxMana);
+        Assert.Equal(0,   s.Kai);            // a mana class never writes the kai pool
+        Assert.Equal((593, 619), captured);
+        Assert.Equal(0,   s.Health);
+    }
+
+    [Fact]
+    public void HealthCommand_NoPoolClass_ReanchorsHpOnly()
+    {
+        // A no-pool class (only HP) shows just the HP field: "Health: 137/137 [100%]".
+        var (p, s) = HealthSetup();
+        int poolMaxSeen = -1;
+        p.HealthReanchored += (_, poolMax) => poolMaxSeen = poolMax;
+
+        p.FeedTestLine("Health:    137/137    [100%]");
+
+        Assert.Equal(137, s.Hits);
+        Assert.Equal(137, s.MaxHits);
+        Assert.Equal(0, poolMaxSeen);        // no pool field → poolMax 0, which ApplyStatScreenMax ignores
+    }
+
+    [Theory]
+    [InlineData("health")]
+    [InlineData("healt")]
+    [InlineData("heal")]
+    [InlineData("hea")]
+    public void OutboundHealthPrefix_ArmsHealthGate(string command)
+    {
+        PlayerStats stats = new();
+        StatParser parser = new(stats);
+        parser.ObserveOutbound(Encoding.Latin1.GetBytes(command + "\r"));
+        parser.FeedTestLine("Health:  91/91  [100%]  Kai:  6/10  [60%]");
+        Assert.Equal(91, stats.MaxHits);
+    }
+
+    [Fact]
+    public void OutboundHealth_DoesNotArmStatGate()
+    {
+        // `health` opens only the compact readout — it must not arm the full
+        // stat-screen scan, so a following stat-sheet line stays untouched.
+        PlayerStats stats = new();
+        StatParser parser = new(stats);
+        parser.ObserveOutbound(Encoding.Latin1.GetBytes("health\r"));
+        parser.FeedTestLine("Strength: 60");
+        Assert.Equal(0, stats.Strength);
+    }
+
+    [Fact]
+    public void HealthCommand_OutsideWindow_Ignored()
+    {
+        PlayerStats stats = new();
+        DateTime t = new(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc);
+        StatParser parser = new(stats) { NowProvider = () => t };
+        parser.ExpectingHealthWindow = TimeSpan.FromSeconds(5);
+        parser.ObserveOutbound(Encoding.Latin1.GetBytes("health\r"));
+        t = t.AddSeconds(6);   // past the window
+        parser.FeedTestLine("Health:  91/91  [100%]  Kai:  6/10  [60%]");
+        Assert.Equal(0, stats.Hits);
+        Assert.Equal(0, stats.MaxHits);
+    }
+
+    [Fact]
+    public void HealthCommand_ChatEcho_Ignored()
+    {
+        // A gossip embedding the readout can't commit the re-anchor — both the
+        // chat-shape guard and the line-start anchor reject it.
+        var (p, s) = HealthSetup();
+        p.FeedTestLine("Bob gossips: Health: 91/91 [100%] Kai: 6/10 [60%]");
+        Assert.Equal(0, s.Hits);
+        Assert.Equal(0, s.MaxHits);
+    }
+
+    [Fact]
+    public void HealthCommand_NoArm_Ignored()
+    {
+        // Without an outbound `health`, the readout is a no-op — nothing arms.
+        PlayerStats stats = new();
+        StatParser parser = new(stats);
+        parser.FeedTestLine("Health:  91/91  [100%]  Kai:  6/10  [60%]");
+        Assert.Equal(0, stats.Hits);
+        Assert.False(parser.HasParsed);
+    }
 }

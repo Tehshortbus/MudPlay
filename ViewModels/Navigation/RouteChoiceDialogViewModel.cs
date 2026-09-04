@@ -37,6 +37,13 @@ public sealed partial class RouteChoiceDialogViewModel
     // maps the selected route to its FreePath / GatedPath and pushes it.
     public event Action<RouteChoiceResult?>? PreviewRequested;
 
+    // Raised when the user clicks Details… for the selected route, so the prompt
+    // can open the shared route-details browse window (the same one the CURRENT NAV
+    // panel uses) for that route's polyline — the full step plan with per-room
+    // monsters, hazards, and item gates. The picker has no map/graph knowledge, so
+    // it just forwards which route is selected and lets the prompt resolve it.
+    public event Action<RouteChoiceResult>? ShowDetailsRequested;
+
     public string Heading { get; }
     public string FreeSummary { get; }
     public string GatedSummary { get; }
@@ -81,22 +88,46 @@ public sealed partial class RouteChoiceDialogViewModel
     // just walk it" note; only the direct route is selectable.
     public bool HasFreeRoute { get; }
 
-    // The "direct — send it" card (cross the gates as-is, no acquisition) is only
-    // offered when a gate-free detour also exists — i.e. the true two-route fork,
-    // where skipping acquisition is a meaningful third choice. When the gated
-    // route is the ONLY way there, the send-it/acquire split collapses to the
-    // single acquire card (chunk-4 flag logic governs that case, not the picker).
-    // A teleport choice has no acquisition, so it never shows the send-it card.
-    // A sole hazard route with an obtainable counter also shows it — as the
-    // "cross unprotected (take the damage)" escape opposite "obtain then cross".
-    // A trap-avoid choice is a plain two-way fork — no send-it card there either.
+    // The "cross unprotected / send it" card. Two flavours share it:
+    //   • item-gate two-route fork (HasFreeRoute): "send it" through the gates as-is
+    //     rather than acquiring — a meaningful third choice only when a free detour
+    //     also exists.
+    //   • SURVIVABLE-damage hazard crossing (sole OR mixed): "cross unprotected —
+    //     take the damage", offered whether or not a counter can be sourced (it's the
+    //     user's call to eat a river / heat crossing). NEVER offered for a GRAVE
+    //     hazard (a drown / freeze death, a forced teleport) — a counter is the only
+    //     way past those, so walking in unprotected is not a choice we hand the user.
+    // A teleport / trap-avoid choice has no send-it split.
     public bool ShowSendItCard =>
-        (HasFreeRoute || HazardObtain) && !IsTeleportChoice && !IsTrapAvoidChoice;
+        (HasFreeRoute || _crossesSurvivableHazard)
+        && !IsTeleportChoice && !IsTrapAvoidChoice;
 
-    // True when this is a sole hazard-only route the caller resolved an obtainable
-    // counter for: Go fetches it then crosses (vs. "cross unprotected"). Drives the
-    // obtain wording + the send-it card in the sole-hazard case.
+    // The primary route / "obtain then cross" / "walk to the hazard and stop" card.
+    // Hidden only in the one case where it would duplicate the cross-unprotected
+    // card: a SOLE survivable hazard with no sourceable counter, where "cross
+    // unprotected" is the sole action. A MIXED route (hazard + a hard gate) always
+    // keeps it (obtain-then-cross, or walk to the hazard's edge and stop); so does an
+    // item / key gate, a grave hazard, the item-gate fork, teleport, trap-avoid, and
+    // blocked.
+    public bool ShowGatedCard => !_crossesSurvivableHazard || _mixedHazard || HazardObtain;
+
+    // True when the caller resolved an obtainable counter for the hazard: Go fetches
+    // it then crosses (vs. "cross unprotected"). Drives the obtain wording + the
+    // send-it card, for both a sole hazard and a mixed (hazard + hard gate) route.
     public bool HazardObtain { get; }
+
+    // The route crosses a survivable hazard the player can't currently pass, whether
+    // that's the only gate (_soleHazardOnly) or there's also a hard gate past it
+    // (_mixedHazard). Both gate the card-visibility rules above.
+    private readonly bool _soleHazardOnly;
+    private readonly bool _crossesSurvivableHazard;
+    private readonly bool _mixedHazard;
+
+    // The muted sub-line under the send-it card — reframed for the hazard flavour
+    // (take the damage) vs the item-gate flavour (carry the gate items yourself).
+    public string SendItDetail => _crossesSurvivableHazard
+        ? "Walks straight through the hazard and takes the damage — no counter fetched."
+        : "Crosses the gates as-is — nothing acquired; you must already carry what's needed.";
 
     // Which route the user has selected to preview. Null until they click one —
     // Go stays disabled until then, forcing the click-to-preview-then-Go flow.
@@ -104,26 +135,9 @@ public sealed partial class RouteChoiceDialogViewModel
     [NotifyPropertyChangedFor(nameof(IsFreeSelected))]
     [NotifyPropertyChangedFor(nameof(IsGatedSelected))]
     [NotifyPropertyChangedFor(nameof(IsSendItSelected))]
-    [NotifyPropertyChangedFor(nameof(CurrentStepRows))]
-    [NotifyPropertyChangedFor(nameof(HasStepRows))]
-    [NotifyPropertyChangedFor(nameof(CanShowSteps))]
     [NotifyCanExecuteChangedFor(nameof(GoCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ShowDetailsCommand))]
     private RouteChoiceResult? _selectedRoute;
-
-    // The full start-to-finish command sequence for each route (moves, lever/winch/
-    // door detours, and acquire steps), surfaced by the Show-steps flyout. Free
-    // traces the gate-free line; the two gated choices share the same physical route.
-    private readonly IReadOnlyList<RouteStepRow> _freeSteps;
-    private readonly IReadOnlyList<RouteStepRow> _gatedSteps;
-
-    public IReadOnlyList<RouteStepRow> CurrentStepRows =>
-        SelectedRoute == RouteChoiceResult.Free ? _freeSteps : _gatedSteps;
-
-    public bool HasStepRows => CurrentStepRows.Count > 0;
-
-    // The Show-steps button lights up once a route is picked and there's a sequence
-    // to show — clicking it opens the flyout listing that route's full step plan.
-    public bool CanShowSteps => SelectedRoute is not null && HasStepRows;
 
     public bool IsFreeSelected => SelectedRoute == RouteChoiceResult.Free;
     public bool IsGatedSelected => SelectedRoute == RouteChoiceResult.Gated;
@@ -139,14 +153,11 @@ public sealed partial class RouteChoiceDialogViewModel
         TimeSpan freeEta = default,
         TimeSpan gatedEta = default,
         string? hazardCounterSource = null,
-        IReadOnlyList<RouteStepRow>? freeSteps = null,
-        IReadOnlyList<RouteStepRow>? gatedSteps = null)
+        bool hazardSurvivable = false,
+        Func<RouteRequirement, (int ItemId, string Source)?>? resolvedHazardCounter = null)
     {
         ArgumentNullException.ThrowIfNull(choice);
         ArgumentNullException.ThrowIfNull(itemName);
-
-        _freeSteps = freeSteps ?? Array.Empty<RouteStepRow>();
-        _gatedSteps = gatedSteps ?? Array.Empty<RouteStepRow>();
 
         IsTeleportChoice = choice.Kind == RouteChoiceKind.Teleport;
         IsTrapAvoidChoice = choice.Kind == RouteChoiceKind.TrapAvoid;
@@ -171,14 +182,23 @@ public sealed partial class RouteChoiceDialogViewModel
             return;
         }
 
-        // A sole hazard-only route the caller resolved an obtainable counter for:
-        // Go fetches it then crosses, and a "cross unprotected" card is offered as
-        // the take-the-damage escape.
+        // A route that crosses a survivable hazard: Go crosses it, optionally fetching
+        // a counter first (when sourceable), and "cross unprotected" is the take-the-
+        // damage escape. `hazardSurvivable` (the caller's crossesSurvivableHazard) is
+        // true for both a SOLE hazard route and a MIXED one (hazard + a hard gate past
+        // it); the mixed case also stops at that gate.
         bool soleHazardOnly = !HasFreeRoute && !IsTeleportChoice
             && choice.Requirements.All(r => r.Kind == RouteRequirementKind.HazardProtection);
-        HazardObtain = soleHazardOnly && !string.IsNullOrEmpty(hazardCounterSource);
+        _soleHazardOnly = soleHazardOnly;
+        _crossesSurvivableHazard = hazardSurvivable;
+        _mixedHazard = hazardSurvivable && !soleHazardOnly;
+        // A resolved counter source means "obtain then cross" is offerable — for ANY
+        // hazard (a grave hazard's only safe crossing is obtaining the counter).
+        HazardObtain = !string.IsNullOrEmpty(hazardCounterSource);
 
-        SendItSummary = HazardObtain
+        // "Cross unprotected — take the damage" for any survivable-hazard crossing;
+        // "Direct — send it" for the item-gate two-route fork.
+        SendItSummary = hazardSurvivable
             ? $"Cross unprotected — take the damage — {StepsEta(choice.GatedStepCount, gatedEta)}"
             : $"Direct — send it — {StepsEta(choice.GatedStepCount, gatedEta)}";
 
@@ -250,12 +270,46 @@ public sealed partial class RouteChoiceDialogViewModel
                         + $"Go fetches a counter ({hazardCounterSource}) then crosses; "
                         + "\"cross unprotected\" walks straight through and takes the damage.";
                 }
+                else if (hazardSurvivable)
+                {
+                    // No sourceable counter, but the hazard is survivable damage — the
+                    // only card shown is "cross unprotected" (the Gated card is hidden
+                    // by ShowGatedCard, so its summary is unused).
+                    GatedSummary = string.Empty;
+                    Footnote = "Click the route to preview it on the map, then Go to cross it. "
+                        + "This is the only way there and there's no counter to fetch nearby — "
+                        + "Go walks straight through and takes the damage; carry a counter yourself to avoid it.";
+                }
                 else
                 {
                     GatedSummary = $"Route — {StepsEta(choice.GatedStepCount, gatedEta)}";
                     Footnote = "Click the route to preview it on the map, then Go to walk it. "
                         + "This is the only way there — Go walks it and stops at the hazard; "
                         + "carry, buy, or use a counter to cross.";
+                }
+            }
+            else if (_mixedHazard)
+            {
+                // The route crosses a survivable hazard AND a hard gate past it (a
+                // keyed door): offer to obtain-then-cross / cross-unprotected, but
+                // note the walk still stops at the gate you must clear yourself.
+                Heading = $"Only route to {destinationLabel} crosses a hazard, then a gate";
+                FreeSummary = "No hazard-free route — every path there crosses a hazard, "
+                    + "then a gate you must clear yourself";
+                if (HazardObtain)
+                {
+                    GatedSummary = $"Obtain, then cross — {StepsEta(choice.GatedStepCount, gatedEta)}";
+                    Footnote = "Click a route to preview it on the map, then Go to walk it. "
+                        + $"Go fetches a counter ({hazardCounterSource}), crosses, then stops at the "
+                        + "gate you must clear yourself; \"cross unprotected\" takes the damage instead.";
+                }
+                else
+                {
+                    GatedSummary = $"Walk to the hazard and stop — {StepsEta(choice.GatedStepCount, gatedEta)}";
+                    Footnote = "Click a route to preview it on the map, then Go. "
+                        + "There's no counter to fetch nearby — Go walks you to the hazard's edge and "
+                        + "stops; \"cross unprotected\" takes the damage and pushes on to the gate you "
+                        + "must clear yourself.";
                 }
             }
             else
@@ -270,7 +324,8 @@ public sealed partial class RouteChoiceDialogViewModel
 
             RequirementSummary = "Requires "
                 + DescribeRequirements(
-                    choice.Requirements, itemName, giveNameForItem, shopNameForItem, dropNameForItem);
+                    choice.Requirements, itemName, giveNameForItem, shopNameForItem,
+                    dropNameForItem, resolvedHazardCounter);
             TeleportCaveat = string.Empty;
             TrapCaveat = string.Empty;
         }
@@ -313,10 +368,18 @@ public sealed partial class RouteChoiceDialogViewModel
         Func<int, string?> itemName,
         Func<int, string?>? giveNameForItem,
         Func<int, string?>? shopNameForItem,
-        Func<int, string?>? dropNameForItem)
+        Func<int, string?>? dropNameForItem,
+        Func<RouteRequirement, (int ItemId, string Source)?>? resolvedHazardCounter = null)
     {
         IEnumerable<string> clauses = reqs.Select(r =>
         {
+            // A resolved hazard counter names the SPECIFIC item the run will obtain +
+            // how ("log raft (buy at Pier)"), instead of the whole any-of set — the
+            // picker already chose the cheapest reachable one.
+            if (r.Kind is RouteRequirementKind.HazardProtection
+                && resolvedHazardCounter?.Invoke(r) is { } rc)
+                return $"{itemName(rc.ItemId) ?? $"item #{rc.ItemId}"} ({rc.Source})";
+
             string items = string.Join(" or ", r.ItemIds.Select(id => itemName(id) ?? $"item #{id}"));
             bool autoSourced = r.Kind is RouteRequirementKind.CarryItem or RouteRequirementKind.Ticket
                 || (r.Kind is RouteRequirementKind.HazardProtection && r.ItemIds.Count == 1);
@@ -355,6 +418,17 @@ public sealed partial class RouteChoiceDialogViewModel
         SelectedRoute = RouteChoiceResult.GatedNoAcquire;
         // Same physical route as the gated acquire choice — preview its line.
         PreviewRequested?.Invoke(RouteChoiceResult.GatedNoAcquire);
+    }
+
+    // The Details… button lights up once a route is picked: it opens the shared
+    // route-details browse window for that route (richer than the Show-steps
+    // flyout — per-room monsters, hazards, and item gates, each linking its record).
+    private bool CanShowDetails => SelectedRoute is not null;
+
+    [RelayCommand(CanExecute = nameof(CanShowDetails))]
+    private void ShowDetails()
+    {
+        if (SelectedRoute is { } r) ShowDetailsRequested?.Invoke(r);
     }
 
     private bool CanGo => SelectedRoute is not null;

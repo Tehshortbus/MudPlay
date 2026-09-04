@@ -345,6 +345,7 @@ public partial class NavigationWindow : Window
             FlyoutBase.ShowAttachedFlyout(searchBox);
     }
 
+
     // Picking a recent destination arms it (VM OnSelectedGotoHistoryChanged) and
     // should dismiss the flyout — otherwise it lingers until a click elsewhere.
     // Only a real pick closes it (the VM resets the selection to null afterwards,

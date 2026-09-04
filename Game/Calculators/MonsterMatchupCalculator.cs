@@ -101,6 +101,20 @@ public static class MonsterMatchupCalculator
         if (energyPerRound <= 0 || primaryAttackEnergy <= 0) return 1;
         return System.Math.Max(1, energyPerRound / primaryAttackEnergy);
     }
+
+    // Combat rounds per minute — a round is 5 seconds, so 12 rounds = 1 minute.
+    // Damage-per-minute figures multiply a per-round damage by this.
+    public const int RoundsPerMinute = 12;
+
+    // Average swings/round the monster lands over a long window (a minute), honouring
+    // energy ROLLOVER: a monster always spends its whole budget, and leftover energy
+    // (budget mod cost) carries into the next round, so across many rounds the mean
+    // swing count is the true FRACTIONAL budget/cost ratio — not the single-round
+    // integer floor MonsterSwingsPerRound returns. Monsters have no realm swing cap
+    // (unlike the player's 5/6): energy is the only limit. Used for DPM, where the
+    // fractional part matters (e.g. 1000/300 averages 3.33/round, not 3).
+    public static double AverageMonsterSwingsPerRound(int energyPerRound, int attackEnergy)
+        => energyPerRound <= 0 || attackEnergy <= 0 ? 1.0 : (double)energyPerRound / attackEnergy;
 }
 
 // Player-side inputs to MonsterMatchupCalculator.Compute — the offensive numbers
@@ -212,7 +226,13 @@ public readonly record struct PlayerAttackSpell(
 // effective damage.
 public readonly record struct SpellEffectivenessResult(
     string Name, string Short, string Element, long EffectiveDamage,
-    long ManaCostPerRound, bool Eligible, string? BlockedReason, bool IsAoe = false);
+    long ManaCostPerRound, bool Eligible, string? BlockedReason, bool IsAoe = false)
+{
+    // EffectiveDamage is already the resist-adjusted PER-ROUND figure (level-scaled
+    // + energy-multiplied at the caster side, then resist-adjusted here), so a minute
+    // is simply ×12 rounds. Meaningful only when Eligible.
+    public long DamagePerMinute => EffectiveDamage * MonsterMatchupCalculator.RoundsPerMinute;
+}
 
 // Spell-matchup additions to MonsterMatchupCalculator below — kept as their
 // own members rather than folded into Compute(), since the inputs (known
@@ -240,8 +260,22 @@ public static class MonsterMatchupCalculatorSpells
         int defenderAc, int defenderDodge, int protEvil, int protGood,
         RealmType realm, bool hasShadow = false,
         int vileWard = 0, EvilLevel defenderEvil = EvilLevel.Saint)
+        => physicalAccuracy is { } acc
+            ? AttackHitPercent(acc.Majority, alignment, defenderAc, defenderDodge, protEvil,
+                protGood, realm, hasShadow, vileWard, defenderEvil)
+            : null;
+
+    // Chance ONE monster attack of the given accuracy lands on the defender,
+    // applying whichever ward (Prot Evil / Prot Good / Vile Ward) matches the
+    // monster's alignment. Shared by the single-slot IncomingHitPercent, the
+    // weighted blend below, and Monster Intel's per-attack detail lines.
+    // MajorMUD alignment codes 1/2/5/6 are evil, 0/4 are good.
+    public static int AttackHitPercent(
+        int accuracy, int alignment,
+        int defenderAc, int defenderDodge, int protEvil, int protGood,
+        RealmType realm, bool hasShadow = false,
+        int vileWard = 0, EvilLevel defenderEvil = EvilLevel.Saint)
     {
-        if (physicalAccuracy is not { } acc) return null;
         bool isEvil = alignment is 1 or 2 or 5 or 6;
         bool isGood = alignment is 0 or 4;
         // Prot Evil and Vile Ward are evil-only wards: they raise the defender's
@@ -249,7 +283,7 @@ public static class MonsterMatchupCalculatorSpells
         // zeroed against a neutral/good monster. Vile Ward's raw value is scaled
         // by the defender's own evil tier inside CalculateHitChance (AdjustVileWard).
         return CombatCalculator.CalculateHitChance(
-            attackerAccuracy: acc.Majority,
+            attackerAccuracy: accuracy,
             defenderAC: defenderAc,
             defenderDodge: defenderDodge,
             protEvil: isEvil ? protEvil : 0,
@@ -258,6 +292,44 @@ public static class MonsterMatchupCalculatorSpells
             evilLevel: defenderEvil,
             hasShadow: hasShadow,
             realmType: realm).OverallHitPercent;
+    }
+
+    // A monster's overall chance to land a hit when it swings, blended across ALL
+    // its physical attacks: each attack's own hit% weighted by how often the
+    // monster throws it (its use-weight, which sums to ~100 across the physical
+    // slots). This is the "resembles the real chance it hits you, considering
+    // every attack" figure — more faithful than the single majority-slot accuracy,
+    // and it averages the per-attack hit OUTPUTS, not the accuracies (which would
+    // skew through the non-linear hit formula). `accuracyDelta` is subtracted from
+    // every attack's accuracy (a folded accuracy debuff; 0 for the base case) and
+    // may push it negative. Null when the monster has no physical attack to blend.
+    public static int? WeightedIncomingHitPercent(
+        IReadOnlyList<(int Accuracy, double Weight)> physicalAttacks, int accuracyDelta,
+        int alignment, int defenderAc, int defenderDodge, int protEvil, int protGood,
+        RealmType realm, bool hasShadow = false,
+        int vileWard = 0, EvilLevel defenderEvil = EvilLevel.Saint)
+    {
+        if (physicalAttacks is null || physicalAttacks.Count == 0) return null;
+        double totalWeight = 0, weightedHit = 0;
+        foreach ((int accuracy, double weight) in physicalAttacks)
+        {
+            double w = weight > 0 ? weight : 0;
+            int hit = AttackHitPercent(accuracy - accuracyDelta, alignment, defenderAc,
+                defenderDodge, protEvil, protGood, realm, hasShadow, vileWard, defenderEvil);
+            weightedHit += w * hit;
+            totalWeight += w;
+        }
+        // Every weight zero (a data quirk) → fall back to a plain mean so the row
+        // still shows a number rather than dropping out.
+        if (totalWeight <= 0)
+        {
+            double sum = 0;
+            foreach ((int accuracy, double _) in physicalAttacks)
+                sum += AttackHitPercent(accuracy - accuracyDelta, alignment, defenderAc,
+                    defenderDodge, protEvil, protGood, realm, hasShadow, vileWard, defenderEvil);
+            return (int)System.Math.Round(sum / physicalAttacks.Count);
+        }
+        return (int)System.Math.Round(weightedHit / totalWeight);
     }
 
     // Rank the player's known attack spells by effective damage against one

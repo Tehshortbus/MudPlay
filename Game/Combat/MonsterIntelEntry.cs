@@ -31,13 +31,16 @@ public sealed class MonsterIntelEntry : INotifyPropertyChanged
     public long Exp => Source.EffectiveExp;
     public string ExpText => Exp > 0 ? Exp.ToString("N0", Inv) : string.Empty;
 
-    // The monster's own physical-attack accuracy — the same "majority" slot
-    // value IncomingHitPercent feeds into CombatCalculator.CalculateHitChance
-    // as attackerAccuracy, surfaced directly so it's clear WHY a monster
-    // hits at the percent shown, not just the outcome. Empty for a monster
-    // with no physical attack (Source.PhysicalAccuracy is null).
+    // The monster's physical-attack accuracies. Accuracy (the majority slot's
+    // value) stays the sort key; AccuracyText lists EVERY physical attack's
+    // accuracy, most-used first (e.g. "45 / 30 / 20"), so it's clear the "Hits
+    // You %" weights all of them, not just the highest. Empty for a monster with
+    // no physical attack (Source.PhysicalAccuracy is null / no physical slots).
     public int Accuracy => Source.PhysicalAccuracy?.Majority ?? 0;
-    public string AccuracyText => Source.PhysicalAccuracy is not null ? Accuracy.ToString(Inv) : string.Empty;
+    public string AccuracyText => string.Join(" / ",
+        Source.PhysicalAttacks
+            .OrderByDescending(static p => p.Weight)
+            .Select(static p => p.Accuracy.ToString(Inv)));
 
     // A non-zero RegenTime (hours) means this monster respawns on its own timer
     // — a boss, lair leader, or other timed spawn — rather than freely via the
@@ -118,5 +121,15 @@ internal static class ElementalResistIndex
         foreach ((int code, string name) in Elements)
             if (string.Equals(name, element, System.StringComparison.Ordinal)) return code;
         return -1;
+    }
+
+    // A resist ability code back to its element display name, or null for a
+    // non-elemental code — the reverse of CodeForName, for rendering a monster's own
+    // ElementalResists dict (keyed by these codes) as readable weakness/strength lines.
+    public static string? NameForCode(int code)
+    {
+        foreach ((int c, string name) in Elements)
+            if (c == code) return name;
+        return null;
     }
 }

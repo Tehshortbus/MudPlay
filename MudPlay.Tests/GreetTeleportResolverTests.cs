@@ -72,6 +72,33 @@ public sealed class GreetTeleportResolverTests : IDisposable
         Assert.Equal("ask Lord teleport", teleports[0].Command);   // noun = last word of the name
         Assert.Equal(new RoomKey(1, 224), teleports[0].Destination); // teleport <room> <map> → (map, room)
         Assert.Equal(0, teleports[0].MinLevel);
+        Assert.Equal(0, teleports[0].RequiredClass);   // ungated by class
+    }
+
+    [Fact]
+    public void Resolve_ClassGatedTeleport_IsKeptWithRequiredClass()
+    {
+        // The barmaid's bard-only "adventure" teleport (issue #455): a `class N`
+        // gate restricts the transport to one class. It is NOT skipped like an
+        // alignment/ability gate — it's surfaced with RequiredClass so the edge's
+        // ClassGate keeps it for that class and drops it for every other. The
+        // `testskill` attribute-roll token in the same block must NOT abort it
+        // (it's not one of the untrackable gates).
+        const string tbinfo = """
+            [
+              { "Number": 40, "LinkTo": 0, "Action": "adventure:41\n", "Called From": "" },
+              { "Number": 41, "LinkTo": 0,
+                "Action": "class 12:testskill 5 50 999:teleport 391 1:message 1\n", "Called From": "" }
+            ]
+            """;
+        TBInfoStore store = NewStore(tbinfo);
+
+        var teleports = GreetTeleportResolver.Resolve(store, 40, "the barmaid").ToList();
+        Assert.Single(teleports);
+        Assert.Equal("ask barmaid adventure", teleports[0].Command);
+        Assert.Equal(new RoomKey(1, 391), teleports[0].Destination);
+        Assert.Equal(12, teleports[0].RequiredClass);   // class 12 → surfaced, not skipped
+        Assert.Equal(0, teleports[0].MinLevel);
     }
 
     [Fact]

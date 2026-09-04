@@ -7,6 +7,7 @@ using CommunityToolkit.Mvvm.Input;
 using MudPlay.Game;
 using MudPlay.Models.Profile;
 using MudPlay.Services;
+using MudPlay.Terminal;
 
 namespace MudPlay.ViewModels;
 
@@ -84,6 +85,11 @@ public sealed partial class ConversationViewModel : ObservableObject, IDisposabl
     [ObservableProperty] private bool _autoScroll   = true;
 
     [ObservableProperty] private string _inputText = string.Empty;
+
+    // Cap the input box at the terminal's own local-input line limit (the MUD's
+    // wire-level cap), so a line typed here can't exceed what the terminal would
+    // accept — the two stay in lockstep off the single LocalInputBuffer.MaxLength.
+    public int MaxInputLength => LocalInputBuffer.MaxLength;
 
     // Drives the input box's recall-dropdown button (disabled when nothing's been sent yet).
     [ObservableProperty] private bool _hasRecentCommands;

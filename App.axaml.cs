@@ -288,6 +288,12 @@ public partial class App : Application
                 MudPlay.ViewModels.Navigation.RouteChoiceDialogViewModel,
                 MudPlay.Views.Navigation.RouteChoiceDialog>();
 
+            // Current-route "Details…" browse window — the full step plan for the
+            // route the nav engine is executing, with each lair room's monsters.
+            AppServices.Current.Dialogs.RegisterWindow<
+                MudPlay.ViewModels.Navigation.RouteDetailsDialogViewModel,
+                MudPlay.Views.Navigation.RouteDetailsDialog>();
+
             // Settings → General → "Change data directory" confirm + execute dialog.
             AppServices.Current.Dialogs.RegisterWindow<
                 MudPlay.ViewModels.Settings.DataDirectoryRelocateDialogViewModel,

@@ -18,14 +18,20 @@ namespace MudPlay.Game.Map;
 // client can't verify those gates and a transport that silently fails would strand
 // the walker mid-route. A `minlevel N` gate is kept and surfaced as MinLevel —
 // BFS already honours a level floor on teleport edges, so a too-low character
-// simply won't route through it. The player types `ask <noun> <keyword>`, noun =
-// last word of the monster's name ("The Grey Lord" → "Lord").
+// simply won't route through it. A `class N` gate is likewise kept and surfaced
+// as RequiredClass, stamped onto the synthesized edge's ClassGate so the existing
+// MovementFilter.IsClassGateBlocked drops it for every class but N — a class-only
+// transport stays routable for its class but never for the wrong one (issue #455:
+// a bard-only barmaid teleport was being routed through by non-bards). The player
+// types `ask <noun> <keyword>`, noun = last word of the monster's name ("The Grey
+// Lord" → "Lord").
 public static class GreetTeleportResolver
 {
     // One ask-transport exit: the verbatim `ask <noun> <keyword>` command, the
-    // room it lands in, and any level floor the game gates the transport behind
-    // (0 when ungated by level).
-    public readonly record struct GreetTeleport(string Command, RoomKey Destination, int MinLevel);
+    // room it lands in, any level floor the game gates the transport behind (0 when
+    // ungated by level), and any single class the transport is restricted to
+    // (0 when ungated by class — a `class N` directive, N = Classes.Number).
+    public readonly record struct GreetTeleport(string Command, RoomKey Destination, int MinLevel, int RequiredClass);
 
     // Matches the door decoder's depth cap — a malformed self-referential greet
     // chain can't spin the resolver; the per-walk visited set breaks true cycles.
@@ -59,9 +65,9 @@ public static class GreetTeleportResolver
             if (pointer <= 0) continue;
 
             if (TryResolveUngatedTeleport(store, pointer, new HashSet<int>(),
-                    out RoomKey dest, out int minLevel))
+                    out RoomKey dest, out int minLevel, out int requiredClass))
             {
-                yield return new GreetTeleport($"ask {noun} {keyword}", dest, minLevel);
+                yield return new GreetTeleport($"ask {noun} {keyword}", dest, minLevel, requiredClass);
             }
         }
     }
@@ -74,10 +80,11 @@ public static class GreetTeleportResolver
     // silent no-op that strands the walker. Only the first non-empty block is
     // scanned, mirroring GuardDoorCommandResolver.TryResolveExit.
     private static bool TryResolveUngatedTeleport(TBInfoStore store, int number,
-        HashSet<int> visited, out RoomKey dest, out int minLevel)
+        HashSet<int> visited, out RoomKey dest, out int minLevel, out int requiredClass)
     {
         dest = default;
         minLevel = 0;
+        requiredClass = 0;
         int depth = 0;
         while (number > 0 && depth++ < MaxDepth && visited.Add(number))
         {
@@ -101,6 +108,17 @@ public static class GreetTeleportResolver
                     {
                         int lvl = GuardDoorCommandResolver.FirstIntAfter(token, "minlevel ");
                         if (lvl > 0) minLevel = lvl;
+                    }
+                    // `class N` restricts the transport to a single class (N =
+                    // Classes.Number). Surface it as the edge's ClassGate so the
+                    // wrong class is filtered out — a `testskill` attribute roll in
+                    // the same block is NOT modelled here (it gates the right class
+                    // by a live skill check the router can't predict; see the resolver
+                    // doc).
+                    else if (token.StartsWith("class ", StringComparison.OrdinalIgnoreCase))
+                    {
+                        int cls = GuardDoorCommandResolver.FirstIntAfter(token, "class ");
+                        if (cls > 0) requiredClass = cls;
                     }
                     else if (!haveDest && TBInfoTeleportResolver.TryParseTeleport(token, out RoomKey d))
                     {

@@ -1,33 +1,106 @@
 # Version history
 
+## 3.49.0
+
+- Reads the game's `sysop status` room dump for characters flagged with sysop / goto powers, and uses its exact map/room number to recover the client's position instead of walking backwards to work it out
+- A tracker that goes lost, or a loop blocked because it lost track of where it is, re-anchors from that instead of waiting for an "I am here" click
+- Fixed a loop hanging forever when a move went out and never confirmed, and one sitting idle after recovery had already succeeded
+- Sysop status stays trusted once it has answered even once; before that, an unanswered probe backs off and retries rather than switching off for the session
+- Recovery attempts are spaced out, so a reroute that instantly re-blocks can't spend the whole retry budget in one second
+
+## 3.48.0
+
+- Bosses tab: a per-boss **Grab All** checkbox (default off) that blindly grabs a boss's loot the instant it's available — a **monster** boss: `get` every item in its drop table when it dies; an **item** boss (a box, e.g. a bogwood box): `get` it on room entry. No room re-parse.
+- The Grab All checkbox is hidden (a dash with a "cannot resolve" tooltip) for a boss whose name is neither a specific monster nor item (e.g. a touch-to-awaken mechanic like Iceforge)
+
+## 3.47.0
+
+- **Monster Intel** detail now shows an **Abilities & resistances** panel — the monster's elemental weakness/strength, spell immunity, magic-weapon requirement, damage/magic resist, undead / non-living, and other notable abilities
+- Each of the monster's attacks now lists its **incoming damage/minute** against you, and the melee threat line shows a per-minute total
+- Your **Physical attacks** matchup lines lead with your **damage/minute** to the monster (alongside rounds-to-kill), and each **ranked attack spell** shows its damage/minute too
+- DPM averages a monster's output over 12 rounds (a round is 5s), honouring energy rollover so the fractional swing rate is counted
+
+## 3.46.15
+
+- Roomba (Workshop → Gang House): each labeled room now has a **Goto** button (left of Remove) that opens the map and walks you straight to that room
+
+## 3.46.14
+
+- Route **Details**: a "Color monsters by hit %" toggle tints monster names green→red by how likely they are to hit you (Monster Intel's Hits-You-%) instead of by alignment
+- The green / yellow / red split is adjustable on a two-thumb slider (default green ≤ 15%, yellow ≤ 45%, red above); the toggle + split are saved per character
+- Route Details flags a **see-hidden** monster with an 👁 eyeball on either side of its name
+- Conversation input box now caps at the terminal's 254-character line limit, so the two match
+
+## 3.46.11
+
+- Paired ring/wrist gear swaps are now **realm-aware** (Paradigm evicts slot 1, Stock slot 2) and use `eq`, so re-equipping a set that keeps one member of a full pair no longer emits a needless `rem`
+- Rest no longer **hangs at full HP** after a medi/pre-rest swap — the rest target caps at the live gear-swap-aware max instead of the stale stat screen
+- Gear reliably **swaps back to Default** after a rest that completes the instant it starts (no more pathing in medi gear)
+- **Disabling the rest engine** now drops the engage-to-clear override, so a drain/nuke no longer fires while Auto-Combat is off
+- No more **double-attack** when a kill re-picks a same-species survivor mid cap-switch
+- The room **AoE debuff** (isto) re-fires on a same-room respawn — the room tags reset once the room is genuinely cleared (you rest), while a mid-fight survivor still isn't re-debuffed
+- bug reports addressed: paradigm-20260903-070438, paradigm-20260903-073107, paradigm-20260903-110346, paradigm-20260903-111227, paradigm-20260903-111522, paradigm-20260903-113054
+
+## 3.46.5
+
+- Equipment Manager: new per-character **"Don't swap to default upon entering combat"** checkbox (checked = the long-standing behavior)
+- Unchecked, a fight that interrupts a rest is fought in your **Default** set — swap on combat entry, then back to the pre-rest set on room-clear if you haven't yet reached rest-max
+- The 4-set list no longer stretches the column, making room for the new checkbox
+
 ## 3.46.4
 
-- Position recovery now asks the game where you are straight away when a move has stalled, instead of waiting for that move to settle first or being rate-limited out — both guards fired exactly when the answer was needed, and the fallback can't work in a house full of identically-named rooms
+- **Reset States** now re-anchors max HP/mana with the game's compact `health` command instead of the full `stat` screen — the same correction with far less terminal scroll
+- Typing `health` yourself re-latches your max HP and pool ceilings too; the command works on **both realms**, and the readout parses HP plus your class's pool — **Mana**, **Kai**, or HP-only
 
 ## 3.46.3
 
-- Fixed a loop sitting idle after position recovery succeeded — if the movement coordinator resumed the loop while recovery was still waiting for an answer, the step was held and the eventual "recovered" signal was dropped instead of restarting it
+- The route picker now handles a **mixed** route — one that crosses a survivable hazard (a river) **and** a hard gate past it (a keyed door you lack), like the walk to the Iceforge — instead of showing a single "walk to the gate and stop" card
+- For such a route it offers **"Obtain a raft, then cross"** (when a counter can be sourced) or **"Walk to the hazard and stop"** (when it can't), plus **"Cross unprotected — take the damage"** — each stopping at the hard gate you clear yourself
+- "Walk to the hazard and stop" walks only to the room just short of the hazard (the river's edge), so you can fetch a counter / clear the gate by hand from there rather than crossing blindly
+- The "obtain" card's requirement line now names the **specific** counter it'll fetch and where — e.g. *"log raft (buy at Pier)"* — instead of the whole "log raft or wooden skiff or …" list; when several counters are buyable it picks the **cheapest**
+- The route **Details…** window now includes the final destination room as an arrival step, so the plan shows where it lands, and its **title bar shows the ETA** to arrive via that route (e.g. *"Current route → The Iceforge (3/632) · ~6m 55s"*)
 
 ## 3.46.2
 
-- Fixed a loop hanging forever when a move went out and never confirmed — on a realm with no `rm`, the stall escalation parked in a recovery tier that only advances while the engine is still walking, so a stopped engine waited there indefinitely
-- A stalled engine now goes straight to the recovery ladder that can act on it: sysop ground truth if available, then the reverse-walk, then a clean "Lost" dialog
-
-## 3.46.1
-
-- Navigation recovery asks the game where you are (`sys st`) instead of walking you backwards, when the character has sysop powers
-- A tracker that goes lost re-anchors itself the same way, instead of waiting for an "I am here" click
-- An unanswered, refused, or off-map answer falls straight back to the old backtrack — nothing is guessed
-- No probe goes out mid-move, during a maze solve, or twice in quick succession
+- A previewed walk-to whose only route crosses a hazard (a river / lava you lack a counter for) now **draws its route line** instead of a blank map — the preview falls back to the through-the-hazard route the walk would take
+- The route picker now always offers a clearly-worded **"Cross unprotected — take the damage"** choice for a survivable-damage hazard (a river, heat) you have no counter for — and never for a lethal one (a drown / freeze death, a forced teleport), where a counter is the only safe way past
+- Hazard severity (survivable damage vs grave) is decoded from the spell's effect chain, so the "cross unprotected" offer is gated on it
+- Diagnostic logging added for the hazard-counter shop/give/drop resolver, so a missing "obtain, then cross" card is captured in the program log
+- bug reports addressed: paradigm-20260902-222504, paradigm-20260902-222525
 
 ## 3.46.0
 
-- Reads the game's `sysop status` room dump — for characters flagged with sysop / goto powers on their BBS
-- The dump's exact map/room number is the groundwork for recovering the client's position without walking backwards to work it out
-- Sysop commands stay off unless you tick "I have sysop / goto powers"; one unanswered probe switches them off for the session
-- Item lists in the dump survive the game's 80-column wrapping, which splits ids mid-number
-- Items table's `Gettable` flag is now indexed, so room fixtures can be told apart from real loot
-- Confirmed against live play: item entries are per-object with a stack count, ids can repeat, and dropped items show up immediately
+- New **Details…** button on the **CURRENT NAV** panel header — opens the current route's full step plan in a scrollable window, the same numbered "room < command" list the route picker shows, for whatever's executing (walk / loop / Auto-Lair) **or a previewed walk-to** armed from the search box
+- The route picker's old *Show steps* flyout is replaced by a matching **Details…** button (bottom-left) — the same fuller window, browse the selected route before committing to it
+- Each step's **room name is a link** — click it to flash the room on the map and centre there (the `@where` treatment)
+- Each room lists its notable monsters (placed fixtures + lair spawners) as clickable record links, tinted by **alignment** — evil red, neutral cyan, good/lawful white (the game's own colouring)
+- A step that needs a special item — a **hazard** room (a river crossing, lava, the desert heat…) or an **item-gated exit** (a cliff needing rope & grapple, a raft crossing…) — is flagged with ⚠ and names the item(s) required to cross it in dark yellow (and, for a hazard, the harmful spell), each linking its Game Data record
+
+## 3.45.6
+
+- On Paradigm, navigation now asks the game `rm` for your true room before it ever falls back to the blind reverse-walk recovery — and again as a last resort before the "Lost" dialog — so a client is only ever genuinely Lost when `rm` itself can't answer, instead of giving up while an authoritative position was one command away
+- A `rm` that goes unanswered because a confusion fumble ate the command is re-asked until the confusion passes, rather than being treated as a real failure
+- bug reports addressed: paradigm-20260902-223159
+
+## 3.45.5
+
+- Nav no longer routes non-bards through the barmaid's bard-only ask-transport — a `class N` gate on a greet teleport now keeps the edge for that class only and drops it for everyone else
+- Greet teleports (ask-an-NPC transports) now verify they actually arrived and re-ask until they do — a class's skill roll on the transport can fail silently, and the walker recognises it didn't move rather than stalling or failing the walk
+- bug reports addressed: issue #455
+
+## 3.45.4
+
+- Fixed the walker's point-to-point replan budget (a fallback the loop-runner's own recovery already hands off to) still failing a walk over a short burst of confusion fumbles — it now gets the same "don't charge the budget while confused" exemption already applied to the loop's recovery budget, so a genuinely blocked exit still fails cleanly but a confusion streak no longer stalls movement outright
+- bug reports addressed: paradigm-20260902-173754
+
+## 3.45.3
+
+- Monster Intel: the Hits-You-% filter is now a **multi-select dropdown** with finer, **realm-aware** bands — Paradigm offers `2 / 5 / 10 / 15 / 20 / … / 100`, Stock drops the 2% / 5% bands (below its 8% hit floor) and starts at 8%, so no band is a dead no-op for your realm
+
+## 3.45.2
+
+- Monster Intel now considers **all** of a monster's physical attacks, not just its highest-accuracy one: the master list's Accuracy column lists every attack's accuracy, and **Hits You %** is now a use-chance-weighted blend of each attack's hit% — a truer "how often does it actually connect"
+- Monster Intel detail pane: each physical attack line now shows its own **→ N% to hit you**, and the Melee threat summary uses the same weighted figure
 
 ## 3.45.0
 

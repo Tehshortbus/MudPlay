@@ -18,61 +18,15 @@
         <Style Selector="Button.route.selected:pointerover /template/ ContentPresenter">
             <Setter Property="Background" Value="{StaticResource AccentAmberSoftBrush}"/>
         </Style>
-        <!-- Acquire steps (buy/ask/hunt an item to cross a gate) read amber to
-             stand apart from the plain move/detour rows in the step flyout. -->
-        <Style Selector="TextBlock.acquire">
-            <Setter Property="Foreground" Value="{StaticResource AccentAmberBrush}"/>
-        </Style>
     </Window.Styles>
 
     <Border Background="{StaticResource ChromeBgBrush}" Padding="14">
         <Grid RowDefinitions="Auto,*,Auto,Auto" RowSpacing="12">
-            <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
-                <TextBlock Grid.Column="0"
-                           Text="{Binding Heading}"
-                           VerticalAlignment="Center"
-                           FontSize="13" FontWeight="SemiBold"
-                           Foreground="{StaticResource ChromeFgBrush}"/>
-                <!-- Show steps: enabled once a route is picked. Opens a flyout with
-                     the full start-to-finish command sequence for the selected
-                     route — detours and item-acquisitions included. Placed top-right
-                     with Placement="Right" so the flyout opens to the RIGHT of the
-                     dialog and never overlays the route cards. -->
-                <Button Grid.Column="1"
-                        Content="Show steps…"
-                        IsEnabled="{Binding CanShowSteps}"
-                        FontSize="11" Padding="8,4">
-                    <Button.Flyout>
-                        <Flyout Placement="Right">
-                            <Border MaxWidth="440" Padding="4">
-                                <StackPanel Spacing="6">
-                                    <TextBlock Text="Full step plan (detours and buys included)"
-                                               FontSize="11" FontWeight="SemiBold"
-                                               Foreground="{StaticResource ChromeFgBrush}"/>
-                                    <ScrollViewer MaxHeight="340"
-                                                  HorizontalScrollBarVisibility="Auto"
-                                                  VerticalScrollBarVisibility="Auto">
-                                        <ItemsControl ItemsSource="{Binding CurrentStepRows}">
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate x:DataType="vm:RouteStepRow">
-                                                    <TextBlock Text="{Binding Line}"
-                                                               Classes.acquire="{Binding IsAcquire}"
-                                                               FontFamily="{StaticResource FontMono}"
-                                                               FontSize="11"
-                                                               Foreground="{StaticResource ChromeFgBrush}"/>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
-                                    </ScrollViewer>
-                                    <TextBlock Text="◆ marks a step that detours to buy/ask/hunt an item before crossing that room's gate — the walk to the shop is planned when the run gets there."
-                                               FontSize="10" TextWrapping="Wrap" MaxWidth="420"
-                                               Foreground="{StaticResource ChromeFgMutedBrush}"/>
-                                </StackPanel>
-                            </Border>
-                        </Flyout>
-                    </Button.Flyout>
-                </Button>
-            </Grid>
+            <TextBlock Grid.Row="0"
+                       Text="{Binding Heading}"
+                       VerticalAlignment="Center"
+                       FontSize="13" FontWeight="SemiBold"
+                       Foreground="{StaticResource ChromeFgBrush}"/>
 
             <StackPanel Grid.Row="1" Spacing="10" VerticalAlignment="Center">
                 <Button Classes="route"
@@ -92,6 +46,7 @@
                 <Button Classes="route"
                         Classes.selected="{Binding IsGatedSelected}"
                         Command="{Binding SelectGatedCommand}"
+                        IsVisible="{Binding ShowGatedCard}"
                         HorizontalAlignment="Stretch"
                         HorizontalContentAlignment="Left"
                         BorderThickness="1"
@@ -121,7 +76,7 @@
                                    FontSize="12"
                                    TextWrapping="Wrap"
                                    Foreground="{StaticResource ChromeFgBrush}"/>
-                        <TextBlock Text="Crosses the gates as-is — nothing acquired; you must already carry what's needed."
+                        <TextBlock Text="{Binding SendItDetail}"
                                    FontSize="11"
                                    TextWrapping="Wrap"
                                    Foreground="{StaticResource ChromeFgMutedBrush}"/>
@@ -135,18 +90,29 @@
                        TextWrapping="Wrap"
                        Foreground="{StaticResource ChromeFgMutedBrush}"/>
 
-            <StackPanel Grid.Row="3"
-                        Orientation="Horizontal"
-                        HorizontalAlignment="Right"
-                        Spacing="8">
-                <Button Content="Cancel"
-                        Command="{Binding CancelCommand}"
-                        IsCancel="True" MinWidth="80"/>
-                <Button Content="Go"
-                        Command="{Binding GoCommand}"
-                        IsDefault="True" MinWidth="80"
-                        Classes="accent"/>
-            </StackPanel>
+            <Grid Grid.Row="3" ColumnDefinitions="Auto,*,Auto">
+                <!-- Details…: bottom-left, enabled once a route is picked. Opens the
+                     shared route-details browse window for the selected route — the
+                     full step plan with each room's monsters, hazards, and item gates
+                     linked to their records. Richer than the Show-steps flyout. -->
+                <Button Grid.Column="0"
+                        Content="Details…"
+                        Command="{Binding ShowDetailsCommand}"
+                        FontSize="11" Padding="10,4"
+                        HorizontalAlignment="Left"/>
+                <StackPanel Grid.Column="2"
+                            Orientation="Horizontal"
+                            HorizontalAlignment="Right"
+                            Spacing="8">
+                    <Button Content="Cancel"
+                            Command="{Binding CancelCommand}"
+                            IsCancel="True" MinWidth="80"/>
+                    <Button Content="Go"
+                            Command="{Binding GoCommand}"
+                            IsDefault="True" MinWidth="80"
+                            Classes="accent"/>
+                </StackPanel>
+            </Grid>
         </Grid>
     </Border>
 </Window>

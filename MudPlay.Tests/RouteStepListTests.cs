@@ -83,6 +83,28 @@ public sealed class RouteStepListTests
     }
 
     [Fact]
+    public void Build_RowsCarryTheRoomTheCommandIsSentFrom()
+    {
+        RoomKey source = new(13, 497);
+        var steps = new WalkStep[]
+        {
+            new MoveStep(Direction.S, new RoomKey(13, 498)),
+            new CommandStep("pull lever"),
+            new MoveStep(Direction.E, new RoomKey(13, 499)),
+        };
+
+        IReadOnlyList<RouteStepRow> rows = RouteStepList.Build(
+            source, steps, Array.Empty<RouteGateStop>(), Name, Item, _ => null);
+
+        // Room is the (map,room) the command is issued from — source for the first
+        // move, then the room each prior move landed in. Feeds the Details view's
+        // per-room lair lookup.
+        Assert.Equal(new RoomKey(13, 497), rows[0].Room);
+        Assert.Equal(new RoomKey(13, 498), rows[1].Room);   // lever pulled after arriving
+        Assert.Equal(new RoomKey(13, 498), rows[2].Room);
+    }
+
+    [Fact]
     public void Build_SameGateReCrossed_AnnouncesAcquireOnce()
     {
         RoomKey source = new(13, 497);

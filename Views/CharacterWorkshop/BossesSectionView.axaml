@@ -50,6 +50,27 @@
             <DataGrid.Columns>
                 <DataGridCheckBoxColumn Header="Stop before" Width="100" CanUserSort="False"
                                         Binding="{ReflectionBinding StopBefore, Mode=TwoWay}"/>
+                <!-- Grab All: on a monster boss's death, blindly `get` its whole drop
+                     table; on an item boss (a box), `get` it on room entry. The
+                     checkbox only shows when the name resolves to a specific monster or
+                     item — an unresolvable boss (a touch-to-awaken mechanic) shows a
+                     muted dash with a tooltip instead. Default off. Inserting this
+                     column shifts the early-window columns to indices 5-7 (code-behind). -->
+                <DataGridTemplateColumn Header="Grab All" Width="85" CanUserSort="False">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate x:DataType="vm:BossRowViewModel">
+                            <Panel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <CheckBox IsChecked="{Binding GrabAll, Mode=TwoWay}"
+                                          IsVisible="{Binding CanGrabAll}"
+                                          HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                <TextBlock Text="—" IsVisible="{Binding !CanGrabAll}"
+                                           Foreground="{StaticResource ChromeFgMutedBrush}"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                                           ToolTip.Tip="Cannot resolve to a specific monster or item"/>
+                            </Panel>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
                 <DataGridTextColumn Header="Boss" Width="190" IsReadOnly="True" SortMemberPath="Name"
                                     Binding="{ReflectionBinding Name}"/>
                 <DataGridTextColumn Header="Respawn" Width="90" IsReadOnly="True" SortMemberPath="RespawnSortKey"

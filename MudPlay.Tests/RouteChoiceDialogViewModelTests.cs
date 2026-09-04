@@ -108,7 +108,7 @@ public sealed class RouteChoiceDialogViewModelTests
         var vm = new RouteChoiceDialogViewModel(
             choice, "Frozen cavern (10/297)",
             id => id == 11 ? "rope and grapple" : "climbing harness",
-            hazardCounterSource: "grab from the floor here");
+            hazardCounterSource: "grab from the floor here", hazardSurvivable: true);
 
         Assert.True(vm.HazardObtain);
         Assert.True(vm.ShowSendItCard);
@@ -565,5 +565,106 @@ public sealed class RouteChoiceDialogViewModelTests
 
         Assert.True(fired);
         Assert.Equal(RouteChoiceResult.Free, previewed);
+    }
+
+    // A sole SURVIVABLE-damage hazard with no sourceable counter (the Silver River
+    // with no reachable raft): the only card is "cross unprotected — take the
+    // damage"; the obtain/route card is hidden (nothing to obtain).
+    [Fact]
+    public void SoleHazard_Survivable_NoCounter_OffersCrossUnprotectedOnly()
+    {
+        var choice = SoleChoice(new RouteRequirement(RouteRequirementKind.HazardProtection, new[] { 690, 691 }));
+
+        var vm = new RouteChoiceDialogViewModel(
+            choice, "A Silvery Stream (1/2409)", id => "a raft",
+            hazardCounterSource: null, hazardSurvivable: true);
+
+        Assert.True(vm.ShowSendItCard);
+        Assert.False(vm.ShowGatedCard);
+        Assert.Contains("Cross unprotected", vm.SendItSummary);
+        Assert.False(vm.HazardObtain);
+    }
+
+    // A sole survivable hazard WITH a sourceable counter offers both: "obtain, then
+    // cross" and "cross unprotected".
+    [Fact]
+    public void SoleHazard_Survivable_WithCounter_OffersObtainAndCrossUnprotected()
+    {
+        var choice = SoleChoice(new RouteRequirement(RouteRequirementKind.HazardProtection, new[] { 690, 691 }));
+
+        var vm = new RouteChoiceDialogViewModel(
+            choice, "A Silvery Stream (1/2409)", id => "a raft",
+            hazardCounterSource: "buy at Pier", hazardSurvivable: true);
+
+        Assert.True(vm.HazardObtain);
+        Assert.True(vm.ShowGatedCard);
+        Assert.True(vm.ShowSendItCard);
+        Assert.Contains("Obtain, then cross", vm.GatedSummary);
+        Assert.Contains("Cross unprotected", vm.SendItSummary);
+    }
+
+    // A sole GRAVE hazard (a drown / freeze death) NEVER offers "cross unprotected",
+    // even when a counter can be sourced — a counter is the only safe way past.
+    [Fact]
+    public void SoleHazard_Grave_NeverOffersCrossUnprotected()
+    {
+        var choice = SoleChoice(new RouteRequirement(RouteRequirementKind.HazardProtection, new[] { 55 }));
+
+        var withCounter = new RouteChoiceDialogViewModel(
+            choice, "Sunken Vault (1/9)", id => "a fish-helm",
+            hazardCounterSource: "buy at Docks", hazardSurvivable: false);
+        Assert.False(withCounter.ShowSendItCard);
+        Assert.True(withCounter.ShowGatedCard);   // "obtain, then cross" still offered
+
+        var noCounter = new RouteChoiceDialogViewModel(
+            choice, "Sunken Vault (1/9)", id => "a fish-helm",
+            hazardCounterSource: null, hazardSurvivable: false);
+        Assert.False(noCounter.ShowSendItCard);
+        Assert.True(noCounter.ShowGatedCard);      // "walk to the hazard and stop"
+    }
+
+    // A MIXED route — a survivable hazard (raft) AND a hard gate past it (a door key)
+    // — with no sourceable counter: base card "walk to the hazard and stop" + "cross
+    // unprotected", and the heading names both the hazard and the gate.
+    [Fact]
+    public void MixedHazard_NoCounter_OffersWalkToEdgeAndCrossUnprotected()
+    {
+        var choice = SoleChoice(
+            new RouteRequirement(RouteRequirementKind.HazardProtection, new[] { 690, 691 }),
+            new RouteRequirement(RouteRequirementKind.DoorKey, new[] { 757 }));
+
+        var vm = new RouteChoiceDialogViewModel(
+            choice, "The Iceforge (3/632)",
+            id => id == 757 ? "the dragon key" : "a raft",
+            hazardCounterSource: null, hazardSurvivable: true);
+
+        Assert.False(vm.HazardObtain);
+        Assert.True(vm.ShowGatedCard);
+        Assert.True(vm.ShowSendItCard);
+        Assert.Contains("Walk to the hazard and stop", vm.GatedSummary);
+        Assert.Contains("Cross unprotected", vm.SendItSummary);
+        Assert.Contains("crosses a hazard, then a gate", vm.Heading);
+        Assert.Contains("the dragon key", vm.RequirementSummary);
+    }
+
+    // A mixed route WITH a sourceable counter: "obtain, then cross" + "cross
+    // unprotected" — the obtain card is offered on a mixed route too.
+    [Fact]
+    public void MixedHazard_WithCounter_OffersObtainAndCrossUnprotected()
+    {
+        var choice = SoleChoice(
+            new RouteRequirement(RouteRequirementKind.HazardProtection, new[] { 690, 691 }),
+            new RouteRequirement(RouteRequirementKind.DoorKey, new[] { 757 }));
+
+        var vm = new RouteChoiceDialogViewModel(
+            choice, "The Iceforge (3/632)",
+            id => id == 757 ? "the dragon key" : "a raft",
+            hazardCounterSource: "buy at Pier", hazardSurvivable: true);
+
+        Assert.True(vm.HazardObtain);
+        Assert.True(vm.ShowGatedCard);
+        Assert.True(vm.ShowSendItCard);
+        Assert.Contains("Obtain, then cross", vm.GatedSummary);
+        Assert.Contains("Cross unprotected", vm.SendItSummary);
     }
 }

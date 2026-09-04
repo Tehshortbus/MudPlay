@@ -114,6 +114,13 @@ public sealed partial class EquipmentSectionViewModel : WorkshopSectionViewModel
     // False with no character loaded — gates the set list and the empty state.
     [ObservableProperty] private bool _hasProfile;
 
+    // The "Don't swap to default upon entering combat" checkbox — the inverse of the
+    // persisted EquipmentSettings.SwapToDefaultOnCombat, so the checkbox reads true
+    // (checked) for the long-standing default (keep the pre-rest loadout through a
+    // rest-interrupting fight). Unchecking it opts into swapping to Default for the
+    // fight and back afterward. Persisted on change; loaded under _suppress.
+    [ObservableProperty] private bool _dontSwapToDefaultOnCombat = true;
+
     // True when the bonuses panel has at least one non-zero stat row.
     [ObservableProperty] private bool _hasBonuses;
 
@@ -209,6 +216,16 @@ public sealed partial class EquipmentSectionViewModel : WorkshopSectionViewModel
         _profile.Save();
         EnableCommand.NotifyCanExecuteChanged();
         DisableCommand.NotifyCanExecuteChanged();
+    }
+
+    // The checkbox is the inverse of the persisted flag; write it through and save,
+    // unless we're mid-load (seeding the box from the profile).
+    partial void OnDontSwapToDefaultOnCombatChanged(bool value)
+    {
+        if (_suppress) return;
+        if (_profile.Current?.Equipment is not { } cfg) return;
+        cfg.SwapToDefaultOnCombat = !value;
+        _profile.Save();
     }
 
     // Hand the selected set to the engine to walk the character into it.
@@ -343,12 +360,14 @@ public sealed partial class EquipmentSectionViewModel : WorkshopSectionViewModel
         try
         {
             SetRows.Clear();
+            DontSwapToDefaultOnCombat = true;
             if (_profile.Current is { } p)
             {
                 EquipmentSettings cfg = p.Equipment ??= new EquipmentSettings();
                 if (EnsureSets(cfg)) _profile.Save();
                 foreach (EquipmentSet s in cfg.Sets)
                     SetRows.Add(new EquipmentSetRowViewModel(s));
+                DontSwapToDefaultOnCombat = !cfg.SwapToDefaultOnCombat;
             }
             SelectedSetRow = SetRows.FirstOrDefault();
         }

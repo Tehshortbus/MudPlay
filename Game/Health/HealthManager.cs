@@ -581,6 +581,15 @@ public sealed class HealthManager : IDisposable
             _restConfirmedByPrompt = false;
             _wasPoisoned = false;
             _fledThisCombat = false;
+            // A stale engage-to-clear latch (report paradigm-20260903-073107) would let
+            // CombatManager keep bypassing the auto-combat-off gate — firing a swing /
+            // drain at the next room's hostile — even though the rest engine is now off.
+            // Drop it here too so disabling rest releases the override.
+            if (_forceClearForRest)
+            {
+                _forceClearForRest = false;
+                _log?.Combat(LogCategory, "engage-to-clear released — auto-heal / rest engine disabled");
+            }
 
             // All-off carve-out: even with the engine disabled, honour the
             // emergency hangup when the user opted in. An AFK character

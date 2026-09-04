@@ -443,4 +443,52 @@ public sealed class MonsterMatchupCalculatorSpellsTests
 
         Assert.True(Assert.Single(result).Eligible);
     }
+
+    // ----- Weighted "Hits You %" across all physical attacks -----
+
+    [Fact]
+    public void WeightedIncomingHitPercent_NullForNoAttacks()
+        => Assert.Null(MonsterMatchupCalculatorSpells.WeightedIncomingHitPercent(
+            Array.Empty<(int, double)>(), accuracyDelta: 0, alignment: 3,
+            defenderAc: 30, defenderDodge: 0, protEvil: 0, protGood: 0, realm: RealmType.Stock));
+
+    [Fact]
+    public void WeightedIncomingHitPercent_SingleAttack_EqualsThatAttack()
+    {
+        int single = MonsterMatchupCalculatorSpells.AttackHitPercent(
+            60, 3, 40, 0, 0, 0, RealmType.Stock);
+        int? weighted = MonsterMatchupCalculatorSpells.WeightedIncomingHitPercent(
+            new (int, double)[] { (60, 100.0) }, 0, 3, 40, 0, 0, 0, RealmType.Stock);
+        Assert.Equal(single, weighted);
+    }
+
+    [Fact]
+    public void WeightedIncomingHitPercent_BlendsByUseWeight()
+    {
+        int hitA = MonsterMatchupCalculatorSpells.AttackHitPercent(80, 3, 30, 0, 0, 0, RealmType.Stock);
+        int hitB = MonsterMatchupCalculatorSpells.AttackHitPercent(40, 3, 30, 0, 0, 0, RealmType.Stock);
+        int expected = (int)Math.Round((75.0 * hitA + 25.0 * hitB) / 100.0);
+        int? actual = MonsterMatchupCalculatorSpells.WeightedIncomingHitPercent(
+            new (int, double)[] { (80, 75.0), (40, 25.0) }, 0, 3, 30, 0, 0, 0, RealmType.Stock);
+        Assert.Equal(expected, actual);
+    }
+
+    [Fact]
+    public void WeightedIncomingHitPercent_AllZeroWeights_FallsBackToMean()
+    {
+        int hitA = MonsterMatchupCalculatorSpells.AttackHitPercent(80, 3, 30, 0, 0, 0, RealmType.Stock);
+        int hitB = MonsterMatchupCalculatorSpells.AttackHitPercent(40, 3, 30, 0, 0, 0, RealmType.Stock);
+        int? actual = MonsterMatchupCalculatorSpells.WeightedIncomingHitPercent(
+            new (int, double)[] { (80, 0.0), (40, 0.0) }, 0, 3, 30, 0, 0, 0, RealmType.Stock);
+        Assert.Equal((int)Math.Round((hitA + hitB) / 2.0), actual);
+    }
+
+    [Fact]
+    public void WeightedIncomingHitPercent_AccuracyDelta_LowersOrHolds()
+    {
+        var attacks = new (int, double)[] { (80, 100.0) };
+        int? baseHit = MonsterMatchupCalculatorSpells.WeightedIncomingHitPercent(attacks, 0, 3, 50, 0, 0, 0, RealmType.Stock);
+        int? debuffed = MonsterMatchupCalculatorSpells.WeightedIncomingHitPercent(attacks, 40, 3, 50, 0, 0, 0, RealmType.Stock);
+        Assert.True(debuffed <= baseHit, "an accuracy debuff must not raise the hit chance");
+    }
 }

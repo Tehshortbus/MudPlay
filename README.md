@@ -1,9 +1,12 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.46.4**
-> - Position recovery now asks the game where you are straight away when a move has stalled, instead of waiting for that move to settle first or being rate-limited out — both guards fired exactly when the answer was needed, and the fallback can't work in a house full of identically-named rooms
-> - Fixed a loop sitting idle after position recovery succeeded — if the movement coordinator resumed the loop while recovery was still waiting for an answer, the step was held and the eventual "recovered" signal was dropped instead of restarting it
+> **Version 3.49.0**
+> - Reads the game's `sysop status` room dump for characters flagged with sysop / goto powers, and uses its exact map/room number to recover the client's position instead of walking backwards to work it out
+> - A tracker that goes lost, or a loop blocked because it lost track of where it is, re-anchors from that instead of waiting for an "I am here" click
+> - Fixed a loop hanging forever when a move went out and never confirmed, and one sitting idle after recovery had already succeeded
+> - Sysop status stays trusted once it has answered even once; before that, an unanswered probe backs off and retries rather than switching off for the session
+> - Recovery attempts are spaced out, so a reroute that instantly re-blocks can't spend the whole retry budget in one second
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

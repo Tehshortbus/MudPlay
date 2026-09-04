@@ -255,43 +255,31 @@ public sealed class MonsterIntelViewModelTests : IDisposable
         Assert.Equal(15, vm.SimProtEvil);
     }
 
-    // Six contiguous, non-overlapping Hits-You-% bands covering 0-100% with
-    // no gap: 0-2, 3-5, 6-10, 11-20, 21-40, 41-100. Pins the exact boundaries
-    // so a future edit can't silently reopen a dead zone (the 16-24% gap the
-    // old 5-band scheme left) or make a band overlap its neighbor.
+    // The Hits-You-% filter bands are contiguous + non-overlapping: exactly one
+    // band contains any given hit%, a monster shows only under the band that
+    // contains its hit% (never a neighbour), and selecting no band shows all.
     [Theory]
-    [InlineData(0, nameof(MonsterIntelViewModel.ShowHits2))]
-    [InlineData(2, nameof(MonsterIntelViewModel.ShowHits2))]
-    [InlineData(3, nameof(MonsterIntelViewModel.ShowHits5))]
-    [InlineData(5, nameof(MonsterIntelViewModel.ShowHits5))]
-    [InlineData(6, nameof(MonsterIntelViewModel.ShowHits10))]
-    [InlineData(10, nameof(MonsterIntelViewModel.ShowHits10))]
-    [InlineData(11, nameof(MonsterIntelViewModel.ShowHits20))]
-    [InlineData(20, nameof(MonsterIntelViewModel.ShowHits20))]
-    [InlineData(21, nameof(MonsterIntelViewModel.ShowHits40))]
-    [InlineData(40, nameof(MonsterIntelViewModel.ShowHits40))]
-    [InlineData(41, nameof(MonsterIntelViewModel.ShowHits100))]
-    [InlineData(100, nameof(MonsterIntelViewModel.ShowHits100))]
-    public void HitsYouPercentBand_ChecksOnlyItsOwnRange(int incomingHitPercent, string ownBoxProperty)
+    [InlineData(2)]
+    [InlineData(15)]
+    [InlineData(40)]
+    [InlineData(100)]
+    public void HitsFilterBands_ShowOnlyMonstersInTheSelectedBand(int hp)
     {
-        using MonsterIntelViewModel vm = BuildViewModelWithSyntheticEntry(incomingHitPercent);
-        string[] allBoxes =
-        {
-            nameof(MonsterIntelViewModel.ShowHits2), nameof(MonsterIntelViewModel.ShowHits5),
-            nameof(MonsterIntelViewModel.ShowHits10), nameof(MonsterIntelViewModel.ShowHits20),
-            nameof(MonsterIntelViewModel.ShowHits40), nameof(MonsterIntelViewModel.ShowHits100),
-        };
+        using MonsterIntelViewModel vm = BuildViewModelWithSyntheticEntry(hp);
+        bool Shown() => vm.RowsView.Cast<MonsterIntelEntry>().Any(e => e.Name == "test goblin");
 
-        // Check exactly one box at a time (never zero -- zero means "no
-        // restriction, show everything" and would trivially pass) and
-        // confirm the entry shows only when that box is its own band.
-        foreach (string box in allBoxes)
+        // Nothing selected → no band restriction, the entry shows.
+        Assert.True(Shown());
+
+        // Exactly one band contains the hp (contiguous, non-overlapping).
+        HitsFilterBucket containing = Assert.Single(vm.HitsFilterBuckets.Where(b => b.Contains(hp)));
+
+        // The containing band shows it; every other band hides it.
+        foreach (HitsFilterBucket b in vm.HitsFilterBuckets)
         {
-            SetBox(vm, box, true);
-            bool visible = vm.RowsView.Cast<MonsterIntelEntry>().Any(e => e.Name == "test goblin");
-            Assert.True(visible == (box == ownBoxProperty),
-                $"hp={incomingHitPercent}, box={box}: expected visible={box == ownBoxProperty}, got {visible}");
-            SetBox(vm, box, false);
+            b.Selected = true;
+            Assert.Equal(b == containing, Shown());
+            b.Selected = false;
         }
     }
 
@@ -306,9 +294,6 @@ public sealed class MonsterIntelViewModelTests : IDisposable
         using MonsterIntelViewModel vm = BuildViewModelWithSyntheticEntry(-1);
         Assert.DoesNotContain(vm.RowsView.Cast<MonsterIntelEntry>(), e => e.Name == "test goblin");
     }
-
-    private static void SetBox(MonsterIntelViewModel vm, string property, bool value)
-        => typeof(MonsterIntelViewModel).GetProperty(property)!.SetValue(vm, value);
 
     private MonsterIntelViewModel BuildViewModelWithSyntheticEntry(int incomingHitPercent)
     {

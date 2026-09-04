@@ -224,20 +224,31 @@
                      (cap to the right of the boxes); the WrapPanel drops the cap onto a
                      second line only when the pane is too narrow to fit both. -->
                 <WrapPanel Grid.Row="1" Margin="0,0,0,8" IsVisible="{Binding HasCharacterContext}">
-                    <StackPanel Orientation="Horizontal" Spacing="12" Margin="0,0,16,4">
-                        <TextBlock Classes="FieldLabel" Text="Hits You %:" VerticalAlignment="Center"/>
-                        <CheckBox Content="2%" IsChecked="{Binding ShowHits2, Mode=TwoWay}"
-                                  ToolTip.Tip="Show monsters whose own attack has 0-2% chance to hit you."/>
-                        <CheckBox Content="5%" IsChecked="{Binding ShowHits5, Mode=TwoWay}"
-                                  ToolTip.Tip="Show monsters whose own attack has 3-5% chance to hit you."/>
-                        <CheckBox Content="10%" IsChecked="{Binding ShowHits10, Mode=TwoWay}"
-                                  ToolTip.Tip="Show monsters whose own attack has 6-10% chance to hit you."/>
-                        <CheckBox Content="20%" IsChecked="{Binding ShowHits20, Mode=TwoWay}"
-                                  ToolTip.Tip="Show monsters whose own attack has 11-20% chance to hit you."/>
-                        <CheckBox Content="40%" IsChecked="{Binding ShowHits40, Mode=TwoWay}"
-                                  ToolTip.Tip="Show monsters whose own attack has 21-40% chance to hit you."/>
-                        <CheckBox Content="40%+" IsChecked="{Binding ShowHits100, Mode=TwoWay}"
-                                  ToolTip.Tip="Show monsters whose own attack has 41% or more chance to hit you."/>
+                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,0,16,4">
+                        <!-- Multi-select dropdown of Hits-You-% bands. Bands are
+                             realm-dependent (Stock's lowest is 8%, ParaMUD's 2%);
+                             pick any combination — the list shows monsters in the
+                             union. Nothing picked = show all. -->
+                        <Button Content="{Binding HitsFilterLabel}"
+                                ToolTip.Tip="Filter the list by how likely the monster is to hit you. Pick any combination of %-bands; the bands differ by realm — the lowest a monster's attack can land is 8% on Stock, 2% on ParaMUD.">
+                            <Button.Flyout>
+                                <Flyout Placement="Bottom">
+                                    <StackPanel MinWidth="150" Spacing="2">
+                                        <TextBlock Classes="FieldLabel" TextWrapping="Wrap" MaxWidth="200"
+                                                   Margin="0,0,0,4"
+                                                   Text="Show monsters whose Hits You % is in any checked band:"/>
+                                        <ItemsControl ItemsSource="{Binding HitsFilterBuckets}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate x:DataType="vm:HitsFilterBucket">
+                                                    <CheckBox Content="{Binding Label}" Margin="0,1"
+                                                              IsChecked="{Binding Selected, Mode=TwoWay}"/>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </Flyout>
+                            </Button.Flyout>
+                        </Button>
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,0,16,4">
                         <TextBlock Classes="FieldLabel" Text="Max Rnds to Kill:" VerticalAlignment="Center"/>
@@ -265,7 +276,7 @@
                         <DataGridTextColumn Header="Name"       Binding="{ReflectionBinding Name}"                 Width="*"    MinWidth="160" MaxWidth="300" SortMemberPath="Name"/>
                         <DataGridTextColumn Header="HP"         Binding="{ReflectionBinding HpText}"               Width="Auto" MinWidth="80"  SortMemberPath="Hp"/>
                         <DataGridTextColumn Header="EXP"        Binding="{ReflectionBinding ExpText}"              Width="Auto" MinWidth="90"  SortMemberPath="Exp"/>
-                        <DataGridTextColumn Header="Accuracy"   Binding="{ReflectionBinding AccuracyText}"         Width="Auto" MinWidth="90"  SortMemberPath="Accuracy"/>
+                        <DataGridTextColumn Header="Accuracies" Binding="{ReflectionBinding AccuracyText}"         Width="Auto" MinWidth="90"  SortMemberPath="Accuracy"/>
                         <DataGridTextColumn Header="Hits You %" Binding="{ReflectionBinding IncomingHitPercentText}" Width="Auto" MinWidth="90" SortMemberPath="IncomingHitPercent"/>
                         <DataGridTextColumn Header="Est. Rounds to Kill" Binding="{ReflectionBinding EstimatedRoundsToKillText}" Width="Auto" MinWidth="130" SortMemberPath="EstimatedRoundsToKill"/>
                     </DataGrid.Columns>
@@ -348,9 +359,11 @@
                                                     </MultiBinding>
                                                 </TextBlock.Text>
                                             </TextBlock>
-                                            <TextBlock Classes="DetailLine" Margin="10,0,0,0" IsVisible="{Binding Eligible}">
+                                            <TextBlock Classes="DetailLine" Margin="10,0,0,0" IsVisible="{Binding Eligible}"
+                                                       Foreground="{StaticResource AccentAmberBrush}">
                                                 <TextBlock.Text>
-                                                    <MultiBinding StringFormat="{}{0} effective damage, {1} mana/round">
+                                                    <MultiBinding StringFormat="{}~{0} dmg/min · {1} effective/round · {2} mana/round">
+                                                        <Binding Path="DamagePerMinute"/>
                                                         <Binding Path="EffectiveDamage"/>
                                                         <Binding Path="ManaCostPerRound"/>
                                                     </MultiBinding>
@@ -375,6 +388,20 @@
                                                   ItemTemplate="{StaticResource SpellRowTemplate}" Margin="6,2,0,0"/>
                                 </StackPanel>
                             </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Classes="Group" IsVisible="{Binding HasAbilities}">
+                        <StackPanel>
+                            <TextBlock Classes="Group" Text="Abilities &amp; resistances"
+                                       ToolTip.Tip="This monster's own properties — elemental weakness/strength, spell immunity, magic-weapon requirement, undead / non-living, and other notable abilities."/>
+                            <ItemsControl ItemsSource="{Binding AbilityLines}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="x:String">
+                                        <TextBlock Classes="DetailLine" Text="{Binding}"/>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
                         </StackPanel>
                     </Border>
 
@@ -408,6 +435,9 @@
                                             <TextBlock Classes="DetailLine" Text="{Binding Detail}" Margin="10,0,0,0"/>
                                             <TextBlock Classes="DetailLine" Text="{Binding Energy}" Margin="10,0,0,0"
                                                        IsVisible="{Binding Energy, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                            <TextBlock Classes="DetailLine" Text="{Binding Dpm}" Margin="10,0,0,0"
+                                                       Foreground="{StaticResource AccentAmberBrush}"
+                                                       IsVisible="{Binding Dpm, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                                         </StackPanel>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>

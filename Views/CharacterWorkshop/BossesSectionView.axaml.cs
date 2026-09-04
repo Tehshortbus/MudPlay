@@ -13,7 +13,8 @@ namespace MudPlay.Views.CharacterWorkshop;
 public partial class BossesSectionView : UserControl
 {
     // Column indices for the three early-window columns (see BossesSectionView.axaml).
-    private const int Early1 = 4, Early2 = 5, Early3 = 6;
+    // Shifted +1 by the "Grab All" column inserted after "Stop before".
+    private const int Early1 = 5, Early2 = 6, Early3 = 7;
 
     private BossesSectionViewModel? _vm;
     private string? _sortPath;

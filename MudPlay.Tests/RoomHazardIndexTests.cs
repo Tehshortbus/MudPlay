@@ -381,6 +381,83 @@ public sealed class RoomHazardIndexTests : IDisposable
         Assert.Equal(1, idx.HazardCount);
     }
 
+    // A plain damage hazard (magma-heat shape: a direct Damage ability) is
+    // survivable — safe to offer a "cross unprotected — take the damage" choice.
+    [Fact]
+    public void Damage_IsSurvivable()
+    {
+        RoomHazardIndex idx = NewIndex(
+            Room(700),
+            """ [ { "Number": 700, "Abil-0": 1, "AbilVal-0": 25 } ] """,
+            """ [ { "Number": 42, "NegateSpell-0": 700 } ] """);
+
+        Assert.True(idx.HazardForSpell(700)!.IsSurvivableDamage);
+    }
+
+    // The Silver River shape (spell 753 → TB `failitem <raft>:cast 754`, where 754
+    // is a plain Damage spell): the unprotected outcome is survivable damage, so the
+    // picker may offer "cross unprotected".
+    [Fact]
+    public void TextBlockCastDamage_IsSurvivable()
+    {
+        RoomHazardIndex idx = NewIndex(
+            Room(753),
+            """
+            [ { "Number": 753, "Abil-0": 148, "AbilVal-0": 2750 },
+              { "Number": 754, "Abil-0": 1,   "AbilVal-0": 40   } ]
+            """,
+            itemsJson: null,
+            tbInfoJson: """ [ { "Number": 2750, "Action": "failitem 690:cast 754" } ] """);
+
+        RoomHazardIndex.RoomHazard? h = idx.HazardForSpell(753);
+        Assert.NotNull(h);
+        Assert.Contains(690, h!.ProtectingItems);      // holding a raft aborts it
+        Assert.True(h.IsSurvivableDamage);
+    }
+
+    // An EndCast death-timer chain is GRAVE — never offer "cross unprotected".
+    [Fact]
+    public void EndCastChain_IsNotSurvivable()
+    {
+        RoomHazardIndex idx = NewIndex(
+            Room(100),
+            """
+            [ { "Number": 100, "Abil-0": 151, "AbilVal-0": 101 },
+              { "Number": 101, "Abil-0": 1,   "AbilVal-0": 40  } ]
+            """,
+            """ [ { "Number": 55, "NegateSpell-0": 101 } ] """);
+
+        Assert.False(idx.HazardForSpell(100)!.IsSurvivableDamage);
+    }
+
+    // A textblock that forcibly relocates the crosser (teleport) is GRAVE — a
+    // counter is the only way past, so "cross unprotected" is never offered.
+    [Fact]
+    public void TextBlockTeleport_IsNotSurvivable()
+    {
+        RoomHazardIndex idx = NewIndex(
+            Room(700),
+            """ [ { "Number": 700, "Abil-0": 148, "AbilVal-0": 50 } ] """,
+            itemsJson: null,
+            tbInfoJson: """ [ { "Number": 50, "Action": "failitem 55:teleport 12" } ] """);
+
+        Assert.False(idx.HazardForSpell(700)!.IsSurvivableDamage);
+    }
+
+    // A checkspell / failspell buff-gate (the desert-heat / drown shape) is treated
+    // as GRAVE — conservatively, since its buff-absent branch can kill over time.
+    [Fact]
+    public void CheckSpell_IsNotSurvivable()
+    {
+        RoomHazardIndex idx = NewIndex(
+            Room(700),
+            """ [ { "Number": 700, "Abil-0": 148, "AbilVal-0": 50 } ] """,
+            """ [ { "Number": 60, "Abil-0": 43, "AbilVal-0": 300 } ] """,
+            """ [ { "Number": 50, "Action": "checkspell 300" } ] """);
+
+        Assert.False(idx.HazardForSpell(700)!.IsSurvivableDamage);
+    }
+
     [Fact]
     public void NoActiveSet_IsEmpty()
     {

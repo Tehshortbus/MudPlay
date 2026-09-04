@@ -120,7 +120,10 @@ public sealed partial class BossesSectionViewModel : WorkshopSectionViewModel
             int? hrs = def.RespawnType == BossRespawnType.Timed
                 ? BossCatalog.EffectiveRegenHours(_gameData, def)
                 : null;
-            _allRows.Add(new BossRowViewModel(def, realm, hrs, _timers, OnRowEdited, OnMarkRequested));
+            // Grab-All only applies when the name resolves to a specific monster or
+            // item; otherwise the row hides the checkbox (shows a "cannot resolve" tip).
+            bool canGrabAll = BossGrabClassifier.Classify(_gameData, def) != Game.Inventory.BossGrabKind.None;
+            _allRows.Add(new BossRowViewModel(def, realm, hrs, _timers, OnRowEdited, OnMarkRequested, canGrabAll));
         }
         HasBosses = _allRows.Count > 0;
         _suppress = false;

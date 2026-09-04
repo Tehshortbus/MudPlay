@@ -114,10 +114,14 @@
                                     Width="90" Foreground="{StaticResource ChromeFgBrush}"/>
                 <DataGridTextColumn Header="Sorts" Binding="{ReflectionBinding CategoryText}"
                                     Width="200" Foreground="{StaticResource ChromeFgBrush}"/>
-                <DataGridTemplateColumn Header="" Width="90">
+                <DataGridTemplateColumn Header="" Width="Auto">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate DataType="vm:GhRoomLabelRowViewModel">
-                            <Button Content="Remove" Command="{Binding RemoveCommand}"/>
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <Button Content="Goto" Command="{Binding GotoCommand}"
+                                        ToolTip.Tip="Open the map and walk to this room now."/>
+                                <Button Content="Remove" Command="{Binding RemoveCommand}"/>
+                            </StackPanel>
                         </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>

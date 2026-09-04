@@ -32,19 +32,23 @@ public sealed partial class GhRoomLabelRowViewModel : ObservableObject
 
     private readonly Action<GhRoomLabelRowViewModel> _onRemove;
     private readonly Action<RoomKey, bool> _onManageToggle;
+    private readonly Action<RoomKey> _onGoto;
     // Guards the ctor's initial assignment from writing back to the store — rows are
     // rebuilt on every label/managed-set change, so a write there would loop.
     private readonly bool _loaded;
 
     public GhRoomLabelRowViewModel(GhRoomLabel label, string? roomName, bool activelyManaged,
-        Action<GhRoomLabelRowViewModel> onRemove, Action<RoomKey, bool> onManageToggle)
+        Action<GhRoomLabelRowViewModel> onRemove, Action<RoomKey, bool> onManageToggle,
+        Action<RoomKey> onGoto)
     {
         ArgumentNullException.ThrowIfNull(onRemove);
         ArgumentNullException.ThrowIfNull(onManageToggle);
+        ArgumentNullException.ThrowIfNull(onGoto);
         Key = new RoomKey(label.Map, label.Room);
         RoomName = string.IsNullOrWhiteSpace(roomName) ? "(unknown)" : roomName;
         _onRemove = onRemove;
         _onManageToggle = onManageToggle;
+        _onGoto = onGoto;
 
         string rules = label.Rules.Count == 0
             ? "(no rules)"
@@ -76,4 +80,9 @@ public sealed partial class GhRoomLabelRowViewModel : ObservableObject
 
     [RelayCommand]
     private void Remove() => _onRemove(this);
+
+    // Queue + start a walk-to this room (the full "Walk here" path). Handed up to the
+    // section VM, which routes it through AppServices.GoWalkTo.
+    [RelayCommand]
+    private void Goto() => _onGoto(Key);
 }

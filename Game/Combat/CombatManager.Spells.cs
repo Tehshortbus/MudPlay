@@ -885,6 +885,20 @@ public sealed partial class CombatManager
             if (to is { } toSpell
                 && string.Equals(_announcedSpellCode, toSpell, StringComparison.OrdinalIgnoreCase))
                 return;
+            // A kill landed since this switch was armed and the death→re-observe path
+            // already re-picked a SAME-SPECIES survivor and fired a fresh attack at it
+            // (_attackSentSinceDeath). This switch was armed for the DEAD instance;
+            // firing it now is a second attack on the survivor — the reported
+            // double-attack (report paradigm-20260903-113054). The name / TargetPresent
+            // guard below can't catch it because the survivor shares the killed mob's
+            // RawName. Skip (mirrors the resume path's death-interrupt guard).
+            if (DateTimeOffset.Now - _lastDeathAt < DeathInterruptWindow && _attackSentSinceDeath)
+            {
+                _log?.Combat(LogCategory,
+                    $"spell {reason} {from ?? "?"}→{to ?? "?"} at '{target}' skipped — a kill re-picked a "
+                    + "same-species survivor and already re-attacked; not double-firing at it");
+                return;
+            }
             // A same-burst / adjacent-packet kill / departure nulls both target latches;
             // either mismatch means the switch would land on a corpse (or a re-picked mob).
             if (!string.Equals(_castingSpellTarget, target, StringComparison.OrdinalIgnoreCase)

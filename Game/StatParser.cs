@@ -36,10 +36,19 @@ public sealed partial class StatParser : IDisposable
     // scanned.
     public TimeSpan ExpectingScreenWindow { get; set; } = TimeSpan.FromSeconds(5);
 
+    // Window after observing outbound `health` during which the single compact
+    // health-command line is accepted. Independent of the stat-screen gate — the
+    // `health` output's `Health:` label (the HP pool) collides with the stat
+    // sheet's `Health:` attribute (a core stat like Strength — a bare number; the
+    // stat sheet labels the HP pool `Hits:`), so it is parsed on its own gate,
+    // never through the generic field scan.
+    public TimeSpan ExpectingHealthWindow { get; set; } = TimeSpan.FromSeconds(5);
+
     // Test seam.
     public Func<DateTime> NowProvider { get; set; } = () => DateTime.UtcNow;
 
     private DateTime? _windowOpenedAt;
+    private DateTime? _healthWindowOpenedAt;
     // Per-arm flag — flipped true the first time a field commits within the
     // current scan window, reset when the gate closes. Lets us close the gate
     // as soon as the in-game prompt returns AFTER capture, instead of waiting
@@ -82,6 +91,13 @@ public sealed partial class StatParser : IDisposable
     // announces a reachable level only on a genuine gain, never on a login
     // hydrate or a catch-up poll.
     public event Action<int>? ExperienceGained;
+
+    // Fires when the compact `health`-command output re-anchors the HP + power
+    // pool. Carries (maxHits, poolMax) — poolMax is the mana OR kai ceiling, 0
+    // for a no-pool class. AppServices routes these to PromptParser.ApplyStatScreenMax
+    // (the sole max-field writer) so PlayerState.MaxHp/MaxMa snap to the real
+    // ceilings with far less scroll than the full stat screen.
+    public event Action<int, int>? HealthReanchored;
 
     public StatParser(PlayerStats stats, LogService? log = null)
     {
@@ -267,6 +283,19 @@ public sealed partial class StatParser : IDisposable
                       && "stat".StartsWith(cmd, StringComparison.Ordinal);
         bool isExp  = cmd.Length >= 3 && cmd.Length <= 10
                       && "experience".StartsWith(cmd, StringComparison.Ordinal);
+        // `health` (and its unambiguous prefixes `hea`..`health`) opens the
+        // compact one-line HP/pool readout. It rides its own single-shot gate,
+        // separate from the stat-screen scan. Arming is harmless if the command
+        // turns out to be something else — the health line only commits on the
+        // very specific `Health: N/M [P%] …` shape, so a stray arm just expires.
+        bool isHealth = cmd.Length is >= 3 and <= 6
+                      && "health".StartsWith(cmd, StringComparison.Ordinal);
+        if (isHealth)
+        {
+            _healthWindowOpenedAt = NowProvider();
+            _log?.Log(LogSeverity.Info, "StatParser",
+                $"Observed outbound `{cmd}` — armed {ExpectingHealthWindow.TotalSeconds:0}s health re-anchor window.");
+        }
         if (!isStat && !isExp) return;
         _windowOpenedAt = NowProvider();
         _capturedThisArm = false;
@@ -282,6 +311,9 @@ public sealed partial class StatParser : IDisposable
     // path.
     internal void TestArm() => _windowOpenedAt = NowProvider();
 
+    // Test seam — arm the health-command gate without the wire path.
+    internal void TestArmHealth() => _healthWindowOpenedAt = NowProvider();
+
     // Test seam — pump a line through the full handler path without a real
     // LineExtractor. Mirrors OnLine so tests exercise the always-on lives
     // handler + the gated scan together. isPromptLine defaults to false; set
@@ -291,6 +323,7 @@ public sealed partial class StatParser : IDisposable
     {
         OnLivesRemainingLine(text);
         OnExperienceGainLine(text);
+        TryHealthWindow(text);
         if (_windowOpenedAt is null) return;
         if (isPromptLine && _capturedThisArm)
         {
@@ -314,6 +347,10 @@ public sealed partial class StatParser : IDisposable
         OnLivesRemainingLine(line.Text);
         // Experience-gain — always-on live accrual onto the Exp total.
         OnExperienceGainLine(line.Text);
+        // Compact `health`-command re-anchor — its own single-shot gate, checked
+        // before the stat-screen scan (and before the stat gate's early-return
+        // below, so a `health` poll re-anchors even with no stat window open).
+        TryHealthWindow(line.Text);
 
         if (_windowOpenedAt is null) return;
 
@@ -508,6 +545,68 @@ public sealed partial class StatParser : IDisposable
         ExperienceGained?.Invoke(Stats.Exp);
     }
 
+    // The compact `health` command re-anchors HP + power-pool ceilings with far
+    // less scroll than the full stat screen. Its `Health:` label (the HP pool)
+    // collides with the stat sheet's `Health:` attribute (a bare-number core stat;
+    // the sheet labels the HP pool `Hits:`), so it rides its own single-shot gate
+    // (armed on outbound `health`) and is parsed here — never through ScanLine's
+    // generic HealthRx, which would misread the HP value as the Health attribute.
+    private void TryHealthWindow(string text)
+    {
+        if (_healthWindowOpenedAt is not { } opened) return;
+        if (NowProvider() - opened > ExpectingHealthWindow) { _healthWindowOpenedAt = null; return; }
+        if (string.IsNullOrWhiteSpace(text)) return;
+        // A chat echo embedding the readout can never commit the re-anchor.
+        if (ChatLineRx().IsMatch(text)) return;
+        if (TryHealthCommandLine(text)) _healthWindowOpenedAt = null;   // committed → close the gate
+    }
+
+    // Parse the one-line `health` output — "Health: 91/91 [100%] Kai: 6/10 [60%]"
+    // (stock) / "Health: 593/593 [100%] Mana: 619/619 [100%]" (paradigm). Commits
+    // Hits/MaxHits and, when present, the mana OR kai pool, then fires
+    // HealthReanchored(maxHits, poolMax) so PlayerState.MaxHp/MaxMa snap to the
+    // authoritative ceilings. A no-pool class (warrior) omits the second field →
+    // poolMax 0, which ApplyStatScreenMax ignores. Returns true on a commit.
+    private bool TryHealthCommandLine(string text)
+    {
+        Match m = HealthCommandRx().Match(text);
+        if (!m.Success) return false;
+        System.Globalization.NumberStyles ns = System.Globalization.NumberStyles.Integer;
+        System.Globalization.CultureInfo inv = System.Globalization.CultureInfo.InvariantCulture;
+        if (!int.TryParse(m.Groups[1].Value, ns, inv, out int hits)) return false;
+        if (!int.TryParse(m.Groups[2].Value, ns, inv, out int maxHits)) return false;
+        Stats.Hits = hits;
+        Stats.MaxHits = maxHits;
+
+        int poolMax = 0;
+        string poolLabel = string.Empty;
+        if (m.Groups[3].Success
+            && int.TryParse(m.Groups[4].Value, ns, inv, out int pool)
+            && int.TryParse(m.Groups[5].Value, ns, inv, out int poolMaxParsed))
+        {
+            poolMax = poolMaxParsed;
+            poolLabel = m.Groups[3].Value;
+            if (poolLabel.Equals("Mana", StringComparison.OrdinalIgnoreCase))
+            {
+                Stats.Mana = pool;
+                Stats.MaxMana = poolMaxParsed;
+            }
+            else   // "Kai"
+            {
+                Stats.Kai = pool;
+                Stats.MaxKai = poolMaxParsed;
+            }
+        }
+
+        HasParsed = true;
+        _log?.Log(LogSeverity.Info, "StatParser",
+            $"Health re-anchor — Hits={hits}/{maxHits}"
+            + (poolMax > 0 ? $"  {poolLabel}={m.Groups[4].Value}/{poolMax}" : string.Empty)
+            + " → snapping max HP/mana to the authoritative ceilings.");
+        HealthReanchored?.Invoke(maxHits, poolMax);
+        return true;
+    }
+
     private void TryString(string text, Regex rx, string field, Action<string> set)
     {
         Match m = rx.Match(text);
@@ -602,6 +701,16 @@ public sealed partial class StatParser : IDisposable
     [GeneratedRegex(@"\bKai:\s+\*?\s*(\d+)/(\d+)",                      RegexOptions.CultureInvariant)] private static partial Regex KaiRx();
     [GeneratedRegex(@"\bMana:\s+\*?\s*(\d+)/(\d+)",                     RegexOptions.CultureInvariant)] private static partial Regex ManaRx();
     [GeneratedRegex(@"\bArmour Class:\s+\*?\s*(\d+)/(\d+)",             RegexOptions.CultureInvariant)] private static partial Regex ArmourClassRx();
+
+    // The compact `health`-command output. Anchored at line start (with optional
+    // leading whitespace) so it never matches the stat sheet's mid-row `Health:`
+    // attribute field (a bare-number core stat), and so a chat line embedding it
+    // can't fake the prefix. HP is
+    // always paired N/M with a [P%]; the pool (Kai on stock, Mana on paradigm) is
+    // optional so a no-mana class parses too. Groups: 1 curHp, 2 maxHp, 3 pool
+    // label, 4 curPool, 5 maxPool.
+    [GeneratedRegex(@"^\s*Health:\s+\*?\s*(\d+)/(\d+)\s+\[\s*\d+%\](?:\s+(Kai|Mana):\s+\*?\s*(\d+)/(\d+)\s+\[\s*\d+%\])?",
+        RegexOptions.CultureInvariant)] private static partial Regex HealthCommandRx();
 
     // Plain N fields — `\*?` between the colon and the digits
     // tolerates the altered-stat marker.

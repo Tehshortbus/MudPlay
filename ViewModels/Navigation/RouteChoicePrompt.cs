@@ -136,19 +136,37 @@ public static class RouteChoicePrompt
             choice.GatedPath, services.AutoLair.TravelCostModel,
             services.RoomGraph.GetRoom, includeLairDwell: services.IsAutoCombatEnabled);
 
-        // Sole hazard-only route: resolve which counter the run would obtain and
-        // how (floor grab / free give / shop buy / drop hunt), so the picker can
-        // offer "obtain then cross" and Go forces that counter through the acquire
-        // pipeline — an explicit pick, so no AutoObtainForPath flag is needed.
+        // A route that crosses a SURVIVABLE hazard the player can't currently pass —
+        // whether the hazard is the only gate (sole hazard) or the route ALSO has a
+        // hard gate past it (a keyed door: a "mixed" route). Either way the picker
+        // offers to obtain the counter / cross unprotected; the mixed case just also
+        // names the hard gate it stops at. Never for a grave hazard (a drown / freeze
+        // death, a forced teleport) — UnprotectedHazardsAllSurvivable gates that.
+        bool crossesHazard = !choice.HasFreeRoute && choice.Kind != RouteChoiceKind.Teleport
+            && choice.Requirements.Any(r => r.Kind == RouteRequirementKind.HazardProtection);
+        bool crossesSurvivableHazard = crossesHazard
+            && services.UnprotectedHazardsAllSurvivable(choice.GatedPath);
+        bool mixedHazard = crossesSurvivableHazard
+            && choice.Requirements.Any(r => r.Kind != RouteRequirementKind.HazardProtection);
+
+        // Resolve which counter the run would obtain and how (floor grab / free give /
+        // shop buy / drop hunt), so the picker can offer "obtain then cross" and Go
+        // forces that counter through the acquire pipeline — an explicit pick, so no
+        // AutoObtainForPath flag is needed. Run for ANY hazard (survivable OR grave —
+        // a grave hazard's only safe crossing IS obtaining the counter); only the
+        // HAZARD requirements are sourced this way — a hard gate (a door key) is never
+        // auto-fetched.
         List<int> floorCounters = new();     // grabbed in place with a `get`
         List<int> detourCounters = new();    // sourced via the give/shop/drop pipeline
         List<string> hazardSources = new();
-        bool soleHazardOnly = !choice.HasFreeRoute && choice.Kind != RouteChoiceKind.Teleport
-            && choice.Requirements.Count > 0
-            && choice.Requirements.All(r => r.Kind == RouteRequirementKind.HazardProtection);
-        if (soleHazardOnly)
+        // The specific counter resolved per hazard requirement (which item, and how) —
+        // so the picker's requirement line names the exact one it'll obtain ("log raft
+        // (buy at Pier)") instead of the whole any-of list.
+        Dictionary<RouteRequirement, (int ItemId, string Source)> resolvedCounters = new();
+        if (crossesHazard)
             foreach (RouteRequirement req in choice.Requirements)
             {
+                if (req.Kind != RouteRequirementKind.HazardProtection) continue;
                 // A counter already chosen for an earlier hazard that also appears in
                 // THIS hazard's any-of set covers it too — both FCCO slide rooms accept
                 // rope-and-grapple OR climbing harness, so one rope answers both. Skip
@@ -160,20 +178,19 @@ public static class RouteChoicePrompt
                     List<int> bucket = r.OnFloor ? floorCounters : detourCounters;
                     if (!bucket.Contains(r.ItemId)) bucket.Add(r.ItemId);
                     if (!hazardSources.Contains(r.Source)) hazardSources.Add(r.Source);
+                    resolvedCounters[req] = (r.ItemId, r.Source);
                 }
             }
         string? hazardCounterSource = hazardSources.Count > 0
             ? string.Join("; ", hazardSources) : null;
+        bool hazardObtain = hazardCounterSource is not null;
 
-        // The full start-to-finish command sequence for each route — moves + the
-        // lever/winch/door detours the walker expands, with an acquire row at each
-        // gate it must source through. Built here (not in the picker VM) since it
-        // needs the graph / bfs / filter; the VM just displays it.
-        IReadOnlyList<RouteStepRow> freeSteps = choice.HasFreeRoute
-            ? BuildStepRows(services, source, destination, choice.FreePath, gated: false)
-            : Array.Empty<RouteStepRow>();
-        IReadOnlyList<RouteStepRow> gatedSteps =
-            BuildStepRows(services, source, destination, choice.GatedPath, gated: true);
+        // For a mixed route with no sourceable counter, the base card walks to the
+        // hazard's edge and stops (the user then fetches a counter / clears the hard
+        // gate themselves), rather than crossing the hazard blindly.
+        RoomKey? hazardEdge = mixedHazard && !hazardObtain
+            ? services.HazardApproachRoom(choice.GatedPath)
+            : null;
 
         var vm = new RouteChoiceDialogViewModel(
             choice,
@@ -195,8 +212,12 @@ public static class RouteChoicePrompt
             freeEta,
             gatedEta,
             hazardCounterSource,
-            freeSteps,
-            gatedSteps);
+            crossesSurvivableHazard,
+            // The specific counter the run resolved for a hazard requirement (item id +
+            // "buy at Pier" / "ask X" / …), so its requirement clause names that one
+            // rather than the whole any-of set.
+            req => resolvedCounters.TryGetValue(req, out (int ItemId, string Source) v)
+                ? v : ((int, string)?)null);
 
         // Draw the selected route's line while the picker is open; clear it when
         // the picker closes so a committed walk's live path isn't double-drawn and
@@ -215,6 +236,15 @@ public static class RouteChoicePrompt
             // its preview on open, now that the sink is subscribed.
             vm.RaiseSelectionPreview();
         }
+
+        // Details… opens the shared route-details browse window for the selected
+        // route's polyline — the same window the CURRENT NAV panel uses, with each
+        // room's monsters, hazards, and item gates linked to their records. Both
+        // direct choices trace the same physical gated line.
+        string detailsTitle = $"Route → {DestinationLabel(services, destination)}";
+        vm.ShowDetailsRequested += r => RouteDetailsLauncher.Open(
+            services, detailsTitle,
+            r == RouteChoiceResult.Free ? choice.FreePath : choice.GatedPath);
 
         RouteChoiceResult? result;
         try
@@ -276,6 +306,13 @@ public static class RouteChoicePrompt
             case RouteChoiceResult.Free:
                 CommitWalk(services, destination, gated: false);
                 break;
+            case RouteChoiceResult.Gated when hazardEdge is { } edge:
+                // Mixed route, no sourceable counter: the base card walks to the
+                // hazard's edge and stops (a plain gate-free walk to the room just
+                // short of the river), so the user can fetch a counter / clear the
+                // hard gate by hand from there — rather than crossing blindly.
+                CommitWalk(services, edge, gated: false);
+                break;
             case RouteChoiceResult.Gated:
                 // Hazard "obtain then cross". A counter already on the floor is
                 // grabbed in place; the rest are forced through the acquire pipeline
@@ -329,89 +366,6 @@ public static class RouteChoicePrompt
             armItemAcquisition: armAcquisition,
             avoidTeleports: avoidTeleports,
             avoidTraps: avoidTraps);
-    }
-
-    // Turn a route's RoomKey polyline into the full executable step list: re-derive
-    // the hop directions, run the SAME detour expander the walker uses (lever / winch
-    // / door go-act-return round-trips), then render numbered "room < command" rows.
-    // The gated route also drops an acquire row at each hop it must buy/ask/hunt an
-    // item to cross. Empty when the path is trivial or can't be resolved.
-    private static IReadOnlyList<RouteStepRow> BuildStepRows(
-        AppServices services, RoomKey source, RoomKey destination,
-        IReadOnlyList<RoomKey> path, bool gated)
-    {
-        RoomGraphManager graph = services.RoomGraph;
-        IReadOnlyList<Direction> dirs = DirectionsAlong(graph, path);
-        if (dirs.Count == 0) return Array.Empty<RouteStepRow>();
-
-        // Positioned gates are read with acquirable gates LIVE (so the blocks show);
-        // the expansion runs with them suspended so a lever detour's own sub-route
-        // matches how the gated plan will actually route past them. Only the
-        // auto-sourceable gates (item / ticket / single-counter hazard) get an
-        // acquire row — a door key is cleared by hand, an any-of hazard has no single
-        // buy, both already named in the requirement summary.
-        List<RouteGateStop> stops = new();
-        IReadOnlyList<WalkStep> steps;
-        if (gated)
-        {
-            foreach ((RoomKey room, Direction dir, RouteRequirement req)
-                     in RouteChoicePlanner.PositionedGates(graph, services.Movement, source, dirs))
-                if (IsAutoSourceable(req))
-                    stops.Add(new RouteGateStop(room, dir, req));
-            using (services.Movement.SuspendAcquirableGates())
-                steps = RemoteActionPathExpander.Expand(graph, source, dirs, services.Bfs, services.Movement);
-        }
-        else
-        {
-            steps = RemoteActionPathExpander.Expand(graph, source, dirs, services.Bfs, services.Movement);
-        }
-
-        return RouteStepList.Build(
-            source, steps, stops,
-            key => graph.GetRoom(key)?.DisplayName,
-            services.ItemNames.GetName,
-            req => ObtainLabel(services, req, source, destination));
-    }
-
-    // The hop directions implied by a RoomKey polyline — for each consecutive pair,
-    // the exit off the first room whose target is the next room. Stops at the first
-    // pair the graph can't connect (a stale path); the expander truncates likewise.
-    private static IReadOnlyList<Direction> DirectionsAlong(
-        RoomGraphManager graph, IReadOnlyList<RoomKey> path)
-    {
-        var dirs = new List<Direction>(Math.Max(0, path.Count - 1));
-        for (int i = 0; i + 1 < path.Count; i++)
-        {
-            Room? room = graph.GetRoom(path[i]);
-            if (room is null) break;
-            Direction? hop = null;
-            foreach ((Direction d, RoomExit exit) in room.Exits)
-                if (exit.Target.Equals(path[i + 1])) { hop = d; break; }
-            if (hop is null) break;
-            dirs.Add(hop.Value);
-        }
-        return dirs;
-    }
-
-    private static bool IsAutoSourceable(RouteRequirement req) =>
-        req.Kind is RouteRequirementKind.CarryItem or RouteRequirementKind.Ticket
-        || (req.Kind is RouteRequirementKind.HazardProtection && req.ItemIds.Count == 1);
-
-    // How the run sources a gate item, mirroring the requirement-summary tail: a free
-    // NPC give ("ask X") > a shop buy ("buy at Y") > a monster-drop hunt ("hunt Z").
-    // Null falls back to a generic "get it first" in the step row.
-    private static string? ObtainLabel(
-        AppServices services, RouteRequirement req, RoomKey source, RoomKey destination)
-    {
-        if (req.ItemIds.Count != 1) return null;
-        int id = req.ItemIds[0];
-        if (services.PathItemGiveName(id, source, destination) is { Length: > 0 } giver)
-            return $"ask {giver}";
-        if (services.PathItemShopName(id, source, destination) is { Length: > 0 } shop)
-            return $"buy at {shop}";
-        if (services.PathItemDropName(id, source) is { Length: > 0 } mob)
-            return $"hunt {mob}";
-        return null;
     }
 
     private static string DestinationLabel(AppServices services, RoomKey destination) =>

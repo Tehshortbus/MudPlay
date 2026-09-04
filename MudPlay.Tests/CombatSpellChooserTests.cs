@@ -241,6 +241,37 @@ public sealed class CombatSpellChooserTests
             sut.ChooseDebuff(settings, Ctx(enemies: 3))?.Action);
     }
 
+    // A same-room RESPAWN (after the room is confirmed cleared — the player rested)
+    // must be re-debuffed, while a same-fight survivor (a mid-fight wave-clear roster
+    // reset) must NOT be (report paradigm-20260903-070438 vs the -160110 "isto fired
+    // twice" fix).
+    [Fact]
+    public void ChooseDebuff_Area_ResetOnRoomClear_ReDebuffsRespawn_NotSurvivor()
+    {
+        CombatSpellChooser sut = new();
+        CombatSettings settings = new()
+        {
+            AreaDebuffSpell = Slot("blindall", minEnemies: 2),
+            NormalAttackSpell = Slot("harm"),
+        };
+        var keys = new[] { "slimeworm" };
+
+        CombatSpellDecision? first = sut.ChooseDebuff(settings, Ctx(enemies: 3, roomMobKeys: keys));
+        Assert.Equal(CombatSpellAction.AreaDebuff, first?.Action);
+        sut.MarkCast(first!.Value, "slimeworm", keys);
+
+        // A mid-fight wave-clear roster reset (hidden same-species survivors) keeps the
+        // tags — the survivor is NOT re-debuffed.
+        sut.ResetForRosterClear();
+        Assert.Null(sut.ChooseDebuff(settings, Ctx(enemies: 3, roomMobKeys: keys)));
+
+        // The room is confirmed genuinely cleared (the player rested) — a same-room
+        // respawn after that IS re-debuffed.
+        sut.ResetAreaDebuffTags();
+        Assert.Equal(CombatSpellAction.AreaDebuff,
+            sut.ChooseDebuff(settings, Ctx(enemies: 3, roomMobKeys: keys))?.Action);
+    }
+
     [Fact]
     public void ChooseDebuff_Area_BelowMinEnemies_Skipped()
     {

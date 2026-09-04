@@ -142,7 +142,7 @@ public sealed partial class GhManagementSectionViewModel : WorkshopSectionViewMo
         {
             RoomKey key = new(label.Map, label.Room);
             string? name = _roomGraph.GetRoom(key)?.Name;
-            Rooms.Add(new GhRoomLabelRowViewModel(label, name, _managed.IsManaged(key), OnRemoveRow, OnToggleManage));
+            Rooms.Add(new GhRoomLabelRowViewModel(label, name, _managed.IsManaged(key), OnRemoveRow, OnToggleManage, OnGotoRow));
         }
         RefreshRoomStatuses();
     }
@@ -152,6 +152,10 @@ public sealed partial class GhManagementSectionViewModel : WorkshopSectionViewMo
         _labels.ClearLabel(row.Key);
         _managed.SetManaged(row.Key, false);   // drop the per-character managed entry too
     }
+
+    // A row's "Goto" button: open/focus the map and walk to that room now (the full
+    // "Walk here" path — route picker for a gated/hazard crossing, GOTO history).
+    private void OnGotoRow(RoomKey key) => AppServices.Current.GoWalkTo(key);
 
     // A row's "Actively Manage" checkbox toggled: persist it for THIS character, and
     // clear the no-rooms-selected prompt the moment the user opts a room in.

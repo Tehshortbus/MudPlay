@@ -1132,12 +1132,35 @@
                             <Expander Classes="RailSection"
                                       IsExpanded="{Binding IsCurrentNavExpanded, Mode=TwoWay}">
                                 <Expander.Header>
-                                    <TextBlock Classes="RailSectionHeader"
-                                               Classes.CurrentNavLair="{Binding EngineActionIsLair}"
-                                               Classes.CurrentNavLoop="{Binding EngineActionIsLooping}"
-                                               Classes.CurrentNavWalk="{Binding EngineActionIsWalking}"
-                                               Text="CURRENT NAV"
-                                               Margin="0"/>
+                                    <!-- Title + a Details… button that opens the current
+                                         route's full step plan in a browsable window. The
+                                         button only shows while a route is executing; a
+                                         click on it opens the window without toggling the
+                                         expander (Button consumes the pointer). -->
+                                    <Grid ColumnDefinitions="*,Auto" HorizontalAlignment="Stretch">
+                                        <TextBlock Grid.Column="0"
+                                                   Classes="RailSectionHeader"
+                                                   Classes.CurrentNavLair="{Binding EngineActionIsLair}"
+                                                   Classes.CurrentNavLoop="{Binding EngineActionIsLooping}"
+                                                   Classes.CurrentNavWalk="{Binding EngineActionIsWalking}"
+                                                   Text="CURRENT NAV"
+                                                   VerticalAlignment="Center"
+                                                   Margin="0"/>
+                                        <Button Grid.Column="1"
+                                                Content="Details…"
+                                                IsVisible="{Binding CanShowRouteDetails}"
+                                                Command="{Binding ShowRouteDetailsCommand}"
+                                                Background="{StaticResource ChromeBgElevBrush}"
+                                                BorderBrush="{StaticResource ChromeBorderBrush}"
+                                                BorderThickness="1"
+                                                CornerRadius="3"
+                                                Padding="8,2"
+                                                FontSize="11"
+                                                Foreground="{StaticResource ChromeFgBrush}"
+                                                VerticalAlignment="Center"
+                                                Margin="6,0,8,0"
+                                                ToolTip.Tip="Open the current route's full step plan, with the lair monsters at each room."/>
+                                    </Grid>
                                 </Expander.Header>
                                 <StackPanel Spacing="4" HorizontalAlignment="Stretch">
                             <!-- The section's description line lives up in the

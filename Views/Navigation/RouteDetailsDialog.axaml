@@ -1,0 +1,245 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:MudPlay.ViewModels.Navigation"
+        xmlns:gd="using:MudPlay.ViewModels.GameData.Edit"
+        xmlns:ctl="using:MudPlay.Controls"
+        x:Class="MudPlay.Views.Navigation.RouteDetailsDialog"
+        x:DataType="vm:RouteDetailsDialogViewModel"
+        Title="{Binding Title}"
+        Width="460" Height="600"
+        MinWidth="320" MinHeight="240"
+        WindowStartupLocation="CenterOwner">
+
+    <Window.Styles>
+        <!-- Client-standard record link: cyan text, no chrome, underline on hover
+             (same look the Game Data record dialogs use for inline links). -->
+        <Style Selector="Button.MdbLink">
+            <Setter Property="Foreground" Value="{StaticResource AccentCyanBrush}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontFamily" Value="{StaticResource FontMono}"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style Selector="Button.MdbLink:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="TextBlock.TextDecorations" Value="Underline"/>
+        </Style>
+
+        <!-- Monster links read apart from the blue room/spell links, tinted per
+             monster by its alignment (bound Foreground=Accent on each button: evil
+             red / neutral cyan / good-or-lawful white — the game's own colouring). -->
+        <Style Selector="Button.MonsterLink">
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontFamily" Value="{StaticResource FontMono}"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style Selector="Button.MonsterLink:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="TextBlock.TextDecorations" Value="Underline"/>
+        </Style>
+
+        <!-- Required-item links (hazard counters + item-gated exits): a dark yellow,
+             matching the ⚠ warning tone. -->
+        <Style Selector="Button.ItemLink">
+            <Setter Property="Foreground" Value="#FFC9A030"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontFamily" Value="{StaticResource FontMono}"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style Selector="Button.ItemLink:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="TextBlock.TextDecorations" Value="Underline"/>
+        </Style>
+    </Window.Styles>
+
+    <Border Background="{StaticResource ChromeBgBrush}" Padding="12">
+        <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="10">
+            <!-- Monster-name colouring, above the route title. Off → names tint by
+                 alignment (the default). On → each name recolours by its live
+                 Hits-You-% against a green / amber / red band split the two-thumb
+                 slider sets. Only shows when the route actually passes monster rooms. -->
+            <Border Grid.Row="0"
+                    IsVisible="{Binding HasMonsters}"
+                    Background="{StaticResource ChromeBgSunkenBrush}"
+                    BorderBrush="{StaticResource ChromeBorderSoftBrush}"
+                    BorderThickness="1" CornerRadius="4"
+                    Padding="8,6">
+                <StackPanel Spacing="6">
+                    <CheckBox Content="Color monsters by hit %"
+                              IsChecked="{Binding ColorByHitPercent}"
+                              FontSize="12"
+                              Foreground="{StaticResource ChromeFgBrush}"
+                              ToolTip.Tip="Tint each monster by its chance to hit you (Monster Intel's Hits-You-%): green = safe, red = dangerous."/>
+                    <StackPanel Spacing="5" IsVisible="{Binding ColorByHitPercent}">
+                        <ctl:BandRangeSlider Height="24"
+                                             Minimum="0" Maximum="100" MinimumGap="2"
+                                             LowerValue="{Binding GreenMax, Mode=TwoWay}"
+                                             UpperValue="{Binding YellowMax, Mode=TwoWay}"
+                                             LowerBrush="{Binding GreenBrush}"
+                                             MiddleBrush="{Binding YellowBrush}"
+                                             UpperBrush="{Binding RedBrush}"/>
+                        <TextBlock Text="{Binding BandLegend}"
+                                   FontFamily="{StaticResource FontMono}"
+                                   FontSize="10"
+                                   Foreground="{StaticResource ChromeFgMutedBrush}"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <TextBlock Grid.Row="1"
+                       Text="{Binding Title}"
+                       FontSize="13" FontWeight="SemiBold"
+                       Foreground="{StaticResource ChromeFgBrush}"/>
+
+            <!-- The full step plan, scrollable. Each step is a mono
+                 "N> map/room < command" line; a step whose room has a lair lists
+                 that lair's monsters beneath it, each a clickable record link. -->
+            <ScrollViewer Grid.Row="2"
+                          HorizontalScrollBarVisibility="Disabled"
+                          VerticalScrollBarVisibility="Auto"
+                          IsVisible="{Binding HasRows}">
+                <ItemsControl ItemsSource="{Binding Rows}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate DataType="vm:RouteDetailRow">
+                            <StackPanel Margin="0,0,0,3">
+                                <!-- "N>" + the room name as a link (click flashes +
+                                     centres it on the map, @where-style) + "< command".
+                                     A hazard room's name is flanked by ⚠ warnings. -->
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="{Binding NumberLabel}"
+                                               FontFamily="{StaticResource FontMono}"
+                                               FontSize="12"
+                                               Foreground="{StaticResource ChromeFgMutedBrush}"
+                                               VerticalAlignment="Center"
+                                               Margin="0,0,6,0"/>
+                                    <TextBlock Text="⚠"
+                                               IsVisible="{Binding HasWarning}"
+                                               Foreground="{StaticResource AccentAmberBrush}"
+                                               FontSize="12"
+                                               VerticalAlignment="Center"
+                                               Margin="0,0,4,0"/>
+                                    <Button Classes="MdbLink"
+                                            Content="{Binding Location}"
+                                            Command="{Binding OpenRoom}"
+                                            FontSize="13"
+                                            VerticalAlignment="Center"
+                                            ToolTip.Tip="Show this room on the map"/>
+                                    <TextBlock Text="⚠"
+                                               IsVisible="{Binding HasWarning}"
+                                               Foreground="{StaticResource AccentAmberBrush}"
+                                               FontSize="12"
+                                               VerticalAlignment="Center"
+                                               Margin="4,0,0,0"/>
+                                    <TextBlock Text="{Binding CommandSuffix}"
+                                               FontFamily="{StaticResource FontMono}"
+                                               FontSize="12"
+                                               Foreground="{StaticResource ChromeFgMutedBrush}"
+                                               VerticalAlignment="Center"
+                                               Margin="6,0,0,0"/>
+                                </StackPanel>
+
+                                <!-- Warning sub-line: a room-entry hazard's harmful spell
+                                     (→ spell record, shown only for a hazard) and/or the
+                                     item(s) needed to cross — a hazard's counter items or
+                                     an item-gated exit's requirement (→ item records). -->
+                                <StackPanel Orientation="Horizontal"
+                                            IsVisible="{Binding HasWarning}"
+                                            Margin="20,0,0,2">
+                                    <TextBlock Text="⚠"
+                                               Foreground="{StaticResource AccentAmberBrush}"
+                                               FontSize="11"
+                                               VerticalAlignment="Center"
+                                               Margin="0,0,4,0"/>
+                                    <Button Classes="MdbLink"
+                                            Content="{Binding Warning.Spell.Text}"
+                                            Command="{Binding Warning.Spell.Open}"
+                                            IsVisible="{Binding Warning.HasSpell}"
+                                            VerticalAlignment="Center"/>
+                                    <TextBlock Text="{Binding Warning.Label}"
+                                               IsVisible="{Binding Warning.HasItems}"
+                                               Foreground="{StaticResource ChromeFgMutedBrush}"
+                                               FontSize="10"
+                                               VerticalAlignment="Center"
+                                               Margin="6,0,6,0"/>
+                                    <ItemsControl ItemsSource="{Binding Warning.Items}"
+                                                  IsVisible="{Binding Warning.HasItems}"
+                                                  VerticalAlignment="Center">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <WrapPanel/>
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate DataType="gd:RoomDetailLink">
+                                                <Button Classes="ItemLink"
+                                                        Content="{Binding Text}"
+                                                        Command="{Binding Open}"
+                                                        Margin="0,0,10,0"/>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                                <ItemsControl ItemsSource="{Binding Monsters}"
+                                              IsVisible="{Binding HasMonsters}"
+                                              Margin="20,1,0,2">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <WrapPanel/>
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate DataType="gd:RoomDetailLink">
+                                            <!-- A see-hidden monster is flanked by an eyeball marker. Kept off the
+                                                 mono link font and sized up so the emoji renders as a clear eye, not
+                                                 a squished glyph. -->
+                                            <StackPanel Orientation="Horizontal" Margin="0,0,12,2">
+                                                <TextBlock Text="👁"
+                                                           IsVisible="{Binding SeesHidden}"
+                                                           FontSize="16"
+                                                           VerticalAlignment="Center"
+                                                           Margin="0,0,4,0"
+                                                           ToolTip.Tip="See-hidden — this monster defeats sneak"/>
+                                                <Button Classes="MonsterLink"
+                                                        Content="{Binding Text}"
+                                                        Command="{Binding Open}"
+                                                        Foreground="{Binding Accent}"
+                                                        VerticalAlignment="Center"/>
+                                                <TextBlock Text="👁"
+                                                           IsVisible="{Binding SeesHidden}"
+                                                           FontSize="16"
+                                                           VerticalAlignment="Center"
+                                                           Margin="4,0,0,0"
+                                                           ToolTip.Tip="See-hidden — this monster defeats sneak"/>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+
+            <TextBlock Grid.Row="2"
+                       Text="No active route."
+                       VerticalAlignment="Top"
+                       FontSize="12"
+                       Foreground="{StaticResource ChromeFgMutedBrush}"
+                       IsVisible="{Binding !HasRows}"/>
+
+            <Button Grid.Row="3"
+                    Content="Close"
+                    Command="{Binding CloseCommand}"
+                    HorizontalAlignment="Right"
+                    FontSize="11" Padding="12,4"/>
+        </Grid>
+    </Border>
+</Window>

@@ -91,6 +91,7 @@
                 <TextBox Grid.Column="0" x:Name="InputBox"
                          PlaceholderText="Type a command or chat line, press Enter to send (↑ / ↓ to recall)"
                          Text="{Binding InputText, Mode=TwoWay}"
+                         MaxLength="{Binding MaxInputLength}"
                          KeyDown="OnInputKeyDown">
                     <TextBox.InnerRightContent>
                         <!-- Recall chevron lives inside the input box: it drops

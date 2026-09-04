@@ -21,11 +21,15 @@ namespace MudPlay.Game.Inventory;
 //   - Default: only when the character is DONE recovering (stands up out of a
 //     rest with neither rest gate still held) AND a pre-rest swap set is enabled
 //     (so we're actually swapping back from one), or when a loop / Auto-Lair run
-//     begins (OnLoopStarted). Combat entry deliberately does NOT swap to Default
-//     — if a fight interrupts a rest-if-below the character keeps its pre-rest
-//     loadout and only reverts once recovered, per the user's rule (report
-//     paradigm-20260826-132742). The remaining Default path — re-wearing on death-
-//     pile recovery — lives in the recovery engine, gated by its own setting.
+//     begins (OnLoopStarted). Combat entry does NOT swap to Default by default — a
+//     fight that interrupts a rest keeps its pre-rest loadout and reverts only once
+//     recovered, per the user's rule (report paradigm-20260826-132742). The one
+//     opt-out is EquipmentSettings.SwapToDefaultOnCombat (Equipment Manager's "Don't
+//     swap to default upon entering combat" UNchecked): then a rest-interrupting
+//     fight swaps to Default on entry (OnCombatChanged) and swaps back to the
+//     pre-rest set on room-clear if still gated. The remaining Default path —
+//     re-wearing on death-pile recovery — lives in the recovery engine, gated by
+//     its own setting.
 //
 // The Backstab set isn't auto-fired here yet — it needs the combat engine's
 // "room clear → sneak → surprise round" sequencing that isn't built; until then
@@ -76,6 +80,12 @@ public sealed class AutoEquipCoordinator : IDisposable
     // didn't cover — e.g. recovery gated off in combat).
     private DateTimeOffset _lastDefaultAppliedAt = DateTimeOffset.MinValue;
     private static readonly TimeSpan DefaultReapplySuppressWindow = TimeSpan.FromSeconds(4);
+
+    // Set true after we swap to Default because a fight interrupted a rest (only when
+    // EquipmentSettings.SwapToDefaultOnCombat is on). On room-clear it tells us to swap
+    // back to the pre-rest set if the rest still isn't done. Reset when the box is off
+    // so toggling it mid-fight can't strand the flag.
+    private bool _swappedToDefaultForCombat;
 
     public AutoEquipCoordinator(
         PlayerState player,
@@ -144,9 +154,65 @@ public sealed class AutoEquipCoordinator : IDisposable
 
     private void OnPlayerChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (e.PropertyName == nameof(PlayerState.InCombat))
+        {
+            OnCombatChanged(_player.InCombat);
+            return;
+        }
         if (e.PropertyName != nameof(PlayerState.Position)) return;
         OnPositionChanged(_lastPosition, _player.Position);
         _lastPosition = _player.Position;
+    }
+
+    // Opt-in (Equipment Manager's "Don't swap to default upon entering combat"
+    // UNchecked → SwapToDefaultOnCombat true): a fight that interrupts a rest is
+    // fought in the Default combat loadout instead of the pre-rest set. On combat
+    // entry, if we're recovering in a pre-rest set, swap to Default for the fight; on
+    // room-clear, if the rest still isn't satisfied, swap back to the pre-rest set the
+    // held gate wants (HealthManager re-issues the rest itself). With the box checked
+    // (the default) this is inert — the character keeps its pre-rest loadout through the
+    // fight and reverts to Default only once recovered, the long-standing rule.
+    private void OnCombatChanged(bool inCombat)
+    {
+        if (!_readEquipment().SwapToDefaultOnCombat)
+        {
+            // Toggling the box off mid-fight must not strand the restore flag.
+            _swappedToDefaultForCombat = false;
+            return;
+        }
+
+        if (inCombat)
+        {
+            // Only when a rest actually swapped us into a pre-rest set: we're recovering
+            // (a rest gate is held) AND a pre-rest swap set is enabled. Otherwise there's
+            // nothing to swap away from — and nothing to restore on clear.
+            if (_swappedToDefaultForCombat) return;
+            if (!(_hpGateAsserted() || _maGateAsserted())) return;
+            if (!UsingRestingSwapSets()) return;
+            _swappedToDefaultForCombat = true;
+            _log?.Info(EquipmentManager.LogCategory,
+                "combat interrupted a rest — swapping to Default for the fight "
+                + "(swap-to-default-on-combat enabled)");
+            Fire(EquipTriggerType.Default);
+        }
+        else
+        {
+            if (!_swappedToDefaultForCombat) return;
+            _swappedToDefaultForCombat = false;
+            // Recovered during the fight → gates clear → stay in Default. Still gated →
+            // swap back to the set the held gate wants so the resumed rest wears it (HP
+            // gate wins when both are held, mirroring ClassifyRest's plain-rest default).
+            EquipTriggerType? restType =
+                _hpGateAsserted() ? EquipTriggerType.PreRestHp
+                : _maGateAsserted() ? EquipTriggerType.PreRestMana
+                : (EquipTriggerType?)null;
+            if (restType is { } rt)
+            {
+                _log?.Info(EquipmentManager.LogCategory,
+                    $"room cleared, still rest-gated — swapping back to '{rt}' to resume the rest");
+                Fire(rt);
+            }
+        }
     }
 
     // A loop or Auto-Lair run just began — swap to the Default (baseline) set.

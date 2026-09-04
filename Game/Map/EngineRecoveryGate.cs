@@ -88,11 +88,49 @@ public sealed class EngineRecoveryGate
     // Cleared whenever we settle back at tier 1.
     private bool _sysopLocateTried;
 
+    // Which give-up boundary a pending forced `rm` is guarding, so its failure
+    // callback (OnAuthoritativeResyncFailed) knows where to fall through to. On
+    // Paradigm every path toward the heuristic backtrack (EscalateToTier3) and
+    // toward the "Lost" dialog (FailTier3) first spends a forced `rm` — the game
+    // can always report our true room — and only proceeds if that `rm` also
+    // fails. BeforeBacktrack failure → run the backtrack; Terminal failure →
+    // declare Lost for real. None means no gate-driven resync is in flight (a
+    // NoteSuspectedMismatch resync, which predates this, also falls through to
+    // the backtrack). Issue: a Paradigm client went "Lost — footprint exhausted"
+    // when `rm` could have relocated it (report paradigm-20260902-223159).
+    private enum ResyncStage { None, BeforeBacktrack, Terminal }
+    private ResyncStage _resyncStage;
+    private string? _pendingLostDetail;   // the FailTier3 detail to surface if a terminal `rm` also fails
+
+    // A forced `rm` that goes unanswered on Paradigm means one thing: a confusion
+    // fumble ate the command (the only way `rm` fails to reply — confirmed
+    // mechanic). The position is fine, so we re-ask until the confusion passes
+    // (self-clearing) instead of dropping to a heuristic guess / "Lost". Capped
+    // only as a stuck-flag backstop — real confusion never lasts anywhere near
+    // this long at the resolver's ~3s reply timeout (~2 min here).
+    private int _confusedResyncRetries;
+    private const int MaxConfusedResyncRetries = 40;
+
     // Optional Paradigm re-sync hook. When set, NoteSuspectedMismatch asks it to
     // fire `rm` before climbing the heuristic ladder; a true return means a
     // request is in flight and we should pause + wait. Null (or a false return)
     // keeps the pure heuristic path — the only behaviour on stock realms.
     public Func<string, bool>? TryResync { get; set; }
+
+    // Optional Paradigm forced re-sync hook — same as TryResync but skips the
+    // resolver's anti-storm throttle (it still coalesces on an in-flight `rm`).
+    // Used at the two give-up boundaries (EscalateToTier3 before the heuristic
+    // backtrack, FailTier3 before the "Lost" dialog): a client about to fail out
+    // would rather spend one `rm` than drop to Lost, even if a resync just fired
+    // inside the throttle window. Null / false return keeps the heuristic path.
+    public Func<string, bool>? TryResyncForced { get; set; }
+
+    // Optional Confused check (Conditions.IsConfused), same source the walker /
+    // loop-runner use. A forced `rm` only fails to answer when a confusion fumble
+    // eats it, so a timed-out `rm` while this reports true is re-asked rather than
+    // treated as a real failure. Null → no confusion awareness (a failed `rm`
+    // always falls through), which is the correct stock behaviour anyway.
+    public Func<bool>? IsConfused { get; set; }
 
     // Optional Paradigm one-shot re-fix hook (ParadigmPositionResolver.RequestResyncOnce).
     // Unlike TryResync, this bypasses the gate's own tier/awaiting bookkeeping
@@ -227,6 +265,7 @@ public sealed class EngineRecoveryGate
         ResetTier3Orchestration();
         _awaitingAuthoritative = false;
         _sysopLocateTried = false;
+        ResetResyncStage();
         CurrentTier = TierLevel.Tier1;
 
         Room? here = _tracker.State.CurrentRoom;
@@ -247,6 +286,7 @@ public sealed class EngineRecoveryGate
         _tier3.Clear();
         ResetTier3Orchestration();
         _awaitingAuthoritative = false;
+        ResetResyncStage();
         SetTier(TierLevel.Tier1, "detach");
     }
 
@@ -431,11 +471,14 @@ public sealed class EngineRecoveryGate
         {
             _log?.Log(LogSeverity.Warn, LogSource,
                 $"authoritative {key} not in active graph; falling back to heuristic backtrack");
-            OnAuthoritativeResyncFailed();
+            // `rm` answered — this isn't a confusion fumble, so don't re-ask (the
+            // reply would just name the same absent room); fall straight through.
+            HandleResyncFailure(retryable: false);
             return;
         }
 
         _awaitingAuthoritative = false;
+        ResetResyncStage();
         _anchor = key;
         _executedSinceAnchor.Clear();
         _tier3.Clear();
@@ -447,22 +490,76 @@ public sealed class EngineRecoveryGate
     }
 
     // An authoritative locator we were waiting on didn't land — a Paradigm `rm`
-    // that timed out, a sysop `sys st` that came back empty, or either of them
-    // naming a room the active graph doesn't contain. Drop the wait flag and
-    // fall back to the heuristic recovery ladder. The engine is already paused
-    // from the resync-wait, so the natural next rung is the Tier3 footprint
-    // backtrack — Tier2 is a non-paused watch we can't re-enter from a paused
-    // engine. Re-entering EscalateToTier3 can't re-ask the same locator: the
-    // Paradigm path is guarded by _awaitingAuthoritative (now false, but its own
-    // throttle holds) and the sysop path by its one-per-escalation flag.
-    public void OnAuthoritativeResyncFailed()
+    // that timed out, or a sysop `sys st` that came back empty, or either naming
+    // a room the active graph lacks. Drop the wait flag and route by which give-up
+    // boundary the resync was guarding. The engine is already paused from the
+    // resync-wait; a Tier2 non-paused watch can't be re-entered from here, so
+    // the fall-through is always the Tier3 footprint backtrack (or, for a
+    // terminal resync, the actual "Lost" abort).
+    public void OnAuthoritativeResyncFailed() => HandleResyncFailure(retryable: true);
+
+    // retryable is true for a `rm` that went UNANSWERED (the resolver's timeout) —
+    // on Paradigm that's a confusion fumble eating the command, so if we're
+    // confused we re-ask instead of giving up. It's false when `rm` DID answer but
+    // named a room the active map set lacks (NoteAuthoritativePosition's
+    // out-of-graph path): re-asking would just replay the same unusable room, so
+    // fall straight through to the heuristic / Lost routing.
+    private void HandleResyncFailure(bool retryable)
     {
         if (_engine is null) return;
         if (!_awaitingAuthoritative) return;
+
+        if (retryable
+            && IsConfused?.Invoke() == true
+            && _confusedResyncRetries < MaxConfusedResyncRetries
+            && TryResyncForced?.Invoke("`rm` eaten by a confusion fumble; re-asking") == true)
+        {
+            _confusedResyncRetries++;
+            _log?.Log(LogSeverity.Info, LogSource,
+                $"resync retry {_confusedResyncRetries}/{MaxConfusedResyncRetries}: `rm` unanswered while confused — "
+                + $"re-asking, holding {_engine.Name} (confusion is self-clearing)");
+            return;   // stay awaiting, same stage — the re-fired `rm` drives the next callback
+        }
+
         _awaitingAuthoritative = false;
+        ResyncStage stage = _resyncStage;
+        _resyncStage = ResyncStage.None;
+
+        if (stage == ResyncStage.Terminal)
+        {
+            // The last-resort `rm` before the "Lost" dialog also failed (no reply,
+            // or a room the active graph doesn't contain) — now it's genuinely
+            // Lost. Fall through to the real abort with the reason we deferred.
+            _log?.Log(LogSeverity.Warn, LogSource,
+                "terminal rm resync failed; declaring Lost");
+            DeclareLost(_pendingLostDetail ?? "rm resync failed");
+            return;
+        }
+
+        // BeforeBacktrack (or a NoteSuspectedMismatch resync, stage None): the
+        // pre-backtrack `rm` didn't land. Fall back exactly as the original
+        // post-resync path did — trust a still-Confirmed tracker if there is one,
+        // else run the heuristic backtrack — but do NOT re-enter EscalateToTier3,
+        // which would fire yet another `rm` and loop. The terminal FailTier3 gets
+        // the final `rm` shot instead.
         _log?.Log(LogSeverity.Warn, LogSource,
-            "authoritative resync failed; falling back to heuristic backtrack");
-        EscalateToTier3("authoritative resync failed");
+            "rm resync failed; falling back to heuristic recovery");
+        FallBackToHeuristicAfterResync("rm resync failed");
+    }
+
+    // Post-resync fallback: a Confirmed tracker at a graph-known room still wins
+    // (the stock-realm analogue), otherwise the heuristic backtrack runs. Split
+    // out so OnAuthoritativeResyncFailed reuses EscalateToTier3's non-`rm` steps
+    // without recursively re-attempting the `rm` that just failed.
+    private void FallBackToHeuristicAfterResync(string reason)
+    {
+        if (TryTrustConfirmedTracker(reason)) return;
+        // `rm` didn't land, but a sysop `sys st` is a different mechanism and may
+        // still answer — and it beats a backtrack that can't converge among
+        // identically-named rooms. Guarded one-per-escalation, so a sysop failure
+        // routes back here and falls through rather than looping.
+        if (TrySysopGroundTruth(reason)) return;
+        BeginHeuristicTier3(reason);
     }
 
     // Check before sending the engine's next planned step. Returns true
@@ -518,11 +615,49 @@ public sealed class EngineRecoveryGate
         // it — the stock-realm analogue of the Paradigm `rm` resync.
         if (TryTrustConfirmedTracker(reason)) return;
 
-        // Ground truth beats the reverse-walk outright, so ask for it before
-        // committing to one. Deliberately AFTER the confirmed-tracker shortcut:
-        // that path costs nothing and already resolves the easy case, and this
-        // one spends a command on the wire.
+        // Paradigm: before committing to the heuristic backtrack at all, ask the
+        // game where we are. `rm` is authoritative and cheap, and the backtrack
+        // is exactly the thing that ends in the "Lost" dialog when it can't
+        // converge — so on a realm that can just answer the question, don't guess.
+        // Deferred: pause and wait for the reply; a success re-anchors us (never
+        // entering Tier3), a failure falls through to BeginHeuristicTier3.
+        if (TryResyncBeforeBacktrack(reason)) return;
+
+        // Same argument one realm over: where the character has sysop powers,
+        // `sys st` answers the question outright, and the backtrack is the thing
+        // that ends in the "Lost" dialog when it can't converge. After the `rm`
+        // attempt, because on Paradigm that one is cheaper and already tried.
         if (TrySysopGroundTruth(reason)) return;
+
+        BeginHeuristicTier3(reason);
+    }
+
+    // Fire a forced `rm` and hold the engine for the reply, guarding the entry to
+    // the heuristic backtrack. Returns true when a request is in flight (caller
+    // must stop); false on stock realms / no wire / maze-owned `rm`, so the caller
+    // proceeds straight to the backtrack.
+    private bool TryResyncBeforeBacktrack(string reason)
+    {
+        if (_engine is null) return false;
+        if (_awaitingAuthoritative) return true;   // one already in flight — hold
+        if (TryResyncForced?.Invoke(reason) != true) return false;
+
+        _awaitingAuthoritative = true;
+        _resyncStage = ResyncStage.BeforeBacktrack;
+        _engine.PauseForRecovery($"rm resync before backtrack: {reason}");
+        _log?.Log(LogSeverity.Info, LogSource,
+            $"resync-before-backtrack: paused {_engine.Name}, asking `rm` before the heuristic backtrack — {reason}");
+        return true;
+    }
+
+    // The actual heuristic reverse-walk recovery: seed the footprint from the
+    // current observation and start backtracking. Reached when there's no
+    // authoritative `rm` to lean on (stock realm), or after a pre-backtrack `rm`
+    // failed to land. This is the body EscalateToTier3 used to inline.
+    private void BeginHeuristicTier3(string reason)
+    {
+        if (_engine is null) return;
+        if (CurrentTier == TierLevel.Tier3 && Tier3Active) return;   // already backtracking
 
         _log?.Log(LogSeverity.Warn, LogSource,
             $"Tier3.start: {reason} (engine={_engine.Name} anchor={(_anchor?.ToString() ?? "(none)")} executed={_executedSinceAnchor.Count} steps)");
@@ -576,6 +711,7 @@ public sealed class EngineRecoveryGate
         if (_graph.GetRoom(room.Key) is null) return false;
 
         _awaitingAuthoritative = false;
+        ResetResyncStage();
         _anchor = room.Key;
         _executedSinceAnchor.Clear();
         _tier3.Clear();
@@ -760,6 +896,7 @@ public sealed class EngineRecoveryGate
         _executedSinceAnchor.Clear();
         _tier3.Clear();
         ResetTier3Orchestration();
+        ResetResyncStage();
         SetTier(TierLevel.Tier1, "tier-3 recovered");
 
         // Re-confirm the tracker at the room the footprint resolved — unless it
@@ -777,12 +914,49 @@ public sealed class EngineRecoveryGate
         _engine.ResumeAfterRecovery(recovered);
     }
 
+    // The heuristic recovery ran out of road. On Paradigm, spend one last forced
+    // `rm` before the "Lost" dialog — the game can report our true room even when
+    // the footprint backtrack couldn't converge, so a client is only ever
+    // genuinely Lost when `rm` itself doesn't answer (or names a room the loaded
+    // map set doesn't contain). Only when there's no `rm` to lean on does this
+    // declare Lost outright (report paradigm-20260902-223159).
     private void FailTier3(string detail)
+    {
+        if (_engine is null) return;
+        if (TryTerminalResync(detail)) return;
+        DeclareLost(detail);
+    }
+
+    // Fire the last-resort forced `rm` before Lost. Returns true when the request
+    // is in flight (caller must stop and wait) — a success re-anchors us and
+    // resumes; a failure routes back through OnAuthoritativeResyncFailed, which
+    // declares Lost for real with the deferred detail. Returns false when no `rm`
+    // is available (stock realm / no wire / maze-owned), so the caller declares
+    // Lost immediately. Guarded on the stage so a failed terminal `rm` can't
+    // re-arm another one.
+    private bool TryTerminalResync(string detail)
+    {
+        if (_engine is null) return false;
+        if (_resyncStage == ResyncStage.Terminal) return false;   // already spent it this episode
+        if (_awaitingAuthoritative) return true;                   // one in flight — hold
+        if (TryResyncForced?.Invoke($"last resort before Lost: {detail}") != true) return false;
+
+        _resyncStage = ResyncStage.Terminal;
+        _pendingLostDetail = detail;
+        _awaitingAuthoritative = true;
+        _engine.PauseForRecovery($"last-resort rm before Lost: {detail}");
+        _log?.Log(LogSeverity.Warn, LogSource,
+            $"terminal resync: asking `rm` before declaring Lost — {detail}");
+        return true;
+    }
+
+    private void DeclareLost(string detail)
     {
         if (_engine is null) return;
         _log?.Log(LogSeverity.Warn, LogSource, $"Tier3.failed: {detail}");
         _tier3.Clear();
         ResetTier3Orchestration();
+        ResetResyncStage();
 
         // Capture the engine name BEFORE aborting. AbortFromRecoveryFailure
         // re-enters the gate synchronously — both engines reset themselves,
@@ -794,6 +968,13 @@ public sealed class EngineRecoveryGate
         // Stay in tier 3 visually; engine aborts; UI pops the dialog.
         _engine.AbortFromRecoveryFailure(detail);
         RecoveryFailed?.Invoke(new RecoveryFailedEvent(engineName, detail, lastGood));
+    }
+
+    private void ResetResyncStage()
+    {
+        _resyncStage = ResyncStage.None;
+        _pendingLostDetail = null;
+        _confusedResyncRetries = 0;
     }
 
     // ----- matcher delegates -----------------------------------------

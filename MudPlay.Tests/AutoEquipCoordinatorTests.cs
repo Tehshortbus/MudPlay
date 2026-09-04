@@ -225,21 +225,166 @@ public sealed class AutoEquipCoordinatorTests
         Assert.Equal(new[] { "default-set" }, applied);
     }
 
-    // Combat entry no longer auto-swaps to Default — a fight interrupting a rest
-    // leaves the pre-rest loadout on until recovery completes (per the user's rule).
+    // By default (SwapToDefaultOnCombat off) combat entry does NOT swap to Default —
+    // a fight interrupting a rest leaves the pre-rest loadout on until recovery
+    // completes (the long-standing rule).
     [Fact]
-    public void CombatEntry_DoesNotFireDefault()
+    public void CombatEntry_DoesNotFireDefault_WhenSwapOptionOff()
     {
         var player = new PlayerState { Position = PlayerPosition.Standing };
         EquipmentSettings cfg = Config(
             SetFor(EquipTriggerType.Default, enabled: true, "default-set"),
             SetFor(EquipTriggerType.PreRestHp, enabled: true, "hp-set"));
+        cfg.SwapToDefaultOnCombat = false;   // the default
+        var applied = new List<string>();
+
+        using var coord = new AutoEquipCoordinator(
+            player,
+            readEquipment: () => cfg,
+            hpGateAsserted: () => true,      // rest-gated, so only the flag keeps it inert
+            maGateAsserted: () => false,
+            applyBySetId: id => { applied.Add(id); return EquipResult.Applied; },
+            wornLoadoutKnown: () => true,
+            isAutoEnabled: () => true);
+
+        player.InCombat = true;
+        Assert.Empty(applied);
+    }
+
+    // ===== opt-in: swap to Default on a rest-interrupting fight (and back after) =====
+
+    // Flag on + rest-gated + a pre-rest swap set enabled: combat entry swaps to Default
+    // for the fight, and room-clear (still gated) swaps back to the pre-rest set the held
+    // gate wants so the resumed rest wears it.
+    [Fact]
+    public void SwapOnCombat_Enabled_HpGated_FiresDefaultOnEntry_ThenHpSetOnClear()
+    {
+        var player = new PlayerState { Position = PlayerPosition.Resting };
+        EquipmentSettings cfg = Config(
+            SetFor(EquipTriggerType.Default, enabled: true, "default-set"),
+            SetFor(EquipTriggerType.PreRestHp, enabled: true, "hp-set"));
+        cfg.SwapToDefaultOnCombat = true;
+        var applied = new List<string>();
+        bool hpGate = true;
+
+        using var coord = new AutoEquipCoordinator(
+            player,
+            readEquipment: () => cfg,
+            hpGateAsserted: () => hpGate,
+            maGateAsserted: () => false,
+            applyBySetId: id => { applied.Add(id); return EquipResult.Applied; },
+            wornLoadoutKnown: () => true,
+            isAutoEnabled: () => true);
+
+        player.InCombat = true;
+        Assert.Equal(new[] { "default-set" }, applied);
+
+        // Room clears, still below rest-max (gate held) → swap back to the HP rest set.
+        applied.Clear();
+        player.InCombat = false;
+        Assert.Equal(new[] { "hp-set" }, applied);
+    }
+
+    // A mana rest interrupted: swap-back targets the Pre-rest Mana set.
+    [Fact]
+    public void SwapOnCombat_Enabled_MaGated_SwapsBackToManaSetOnClear()
+    {
+        var player = new PlayerState { Position = PlayerPosition.Meditating };
+        EquipmentSettings cfg = Config(
+            SetFor(EquipTriggerType.Default, enabled: true, "default-set"),
+            SetFor(EquipTriggerType.PreRestMana, enabled: true, "mana-set"));
+        cfg.SwapToDefaultOnCombat = true;
         var applied = new List<string>();
 
         using var coord = new AutoEquipCoordinator(
             player,
             readEquipment: () => cfg,
             hpGateAsserted: () => false,
+            maGateAsserted: () => true,
+            applyBySetId: id => { applied.Add(id); return EquipResult.Applied; },
+            wornLoadoutKnown: () => true,
+            isAutoEnabled: () => true);
+
+        player.InCombat = true;
+        Assert.Equal(new[] { "default-set" }, applied);
+
+        applied.Clear();
+        player.InCombat = false;
+        Assert.Equal(new[] { "mana-set" }, applied);
+    }
+
+    // Recovered DURING the fight (gates cleared) → room-clear stays in Default, no
+    // swap back to a rest set.
+    [Fact]
+    public void SwapOnCombat_Enabled_RecoveredDuringFight_StaysInDefault()
+    {
+        var player = new PlayerState { Position = PlayerPosition.Resting };
+        EquipmentSettings cfg = Config(
+            SetFor(EquipTriggerType.Default, enabled: true, "default-set"),
+            SetFor(EquipTriggerType.PreRestHp, enabled: true, "hp-set"));
+        cfg.SwapToDefaultOnCombat = true;
+        var applied = new List<string>();
+        bool hpGate = true;
+
+        using var coord = new AutoEquipCoordinator(
+            player,
+            readEquipment: () => cfg,
+            hpGateAsserted: () => hpGate,
+            maGateAsserted: () => false,
+            applyBySetId: id => { applied.Add(id); return EquipResult.Applied; },
+            wornLoadoutKnown: () => true,
+            isAutoEnabled: () => true);
+
+        player.InCombat = true;
+        Assert.Equal(new[] { "default-set" }, applied);
+
+        // Healed past rest-max mid-fight — the gate cleared. Room clear keeps Default.
+        applied.Clear();
+        hpGate = false;
+        player.InCombat = false;
+        Assert.Empty(applied);
+    }
+
+    // Flag on but NOT rest-gated (a plain fight, not interrupting a rest) → no swap.
+    [Fact]
+    public void SwapOnCombat_Enabled_NotRestGated_DoesNothing()
+    {
+        var player = new PlayerState { Position = PlayerPosition.Standing };
+        EquipmentSettings cfg = Config(
+            SetFor(EquipTriggerType.Default, enabled: true, "default-set"),
+            SetFor(EquipTriggerType.PreRestHp, enabled: true, "hp-set"));
+        cfg.SwapToDefaultOnCombat = true;
+        var applied = new List<string>();
+
+        using var coord = new AutoEquipCoordinator(
+            player,
+            readEquipment: () => cfg,
+            hpGateAsserted: () => false,   // not recovering
+            maGateAsserted: () => false,
+            applyBySetId: id => { applied.Add(id); return EquipResult.Applied; },
+            wornLoadoutKnown: () => true,
+            isAutoEnabled: () => true);
+
+        player.InCombat = true;
+        Assert.Empty(applied);
+        player.InCombat = false;
+        Assert.Empty(applied);
+    }
+
+    // Flag on + rest-gated but NO pre-rest swap set enabled → nothing swapped us out
+    // of Default, so there's nothing to swap for the fight.
+    [Fact]
+    public void SwapOnCombat_Enabled_NoRestSetEnabled_DoesNothing()
+    {
+        var player = new PlayerState { Position = PlayerPosition.Resting };
+        EquipmentSettings cfg = Config(SetFor(EquipTriggerType.Default, enabled: true, "default-set"));
+        cfg.SwapToDefaultOnCombat = true;
+        var applied = new List<string>();
+
+        using var coord = new AutoEquipCoordinator(
+            player,
+            readEquipment: () => cfg,
+            hpGateAsserted: () => true,
             maGateAsserted: () => false,
             applyBySetId: id => { applied.Add(id); return EquipResult.Applied; },
             wornLoadoutKnown: () => true,

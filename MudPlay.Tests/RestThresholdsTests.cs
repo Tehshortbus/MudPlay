@@ -34,6 +34,21 @@ public sealed class RestThresholdsTests
     }
 
     [Fact]
+    public void CapsTargetAtLiveMax_WhenStatScreenMaxWentStaleHigh()
+    {
+        // report paradigm-20260903-110346: a medi/pre-rest swap lowered the pool, so the
+        // stat-screen max (realMax) is stale-HIGH (255) while the live gear-swap-aware
+        // max (liveMax=180, from EquipmentMaxPoolSync) is the true reachable ceiling. The
+        // target must cap at 180 so HP=180 counts as fully rested — else the gate never
+        // clears and the walker parks "Resting (Low HP)" at full.
+        (int trigger, int max) = RestThresholds.Resolve(
+            ThresholdMode.Percentage, 80, 95,
+            defaultMax: 255, realMax: 255, liveMax: 180);
+        Assert.Equal(180, max);       // capped at the live ceiling, not the stale-high 255
+        Assert.Equal(180, trigger);   // 80% of 255 = 204, capped at 180
+    }
+
+    [Fact]
     public void FallsBackToRealMax_ThenLiveMax_WhenDefaultUnknown()
     {
         // No default-set value → anchor to the authoritative real max.

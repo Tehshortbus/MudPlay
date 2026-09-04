@@ -53,6 +53,7 @@ public sealed class ItemNameStore
     // confirm a flagged item is actually a container (ItemType == 8) before
     // sending open (see ItemTypeOf).
     private readonly Dictionary<int, int> _itemTypeByNumber = new();
+    private readonly Dictionary<int, int> _priceByNumber = new();
 
     // Item Number → WeaponType / ArmourType (MDB subtype codes, meaningful only
     // when ItemType is Weapon / Armour respectively). Lets Roomba Mode's room
@@ -147,6 +148,12 @@ public sealed class ItemNameStore
     // the active set. Used by the auto-open engine's container gate.
     public int? ItemTypeOf(int number)
         => _itemTypeByNumber.TryGetValue(number, out int t) ? t : null;
+
+    // Base Price (buy cost before shop markup) of the item id, or null when the id
+    // isn't in the active set. Used to pick the cheapest counter among a hazard's
+    // any-of options when the route picker offers "obtain, then cross".
+    public int? PriceOf(int number)
+        => _priceByNumber.TryGetValue(number, out int p) ? p : null;
 
     // Subtype accessors (WeaponType / ArmourType / Worn). The int? here means "id
     // known?" — NOT "is this the right category?": the population loop writes an
@@ -257,6 +264,7 @@ public sealed class ItemNameStore
         _encumByNumber.Clear();
         _wornByNumber.Clear();
         _itemTypeByNumber.Clear();
+        _priceByNumber.Clear();
         _weaponTypeByNumber.Clear();
         _armourTypeByNumber.Clear();
         _gettableByNumber.Clear();
@@ -305,6 +313,7 @@ public sealed class ItemNameStore
             _wornByNumber[number] = worn;
             int itemType = ReadInt(row, "ItemType");
             _itemTypeByNumber[number] = itemType;
+            _priceByNumber[number] = ReadInt(row, "Price");
             _weaponTypeByNumber[number] = ReadInt(row, "WeaponType");
             _armourTypeByNumber[number] = ReadInt(row, "ArmourType");
             _gettableByNumber[number] = ReadGettable(row);

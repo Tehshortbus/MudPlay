@@ -28,6 +28,9 @@ public sealed class BossDef
     public bool InParadigm { get; set; }
     public BossRespawnType RespawnType { get; set; } = BossRespawnType.Timed;
     public bool StopBefore { get; set; }
+    // When set, the moment this boss dies the client blindly fires a `get <item>`
+    // for every item in its game-data drop table — no room re-parse. Default off.
+    public bool GrabAll { get; set; }
     public int? RespawnHoursOverride { get; set; }
     public string Notes { get; set; } = string.Empty;
     // Whether this boss appears in the Player Workshop Bosses table. Default true;
@@ -42,7 +45,7 @@ public sealed class BossDef
     {
         Name = Name, MonsterNumber = MonsterNumber, Rooms = new List<string>(Rooms),
         InStock = InStock, InParadigm = InParadigm, RespawnType = RespawnType,
-        StopBefore = StopBefore, RespawnHoursOverride = RespawnHoursOverride,
+        StopBefore = StopBefore, GrabAll = GrabAll, RespawnHoursOverride = RespawnHoursOverride,
         Notes = Notes, ShowInTable = ShowInTable, Removed = Removed,
     };
 
@@ -53,7 +56,8 @@ public sealed class BossDef
         && MonsterNumber == seed.MonsterNumber
         && InStock == seed.InStock && InParadigm == seed.InParadigm
         && RespawnType == seed.RespawnType
-        && StopBefore == seed.StopBefore && RespawnHoursOverride == seed.RespawnHoursOverride
+        && StopBefore == seed.StopBefore && GrabAll == seed.GrabAll
+        && RespawnHoursOverride == seed.RespawnHoursOverride
         && string.Equals(Notes, seed.Notes, StringComparison.Ordinal)
         && ShowInTable == seed.ShowInTable && !Removed
         && Rooms.SequenceEqual(seed.Rooms, StringComparer.OrdinalIgnoreCase);

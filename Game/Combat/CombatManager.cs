@@ -1708,6 +1708,15 @@ public sealed partial class CombatManager : IDisposable
         _debuffAwaitingConfirm = null;
     }
 
+    // The room is confirmed genuinely CLEARED of all hostiles — the player just entered
+    // a rest posture, and a rest only starts once nothing is left to fight. Reset the
+    // AoE area-debuff room tags so a same-room RESPAWN after this is debuffed as a fresh
+    // wave (report paradigm-20260903-070438). Distinct from NotePreMove (a physical
+    // move) and from the mid-fight wave-clear roster reset, which keeps the tags for
+    // hidden same-species survivors (report paradigm-20260902-160110). Wired in
+    // AppServices to the PlayerState.Position rest edge.
+    public void NoteRoomClearedByRest() => _spellChooser.ResetAreaDebuffTags();
+
     // Re-arm the surprise round for a fresh hide established in the current room —
     // the stationary hidden opener (a monster walks into a room the character is
     // hidden in). Unlike PrepBackstabForMove there's NO gear swap: equipping breaks

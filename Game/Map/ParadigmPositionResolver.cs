@@ -116,14 +116,21 @@ public sealed class ParadigmPositionResolver : IDisposable
     // was (or already is) in flight — the caller should pause and wait for the
     // resolver to re-anchor. Returns false on stock realms, when throttled, or
     // when no wire sender is bound, so the caller keeps its heuristic path.
-    public bool TryRequestResync(string reason)
+    //
+    // force skips the anti-storm throttle (but still coalesces on an in-flight
+    // request): a caller about to give up entirely — the recovery gate before it
+    // escalates to the heuristic backtrack or pops the "Lost" dialog — would
+    // rather spend one `rm` than fail out, even if a resync fired inside the
+    // throttle window (issue: paradigm-20260902-223159, a Paradigm client went
+    // "Lost — footprint exhausted" while `rm` could have relocated it).
+    public bool TryRequestResync(string reason, bool force = false)
     {
         if (_gameData.ActiveRealm != RealmType.ParaMud) return false;
         if (_wireSender is null) return false;
         if (_inFlight) return true;   // already waiting on a reply — coalesce
 
         DateTimeOffset now = DateTimeOffset.UtcNow;
-        if (now - _lastRequestAtUtc < MinResyncInterval)
+        if (!force && now - _lastRequestAtUtc < MinResyncInterval)
         {
             _log?.Log(LogSeverity.Info, LogSource,
                 $"resync throttled ({(now - _lastRequestAtUtc).TotalMilliseconds:F0}ms since last); reason: {reason}");
