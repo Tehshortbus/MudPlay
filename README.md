@@ -2,11 +2,12 @@
 
 <!-- current-version:start -->
 > **Version 3.51.0**
-> - Reads the game's `sysop status` room dump for characters flagged with sysop / goto powers, and uses its exact map/room number to recover the client's position instead of walking backwards to work it out
+> - New **Sysop powers** on Settings → BBS + Display: the old single "sysop / goto powers" checkbox is now a **Sysop map** / **Sysop status** / **Sysop god lives** set (per-character, per-BBS). None of them relate to `@goto`, which stays gated by the per-player Move-player permission
+> - **Sysop status** reads the game's `sys st` room dump to recover the client's position when the walker gets lost — and it now fires at every point Paradigm's `rm` re-anchor does (first mismatch, engine stall, the tier-3 give-up boundary, the terminal pre-Lost shot, the no-engine drift gap, `@where`, and a blocked loop/replan), throttled so the heavier dump doesn't flood the screen
+> - **Sysop god lives**: on the character's own death, auto-sends `sys god <name> add life` to recover the life just spent
 > - A tracker that goes lost, or a loop blocked because it lost track of where it is, re-anchors from that instead of waiting for an "I am here" click
 > - Fixed a loop hanging forever when a move went out and never confirmed, and one sitting idle after recovery had already succeeded
 > - Sysop status stays trusted once it has answered even once; before that, an unanswered probe backs off and retries rather than switching off for the session
-> - Recovery attempts are spaced out, so a reroute that instantly re-blocks can't spend the whole retry budget in one second
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

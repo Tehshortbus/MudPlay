@@ -398,7 +398,13 @@ public sealed class EngineRecoveryGate
         _log?.Log(LogSeverity.Info, LogSource,
             $"NoteSuspectedMismatch (tier={CurrentTier}): {reason}");
 
+        // Ask the game before climbing the heuristic ladder — Paradigm `rm` first
+        // (realm-gated), then a sysop `sys st` where that's available (stock realms
+        // with the power). The sysop attempt is bounded to once per lost-episode by
+        // TrySysopGroundTruth's _sysopLocateTried guard, so mirroring rm's
+        // first-mismatch eagerness here can't flood the screen with room dumps.
         if (TryParadigmResync(reason)) return;
+        if (TrySysopGroundTruth(reason)) return;
 
         if (CurrentTier == TierLevel.Tier1)
             SetTier(TierLevel.Tier2, $"mismatch: {reason}");
@@ -429,7 +435,10 @@ public sealed class EngineRecoveryGate
         _log?.Log(LogSeverity.Warn, LogSource,
             $"NoteEngineStalled (tier={CurrentTier}): {reason}");
 
+        // Ask the game on a wedged engine too: `rm` if Paradigm, else a sysop
+        // `sys st`, before falling to the tier-3 heuristic ladder.
         if (TryParadigmResync(reason)) return;
+        if (TrySysopGroundTruth(reason)) return;
         EscalateToTier3($"engine stalled: {reason}");
     }
 
@@ -924,6 +933,12 @@ public sealed class EngineRecoveryGate
     {
         if (_engine is null) return;
         if (TryTerminalResync(detail)) return;
+        // Mirror the terminal `rm` with a sysop `sys st` last resort — but only if
+        // one hasn't already been spent this episode (TrySysopGroundTruth's own
+        // _sysopLocateTried guard), so a locate that already missed can't loop here.
+        // On the normal stock+sysop path sysop has already tried, so this no-ops and
+        // we declare Lost; it only fires on a path that skipped the earlier attempt.
+        if (TrySysopGroundTruth(detail)) return;
         DeclareLost(detail);
     }
 

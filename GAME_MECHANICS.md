@@ -3613,6 +3613,28 @@ Hidden items: 1845(0) 14(0) 894(0) 223(0) 879(0) 870(0) 897(1) 876(1) 402(0) 430
 - The lists **wrap at the terminal margin mid-token** — `47` + `0(0)` is item `470`, `430` +
   `(0)` splits an id from its value. Rejoin the block before tokenizing.
 - The dump carries **no `Obvious exits:` line**, so it is not mistakable for a room display.
+- **[CONFIRMED, live capture 2026-09-02, report stock-20260902-203631]** A full `sys st` dump is
+  ~8–9 lines (`Room N  Map: M`, `This room as Area:`, `Min/Max/Group/Lair`, `Room Max/Current/Last
+  Killed/Delay`, controlling-room, `Monsters:`, `Items:`, `Hidden items:`) — far heavier than
+  Paradigm's one-line `room` reply, and the item/hidden lists grow with room contents. So the client
+  **throttles** repeated locates (the give-up boundary fires unthrottled, but the eager tier-2 /
+  loop-one-shot / no-engine / `@where` mirror sites reuse the 15s locate throttle) to keep the dump
+  from flooding the screen. Only `Room N  Map: M` is needed for position; the rest is future roomba
+  content-sync fodder.
+
+### Other sysop powers *([CONFIRMED] 2026-09-04, user)*
+- **`sys god <name> add life`** — adds one life to the named character. The client's **Sysop god
+  lives** power auto-sends `sys god <own-name> add life` the moment it observes the character's own
+  death, to recover the life just spent (one send per death). Requires real sysop/god access — the
+  command is refused otherwise.
+- **`sys map`** — draws a text area map (no map/room numbers). The **Sysop map** power records that
+  the client may use it; reading it for location is a later addition (format capture pending).
+- **Nav-recovery composition:** the sysop `sys st` position locate mirrors the Paradigm `rm`
+  re-anchor at **every** point `rm` fires — first mismatch, engine stall, the tier-3 give-up ladder,
+  the terminal pre-Lost shot, the no-engine drift gap, `@where`, and a blocked loop/replan — sharing
+  the gate's `NoteAuthoritativePosition` / `OnAuthoritativeResyncFailed` consumers. On Paradigm `rm`
+  wins each site (realm-gated); on a stock realm with the power `sys st` fills in. (Maze-solve stays
+  `rm`-only — the solver drives its own relocalization.)
 
 ## MegaMUD `messages.md` format *([CONFIRMED] 2026-08-17, user + decode of both stock/paramud files)*
 

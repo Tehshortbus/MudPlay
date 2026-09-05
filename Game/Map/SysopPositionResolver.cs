@@ -178,6 +178,39 @@ public sealed class SysopPositionResolver : IDisposable
         return true;
     }
 
+    // One-shot variant that mirrors ParadigmPositionResolver.RequestResyncOnce: a
+    // caller (a loop blocked at source, an @where re-fix) gets its OWN onResolved /
+    // onFailed invoked exactly once for this locate, on top of the gate's global
+    // re-anchor consumers. Returns false when no locate can start (capability off /
+    // throttled / suppressed) so the caller falls back immediately. Throttled by
+    // default (forRecovery: false) — the heavier `sys st` shouldn't fire as freely
+    // as Paradigm's one-line `rm`.
+    public bool RequestLocateOnce(string reason, Action<RoomKey> onResolved, Action onFailed,
+        bool forRecovery = false)
+    {
+        ArgumentNullException.ThrowIfNull(onResolved);
+        ArgumentNullException.ThrowIfNull(onFailed);
+        if (!TryRequestLocate(reason, forRecovery)) return false;
+
+        Action<RoomKey>? resolved = null;
+        Action? failed = null;
+        resolved = key =>
+        {
+            PositionResolved -= resolved;
+            LocateFailed -= failed;
+            onResolved(key);
+        };
+        failed = () =>
+        {
+            PositionResolved -= resolved;
+            LocateFailed -= failed;
+            onFailed();
+        };
+        PositionResolved += resolved;
+        LocateFailed += failed;
+        return true;
+    }
+
     private void SendProbe(string reason)
     {
         _inFlight = true;
