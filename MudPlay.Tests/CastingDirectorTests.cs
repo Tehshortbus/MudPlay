@@ -574,6 +574,11 @@ public sealed class CastingDirectorTests
         public bool AutoBlessEnabled { get; set; } = true;
         public bool AutoHealRestEnabled { get; set; } = true;
 
+        /// <summary>Reported to the director as the combat-tick source. When true, an
+        /// <see cref="CastingDirector.OnCombatTick"/> pass treats HP as unconfirmed for
+        /// the round and holds the non-heal categories (cure / buff / debuff).</summary>
+        public bool CombatTickDamageDriven { get; set; }
+
         /// <summary>Extra unified-list buffs (party / member / whole-party) beyond the
         /// self-bless the tests set via <see cref="Spells"/>. Rarely used here.</summary>
         public BuffSettings PartyBuffs { get; } = new();
@@ -616,6 +621,7 @@ public sealed class CastingDirectorTests
             Director.SetAutoBlessGate(() => AutoBlessEnabled);
             Director.SetTriggeredRestGate(() => TriggeredRest);
             Director.SetBuffStripRoomGate(() => BuffStripRoom);
+            Director.SetCombatTickSource(() => CombatTickDamageDriven);
             Director.SetClock(() => Now);
             // Self buffs now live in the unified list. Fold the tests' self-bless
             // config (Spells.BlessSlots / WhenHp/MaFull) into it at read time, exactly
@@ -908,6 +914,112 @@ public sealed class CastingDirectorTests
 
         Assert.Single(h.CastsSent);
         Assert.Equal("bless", h.CastsSent[0]);
+    }
+
+    // ----- Stale-HP guard: hold non-heal casts on a damage-driven tick ----
+    // A combat tick fired off a server damage line runs before that round's
+    // prompt refreshes HP, so _state.Hp is one round stale. Holding the
+    // non-heal categories there keeps the round's one between-round slot open
+    // for a heal that becomes due the instant the prompt lands (report
+    // paradigm-20260904-214056). AutoBless/AutoHealRest are toggled off during
+    // State setup so the reactive Evaluate those assignments trigger doesn't
+    // fire the cast before OnCombatTick — the pass under test.
+
+    [Fact]
+    public void Buff_OnDamageDrivenCombatTick_Held()
+    {
+        using CureHarness h = new();
+        h.AutoBlessEnabled = false;              // no buff during setup's reactive passes
+        h.State.InCombat = true;
+        h.Spells.SelfBlessDuringCombat = true;
+        h.Spells.BlessSlots[1] = "bless";
+        h.Health.BlessIfAboveMa = 50;
+        h.State.MaxMa = 100;
+        h.State.Ma = 80;                          // HP healthy (200/200) → no heal contends
+        h.AutoBlessEnabled = true;                // now eligible, not yet evaluated
+        h.CombatTickDamageDriven = true;
+
+        h.Director.OnCombatTick();                // damage-driven tick — HP unconfirmed
+
+        Assert.Empty(h.CastsSent);                // buff held
+    }
+
+    [Fact]
+    public void Buff_OnTimerFallbackCombatTick_Casts()
+    {
+        // Same setup, but a timer-fallback tick (not damage-driven) is HP-fresh,
+        // so the buff fires normally — proves the guard is tick-source-specific.
+        using CureHarness h = new();
+        h.AutoBlessEnabled = false;
+        h.State.InCombat = true;
+        h.Spells.SelfBlessDuringCombat = true;
+        h.Spells.BlessSlots[1] = "bless";
+        h.Health.BlessIfAboveMa = 50;
+        h.State.MaxMa = 100;
+        h.State.Ma = 80;
+        h.AutoBlessEnabled = true;
+        h.CombatTickDamageDriven = false;
+
+        h.Director.OnCombatTick();
+
+        Assert.Single(h.CastsSent);
+        Assert.Equal("bless", h.CastsSent[0]);
+    }
+
+    [Fact]
+    public void Heal_OnDamageDrivenCombatTick_StillFires()
+    {
+        // Heals are NOT held on a stale tick: a stale-low read heals correctly,
+        // and a stale-high read simply doesn't fire (the prompt catches it). Here
+        // HP reads low, so the heal must fire even on a damage-driven tick.
+        using CureHarness h = new();
+        h.AutoHealRestEnabled = false;            // no heal during setup's reactive passes
+        h.State.InCombat = true;
+        h.Spells.MajorHealSpell = "grhe";
+        h.Health.MajorHealCombatTrigger = 40;
+        h.State.MaxHp = 100;
+        h.State.Hp = 30;                          // 30% < 40% → heal due
+        h.AutoHealRestEnabled = true;
+        h.CombatTickDamageDriven = true;
+
+        h.Director.OnCombatTick();
+
+        Assert.Single(h.CastsSent);
+        Assert.Equal("grhe", h.CastsSent[0]);
+    }
+
+    [Fact]
+    public void StaleDamageTick_HoldsBuff_ThenPromptDrivesHeal()
+    {
+        // Full incident replay (paradigm-20260904-214056): a due armour buff on a
+        // damage-driven tick reads HP=254 (stale-healthy), so it must be HELD; when
+        // the round's prompt lands with the real HP=117, the reactive Evaluate fires
+        // the heal into the slot the buff correctly left open.
+        using CureHarness h = new();
+        h.AutoBlessEnabled = false;
+        h.AutoHealRestEnabled = true;
+        h.State.InCombat = true;
+        h.Spells.SelfBlessDuringCombat = true;
+        h.Spells.BlessSlots[1] = "uarm";
+        h.Health.BlessIfAboveMa = 50;
+        h.Spells.MajorHealSpell = "grhe";
+        h.Health.MajorHealCombatTrigger = 75;     // 75% of 257 ≈ 192
+        h.State.MaxMa = 330;
+        h.State.Ma = 300;
+        h.State.MaxHp = 257;
+        h.State.Hp = 254;                          // stale-healthy: 254 > 192, no heal due
+        h.AutoBlessEnabled = true;
+        h.CombatTickDamageDriven = true;
+
+        h.Director.OnCombatTick();
+        Assert.Empty(h.CastsSent);                 // buff held, heal not due on stale read
+
+        // The round's prompt lands with the real HP — the reactive Evaluate it
+        // triggers runs on fresh HP and the heal wins the slot the buff left open.
+        h.State.Hp = 117;                          // 117 < 192 → major heal due
+
+        Assert.Single(h.CastsSent);
+        Assert.Equal("grhe", h.CastsSent[0]);      // the heal, not the buff
     }
 
     [Fact]

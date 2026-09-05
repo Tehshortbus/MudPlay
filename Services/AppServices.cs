@@ -3599,6 +3599,10 @@ public sealed class AppServices
         // round cadence. Subscribed BEFORE CastDirector.OnCombatTick below so the slot
         // is freed before this round's between-round evaluation runs.
         Tick.CombatTickElapsed += CastDirector.NotifyRoundComplete;
+        // Tell CastDirector whether the tick it's handling was fired by a server combat
+        // line (HP not yet refreshed by the round's prompt) vs the 5s timer fallback, so
+        // it can hold its non-heal casts on a stale-HP tick (report paradigm-20260904-214056).
+        CastDirector.SetCombatTickSource(() => Tick.LastCombatTickWasDamageDriven);
         Tick.CombatTickElapsed += CastDirector.OnCombatTick;
         // Out of combat the combat tick doesn't free-run (it's only anchored once a
         // combat line lands), so drive the between-round loop off the 1 s heartbeat

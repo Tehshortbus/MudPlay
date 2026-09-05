@@ -3317,6 +3317,28 @@ glass jug               5               2 gold crowns
     the Buff Watchdog shows that self-buff "covered by <party buff>". Only whole-party covers count (a
     single-target party buff can't cover self).
 
+### Combat round output order — damage lines precede the prompt, so HP lags a round *([CONFIRMED] 2026-09-05, user + report `paradigm-20260904-214056`)*
+
+A combat round's server output arrives as a burst: the **damage / hit / miss lines first**, then the round's
+**prompt** (`[HP=.../MA=...]`) — and **only the prompt carries the post-round HP/MA**. So between "the hit
+landed" and "the prompt parsed," the client's `PlayerState.Hp` still holds the *previous* round's value.
+
+- **Client encoding (load-bearing).** The between-round cast heartbeat, `TickEngine.CombatTickElapsed`, is
+  fired *by the damage lines themselves* (`RecordCombatTick`, debounced to the round's first combat line) as
+  well as by the 5 s timer fallback. So a damage-line-driven tick runs `CastingDirector.OnCombatTick` →
+  `Evaluate` **during the burst, before the round's prompt refreshes HP** — the between-round decision sees
+  stale HP. Report `paradigm-20260904-214056`: a round chunked the player 254 → 117, but the tick fired the
+  between-round decision while HP still read 254, so it spent the round's one slot on a due **armour buff**
+  (looked safe at "254") instead of a heal; the player died two rounds later. The program log's
+  `Buffing fired ... hp=254/257` is the *stale* read — matching the pre-burst prompt — while the wire shows
+  the buff landing at `[HP=117/MA=286]`.
+- **Fix (v3.50.10).** `TickEngine` now flags whether the tick in flight is damage-line-driven
+  (`LastCombatTickWasDamageDriven`); on such a tick `CastingDirector` **holds the non-heal survival categories
+  (cure / buff / debuff)** so the round's slot isn't spent on unconfirmed HP. Heals stay eligible — they're
+  safe on the stale read (a stale-high read simply doesn't fire) and the prompt's own reactive `Evaluate`
+  (fired when HP changes) then drives the real heal on fresh HP. The timer-fallback tick and out-of-combat
+  heartbeat are HP-fresh, so they're unaffected.
+
 ## Debuff slot spells — energy + targeting *([CONFIRMED] 2026-08-17, user + game-data trace, Paradigm 1.9.1)*
 
 The Settings → Combat **debuff slots** (single-target debuff + AoE debuff) hold *between-round*

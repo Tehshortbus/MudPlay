@@ -55,6 +55,14 @@ public sealed partial class TickEngine : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(TimeToNextCombatTick))]
     private DateTimeOffset? _lastCombatTick;
 
+    // Whether the CombatTickElapsed invocation in flight was driven by a server combat
+    // line (RecordCombatTick) rather than the 5 s timer fallback. Set immediately before
+    // each Invoke, so a synchronous subscriber reads the current tick's source. A
+    // damage-line-driven tick fires DURING the round's line burst — before the round's
+    // prompt refreshes HP — so a between-round decision on it runs on stale HP;
+    // CastingDirector reads this to hold its non-heal casts until a fresh-HP pass.
+    public bool LastCombatTickWasDamageDriven { get; private set; }
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(TimeToNextHpRegenTick))]
     private DateTimeOffset? _lastHpRegenTick;
@@ -139,7 +147,11 @@ public sealed partial class TickEngine : ObservableObject, IDisposable
         bool fresh = LastCombatTick is null
             || now - LastCombatTick.Value >= TimeSpan.FromMilliseconds(250);
         LastCombatTick = now;
-        if (fresh) CombatTickElapsed?.Invoke();
+        if (fresh)
+        {
+            LastCombatTickWasDamageDriven = true;
+            CombatTickElapsed?.Invoke();
+        }
     }
 
     private void OnTimerTick()
@@ -156,6 +168,9 @@ public sealed partial class TickEngine : ObservableObject, IDisposable
         while (LastCombatTick is { } combat && now - combat >= CombatTickInterval)
         {
             LastCombatTick = combat + CombatTickInterval;
+            // Timer-fallback tick: no round burst is in flight, so the last prompt's HP
+            // is current — mark this tick HP-fresh for the between-round decision.
+            LastCombatTickWasDamageDriven = false;
             CombatTickElapsed?.Invoke();
         }
 
