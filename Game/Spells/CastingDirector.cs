@@ -115,6 +115,12 @@ public sealed class CastingDirector : IDisposable
     // but TryCast still returns true and arms the recast timer, so an ungated loop
     // (now heartbeat-driven every 1s) would "cast" phantom buffs into a dead socket.
     private Func<bool>? _isConnected;
+    // Reports whether the combat tick currently firing OnCombatTick was driven by a
+    // server combat line (TickEngine.RecordCombatTick) rather than the 5 s timer
+    // fallback. A damage-line-driven tick fires DURING the round's line burst, before
+    // the round's prompt has refreshed HP — so _state.Hp still holds the previous
+    // round's value. Null (unwired, tests) = treat every tick as fresh.
+    private Func<bool>? _combatTickDamageDriven;
     private Func<string, long?>? _itemCastDuration;
     private Func<string, bool>? _executeItemCast;
     private Func<string, int?>? _itemCastManaCost;
@@ -169,6 +175,17 @@ public sealed class CastingDirector : IDisposable
     // NOT *Combat Off*, which fires per kill and would re-open the slot mid-round in a
     // multi-mob fight). Never consulted out of combat, where no per-round cap applies.
     private bool _betweenRoundSlotUsed;
+
+    // True only for the duration of a single Evaluate driven by a damage-line combat
+    // tick (set in OnCombatTick, cleared in its finally). While set, the non-heal
+    // survival categories (cure / buff / debuff) are skipped: HP is unconfirmed for
+    // this round (the prompt hasn't landed), so spending the round's one between-round
+    // slot on a non-heal could pre-empt a life-threat heal that becomes due the instant
+    // the prompt arrives — report paradigm-20260904-214056, where an armour buff fired
+    // on a stale HP=254 read while the player was actually at 117 and died two rounds
+    // later. Heals stay eligible (safe on the stale read; the prompt's reactive Evaluate
+    // fires the real one). Always false for reactive / idle / timer-fallback passes.
+    private bool _hpUnconfirmedThisPass;
 
     // A mana-regen roll-spell reroll the reroller staged (last roll below its
     // threshold). It's offered by PickSelfBuff at PriorityBuffing and cast through
@@ -305,8 +322,23 @@ public sealed class CastingDirector : IDisposable
                readSpells, readHealth, readPartySettings: null,
                isEnabled, log) { }
 
-    // Hook to TickEngine.CombatTickElapsed — drives between-round evaluations.
-    public void OnCombatTick() => Evaluate();
+    // Wire the "is this combat tick damage-line-driven?" probe (TickEngine). While it
+    // reads true, OnCombatTick's pass treats _state.Hp as unconfirmed for the round and
+    // holds the non-heal categories. Optional — unset means every tick is treated as
+    // HP-fresh (the pre-guard behaviour).
+    public void SetCombatTickSource(Func<bool> isDamageDriven) =>
+        _combatTickDamageDriven = isDamageDriven;
+
+    // Hook to TickEngine.CombatTickElapsed — drives between-round evaluations. A tick
+    // fired straight off a server combat line runs before the round's prompt refreshes
+    // HP, so flag the pass as HP-unconfirmed and let RunDecisionPass hold the non-heal
+    // categories until a fresh-HP pass (the imminent prompt's reactive Evaluate).
+    public void OnCombatTick()
+    {
+        _hpUnconfirmedThisPass = _combatTickDamageDriven?.Invoke() ?? false;
+        try { Evaluate(); }
+        finally { _hpUnconfirmedThisPass = false; }
+    }
 
     // Hook to TickEngine.HeartbeatElapsed (1 s) — drives the SAME between-round
     // decision loop while OUT of combat. The combat tick only free-runs once a combat
@@ -1144,8 +1176,27 @@ public sealed class CastingDirector : IDisposable
         // every heartbeat poll.
         LogDueQueue(spells, health, partySettings, healRestEnabled, blessEnabled);
 
+        // Stale-HP guard (see _hpUnconfirmedThisPass): when this pass is driven by a
+        // damage-line combat tick, _state.Hp still holds the previous round's value —
+        // the prompt that refreshes it lands later in the burst. Hold the non-heal
+        // survival categories (cure / buff / debuff) so the round's one between-round
+        // slot isn't spent on them while HP is unknown; the imminent prompt's reactive
+        // Evaluate re-runs on fresh HP and fires a heal if one is due. Heals stay
+        // eligible here — they're safe on the stale read (they simply don't fire when
+        // it looks healthy, and the prompt catches the real drop). (report
+        // paradigm-20260904-214056: an armour buff fired on a stale HP=254 read while
+        // the player was already at 117 and died two rounds later.)
+        bool holdNonHeal = _hpUnconfirmedThisPass && _state.InCombat;
+        if (holdNonHeal)
+            _log?.Combat(LogCategory,
+                "between-round non-heal categories held — HP unconfirmed on a damage-driven tick (prompt pending).");
+
         foreach (SpellCategory category in PrioritisedCategories(spells))
         {
+            if (holdNonHeal
+                && category is SpellCategory.Curing or SpellCategory.Buffing or SpellCategory.Debuffing)
+                continue;
+
             CastCandidate? pick = category switch
             {
                 // Heal / cure / debuff stay under AutoHealRest; buffing under

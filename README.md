@@ -1,8 +1,8 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.50.9**
-> - Fixed the nightly-cleanup auto-logoff leaving you connected at the BBS menu instead of disconnecting: it now drops the carrier the moment the game confirms "Your character has been saved." rather than waiting to recognize a specific main-menu screen — so it disconnects cleanly on boards that nest the realm behind extra door/games menus (where the old "Enter the Realm" menu line never appears after you exit)
+> **Version 3.50.10**
+> - Fixed the between-round caster spending a round on a buff/cure/debuff right after a big hit instead of healing: a combat round's damage lands a beat before the prompt that reports your new HP, so a tick fired straight off the damage could act on stale HP and burn the round's one cast on a buff while you were actually critical. It now holds non-heal casts until your real HP is confirmed (heals are never held) — so a round that chunks you low heals instead of buffing
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

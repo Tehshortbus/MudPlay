@@ -48,6 +48,31 @@ public sealed class TickEngineTests
     }
 
     [Fact]
+    public void CombatTick_ReportsDamageDrivenVsTimerFallbackSource()
+    {
+        // A tick fired straight off a combat line is flagged damage-driven (the
+        // round's prompt hasn't landed, so HP is stale); the 5s timer fallback is
+        // flagged HP-fresh. CastingDirector reads this to hold its non-heal casts
+        // on a stale-HP tick (report paradigm-20260904-214056).
+        MessageRouter router = new();
+        DefaultPatterns.Seed(router);
+        DateTimeOffset now = DateTimeOffset.UnixEpoch;
+        using TickEngine tick = new(router, () => now);
+        bool? sourceAtFire = null;
+        tick.CombatTickElapsed += () => sourceAtFire = tick.LastCombatTickWasDamageDriven;
+
+        router.Dispatch(Line("The Goblin slashes you for 4 damage!"));
+        Assert.True(sourceAtFire);                       // damage-line-driven
+        Assert.True(tick.LastCombatTickWasDamageDriven);
+
+        sourceAtFire = null;
+        now += TickEngine.CombatTickInterval;
+        tick.PollTimersForTests();                        // projected round, no new line
+        Assert.False(sourceAtFire);                       // timer fallback → HP-fresh
+        Assert.False(tick.LastCombatTickWasDamageDriven);
+    }
+
+    [Fact]
     public void NonDamageLines_DontFireCombatTick()
     {
         var (router, tick) = Setup();
