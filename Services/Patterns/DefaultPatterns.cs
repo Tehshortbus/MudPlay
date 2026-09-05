@@ -599,6 +599,15 @@ public static class DefaultPatterns
         yield return new RegexPattern(KnownPatterns.MainMenuEnterRealm,
             @"^\[E\]\s*\.\s*Enter the Realm\b");
 
+        // Realm-exit confirmation — MajorMUD prints this the moment the
+        // character is saved and out of the game on exit. Anchored on the
+        // stable prefix only; boards customise the trailing "leave comments
+        // in E-mail to Sysop" tail. This is the CleanupLogoutOrchestrator's
+        // "we're safely out — drop the carrier" signal, robust to whatever
+        // door/BBS menu the exit lands on afterward.
+        yield return new RegexPattern(KnownPatterns.RealmExitSaved,
+            @"^Your character has been saved\b");
+
         // Marker for the train-stats menu's "Point Cost Chart" panel
         // header. NOT anchored to line start/end — the panel sits in the
         // upper-right of the menu and shares its terminal row with the

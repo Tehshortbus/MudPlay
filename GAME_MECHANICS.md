@@ -2454,6 +2454,23 @@ is parsed on its own outbound gate (`health` observed) and never through the sta
 (HP/MA **regen** — `HP Regen` / `MA Regen` — only appears in Paradigm's `stat all`, which the client
 does NOT parse; regen is computed from stats in the Player Workshop.) (StatParser.TryHealthCommandLine.)
 
+## Realm exit / logoff sequence *([CONFIRMED] 2026-09-05, user + report `stock-20260904-230111`)*
+
+Exiting the realm from inside the game is the exit command (the user's board: a bare `x`):
+
+- `x` → **"You will exit after a period of silent meditation."** → a few seconds later
+  **"Your character has been saved."** (the trailing "leave comments in E-mail to Sysop" text is
+  board-customised) — at which point the character is safely out of the game. **No Y/N confirm
+  prompt** fires on the exit path.
+- Where you land AFTER that is board-specific: some boards drop straight to MajorMUD's own entry menu
+  (`[E] . Enter the Realm`), others nest the realm under extra door/games menus so a second `x` is
+  needed to walk back out (e.g. the door post-game screen with a `[MAJORMUD]:` prompt → the BBS
+  games menu `[M]...MajorMUD! …` with a `Fujin, your selection or ? for help:` prompt). The entry-menu
+  row does NOT appear on the nested boards.
+- So **"Your character has been saved." is the board-agnostic "we're out of the realm" signal**, not
+  the entry menu. The cleanup-logoff orchestrator keys its carrier-drop on that line
+  (`KnownPatterns.RealmExitSaved`); the entry-menu row and a wait-timeout remain secondary fallbacks.
+
 ## BBS actions / emotes (the `action list` socials) *([CONFIRMED] 2026-08-14, user + live capture)*
 
 MajorMUD / MajorBBS boards ship a **customizable action list** (MUD socials / emotes),

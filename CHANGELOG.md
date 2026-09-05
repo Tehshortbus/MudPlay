@@ -1,5 +1,10 @@
 # Version history
 
+## 3.50.9
+
+- Fixed the nightly-cleanup auto-logoff leaving you connected at the BBS menu instead of disconnecting: it now drops the carrier the moment the game confirms "Your character has been saved." rather than waiting to recognize a specific main-menu screen — so it disconnects cleanly on boards that nest the realm behind extra door/games menus (where the old "Enter the Realm" menu line never appears after you exit)
+- bug reports addressed: stock-20260904-230111
+
 ## 3.50.8
 
 - Fixed a stuck-ailment loop: when several message records share one ambiguous applied line (e.g. many blindness sources all print "You are blind."), curing the one that actually landed now clears every co-latched sibling too, instead of leaving the ailment flag (and an auto-cure spell re-cast every combat round forever) stuck
