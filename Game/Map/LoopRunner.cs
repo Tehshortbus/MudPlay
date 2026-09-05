@@ -342,8 +342,28 @@ public sealed class LoopRunner : IRecoverableEngine
 
     public void ResumeAfterRecovery(RoomKey recoveredAnchor)
     {
-        if (State != LoopState.Paused) return;
         if (_loop is null) return;
+
+        // Normally the gate paused us and we're Paused here. But the gate's pause
+        // and the MovementCoordinator's are separate: the coordinator can clear on
+        // its own while the gate is still awaiting an authoritative position, which
+        // puts us back in Running with the step HELD — SendNextStep declines on
+        // MayProceedWithPlannedStep and returns having sent nothing and armed
+        // nothing. Recovery finishing is the only thing left that can re-drive it,
+        // so bailing on `State != Paused` here stranded the loop idle forever
+        // (a Roomba sweep sat still after a sysop locate resolved correctly).
+        // A step already on the wire needs no push — its own confirmation advances us.
+        if (State == LoopState.Running)
+        {
+            if (_stepInFlight) return;
+            _log?.Info("LoopRunner",
+                $"ResumeAfterRecovery: recovered at {recoveredAnchor} while already Running "
+                + $"(step {_index + 1} was held by the gate); re-driving it");
+            SendNextStep();
+            return;
+        }
+
+        if (State != LoopState.Paused) return;
 
         // Engine policy for loops: if the recovered anchor matches the
         // step's expected target, advance. Otherwise the loop is
@@ -1387,11 +1407,16 @@ public sealed class LoopRunner : IRecoverableEngine
         // on stock it runs the footprint backtrack; either way ResumeAfterRecovery
         // then advances (if we really arrived) or reroutes and re-sends (if we're
         // still at the source), so the interrupted move resumes without an overshoot.
+        //
+        // Reported as stalled, not as a mismatch: tier 2 watches for a 1-of-1 over
+        // the engine's NEXT few steps, and a wedged engine has none — reporting a
+        // mismatch here parks us in tier 2 forever, because this watchdog has
+        // already stopped itself and only a send or a resume re-arms it.
         if (State != LoopState.Running || !_stepInFlight) return;
         if (_tracker.State.Confidence != RoomConfidence.Pending) return;
         _log?.Warn("LoopRunner",
             $"step {_index + 1} in-flight stall: move Pending, unconfirmed for {StallWatchdogInterval.TotalSeconds:F0}s — escalating to recovery");
-        _recovery?.NoteSuspectedMismatch(
+        _recovery?.NoteEngineStalled(
             $"loop step {_index + 1} in-flight stall (move interrupted, never confirmed)");
     }
 

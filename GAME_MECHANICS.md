@@ -3532,6 +3532,123 @@ the attack rotation); the **AoE** debuff is gated by **Auto-Nuke**.
   - **Raises** your monster-targeting odds (a positive modifier) — useful for a tank drawing
     aggro, a cost for a squishy caster.
 
+## Sysop commands — `SYSOP STATUS` room dump *([CONFIRMED] 2026-09-02, user + official help text + live capture)*
+
+Requires sysop privileges on the BBS. On an account without them the command is refused.
+
+Forms, from the game's own help:
+
+- **`SYSOP STATUS`** (abbreviates to `sys st`) — debug dump for the room you are standing in.
+  Intended for diagnosing monsters that stop or never stop regenerating.
+- **`SYSOP STATUS <user>`** — status of a named user, if they are currently playing.
+- **`SYSOP STATUS ROOM <room> <map>`** — the same dump **for any room on any map**. Argument
+  order is **room first, then map** *([CONFIRMED] 2026-09-02, live capture)*:
+  - `sys st room 224 1` → `Room 224  Map: 1` ✔
+  - `sys st room 1 224` → `Room error` (read as room 1 on map 224, which doesn't exist)
+  - `sys st room 1/224` → `Room 1  Map: 1` — the `map/room` form is **not** understood; it
+    takes the leading integer as the room and defaults the map to 1. Silently wrong rather
+    than rejected, so never send that shape.
+  - `sys st 224 1` (no `room` keyword) → `Cannot find user 224` — falls through to the
+    user-lookup form.
+- **`SYS LIST USERS`** — lists users and the room each is in.
+- **`MAP`** — generated map of the current area. The help warns it is recursive and has
+  caused stack overflows; treat as unsafe to automate.
+
+Captured dump (gang-house room, verbatim including the 80-column wrap):
+
+```
+Room 2187  Map: 1
+This room as Area: Max: 0  Current: 0
+Min: 0 Max: 0 Group: Lair by Number: 0
+Room Max: 5  Current: 0  Last Killed: 00:00:00 Delay: 0
+No controlling room.
+Patrollable
+Ganghouse
+Monsters: None
+Items: 521(0) 743(0) 882(0) 690(0) 464(0) 1484(0) 37(0) 890(0) 1443(0) 891(0) 47
+0(0) 466(0) 1461(0) 899(0) 420(0) 465(0)
+Hidden items: 1845(0) 14(0) 894(0) 223(0) 879(0) 870(0) 897(1) 876(1) 402(0) 430
+(0) 264(0) 905(0) 419(0) 422(0) 896(0)
+```
+
+- **`Room N  Map: M`** is the room's true identity — the same `map/room` pair the client
+  keys rooms on. This is authoritative location, which is why the parser that reads it is
+  armed only by an outbound sysop status (a forged line would otherwise relocate the player).
+- **Item entries are `id(value)`** where the id is the MDB `Items.Number`. Every id in the
+  captured dump resolves to a real item in the `realm2` set.
+- **[CONFIRMED, live capture 2026-09-02]** An entry is **one object on the floor**, and the
+  parenthesised value is that object's **stack size minus one** — `(0)` is a single item,
+  `(1)` a stack of two. **An id can repeat in one list.** Dropping two black star keys one at
+  a time gives `172(0) 172(0)` (two objects of one each); dropping two diamonds gives
+  `902(1)` (one object of two). The room's true count of an item is therefore the **sum** of
+  (value + 1) over every entry with that id, never a single-entry lookup. The room display
+  aggregates either shape identically ("You notice 2 black star key" / "You notice 2
+  diamond"), so it can't be used to tell the two apart.
+- **[CONFIRMED, live capture 2026-09-02]** **Player-dropped items DO appear** in `Items:`,
+  immediately. An empty room prints `Items: None` and `Hidden items: None` rather than
+  omitting the lines.
+- **[CONFIRMED, user]** **Non-gettable items DO appear** in these lists. The MDB `Items`
+  table carries a `Gettable` column (0 = cannot be picked up; 453 of 2047 rows in `realm2`),
+  so fixtures are filtered from data rather than by a refused `get`.
+- **[UNVERIFIED, user's read]** Items inside a **container** in the room, and items **held by
+  a monster or player**, do *not* appear.
+- **[CONFIRMED, live capture 2026-09-02]** The `Monsters:` line carries space-separated bare
+  numbers (`Monsters: 4510 8407`), and those are **NOT `Monsters.Number`** — 4510 / 8407 /
+  2951 exist in no Monsters row of the `realm2` set, though the same dumps' `Specific
+  Monster: 784-Mayor Godfrey [1/1]` line does carry a real catalogue number. What the
+  `Monsters:` values identify is **unknown** (spawn instances, most likely). **Do not treat
+  them as monster ids.** For "is this specific monster here", read `Specific Monster:`.
+- **[CONFIRMED, live capture 2026-09-02]** Further conditional lines the dump can print:
+  `Controlling Room: <room>` (vs `No controlling room.`), `Current Area: Max: N Current: N`,
+  `Specific Monster: <number>-<name> [n/m]Last Killed: hh:mm:ss (RG: n)`, and
+  `Placed items: <id> <id>` — bare ids, no parens, listing which of `Items:` are the room's
+  **static placements**. Subtracting `Placed items` from `Items` isolates player drops.
+- **[CONFIRMED, live capture 2026-09-02]** The server frequently prints the block's first
+  line onto the row the prompt already occupies — `[HP=639/MA=268]:Room 3551  Map: 1`. Any
+  parser that treats a prompt as the block terminator must ignore prompts seen **before** the
+  room header, or it drops the entire dump.
+- **[UNVERIFIED]** The wording emitted when the command is **denied** is unknown — believed
+  to be a generic "Command not recognized". Nothing depends on it: the client gates on the
+  user's own sysop-powers flag and falls back to a timeout, not a string match.
+- The lists **wrap at the terminal margin mid-token** — `47` + `0(0)` is item `470`, `430` +
+  `(0)` splits an id from its value. Rejoin the block before tokenizing.
+- The dump carries **no `Obvious exits:` line**, so it is not mistakable for a room display.
+- **[CONFIRMED, live capture 2026-09-02, report stock-20260902-203631]** A full `sys st` dump is
+  ~8–9 lines (`Room N  Map: M`, `This room as Area:`, `Min/Max/Group/Lair`, `Room Max/Current/Last
+  Killed/Delay`, controlling-room, `Monsters:`, `Items:`, `Hidden items:`) — far heavier than
+  Paradigm's one-line `room` reply, and the item/hidden lists grow with room contents. So the client
+  **throttles** repeated locates (the give-up boundary fires unthrottled, but the eager tier-2 /
+  loop-one-shot / no-engine / `@where` mirror sites reuse the 15s locate throttle) to keep the dump
+  from flooding the screen. Only `Room N  Map: M` is needed for position; the rest is future roomba
+  content-sync fodder.
+
+### Other sysop powers *([CONFIRMED] 2026-09-04, user)*
+- **Each `sys …` command is a SEPARATELY-gated permission with its own level** *([CONFIRMED]
+  2026-09-05, user)* — a board can grant one and deny another. In particular, **many stock boards
+  grant `sys map` but NOT `sys status`**, so for those players `sys map` is the *only* game-side
+  "where am I?" tool. That's why the client's three sysop powers are independent per-BBS checkboxes,
+  and why `sys map` auto-locate matters as much as `sys status`.
+- **`sys god <name> add life`** — adds one life to the named character. The client's **Sysop god
+  lives** power auto-sends `sys god <own-name> add life` the moment it observes the character's own
+  death, to recover the life just spent (one send per death). Requires real sysop/god access — the
+  command is refused otherwise.
+- **`sys map`** — draws a text ASCII area map centred on the player, with **no map/room numbers**
+  (unlike `sys st`). *([CONFIRMED] 2026-09-05, user + live captures.)* Symbol legend:
+  **`X`** = your current room, **`*`** = a plain room (neither shop nor lair), **`S`** = shop,
+  **`L`** = lair. Links: **`-`** (E↔W), **`|`** (N↔S), **`/`** (NE↔SW diagonal exit), **`\`**
+  (NW↔SE diagonal exit) — i.e. the eight compass directions N/S/E/W/NE/SE/NW/SW. A room whose only
+  exit is **vertical (up/down)** draws as a lone `X` — up/down aren't rendered on the flat grid.
+  Only remaining unknown: whether letters other than S/L can appear (surfaces during parsing). The
+  **Sysop map** power records that the client may use `sys map`; parsing
+  it to help locate (matching the drawn shape against the room graph, since there are no numbers) is
+  a later addition.
+- **Nav-recovery composition:** the sysop `sys st` position locate mirrors the Paradigm `rm`
+  re-anchor at **every** point `rm` fires — first mismatch, engine stall, the tier-3 give-up ladder,
+  the terminal pre-Lost shot, the no-engine drift gap, `@where`, and a blocked loop/replan — sharing
+  the gate's `NoteAuthoritativePosition` / `OnAuthoritativeResyncFailed` consumers. On Paradigm `rm`
+  wins each site (realm-gated); on a stock realm with the power `sys st` fills in. (Maze-solve stays
+  `rm`-only — the solver drives its own relocalization.)
+
 ## MegaMUD `messages.md` format *([CONFIRMED] 2026-08-17, user + decode of both stock/paramud files)*
 
 The MegaMUD "Messages/Responses" catalogue ships as a plain-text `messages.md` (one per

@@ -937,6 +937,22 @@ public static class BugReportBuilder
         // instant so all the tracker's comparisons work either way, but printing
         // the raw value would show the UTC hour next to local ones — normalize.
         Kv(sb, "Last move sent", svc.RoomTracker.LastMoveSentAt?.ToLocalTime().ToString("HH:mm:ss") ?? "(never)");
+        // Sysop room-status capability. A "recovery didn't work" report needs to
+        // distinguish never-enabled from enabled-but-the-BBS-refused: the probe
+        // turns itself off after one unanswered attempt, and that leaves no other
+        // trace in the report.
+        Kv(sb, "Sysop status probe",
+            svc.SysStatus.Available ? "available"
+            : svc.SysStatus.AutoDisabled ? "auto-disabled (no room block came back)"
+            : "off (no sysop powers set for this BBS)");
+        // What the last ground-truth locate actually did. "Recovery walked me
+        // backwards anyway" is unanswerable without it: the probe can be
+        // available and still have declined (throttled, queued behind a move) or
+        // failed (empty reply, room outside the active set).
+        Kv(sb, "Sysop locate",
+            svc.SysopLocate.RequestInFlight ? "in flight"
+            : svc.SysopLocate.LocateDeferred ? "queued behind movement"
+            : svc.SysopLocate.LastOutcome);
 
         IReadOnlyList<Game.Map.RoomKey> history = svc.RoomTracker.GetHistory();
         if (history.Count > 0)

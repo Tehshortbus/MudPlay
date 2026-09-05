@@ -77,7 +77,9 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private bool _reconnectOnCarrierLost;
     [ObservableProperty] private bool _reconnectOnNoResponse;
     [ObservableProperty] private bool _reconnectAfterCleanup;
-    [ObservableProperty] private bool _hasSysopPowers;
+    [ObservableProperty] private bool _sysopMap;
+    [ObservableProperty] private bool _sysopStatus;
+    [ObservableProperty] private bool _sysopGodLives;
     [ObservableProperty] private int _terminalCols = 80;
     [ObservableProperty] private int _terminalRows = 25;
     [ObservableProperty] private int _scrollbackLines = 4_000;
@@ -463,7 +465,9 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         }
         cred.EncryptedUsername = string.IsNullOrEmpty(Username) ? null : _passwords.Protect(Username);
         cred.MenuNavSteps = MenuNavSteps.Select(vm => vm.ToModel()).ToList();
-        cred.HasSysopPowers = HasSysopPowers;
+        cred.SysopMap = SysopMap;
+        cred.SysopStatus = SysopStatus;
+        cred.SysopGodLives = SysopGodLives;
 
         if (_pendingPassword is not null)
         {
@@ -673,7 +677,7 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         {
             Username = string.Empty;
             Password = string.Empty;
-            HasSysopPowers = false;
+            SysopMap = SysopStatus = SysopGodLives = false;
             return;
         }
         CharacterProfile? character = _profile.Current;
@@ -690,7 +694,9 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
             // the user clicks around. Show empty + a placeholder; typing a
             // new one replaces, leaving it empty preserves the existing.
             Password = string.Empty;
-            HasSysopPowers = cred.HasSysopPowers;
+            SysopMap = cred.SysopMap;
+            SysopStatus = cred.SysopStatus;
+            SysopGodLives = cred.SysopGodLives;
             foreach (MenuStep step in cred.MenuNavSteps)
             {
                 MenuNavSteps.Add(MenuStepEditorViewModel.FromModel(step, Dirty));
@@ -700,7 +706,7 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         {
             Username = string.Empty;
             Password = string.Empty;
-            HasSysopPowers = false;
+            SysopMap = SysopStatus = SysopGodLives = false;
         }
 
         RefreshImportSources(bbsName);
@@ -904,7 +910,9 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     partial void OnReconnectOnCarrierLostChanged(bool value)    { PushToCache(); Dirty(); }
     partial void OnReconnectOnNoResponseChanged(bool value)     { PushToCache(); Dirty(); }
     partial void OnReconnectAfterCleanupChanged(bool value)     { PushToCache(); Dirty(); }
-    partial void OnHasSysopPowersChanged(bool value)            { Dirty(); }
+    partial void OnSysopMapChanged(bool value)                  { Dirty(); }
+    partial void OnSysopStatusChanged(bool value)               { Dirty(); }
+    partial void OnSysopGodLivesChanged(bool value)             { Dirty(); }
     partial void OnTerminalColsChanged(int value)               { PushToCache(); Dirty(); }
     partial void OnTerminalRowsChanged(int value)               { PushToCache(); Dirty(); }
 

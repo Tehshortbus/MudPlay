@@ -1129,6 +1129,21 @@ public sealed class AppServices
     // rolled spells: slice of an abil 145 mana-regen read.
     public Game.AbilBreakdownParser AbilBreakdown { get; private set; } = null!;
 
+    // Parser for the sysop `sys st` room dump. Attached to the live
+    // line stream in the main VM, and armed only by an outbound sysop
+    // status — it writes location, so an unarmed match must never land.
+    public Game.Map.SysRoomStatusParser SysRoomStatus { get; private set; } = null!;
+
+    // Request/response wrapper over SysRoomStatus: sends the command and
+    // awaits the block, or resolves null when the capability is off or the
+    // BBS didn't answer. Sysop-gated per BBS.
+    public Game.Map.SysStatusProbe SysStatus { get; private set; } = null!;
+
+    // Turns a sysop room dump into a located position: consulted by the
+    // recovery gate before it starts reversing moves, and self-triggered
+    // whenever the tracker goes Lost.
+    public Game.Map.SysopPositionResolver SysopLocate { get; private set; } = null!;
+
     // Paradigm-only mana-regen roll-spell reroll engine (nature tap / mana
     // flux, ability 145). Driven by CastDirector's self-buff
     // landing sink + AbilBreakdown; recasts a below-threshold
@@ -1590,6 +1605,10 @@ public sealed class AppServices
     // Bound to the per-session LineExtractor by
     // MainWindowViewModel.
     public Game.DeathDetector Death { get; private set; } = null!;
+
+    // "Sysop god lives" recovery — sends `sys god <name> add life` on the
+    // character's own death when that per-BBS power is enabled.
+    public Game.SysopGodLifeRecovery SysopGodLife { get; private set; } = null!;
 
     // BFS pathfinding + planar layout over the active
     // RoomGraph. Consumed by the walker, loop runner,
@@ -2755,7 +2774,12 @@ public sealed class AppServices
         // @where answers from the game's authoritative position on Paradigm: when
         // the heuristic tracker is lost, the handler fires `rm` and replies once
         // the resolver re-anchors, instead of a bare "Location unknown".
-        PartyEssentials.SetPositionRefix(ParadigmResync.RequestResyncOnce);
+        // @where position re-fix: Paradigm `rm` first, then a sysop `sys st` where
+        // that's the available power (SysopLocate is constructed below but the
+        // lambda only reads it at call time, long after connect).
+        PartyEssentials.SetPositionRefix((reason, onResolved, onFailed) =>
+            ParadigmResync.RequestResyncOnce(reason, onResolved, onFailed)
+            || SysopLocate.RequestLocateOnce(reason, onResolved, onFailed));
         // Recovery.TryResync is wired below once MazeSolver exists: a maze solve
         // suppresses `rm` so the asylum is driven by the realm-agnostic look-sweep
         // (stock parity) rather than rm short-circuiting the solver's relocalize.
@@ -3619,6 +3643,48 @@ public sealed class AppServices
         // PriorityBuffing against a due heal/cure and spends the one-cast-per-round
         // slot, rather than firing directly on the wire and bypassing both.
         AbilBreakdown = new Game.AbilBreakdownParser(Log);
+
+        // Sysop room dump. The parser is armed by the outbound `sys st` (routed
+        // from the main VM's send path); the probe turns it into a request the
+        // recovery and sweep engines can await. Gated on the character's per-BBS
+        // "Sysop status" power, so an ordinary account never sends one.
+        SysRoomStatus = new Game.Map.SysRoomStatusParser(PromptScanner, Log);
+        SysStatus = new Game.Map.SysStatusProbe(
+            SysRoomStatus,
+            capabilityEnabled: SysopStatusEnabledHere,
+            log: Log);
+        // A fresh character starts with a clean slate — an earlier session's
+        // failed probe shouldn't keep the capability off for the next one.
+        Profile.ProfileLoaded += _ => SysStatus.ResetAutoDisable();
+
+        // Ground-truth position recovery. The gate asks before it commits to
+        // reversing moves, and the resolver asks for itself when the tracker
+        // goes Lost — the two cases that otherwise end at the "I am here" map
+        // click. Suppressed during a maze solve for the same reason the
+        // Paradigm resync is: the solver drives its own relocalization per
+        // landing and a second uncoordinated one would race it.
+        SysopLocate = new Game.Map.SysopPositionResolver(
+            SysStatus, RoomGraph, RoomTracker,
+            suppressed: () => MazeSolver.Active,
+            log: Log,
+            post: action => Avalonia.Threading.Dispatcher.UIThread.Post(action));
+        SysopLocate.PositionResolved += Recovery.NoteAuthoritativePosition;
+        SysopLocate.LocateFailed += Recovery.OnAuthoritativeResyncFailed;
+
+        // "Sysop god lives": auto-recover the life just spent on the character's
+        // own death (gated on the per-BBS power). Rides the raw wire so the command
+        // goes out even while dead. Hangs off the canonical RoomTracker.PlayerDeathObserved
+        // signal (fired by DeathDetector.NoteDeath for both death phrasings) — the same
+        // one the movement-halt / loop-stop bridges use.
+        SysopGodLife = new Game.SysopGodLifeRecovery(
+            enabled: SysopGodLivesEnabledHere,
+            characterName: () => PlayerStats.Name,
+            send: cmd => SendGameCommand(cmd),
+            log: Log);
+        RoomTracker.PlayerDeathObserved += SysopGodLife.OnDeath;
+        // The gate asks only from a recovery escalation, where the move being
+        // unconfirmed IS the problem — so don't queue behind it.
+        Recovery.TrySysopLocate = reason => SysopLocate.TryRequestLocate(reason, forRecovery: true);
         ManaRegen = new Game.Spells.ManaRegenReroller(
             AbilBreakdown,
             readConfig: () =>
@@ -4915,7 +4981,9 @@ public sealed class AppServices
         // (LoopRunner / AutoWalkManager leaning on rm before trusting a possibly
         // mis-anchored belief) must not race the solver's own rm during a solve.
         Recovery.TryResyncOnce = (reason, onResolved, onFailed) =>
-            !MazeSolver.Active && ParadigmResync.RequestResyncOnce(reason, onResolved, onFailed);
+            !MazeSolver.Active
+            && (ParadigmResync.RequestResyncOnce(reason, onResolved, onFailed)
+                || SysopLocate.RequestLocateOnce(reason, onResolved, onFailed));   // sysop mirror of the loop/replan one-shot `rm`
         // Engine-less resync gap: the recovery gate above asks for an `rm` on a
         // mid-walk mismatch, but no-ops with no engine attached. A manual boat ride
         // (no engine) that disembarks into a duplicated-name room strands the tracker
@@ -4925,7 +4993,8 @@ public sealed class AppServices
         // stay out of its way too.
         RoomTracker.RequestAuthoritativeResync = reason =>
             Recovery.AttachedEngine is null && !MazeSolver.Active
-            && ParadigmResync.TryRequestResync(reason);
+            && (ParadigmResync.TryRequestResync(reason)
+                || SysopLocate.TryRequestLocate(reason));   // sysop mirror of the no-engine `rm` gap (throttled)
         // DeathRecoveryManager's Walk-to-Room / Recover-Now actions route
         // through the walker — attached here since the walker is built
         // after the manager.
@@ -7821,6 +7890,24 @@ public sealed class AppServices
             .FirstOrDefault();
         return first is null ? null : Bbs.Get(first);
     }
+
+    // Whether the loaded character has the "Sysop status" power on the active BBS
+    // — the Settings → BBS credentials checkbox. Sysop powers are granted to an
+    // account on a board, so the flag lives per character per BBS. Gates the
+    // sysop-status probe: unticked, no `sys st` command is ever sent. Credential
+    // keys are normalised case-insensitively on profile load, so the lookup
+    // matches however the BBS name was cased when it was saved.
+    private bool SysopStatusEnabledHere() => SysopPowerHere(static c => c.SysopStatus);
+
+    // Whether the loaded character has the "Sysop god lives" power on the active
+    // BBS — gates the auto `sys god <name> add life` on death.
+    private bool SysopGodLivesEnabledHere() => SysopPowerHere(static c => c.SysopGodLives);
+
+    private bool SysopPowerHere(Func<Models.Profile.BbsCredentials, bool> pick)
+        => ResolveActiveBbs()?.Name is { Length: > 0 } bbs
+           && Profile.Current?.BbsCredentials is { } creds
+           && creds.TryGetValue(bbs, out Models.Profile.BbsCredentials? cred)
+           && pick(cred);
 
     // Whether a name is a player currently in our room — the known-player gate for
     // others'-POV actions/emotes (they're room-local, so the actor is in the room's

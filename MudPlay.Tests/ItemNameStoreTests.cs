@@ -141,4 +141,50 @@ public sealed class ItemNameStoreTests : IDisposable
         Assert.Empty(s.WeaponNames);
         Assert.Empty(s.OffHandNames);
     }
+
+    private const string GettableJson = """
+        [
+          { "Number": 10, "Name": "long sword",   "Gettable": 1 },
+          { "Number": 11, "Name": "stone pillar", "Gettable": 0 }
+        ]
+        """;
+
+    private ItemNameStore NewGettableStore()
+    {
+        Directory.CreateDirectory(Path.Combine(_root, "gettable"));
+        File.WriteAllText(Path.Combine(_root, "gettable", "Items.json"), GettableJson);
+        GameDataCache cache = new(_root);
+        cache.SwitchSet("gettable");
+        ItemNameStore store = new(cache);
+        store.OnActiveSetChanged("gettable");
+        return store;
+    }
+
+    [Fact]
+    public void IsGettable_ReadsTheFlag()
+    {
+        ItemNameStore s = NewGettableStore();
+
+        Assert.True(s.IsGettable(10));
+        Assert.False(s.IsGettable(11));
+    }
+
+    [Fact]
+    public void IsGettable_DefaultsTrue_WhenColumnAbsent()
+    {
+        // The original fixture has no Gettable column. Defaulting to 0 there
+        // would mark every item in the set unpickable.
+        ItemNameStore s = NewStore();
+
+        Assert.True(s.IsGettable(172));
+        Assert.True(s.IsGettable(1720));
+    }
+
+    [Fact]
+    public void IsGettable_DefaultsTrue_ForUnknownId()
+    {
+        ItemNameStore s = NewGettableStore();
+
+        Assert.True(s.IsGettable(999999));
+    }
 }

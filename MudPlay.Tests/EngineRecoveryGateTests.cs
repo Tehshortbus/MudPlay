@@ -218,6 +218,15 @@ public sealed class EngineRecoveryGateTests : IDisposable
         tracker.NoteRoomObserved(Obs("Nowhere", Direction.W));
     }
 
+    // Fill the tier-2 step budget with northbound moves so the next mismatch
+    // escalates straight to tier 3. Reverse-of-N = S is then the backtrack the
+    // gate would send if nothing authoritative intervenes.
+    private static void ExhaustTier2Budget(EngineRecoveryGate gate)
+    {
+        for (int i = 0; i < EngineRecoveryGate.Tier2StepBudget; i++)
+            gate.NoteEngineStepSent(Direction.N);
+    }
+
     private static RecoveryLookSweep RecordingSweep(out List<string> wire)
     {
         var captured = new List<string>();
@@ -295,6 +304,146 @@ public sealed class EngineRecoveryGateTests : IDisposable
         Assert.Equal(TierLevel.Tier2, gate.CurrentTier);
         Assert.Empty(engine.Pauses);
         Assert.False(gate.AwaitingAuthoritativeResync);
+    }
+
+    [Fact]
+    public void NoteEngineStalled_StockRealm_GoesStraightToTier3()
+    {
+        // A stalled engine can't execute the further steps tier 2 watches for, so
+        // reporting a stall as a mismatch parks it there permanently. It must
+        // reach the ladder that can act on a stationary engine.
+        (RoomGraphManager graph, RoomTracker tracker) = NewGraphAndTracker("stall1", TwinSouthGraphJson);
+        var gate = new EngineRecoveryGate(graph, tracker) { TryResync = _ => false };
+        var engine = new RecordingEngine();
+        ParkSuspectAtFork(tracker, Direction.N, Direction.S);
+        gate.Attach(engine);
+        gate.NoteEngineStepSent(Direction.N);
+
+        gate.NoteEngineStalled("move never confirmed");
+
+        Assert.Equal(TierLevel.Tier3, gate.CurrentTier);
+        Assert.Single(engine.Pauses);
+        Assert.Equal(Direction.S, Assert.Single(engine.Backtracks));
+    }
+
+    [Fact]
+    public void NoteEngineStalled_PrefersTheAuthoritativeResyncWhenAvailable()
+    {
+        // Paradigm keeps its fast-path: one `rm` beats reversing moves, so a
+        // stall asks for it first and only falls to tier 3 if it doesn't land.
+        (RoomGraphManager graph, RoomTracker tracker) = NewGraphAndTracker("stall2", TwinSouthGraphJson);
+        List<string> asked = new();
+        var gate = new EngineRecoveryGate(graph, tracker)
+        {
+            TryResync = reason => { asked.Add(reason); return true; },
+        };
+        var engine = new RecordingEngine();
+        ParkSuspectAtFork(tracker, Direction.N, Direction.S);
+        gate.Attach(engine);
+        gate.NoteEngineStepSent(Direction.N);
+
+        gate.NoteEngineStalled("move never confirmed");
+
+        Assert.Single(asked);
+        Assert.True(gate.AwaitingAuthoritativeResync);
+        Assert.Empty(engine.Backtracks);
+        Assert.NotEqual(TierLevel.Tier3, gate.CurrentTier);
+    }
+
+    [Fact]
+    public void NoteEngineStalled_WithNoEngineAttached_IsNoOp()
+    {
+        (RoomGraphManager graph, RoomTracker tracker) = NewGraphAndTracker();
+        var gate = new EngineRecoveryGate(graph, tracker);
+
+        gate.NoteEngineStalled("nothing attached");
+
+        Assert.Equal(TierLevel.Tier1, gate.CurrentTier);
+    }
+
+    [Fact]
+    public void EscalateToTier3_WithSysopLocate_PausesInsteadOfBacktracking()
+    {
+        (RoomGraphManager graph, RoomTracker tracker) = NewGraphAndTracker("maze3", TwinSouthGraphJson);
+        List<string> asked = new();
+        var gate = new EngineRecoveryGate(graph, tracker)
+        {
+            TrySysopLocate = reason => { asked.Add(reason); return true; },
+        };
+        var engine = new RecordingEngine();
+        ParkSuspectAtFork(tracker, Direction.N, Direction.S);
+        gate.Attach(engine);
+        ExhaustTier2Budget(gate);
+
+        gate.NoteSuspectedMismatch("drift");
+
+        // Ground truth is on the way, so no reverse move went out and the gate
+        // holds the engine exactly as it does for a Paradigm rm.
+        Assert.Single(asked);
+        Assert.Empty(engine.Backtracks);
+        Assert.True(gate.AwaitingAuthoritativeResync);
+        Assert.False(gate.MayProceedWithPlannedStep());
+    }
+
+    [Fact]
+    public void SysopLocate_Resolving_AnchorsAndResumesWithoutBacktracking()
+    {
+        (RoomGraphManager graph, RoomTracker tracker) = NewGraphAndTracker("maze4", TwinSouthGraphJson);
+        var gate = new EngineRecoveryGate(graph, tracker) { TrySysopLocate = _ => true };
+        var engine = new RecordingEngine();
+        ParkSuspectAtFork(tracker, Direction.N, Direction.S);
+        gate.Attach(engine);
+        ExhaustTier2Budget(gate);
+        gate.NoteSuspectedMismatch("drift");
+
+        gate.NoteAuthoritativePosition(new RoomKey(1, 3));
+
+        Assert.Equal(new RoomKey(1, 3), gate.Anchor);
+        Assert.Equal(TierLevel.Tier1, gate.CurrentTier);
+        Assert.Equal(new RoomKey(1, 3), Assert.Single(engine.Resumes));
+        Assert.Empty(engine.Backtracks);
+    }
+
+    [Fact]
+    public void SysopLocate_Failing_FallsThroughToTheBacktrackAndIsNotReasked()
+    {
+        (RoomGraphManager graph, RoomTracker tracker) = NewGraphAndTracker("maze5", TwinSouthGraphJson);
+        List<string> asked = new();
+        var gate = new EngineRecoveryGate(graph, tracker)
+        {
+            TrySysopLocate = reason => { asked.Add(reason); return true; },
+        };
+        var engine = new RecordingEngine();
+        ParkSuspectAtFork(tracker, Direction.N, Direction.S);
+        gate.Attach(engine);
+        ExhaustTier2Budget(gate);
+        gate.NoteSuspectedMismatch("drift");
+
+        gate.OnAuthoritativeResyncFailed();
+
+        // Exactly the pre-existing tier-3 behaviour: reverse the last step. The
+        // failure path re-enters the escalation, so the one-per-escalation guard
+        // is what stops it asking again forever.
+        Assert.Single(asked);
+        Assert.Equal(TierLevel.Tier3, gate.CurrentTier);
+        Assert.Equal(Direction.S, Assert.Single(engine.Backtracks));
+    }
+
+    [Fact]
+    public void SysopLocate_Declining_LeavesTheHeuristicLadderUntouched()
+    {
+        (RoomGraphManager graph, RoomTracker tracker) = NewGraphAndTracker("maze6", TwinSouthGraphJson);
+        var gate = new EngineRecoveryGate(graph, tracker) { TrySysopLocate = _ => false };
+        var engine = new RecordingEngine();
+        ParkSuspectAtFork(tracker, Direction.N, Direction.S);
+        gate.Attach(engine);
+        ExhaustTier2Budget(gate);
+
+        gate.NoteSuspectedMismatch("drift");
+
+        Assert.False(gate.AwaitingAuthoritativeResync);
+        Assert.Equal(TierLevel.Tier3, gate.CurrentTier);
+        Assert.Equal(Direction.S, Assert.Single(engine.Backtracks));
     }
 
     [Fact]

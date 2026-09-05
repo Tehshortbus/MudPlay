@@ -911,6 +911,78 @@ public sealed class LoopRunnerTests : IDisposable
     }
 
     [Fact]
+    public void InFlightStall_StockRealmWithNoResync_StillBreaksTheWedge()
+    {
+        // Every other stall test stubs TryResync => true, i.e. the Paradigm
+        // rm fast-path, so none of them exercised what a stock realm does. There
+        // the escalation landed in tier 2 — a watch that only advances as the
+        // engine executes FURTHER steps — and a wedged engine has none, so
+        // nothing paused, nothing sent, and the watchdog (already stopped, and
+        // re-armed only on a send or a resume) never fired again. The loop hung
+        // permanently.
+        Harness h = NewHarness(wireRecovery: true);
+        h.Gate!.TryResync = _ => false;   // stock realm: there is no `rm` to ask
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Runner.Start(AbCycle());
+        Assert.Single(h.Sent);
+        Assert.Equal(RoomConfidence.Pending, h.Tracker.State.Confidence);
+
+        h.Runner.FireStallWatchdogForTests();
+
+        // The escalation has to reach the tier-3 ladder, which can actually do
+        // something about a stationary engine.
+        // Control is handed to the tier-3 ladder, which can act on a stationary
+        // engine (ground truth, then the reverse-walk, then a clean Lost dialog).
+        // Tier 3's own convergence is covered in EngineRecoveryGateTests; what
+        // matters here is that we no longer park in tier 2 with nothing pending.
+        Assert.Equal(TierLevel.Tier3, h.Gate!.CurrentTier);
+        Assert.Equal(LoopState.Paused, h.Runner.State);
+        Assert.Contains(h.Events, e => e.Kind == LoopEventKind.Paused && e.Detail.Contains("stall"));
+    }
+
+    [Fact]
+    public void RecoveryResolvingWhileCoordinatorAlreadyResumed_StillDrivesTheStep()
+    {
+        // The gate pauses for an authoritative answer, but the MovementCoordinator
+        // resumes the loop on its own before that answer lands. Back in Running,
+        // SendNextStep declines on MayProceedWithPlannedStep and returns with no
+        // step in flight — and when recovery then resolves, ResumeAfterRecovery
+        // used to bail on `State != Paused`, so nothing ever re-drove the step and
+        // the loop sat idle forever.
+        Harness h = NewHarness(wireRecovery: true);
+        h.Gate!.TryResync = _ => false;              // stock realm
+        h.Gate!.TrySysopLocate = _ => true;          // ground truth is on its way
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        h.Runner.Start(AbCycle());
+        Assert.Single(h.Sent);
+
+        // Coordinator pause (combat), then the stall escalation marks the gate as
+        // awaiting an authoritative position.
+        h.Coordinator.AssertGate(MovementCoordinator.CombatGate);
+        Assert.Equal(LoopState.Paused, h.Runner.State);
+        h.Gate!.NoteEngineStalled("move never confirmed");
+        Assert.True(h.Gate!.AwaitingAuthoritativeResync);
+
+        // The move actually landed while we were paused.
+        h.Tracker.NoteRoomObserved(new RoomObservation("B",
+            new HashSet<Direction> { Direction.N, Direction.S }));
+
+        // Coordinator clears on its own — the loop goes Running and advances, but
+        // the gate still holds the step.
+        h.Coordinator.ClearGate(MovementCoordinator.CombatGate);
+        Assert.Equal(LoopState.Running, h.Runner.State);
+        Assert.Single(h.Sent);                       // held by the gate, nothing sent
+
+        // Ground truth arrives. This has to actually move the loop again.
+        h.Tracker.SetLocated(new RoomKey(1, 2));
+        h.Gate!.NoteAuthoritativePosition(new RoomKey(1, 2));
+
+        Assert.Equal(LoopState.Running, h.Runner.State);
+        Assert.Equal(2, h.Sent.Count);
+        Assert.Equal("s\r", Encoding.Latin1.GetString(h.Sent[1]));
+    }
+
+    [Fact]
     public void InFlightStall_Watchdog_NoOpAfterLoopStopped()
     {
         // The watchdog must not escalate once the loop is no longer running — a

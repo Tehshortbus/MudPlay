@@ -246,11 +246,20 @@
                         </Grid>
                     </Grid>
 
-                    <CheckBox IsChecked="{Binding HasSysopPowers, Mode=TwoWay}"
-                              IsEnabled="{Binding HasProfile}"
-                              Margin="0,12,0,0"
-                              Content="I have sysop / goto powers on this BBS"
-                              ToolTip.Tip="Per-character. Consumed by Phase 13 RemoteCommandManager (e.g. lets @goto run without a per-player permission check)."/>
+                    <TextBlock Text="I have the following SYSOP powers:"
+                               IsEnabled="{Binding HasProfile}"
+                               Margin="0,12,0,2"/>
+                    <StackPanel Margin="12,0,0,0" Spacing="2" IsEnabled="{Binding HasProfile}">
+                        <CheckBox IsChecked="{Binding SysopMap, Mode=TwoWay}"
+                                  Content="Sysop map"
+                                  ToolTip.Tip="`sys map` — the client may request the game's own text area map to help work out where it is. Per-character, per-BBS."/>
+                        <CheckBox IsChecked="{Binding SysopStatus, Mode=TwoWay}"
+                                  Content="Sysop status"
+                                  ToolTip.Tip="`sys st` (SYSOP STATUS) — lets the client read the game's own room dump to recover its location when the walker gets lost. Per-character, per-BBS."/>
+                        <CheckBox IsChecked="{Binding SysopGodLives, Mode=TwoWay}"
+                                  Content="Sysop god lives"
+                                  ToolTip.Tip="`sys god &lt;name&gt; add life` — when this character dies, automatically send the sysop command to restore the life just lost. Per-character, per-BBS."/>
+                    </StackPanel>
 
                     <TextBlock Classes="GroupHeader" Text="Automated Logon Menu Navigation"/>
 
