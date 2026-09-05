@@ -11,9 +11,21 @@ namespace MudPlay.Game;
 // redial once the BBS is expected to be back online.
 //
 // Sequence: warning → wait-for-safe → send the exit command (default `x`) →
-// wait for the main-menu screen → disconnect. We deliberately drop the carrier
-// ourselves at the menu rather than asking the BBS to hang us up (`=x`) — the
-// user wants a clean local disconnect once we're back out of the realm.
+// wait until we're demonstrably out of the realm → disconnect. We deliberately
+// drop the carrier ourselves rather than asking the BBS to hang us up (`=x`) —
+// the user wants a clean local disconnect once we're back out of the realm.
+//
+// "Out of the realm" is confirmed primarily by MajorMUD's realm-exit line
+// "Your character has been saved." (KnownPatterns.RealmExitSaved) — board-
+// agnostic game text that fires the moment the character is saved, before any
+// BBS door/games menu renders. The old trigger — the "[E] Enter the Realm"
+// main-menu row — only appears on boards that drop you straight back to
+// MajorMUD's entry menu; boards that nest the realm under extra door/games
+// menus exit past it entirely (report stock-20260904-230111: exiting landed on
+// the door post-game screen then the BBS games menu, neither of which shows
+// that row, so the disconnect only ever came from the blind timeout below).
+// Both the saved line and the main-menu row still complete the logout; the
+// double-timeout is the last-ditch fallback if neither is seen.
 //
 // "Safe" is supplied by the host via SetSafePredicate — in production it's "no
 // engageable hostiles in the room AND not mid-combat"
@@ -49,6 +61,7 @@ public sealed class CleanupLogoutOrchestrator : IDisposable
     private readonly LogService? _log;
     private readonly WireSender _wire = new();
     private readonly IDisposable _menuSub;
+    private readonly IDisposable _savedSub;
 
     private Func<bool>? _isSafe;
     private Func<bool>? _isConnected;
@@ -97,6 +110,7 @@ public sealed class CleanupLogoutOrchestrator : IDisposable
         _log = log;
         _cleanup.WarningObserved += OnWarningObserved;
         _menuSub = _router.Subscribe(KnownPatterns.MainMenuEnterRealm, OnMainMenuLine);
+        _savedSub = _router.Subscribe(KnownPatterns.RealmExitSaved, OnRealmExitSaved);
     }
 
     // Bind the wire sink used to send the exit command. The host supplies the
@@ -134,6 +148,7 @@ public sealed class CleanupLogoutOrchestrator : IDisposable
         _disposed = true;
         _cleanup.WarningObserved -= OnWarningObserved;
         _menuSub.Dispose();
+        _savedSub.Dispose();
         StopTimer();
     }
 
@@ -160,6 +175,19 @@ public sealed class CleanupLogoutOrchestrator : IDisposable
         if (Phase != CleanupLogoutPhase.Exiting) return;
         _log?.Log(LogSeverity.Info, "CleanupLogout",
             "Main menu reached — dropping carrier; auto-reconnect redials after cleanup.");
+        CompleteLogout();
+    }
+
+    private void OnRealmExitSaved(MatchResult _)
+    {
+        // Primary "we're safely out" signal — MajorMUD saved the character on
+        // exit. Gated to Exiting so it only counts once we've sent our own exit
+        // command (never a stray save line during play). Board-agnostic: fires
+        // before any door/BBS menu renders, so it works where the main-menu row
+        // never appears.
+        if (Phase != CleanupLogoutPhase.Exiting) return;
+        _log?.Log(LogSeverity.Info, "CleanupLogout",
+            "Character saved — out of the realm; dropping carrier, auto-reconnect redials after cleanup.");
         CompleteLogout();
     }
 

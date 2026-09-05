@@ -385,6 +385,14 @@ public static class KnownPatterns
     // The "Enter the Realm" row is the universal main-menu signature.
     public const string MainMenuEnterRealm = "menu.enter-realm";   // "[E] . Enter the Realm" — universal main-menu line
 
+    // MajorMUD's realm-exit confirmation. Printed once the character is
+    // safely out of the game after an exit command, regardless of which BBS
+    // menu structure the door sits under — so it's a board-agnostic "we're
+    // out of the realm" signal where the "[E] Enter the Realm" main-menu row
+    // is not (boards that nest the realm behind extra door/games menus land
+    // on a menu that never shows that row).
+    public const string RealmExitSaved = "realm.exit-saved";      // "Your character has been saved." — realm-exit confirmation
+
     // ----- Trainer menu marker -------------------------------------------
     // The "train stats" trainer screen has a "Point Cost Chart" panel
     // header in the upper-right that doesn't appear in any other

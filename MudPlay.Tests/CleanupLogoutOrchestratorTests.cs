@@ -9,7 +9,8 @@ namespace MudPlay.Tests;
 
 /// <summary>
 /// Pins the proactive log-off FSM: warning → wait-for-safe → send the
-/// exit command → wait for the main menu → drop the carrier. The engine
+/// exit command → confirm out of the realm (character-saved line, or the
+/// main-menu row, or a timeout) → drop the carrier. The engine
 /// is opt-in (gated on the active BBS's ReconnectAfterCleanup), latched
 /// to one logout per cleanup cycle, and must never log off while the
 /// room is unsafe or after the wire has dropped.
@@ -56,9 +57,15 @@ public sealed class CleanupLogoutOrchestratorTests
         => h.Cleanup.Append(Encoding.Latin1.GetBytes($"shutting down in {minutes} minutes"));
 
     private static void DispatchMenuLine(MessageRouter router)
+        => DispatchLine(router, "[E] . Enter the Realm");
+
+    private static void DispatchSavedLine(MessageRouter router)
+        => DispatchLine(router, "Your character has been saved. If you have any comments or suggestions, please");
+
+    private static void DispatchLine(MessageRouter router, string text)
     {
         LineExtractor.EmittedLine line = new(
-            "[E] . Enter the Realm",
+            text,
             new CellAttributes[20],
             DateTimeOffset.UnixEpoch,
             IsPromptLine: false);
@@ -200,6 +207,38 @@ public sealed class CleanupLogoutOrchestratorTests
         FireWarning(h);   // Pending (unsafe)
 
         DispatchMenuLine(h.Router);
+
+        Assert.Equal(CleanupLogoutPhase.Pending, h.Engine.Phase);
+        Assert.Equal(0, h.DisconnectCalls);
+    }
+
+    [Fact]
+    public void Exiting_CharacterSavedLine_DropsCarrier()
+    {
+        // The primary trigger: boards that nest the realm behind extra menus
+        // exit past the "[E] Enter the Realm" row entirely (report
+        // stock-20260904-230111), so the realm-exit "Your character has been
+        // saved." line is what confirms we're out and drops the carrier.
+        Harness h = Setup();
+        h.Safe = true;
+        FireWarning(h);
+        Assert.Equal(CleanupLogoutPhase.Exiting, h.Engine.Phase);
+
+        DispatchSavedLine(h.Router);
+
+        Assert.Equal(CleanupLogoutPhase.Done, h.Engine.Phase);
+        Assert.Equal(1, h.DisconnectCalls);
+    }
+
+    [Fact]
+    public void CharacterSavedLine_BeforeExiting_Ignored()
+    {
+        // A save line seen while Pending (we haven't sent our exit yet) is not
+        // ours — must not trip a disconnect.
+        Harness h = Setup();
+        FireWarning(h);   // Pending (unsafe)
+
+        DispatchSavedLine(h.Router);
 
         Assert.Equal(CleanupLogoutPhase.Pending, h.Engine.Phase);
         Assert.Equal(0, h.DisconnectCalls);
