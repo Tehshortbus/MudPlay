@@ -29,12 +29,20 @@ public sealed class MonsterCatalogTests : IDisposable
         catch { /* best-effort */ }
     }
 
+    // 501 fireball — flat 12–40 damage (code 1), 500 energy: the per-round getter
+    //   would double this, so it pins that a monster's single cast does NOT.
+    // 502 icebolt — level-scaled 4+2L / 8+2L damage, 250 energy (per-round 4×).
+    // 503 turn undead — no damage ability (a pure effect spell → 0 damage).
+    // 504 plague — poison, no damage ability.
     private const string Spells = """
         [
-          { "Number": 501, "Name": "fireball",   "AttType": 1 },
-          { "Number": 502, "Name": "icebolt",     "AttType": 0 },
+          { "Number": 501, "Name": "fireball",   "AttType": 1, "MinBase": 12, "MaxBase": 40,
+            "EnergyCost": 500, "Abil-0": 1, "AbilVal-0": 0 },
+          { "Number": 502, "Name": "icebolt",     "AttType": 0,
+            "MinBase": 4, "MinInc": 2, "MinIncLVLs": 1, "MaxBase": 8, "MaxInc": 2, "MaxIncLVLs": 1,
+            "EnergyCost": 250, "Abil-0": 1, "AbilVal-0": 0 },
           { "Number": 503, "Name": "turn undead", "AttType": 4 },
-          { "Number": 504, "Name": "plague",      "AttType": 6 }
+          { "Number": 504, "Name": "plague",      "AttType": 6, "Abil-0": 19, "AbilVal-0": 0 }
         ]
         """;
 
@@ -158,6 +166,40 @@ public sealed class MonsterCatalogTests : IDisposable
         Assert.Equal(502, mid.SpellId);
         Assert.Equal(30, mid.Percent);   // single slot: delta == threshold
         Assert.Equal(4, mid.Level);
+    }
+
+    // A spell attack resolves its single-cast damage (linked spell scaled to the
+    // slot's cast level) WITHOUT the player per-round energy fold: #2's fireball
+    // slot casts at level 5 for a flat 12–40 (500-energy would double per round).
+    [Fact]
+    public void Get_SpellAttackSlot_ResolvesSingleCastDamage()
+    {
+        MonsterAttackSlot slot = Assert.Single(NewCatalog().Get(2)!.Attacks);
+        Assert.Equal(2, slot.Type);
+        Assert.Equal(12, slot.SpellDmgMin);
+        Assert.Equal(40, slot.SpellDmgMax);
+    }
+
+    // The mid-spell scales to its own cast level (icebolt at level 4 → 4+2·4=12,
+    // 8+2·4=16), again single cast (250-energy would 4× per round).
+    [Fact]
+    public void Get_MidSpell_ResolvesScaledSingleCastDamage()
+    {
+        MonsterMidSpellSlot mid = Assert.Single(NewCatalog().Get(2)!.MidSpells);
+        Assert.Equal(12, mid.DmgMin);
+        Assert.Equal(16, mid.DmgMax);
+    }
+
+    // A physical slot carries no spell damage, and a spell that deals no direct
+    // damage (turn undead) or is unresolved (999) resolves to 0 — no bogus range.
+    [Fact]
+    public void Get_NonDamageAndPhysicalSlots_CarryNoSpellDamage()
+    {
+        MonsterAttackSlot physical = Assert.Single(NewCatalog().Get(1)!.Attacks);
+        Assert.Equal(0, physical.SpellDmgMax);
+
+        MonsterCatalogEntry ghost = NewCatalog().Get(4)!;
+        foreach (MonsterAttackSlot a in ghost.Attacks) Assert.Equal(0, a.SpellDmgMax);
     }
 
     [Fact]

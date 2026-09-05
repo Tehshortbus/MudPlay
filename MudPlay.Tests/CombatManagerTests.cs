@@ -36,6 +36,9 @@ public sealed class CombatManagerTests
         public Dictionary<int, MonsterOverlay> Overlays { get; } = new();
         public string? OwnName { get; set; } = "MudPlay";
         public bool AutoCombatEnabled { get; set; } = true;
+        // Drives the AttackPrevented gate — true = a stun/petrify/bind message is
+        // active, so the engine must issue no attack (weapon or spell).
+        public bool AttackPrevented { get; set; }
         // Drives the dark-room probe CombatManager reads to suppress its CR
         // "where am I" refreshes. Default false (lit) → refreshes fire as before.
         public bool Dark { get; set; }
@@ -73,6 +76,7 @@ public sealed class CombatManagerTests
             Combat.SetWireSender(b => Sent.Add(b));
             Combat.SetWeaponActuator((w, oh, force) => { Swaps.Add((w, oh)); SwapForced.Add(force); });
             Combat.SetDarkRoomProbe(() => Dark);
+            Combat.SetAttackPreventedGate(() => AttackPrevented);
         }
 
         public void SetOverlay(int monsterNumber, MonsterAttackPriority? priority = null,
@@ -166,6 +170,22 @@ public sealed class CombatManagerTests
         Assert.Single(h.Sent);
         Assert.Equal("a giant rat", h.LastSent);
         Assert.Equal("giant rat", h.Combat.CurrentTarget);
+    }
+
+    [Fact]
+    public void AttackPrevented_HoldsAttack_NoCommandSent()
+    {
+        // A stun/petrify/bind message (AttackPrevented) is active, so the server
+        // refuses every attack — the engine issues none. Same engage as
+        // MasterOn_OneMonster_SendsAttackBaseName, which sends "a giant rat" with no
+        // block; here nothing goes out until the wear-off clears the gate.
+        using Harness h = new();
+        h.AttackPrevented = true;
+        h.AddMonster(1, "giant rat", killable: true);
+
+        h.Feed("Also here: giant rat.");
+
+        Assert.Empty(h.Sent);
     }
 
     [Fact]

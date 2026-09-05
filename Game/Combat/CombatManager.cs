@@ -169,6 +169,18 @@ public sealed partial class CombatManager : IDisposable
     // always applies, this check's original unconditional behavior).
     private Func<bool>? _isMovementActive;
 
+    // Reports whether an AttackPrevented condition is active on us
+    // (ConditionTracker.IsAttackPrevented) — a stun/petrify/etc. line latched and
+    // its wear-off not yet seen. While true the server rejects every attack the
+    // player issues, weapon AND spell, so the engine holds ALL offensive output
+    // (see AttacksBlocked) and retries each round until it clears. null until wired
+    // → fail-open (never blocks, the pre-flag behavior).
+    private Func<bool>? _attacksPrevented;
+
+    // Edge-tracker so AttacksBlocked logs the hold and the release once each, not
+    // once per suppressed send.
+    private bool _attackBlockLogged;
+
     private string? _currentTarget;
 
     // Guard-redirect memory. MajorMUD "guarded" monsters (a brigand chief guarded
@@ -744,6 +756,35 @@ public sealed partial class CombatManager : IDisposable
     {
         ArgumentNullException.ThrowIfNull(isMovementActive);
         _isMovementActive = isMovementActive;
+    }
+
+    // Wire the attack-prevented probe (ConditionTracker.IsAttackPrevented). While
+    // it returns true the engine issues no attack — see _attacksPrevented /
+    // AttacksBlocked. Until set, attacks never block (the pre-flag behavior).
+    public void SetAttackPreventedGate(Func<bool> isAttackPrevented)
+    {
+        ArgumentNullException.ThrowIfNull(isAttackPrevented);
+        _attacksPrevented = isAttackPrevented;
+    }
+
+    // True while an AttackPrevented condition is active: a message flagged
+    // AttackPrevented latched (stun / petrify / bind / …) and its wear-off hasn't
+    // fired. The server refuses every attack command in that state — weapon AND
+    // spell — so every attack chokepoint below (SendAttack, the combat-spell and
+    // pre-attack-debuff casts, the fumble re-send) consults this and holds,
+    // retrying each round until it clears. Edge-logged at Combat level so a report
+    // shows exactly when the hold began and lifted.
+    private bool AttacksBlocked()
+    {
+        bool blocked = _attacksPrevented?.Invoke() == true;
+        if (blocked != _attackBlockLogged)
+        {
+            _attackBlockLogged = blocked;
+            _log?.Combat(LogCategory, blocked
+                ? "attacks held — AttackPrevented condition active"
+                : "attacks resumed — AttackPrevented condition cleared");
+        }
+        return blocked;
     }
 
     // Wire the gear actuator (EquipmentManager, the sole gear owner). swapWeapon
@@ -3293,6 +3334,9 @@ public sealed partial class CombatManager : IDisposable
 
     private void SendAttack(string command, string target, MonsterAttackPriority? priority = null)
     {
+        // Held while AttackPrevented is active — send nothing; the per-round
+        // heartbeat re-dispatches once the block clears.
+        if (AttacksBlocked()) return;
         // We're swinging again — disarm the interrupt-resume path so the
         // next mob line doesn't re-fire on top of this attack.
         _combatOff = false;
@@ -3315,6 +3359,7 @@ public sealed partial class CombatManager : IDisposable
 
     private void SendAttack(string command, string target, bool refire, string refireReason)
     {
+        if (AttacksBlocked()) return;   // held while AttackPrevented is active
         _combatOff = false;
         _castingSpellTarget = null;
         _lastCastAction = null;
@@ -3329,15 +3374,17 @@ public sealed partial class CombatManager : IDisposable
         NoteAttackSent();
     }
 
-    // Confusion-fumble recovery, driven by ConditionTracker.ActionFailed (wired in
-    // AppServices). MajorMUD confusion does not block attacking — each command you
-    // send can fumble ("You fumble in confusion!"), consumed without executing, so
-    // the server never engages and the target sits unattacked (the reported
-    // "monsters present but not attacked unless I manually re-send" symptom). We
-    // re-send the last weapon swing verbatim; it fires once per fumble line, so the
-    // server's own fumble echoes pace the retries, and once a swing lands the server
-    // auto-repeats and the fumbles stop. Weapon mode only — spell mode re-issues its
-    // cast on the per-round tick (OnCombatTick), and _lastAttackCommand holds a
+    // Lost-action recovery, driven by ConditionTracker.ActionFailed (wired in
+    // AppServices) — fires for ANY line flagged LastActionFailed: an action you
+    // sent that the server refused or ate without executing. It isn't confusion-
+    // specific; a confused "You fumble in confusion!" is just one line that can
+    // carry the flag (confusion doesn't block attacking — each command can be
+    // eaten, so the server never engages and the target sits unattacked, the
+    // reported "monsters present but not attacked unless I re-send" symptom). We
+    // re-send the last weapon swing verbatim, once per failure line, so the
+    // server's own echoes pace the retries; once a swing lands the server
+    // auto-repeats and the failures stop. Weapon mode only — spell mode re-issues
+    // its cast on the per-round tick (OnCombatTick), and _lastAttackCommand holds a
     // weapon verb we must not fire into a spell fight.
     public void OnActionFailed()
     {
@@ -3346,9 +3393,10 @@ public sealed partial class CombatManager : IDisposable
         if (_currentTarget is null) return;
         if (_lastAttackCommand is not { Length: > 0 } line) return;
         if (_wireSender is null) return;
+        if (AttacksBlocked()) return;   // can't re-send a swing while attacks are blocked
 
         _combatOff = false;
-        _log?.Combat(LogCategory, $"fumble — re-sending last attack '{line}'");
+        _log?.Combat(LogCategory, $"action failed — re-sending last attack '{line}'");
         _wireSender(Encoding.Latin1.GetBytes(line + "\r"));
         NoteAttackSent();
     }

@@ -24,10 +24,8 @@ public sealed class SelfHeldResponderTests
     private static MessageRecord Knockdown() => new(
         Id: MessageRecord.ComputeId("knockdown", "", "", "", "You are flat on your back!", "You get back on your feet."),
         Name: "knockdown",
-        Action: MessageAction.Ignore,
         Flags: MessageFlags.MovementPrevented,
         RawFlagsHex: (ushort)MessageFlags.MovementPrevented,
-        Response: string.Empty,
         CasterMessage: string.Empty,
         TargetMessage: string.Empty,
         WitnessMessage: string.Empty,

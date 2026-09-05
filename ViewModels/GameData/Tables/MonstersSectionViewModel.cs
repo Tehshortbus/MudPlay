@@ -406,6 +406,7 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
             currentTier:      row.SourceTier,
             mdbInfo:          mdbInfo,
             writableTiers:    _resolverRef?.WritableTiers(),
+            installedDefaults: seedDefaults,
             // Lets "Override Attack" auto-resolve a typed cast-code (e.g.
             // "turn") onto the mana-gated spell rung instead of silently
             // falling through to a raw, ungated command — see
@@ -413,29 +414,24 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
             resolveSpellShort: AppServices.Current.SpellShort.NumberByShort,
             // Inverse — shows the cast-code again on reopen instead of the
             // internal Spells.Number it resolved to.
-            resolveSpellNumber: AppServices.Current.SpellShort.ShortByNumber);
+            resolveSpellNumber: AppServices.Current.SpellShort.ShortByNumber,
+            // Typeahead for the override spell pickers — the character's castable
+            // spells, same source the Settings → Combat spell slots use.
+            spellSuggestions:   AppServices.Current.Spellbook.AvailablePicks,
+            // Min-mana control parity with Settings → Combat (mode caps the box + drives
+            // the %↔value label; live max mana snapshot for the conversion).
+            manaModePercentage: AppServices.Current.CombatSpellManaModeIsPercentage,
+            liveMaxMa:          AppServices.Current.PlayerState.MaxMa);
 
         MonsterEditResult? result = await _dialogs.OpenWindowAsync<MonsterEditDialogViewModel, MonsterEditResult>(vm);
         if (result is null) return;
 
-        // The dialog only offers writable tiers, but guard anyway: writing to
-        // a tier whose scope can't be resolved (Defaults read-only, Character
-        // with no profile loaded, BBS with no active BBS) throws from inside
-        // the Save handler and crashed the app. Fall back to the most-specific
-        // writable tier and note the redirect in the log instead.
+        // Installed-defaults reset (confirm + wipe all tiers), redundant-override
+        // cleanup (edit == seed → clear the tier), or a normal write — one shared path.
         if (_resolverRef is { } resolver)
-        {
-            SettingsTier tier = result.Tier;
-            if (!resolver.CanWriteAt(tier))
-            {
-                SettingsTier fallback = resolver.WritableTiers()[0];
-                AppServices.Current.Log.Warn("GameData/Monsters",
-                    $"Cannot save monster #{result.WccNoStr} at {tier} tier "
-                    + $"(scope not active); saved at {fallback} instead.");
-                tier = fallback;
-            }
-            resolver.WriteGameDataAt(tier, "Monsters", result.WccNoStr, result.Overlay);
-        }
+            await GameDataOverrideApplier.ApplyAsync(
+                resolver, AppServices.Current.Confirm, "Monsters", result.WccNoStr,
+                result.Tier, result.Overlay, result.EqualsInstalledDefaults);
 
         Reload();
     }

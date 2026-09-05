@@ -244,6 +244,20 @@ public sealed class SettingsResolver
         }
     }
 
+    // Reset a game-data record to its installed defaults: remove the override at
+    // every writable tier (Character, BBS, Global) so the next Resolve falls all
+    // the way through to the seeded Defaults value. The Game Data edit dialogs call
+    // this when the user picks the "Installed defaults" tier (behind a confirm) —
+    // it's the only way to clear a shadowing higher-tier override. Fires
+    // GameDataChanged per tier actually cleared (via ClearGameDataAt).
+    public void ResetGameDataRecord(string table, string recordId)
+    {
+        if (CanWriteAt(SettingsTier.Character)) ClearGameDataAt(SettingsTier.Character, table, recordId);
+        if (CanWriteAt(SettingsTier.Bbs))       ClearGameDataAt(SettingsTier.Bbs,       table, recordId);
+        ClearGameDataAt(SettingsTier.Global, table, recordId);
+        Log?.Info("Settings", $"game-data reset to defaults: {table} #{recordId} (all tiers cleared)");
+    }
+
     // Which tier owns the highest-priority override for the given record, or
     // SettingsTier.Defaults when no tier has an override. Used by the Game Data
     // Browser's "Use" column to label each row with the tier its current values

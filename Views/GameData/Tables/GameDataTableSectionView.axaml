@@ -63,15 +63,24 @@
             <!-- Search box + Add/Remove buttons (Add/Remove only render
                  when the section implements IEditableTableSectionViewModel
                  with non-null AddCommand / RemoveCommand — wired in
-                 code-behind via FindControl). -->
-            <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="6">
-                <TextBox Classes="clearable" Text="{Binding SearchText, Mode=TwoWay}"
-                         PlaceholderText="Filter…"
-                         ToolTip.Tip="{Binding FilterHint}"
-                         Width="320"/>
-                <Button x:Name="AddButton"    Content="Add"    IsVisible="False"/>
-                <Button x:Name="RemoveButton" Content="Remove" IsVisible="False"/>
-            </StackPanel>
+                 code-behind via FindControl). The optional Export button
+                 (e.g. Incomplete Messages' "Upload edits") docks far right. -->
+            <DockPanel Grid.Row="2" LastChildFill="False">
+                <Button x:Name="ExportButton" DockPanel.Dock="Right" IsVisible="False"/>
+                <!-- Test-only "Simulate entry" (Unrecognized Lines tab); visibility
+                     follows the section's live ShowSimulate flag, wired in code-behind. -->
+                <Button x:Name="SimulateButton" DockPanel.Dock="Right" Margin="0,0,6,0" IsVisible="False"/>
+                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Spacing="6">
+                    <TextBox Classes="clearable" Text="{Binding SearchText, Mode=TwoWay}"
+                             PlaceholderText="Filter…"
+                             ToolTip.Tip="{Binding FilterHint}"
+                             Width="320"/>
+                    <Button x:Name="AddButton"    Content="Add"    IsVisible="False"/>
+                    <Button x:Name="RemoveButton" Content="Remove" IsVisible="False"/>
+                    <!-- Optional soft "Dismiss" (Unrecognized Lines tab); wired in code-behind. -->
+                    <Button x:Name="DismissButton" Content="Dismiss" IsVisible="False"/>
+                </StackPanel>
+            </DockPanel>
 
             <!-- Tabular row grid. Columns are populated in code-behind from
                  the VM's Columns list so they auto-size and align with their

@@ -67,6 +67,13 @@ public sealed class ItemRecordDialogService
         IReadOnlyList<ItemSource>? containerSources = _itemSources.ContainersOf(itemNumber);
         IReadOnlyList<ItemGiver>? givers = _itemSources.GiversOf(itemNumber);
 
+        // On-use / proc message editing — same surface the browser Items tab wires,
+        // via the shared ItemMessageDialogService (item-claimed messages live with
+        // the item, hidden from the Messages tab).
+        ItemMessageDialogService? itemMsg = AppServices.Current?.ItemMessage;
+        Func<Task<string?>>? editMsg = itemMsg is not null ? () => itemMsg.OpenAsync(itemNumber) : null;
+        string? msgSummary = itemMsg?.SummaryFor(itemNumber);
+
         ItemEditDialogViewModel vm = new(
             wccNoStr:         wcc,
             mdbName:          _cache.FindNameByNumber("Items", itemNumber) ?? string.Empty,
@@ -74,13 +81,18 @@ public sealed class ItemRecordDialogService
             currentTier:      currentTier,
             mdbInfo:          mdb.OtherInfo,
             shops:            mdb.Shops,
+            writableTiers:    _resolver.WritableTiers(),
+            installedDefaults: seedDefaults,
             isLight:          mdb.IsLight,
             isContainer:      mdb.IsContainer,
             chest:            chest,
             containerSources: containerSources,
             givers:           givers,
             shopSalesForCharm: ShopsForCharm,
-            droppedBy:        mdb.DroppedBy);
+            droppedBy:        mdb.DroppedBy,
+            castsSpells:      mdb.CastsSpells,
+            editAttachedMessage:    editMsg,
+            attachedMessageSummary: msgSummary);
 
         ItemEditDialogViewModel? previous = _openItemVm;
         _openItemVm = vm;
@@ -97,8 +109,11 @@ public sealed class ItemRecordDialogService
         }
         if (result is null) return;
 
-        // Defaults tier is read-only (MDB is source of truth) — fall back to Character.
-        SettingsTier tier = result.Tier == SettingsTier.Defaults ? SettingsTier.Character : result.Tier;
-        _resolver.WriteGameDataAt(tier, "Items", result.WccNoStr, result.Overlay);
+        // Installed-defaults reset / redundant-override cleanup / normal write —
+        // shared with the browser's Items tab.
+        if (AppServices.Current is { } app)
+            await GameDataOverrideApplier.ApplyAsync(
+                _resolver, app.Confirm, "Items", result.WccNoStr,
+                result.Tier, result.Overlay, result.EqualsInstalledDefaults);
     }
 }

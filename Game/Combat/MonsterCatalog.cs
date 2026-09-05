@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Text.Json;
 using MudPlay.Game.GameData;
+using MudPlay.Game.Spells;
 using MudPlay.Services;
 
 namespace MudPlay.Game.Combat;
@@ -12,15 +13,25 @@ namespace MudPlay.Game.Combat;
 // game data carries (see MonsterMdbInfoBuilder.ResolveSpellEffect for the
 // existing decode of this). TruePercent is the per-round chance after the
 // engine's own normalization; Percent is the raw stored value.
+//
+// SpellDmgMin/Max are the resolved single-cast damage range for a spell slot
+// (Type == 2): the linked spell's formula scaled to this monster's cast level,
+// WITHOUT the player per-round energy multiplier (the monster casts once when the
+// attack lands; how often it fires rides the monster's own attack energy). Both 0
+// for a physical slot, a non-damaging spell, or an unresolved spell number.
 public sealed record MonsterAttackSlot(
     string Name, int Type, int Percent, double TruePercent,
-    int MinDamage, int MaxDamage, int Accuracy, int Energy, int HitSpell);
+    int MinDamage, int MaxDamage, int Accuracy, int Energy, int HitSpell,
+    int SpellDmgMin = 0, int SpellDmgMax = 0);
 
 // One MidSpell-N ("between rounds") slot. Percent is stored as a cumulative
 // threshold across the 5 slots on the raw row — MonsterCatalog resolves this to
 // the per-slot delta chance (see MonsterMdbInfoBuilder's existing identical
-// decode) so callers never have to re-derive it.
-public sealed record MonsterMidSpellSlot(int SpellId, int Percent, int Level);
+// decode) so callers never have to re-derive it. DmgMin/Max are the resolved
+// single-cast damage range (same model as MonsterAttackSlot's), 0 for a
+// non-damaging or unresolved spell.
+public sealed record MonsterMidSpellSlot(int SpellId, int Percent, int Level,
+    int DmgMin = 0, int DmgMax = 0);
 
 // One DropItem-N slot.
 public sealed record MonsterDropSlot(int ItemId, int Percent);
@@ -233,23 +244,28 @@ public sealed class MonsterCatalog
     {
         if (_byNumber is { } cached) return cached;
 
-        // Spell Number → AttType (element), resolved once and reused for every
-        // monster's spell-attack/mid-spell slots — the same cross-reference
-        // MonsterMdbInfoBuilder.ResolveSpellEffect and MonsterSummonTargetsIndex
-        // already perform independently.
+        // Spell Number → AttType (element) + full formula, resolved once and reused
+        // for every monster's spell-attack/mid-spell slots — the AttType map feeds
+        // the cast-elements rollup (as MonsterMdbInfoBuilder.ResolveSpellEffect and
+        // MonsterSummonTargetsIndex each do independently); the formula map feeds the
+        // per-slot single-cast damage. Both drop with the Spells eviction below.
         Dictionary<int, int> spellAttType = new();
+        Dictionary<int, SpellFormulaInput> spellFormulas = new();
         JsonDocument? spells = _cache.GetRawTable("Spells");
         if (spells is not null)
             foreach (JsonElement row in spells.RootElement.EnumerateArray())
                 if (TryInt(row, "Number", out int spellNum))
+                {
                     spellAttType[spellNum] = TryInt(row, "AttType", out int at) ? at : -1;
+                    spellFormulas[spellNum] = SpellFormulaReader.Read(row);
+                }
 
         Dictionary<int, MonsterCatalogEntry> map = new();
         JsonDocument? doc = _cache.GetRawTable("Monsters");
         if (doc is not null)
             foreach (JsonElement row in doc.RootElement.EnumerateArray())
                 if (TryInt(row, "Number", out int number))
-                    map[number] = BuildEntry(row, number, spellAttType);
+                    map[number] = BuildEntry(row, number, spellAttType, spellFormulas);
 
         _cache.EvictTable("Monsters");
         _cache.EvictTable("Spells");
@@ -259,13 +275,26 @@ public sealed class MonsterCatalog
     }
 
     private static MonsterCatalogEntry BuildEntry(
-        JsonElement row, int number, IReadOnlyDictionary<int, int> spellAttType)
+        JsonElement row, int number, IReadOnlyDictionary<int, int> spellAttType,
+        IReadOnlyDictionary<int, SpellFormulaInput> spellFormulas)
     {
+        // A spell slot / mid-spell casts once when it lands, so its damage is the
+        // linked spell's single-cast range (no player per-round energy fold),
+        // scaled to the monster's assigned cast level. EndCast chains resolve
+        // through the same formula map.
+        Func<int, SpellFormulaInput?> resolveFormula =
+            n => spellFormulas.TryGetValue(n, out SpellFormulaInput f) ? f : null;
+
         List<MonsterAttackSlot> attacks = new();
         for (int i = 0; i < AttackSlots; i++)
         {
             int type = ReadInt(row, $"AttType-{i}");
             if (type is < 1 or > 3) continue;
+            int accuracy = ReadInt(row, $"AttAcc-{i}");
+            int castLevel = ReadInt(row, $"AttMax-{i}");   // Type 2: AttMax holds the cast level
+            (int dmgMin, int dmgMax) = type == 2
+                ? ResolveSpellDamage(accuracy, castLevel, resolveFormula)
+                : (0, 0);
             attacks.Add(new MonsterAttackSlot(
                 Name: ReadString(row, $"AttName-{i}"),
                 Type: type,
@@ -273,9 +302,11 @@ public sealed class MonsterCatalog
                 TruePercent: ReadDouble(row, $"AttTrue%-{i}"),
                 MinDamage: ReadInt(row, $"AttMin-{i}"),
                 MaxDamage: ReadInt(row, $"AttMax-{i}"),
-                Accuracy: ReadInt(row, $"AttAcc-{i}"),
+                Accuracy: accuracy,
                 Energy: ReadInt(row, $"AttEnergy-{i}"),
-                HitSpell: ReadInt(row, $"AttHitSpell-{i}")));
+                HitSpell: ReadInt(row, $"AttHitSpell-{i}"),
+                SpellDmgMin: dmgMin,
+                SpellDmgMax: dmgMax));
         }
 
         // MidSpell%-N is a cumulative threshold across the 5 slots; resolve to
@@ -290,7 +321,9 @@ public sealed class MonsterCatalog
             int threshold = ReadInt(row, $"MidSpell%-{i}");
             int delta = threshold - cumulative;
             cumulative = threshold;
-            midSpells.Add(new MonsterMidSpellSlot(spellId, delta, ReadInt(row, $"MidSpellLVL-{i}")));
+            int level = ReadInt(row, $"MidSpellLVL-{i}");
+            (int mdMin, int mdMax) = ResolveSpellDamage(spellId, level, resolveFormula);
+            midSpells.Add(new MonsterMidSpellSlot(spellId, delta, level, mdMin, mdMax));
         }
 
         List<MonsterDropSlot> drops = new();
@@ -371,6 +404,26 @@ public sealed class MonsterCatalog
             Dodge: dodge,
             NonLiving: nonLiving,
             CastsElements: new List<string>(castsElements));
+    }
+
+    // The single-cast damage range for a monster's assigned spell: the linked
+    // spell's formula scaled to the monster's cast level, WITHOUT the player
+    // per-round energy multiplier (the monster casts it once when the attack
+    // lands; the spell's own EnergyCost is a player-cadence field — the monster
+    // has its own attack-energy budget). (0, 0) for an unresolved spell or one
+    // that deals no damage (a pure ailment/summon/flavor spell). The stored range
+    // can be inverted (min > max) or negative in the raw data, so it's ordered
+    // low→high and non-positive maxima are dropped.
+    private static (int Min, int Max) ResolveSpellDamage(
+        int spellNumber, int castLevel, Func<int, SpellFormulaInput?> resolveFormula)
+    {
+        if (resolveFormula(spellNumber) is not { } f) return (0, 0);
+        long a = SpellCalculator.SingleCastMinDamage(f, castLevel, resolveFormula);
+        long b = SpellCalculator.SingleCastMaxDamage(f, castLevel, resolveFormula);
+        long lo = System.Math.Min(a, b), hi = System.Math.Max(a, b);
+        if (hi <= 0) return (0, 0);
+        if (lo < 0) lo = 0;
+        return ((int)lo, (int)hi);
     }
 
     private static void AddElement(HashSet<string> into, int attType)

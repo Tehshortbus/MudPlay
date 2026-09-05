@@ -248,6 +248,13 @@ public sealed class AppServices
     // engines that gate on HP / MP thresholds.
     public Game.PlayerState PlayerState { get; }
 
+    // True when the character's Combat-tab min-mana threshold is read as a percentage
+    // (vs an absolute value). Surfaced so per-monster override editors can present the
+    // same min-mana control (% cap vs absolute ceiling) as Settings → Combat.
+    public bool CombatSpellManaModeIsPercentage =>
+        ReadSection<Models.Profile.CombatSettings>(Profile.Current, "Combat")
+            .SpellManaThresholdMode == Models.Profile.ThresholdMode.Percentage;
+
     // Parses MajorMUD status-line prompts into PlayerState.
     // Sole writer of the state's HP / MA / position / mana-type fields
     // (the single-writer IL scan enforces this).
@@ -852,6 +859,17 @@ public sealed class AppServices
     // Data/game data/{set}/monster-messages.json.
     public MonsterMessageStore MonsterMessages { get; private set; } = null!;
 
+    // Staged, unrecognized-message candidates for the active set —
+    // Game.MessageCandidateWatcher's output, reviewed via the LogPane
+    // double-click flow or the Game Data Browser's Unrecognized Lines tab. Pure
+    // runtime-observed state, not curated data — no seed-file fallback.
+    public MessageCandidateStore MessageCandidates { get; private set; } = null!;
+
+    // Watches the wire for lines the Messages catalogue doesn't recognize and
+    // stages them in MessageCandidates. AttachLineExtractor lands in
+    // MainWindowViewModel alongside the other line consumers.
+    public Game.MessageCandidateWatcher MessageCandidateWatcher { get; private set; } = null!;
+
     // Per-set editable vocabulary of monster flavor adjectives the room classifier
     // strips to resolve a prefixed display name. Defaults to the built-in stock list;
     // edited in the Game Data Browser's Flavor Prefixes section.
@@ -1145,9 +1163,6 @@ public sealed class AppServices
     // Models.GameData.MessageFlags bitfield. Consumed
     // by CastingDirector's Tier-2 cure path.
     public Game.Conditions.ConditionTracker Conditions { get; private set; } = null!;
-
-    // Sends a game-data message's Response command when its CasterMessage lands.
-    public Game.Conditions.MessageResponder MessageResponder { get; private set; } = null!;
 
     // Outbound ailment-sync engine — on a local curable ailment it
     // announces on say (.@poisoned etc.) so other MudPlay
@@ -1465,6 +1480,11 @@ public sealed class AppServices
     // Opens the spell record (Message / Game-Data) dialog by Number from any surface —
     // the Navigation Room Info panel's room-spell link. Single-instance across callers.
     public SpellRecordDialogService SpellRecord { get; private set; } = null!;
+
+    // Opens an item's on-use / proc message editor from the item dialog's Message
+    // section — the Items-side mirror of SpellRecord. Item-claimed message records are
+    // authored here rather than the Messages tab. Single-instance across callers.
+    public ItemMessageDialogService ItemMessage { get; private set; } = null!;
 
     // Background audit comparing player-facing spells in the active
     // set against the Messages catalogue's Links field — surfaces a
@@ -1834,6 +1854,19 @@ public sealed class AppServices
         // already-migrated trees.
         LogService bootstrapLog = new();
         DataMigration.RunIfNeeded(bootstrapLog);
+
+        // One-time forced retirement of the pre-split Messages catalogue (legacy single
+        // Global seed + per-set messages.json), so existing installs land on the new
+        // realm-flavored seeds bootstrapped just above. Guarded by a marker; backs up to
+        // .bak first. Remove-after-rollout (tracked as a GitHub issue).
+        DataMigration.RetireLegacyMessagesOnce(bootstrapLog);
+
+        // One-time forced reseed for the item-on-use → cast-spell recuration: this release
+        // rebuilt the Messages seeds (one message per cast spell, proc-damage records
+        // dropped, realm lines corrected), so an existing install's older Global seed /
+        // per-set edits are backed up to .bak and replaced with the shipped seed. Guarded
+        // by its own marker; remove-after-rollout.
+        DataMigration.ForceMessageReseedOnce(bootstrapLog);
 
         _current = new AppServices(bootstrapLog);
         return _current;
@@ -2570,6 +2603,10 @@ public sealed class AppServices
         // same per-set storage + universal seed fallback pattern.
         MonsterMessages = new MonsterMessageStore(Log);
         GameData.ActiveSetChanged += MonsterMessages.Load;
+        // Staged candidates are pure runtime-observed state (no seed fallback),
+        // but still reload per set like every other game-data-scoped store.
+        MessageCandidates = new MessageCandidateStore(Log);
+        GameData.ActiveSetChanged += MessageCandidates.Load;
         // Per-set flavor-adjective vocabulary the room classifier strips ("large
         // giant rat" → "giant rat"). Defaults to the built-in stock list; a
         // custom realm's edits persist per set. Reloads on every set switch.
@@ -3104,6 +3141,12 @@ public sealed class AppServices
         // display side-effect) — the exp gained marks the kill.
         MonsterDeath.MonsterDied += evt =>
             CombatClassifier.NoteMonsterDeath(evt.ExperienceGained);
+        // Temp death-spell recovery: when a monster whose DeathSpell is a silent "…temp"
+        // spell dies, those spells stall the game engine, so send that spell's message
+        // CastResponse (seeded "^M^M" = two carriage returns) to unstick it. Subscribes
+        // BEFORE the roster-resync below so Combat.CurrentTarget — its fallback identity
+        // when the death carried no candidates — is still set.
+        MonsterDeath.MonsterDied += FireTempDeathResponse;
         // Summon-on-death recheck. MUST subscribe to MonsterDied BEFORE the roster-
         // resync handler below: on a kill whose DeathSpell summons, it asserts a
         // hold + sends a CR to re-scan the room, and that hold has to be in place
@@ -3228,6 +3271,11 @@ public sealed class AppServices
         // so combat's engage decision and the walker's gate never disagree.
         Combat.SetMovementActiveGate(() => Recovery.AttachedEngine is not null);
         CombatTracker.SetMovementActiveGate(() => Recovery.AttachedEngine is not null);
+
+        // While an AttackPrevented message is active (stun / petrify / bind), the
+        // server rejects every attack the player issues — weapon and spell — so the
+        // combat engine holds all offensive output until the wear-off clears it.
+        Combat.SetAttackPreventedGate(() => Conditions.IsAttackPrevented);
 
         // A combat-spell engage can lose its initial send to a self-buff that just
         // spent the cast slot. On a fresh process there may be no combat-tick anchor
@@ -3424,10 +3472,15 @@ public sealed class AppServices
         // lands in MainWindowViewModel alongside the other line
         // consumers.
         Conditions = new Game.Conditions.ConditionTracker(Messages, Log);
-        // Sends a game-data message's Response command when its CasterMessage
-        // lands (e.g. "desert damage" → "use water"). Wire-sender + line feed
-        // bound per-session by MainWindowViewModel.
-        MessageResponder = new Game.Conditions.MessageResponder(Messages, Log);
+        // Watches the same wire for lines neither the message catalogue above nor any
+        // registered Router pattern recognizes, staging them as review candidates.
+        // AttachLineExtractor lands in MainWindowViewModel alongside the other line
+        // consumers; Enabled mirrors LogDiagnostics.CaptureUnrecognizedMessages below.
+        // currentRoom copies out the live position so each candidate is tagged with
+        // where it was first seen — a locator hint for tracking down the source.
+        MessageCandidateWatcher = new Game.MessageCandidateWatcher(
+            Router, Messages, MessageCandidates,
+            currentRoom: () => RoomTracker.State.CurrentRoom?.Key, log: Log);
 
         // AilmentSyncEngine — outbound ailment broadcast. On catching a
         // curable ailment (or being held) it announces ".@poisoned" /
@@ -3828,6 +3881,11 @@ public sealed class AppServices
         // (the Room Info room-spell link), reusing the Spells tab's message-link flow + the
         // shared SpellInfoRowsBuilder. Messages (2366) is ready.
         SpellRecord = new SpellRecordDialogService(GameData, Messages, Dialogs);
+
+        // Item-side mirror of SpellRecord — opens an item's on-use / proc message
+        // editor from the item dialog's Message section. A casting item delegates to
+        // SpellRecord on its CastsSp spell (the shared record), so it takes that here.
+        ItemMessage = new ItemMessageDialogService(GameData, Messages, Dialogs, SpellRecord);
 
         // Light catalogue + live carried illumination. The snapshot provider is
         // deferred (Inventory is assigned later in this method), so reading
@@ -5235,6 +5293,10 @@ public sealed class AppServices
         // construction, before any ProfileLoaded fires) so it's never null.
         HopCalibrator.Enabled = LogDiagnostics.HopTiming;
         LogDiagnostics.Changed += () => HopCalibrator.Enabled = LogDiagnostics.HopTiming;
+        // Same live-gate pattern for message-candidate capture.
+        MessageCandidateWatcher.Enabled = LogDiagnostics.CaptureUnrecognizedMessages;
+        LogDiagnostics.Changed += () =>
+            MessageCandidateWatcher.Enabled = LogDiagnostics.CaptureUnrecognizedMessages;
 
         // Per-BBS room blacklist — hides ganghouse / dead-end rooms
         // from the map render + room search. Loaded on BBS pin so
@@ -5882,18 +5944,20 @@ public sealed class AppServices
         LogDiagnostics.CombatDiagnostics = dto.Combat;
         LogDiagnostics.AutoCollectLogs   = dto.AutoCollect;
         LogDiagnostics.HopTiming         = dto.HopTiming;
+        LogDiagnostics.CaptureUnrecognizedMessages = dto.CaptureUnrecognizedMessages;
         _suppressLogDiagnosticsPersist = false;
     }
 
     private void ResetLogDiagnosticsToDefaults()
     {
         _suppressLogDiagnosticsPersist = true;
-        // Mirror LogDiagnosticsSettings defaults: Debug + Combat on, the heavier
-        // on-disk / hop-timing traces off.
+        // Mirror LogDiagnosticsSettings defaults: Debug + Combat + message-candidate
+        // capture on, the heavier on-disk / hop-timing traces off.
         LogDiagnostics.DebugDiagnostics  = true;
         LogDiagnostics.CombatDiagnostics = true;
         LogDiagnostics.AutoCollectLogs   = false;
         LogDiagnostics.HopTiming         = false;
+        LogDiagnostics.CaptureUnrecognizedMessages = true;
         _suppressLogDiagnosticsPersist = false;
     }
 
@@ -5909,6 +5973,7 @@ public sealed class AppServices
             Combat     = LogDiagnostics.CombatDiagnostics,
             AutoCollect = LogDiagnostics.AutoCollectLogs,
             HopTiming  = LogDiagnostics.HopTiming,
+            CaptureUnrecognizedMessages = LogDiagnostics.CaptureUnrecognizedMessages,
         };
         profile.Settings ??= new();
         profile.Settings["LogDiagnostics"] = System.Text.Json.JsonSerializer.SerializeToElement(dto);
@@ -6441,6 +6506,43 @@ public sealed class AppServices
         foreach (string cmd in cmds) SendGameCommand(cmd);
     }
 
+    // A monster whose DeathSpell is a silent "…temp" spell just died: those spells emit no
+    // wire line but stall the game engine, so send the temp spell's MessageRecord.CastResponse
+    // (seeded "^M^M" = two carriage returns) to nudge the engine past the stall. Identity is
+    // best-effort — the event's Candidates plus the engaged target (the exp-only death path
+    // carries no candidates); a stray extra CR is harmless. Fires at most one response per death.
+    private void FireTempDeathResponse(Game.Combat.MonsterDeathEvent evt)
+    {
+        if (_engineWireSend is null) return;
+        HashSet<int> numbers = new();
+        foreach (Game.Combat.MonsterDeathIdentity id in evt.Candidates)
+            if (id.Number is { } n) numbers.Add(n);
+        if (!string.IsNullOrWhiteSpace(Combat.CurrentTarget)
+            && ResolveMonsterNumberByName(Combat.CurrentTarget) is { } cur) numbers.Add(cur);
+
+        foreach (int num in numbers)
+        {
+            int deathSpell = MonsterCatalog.Get(num)?.DeathSpell ?? 0;
+            if (deathSpell <= 0) continue;
+            string? spellName = GameData.FindNameByNumber("Spells", deathSpell);
+            if (!Game.Combat.TempDeathResponse.IsTempSpell(spellName)) continue;
+
+            foreach (Models.GameData.MessageRecord r in Messages.Messages)
+            {
+                if (string.IsNullOrEmpty(r.CastResponse) || r.Links is null) continue;
+                bool linked = false;
+                foreach (Models.GameData.GameDataLink l in r.Links)
+                    if (l.Table == "Spells" && l.Number == deathSpell) { linked = true; break; }
+                if (!linked) continue;
+                if (Game.Combat.TempDeathResponse.ExpandToWireBytes(r.CastResponse) is not { } bytes) continue;
+                _engineWireSend(bytes);
+                Log.Info("TempDeath",
+                    $"'{spellName}' (#{deathSpell}) death-cast — sent cast response to unstick the engine");
+                return;   // one response per death
+            }
+        }
+    }
+
     // The Monsters-table Number for a boss whose BossDef didn't carry one — resolved
     // by its game-data name. Null when the active set has no such monster.
     private int? ResolveMonsterNumberByName(string name)
@@ -6684,12 +6786,26 @@ public sealed class AppServices
     }
 
     // Find the active set's Models.GameData.MessageRecord for an
-    // item — by Items#N link first, then by the item's resolved name.
-    // An item-proc record's Models.GameData.MessageRecord.CasterMessage
-    // is the line YOU see when the weapon procs. Returns null when no
-    // record anchors to the item. Mirrors FindSpellMessage.
+    // item — the line YOU see when the item procs / is used. Resolution order:
+    // (1) the item's CAST SPELL record (Spells#N via CastsSp) — the canonical home
+    // for a casting item's on-use / proc wording, shared across every item casting
+    // that spell; (2) a legacy Items#N-linked record (worn trinkets with a
+    // wield/remove message that cast nothing); (3) the item's resolved name. Returns
+    // null when no record anchors to the item. Mirrors FindSpellMessage.
     private Models.GameData.MessageRecord? FindItemMessage(int itemNumber)
     {
+        if (Game.GameData.ItemCastSpells.PrimaryCastSpell(GameData, itemNumber) is int spell)
+        {
+            foreach (Models.GameData.MessageRecord m in Messages.Messages)
+            {
+                if (m.Links is null) continue;
+                foreach (Models.GameData.GameDataLink link in m.Links)
+                    if (string.Equals(link.Table, "Spells", StringComparison.OrdinalIgnoreCase)
+                        && link.Number == spell)
+                        return m;
+            }
+        }
+
         foreach (Models.GameData.MessageRecord m in Messages.Messages)
         {
             if (m.Links is null) continue;

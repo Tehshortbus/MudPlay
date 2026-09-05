@@ -1,7 +1,7 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.49.0**
+> **Version 3.51.0**
 > - Reads the game's `sysop status` room dump for characters flagged with sysop / goto powers, and uses its exact map/room number to recover the client's position instead of walking backwards to work it out
 > - A tracker that goes lost, or a loop blocked because it lost track of where it is, re-anchors from that instead of waiting for an "I am here" click
 > - Fixed a loop hanging forever when a move went out and never confirmed, and one sitting idle after recovery had already succeeded

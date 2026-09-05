@@ -362,10 +362,11 @@
                                             <TextBlock Classes="DetailLine" Margin="10,0,0,0" IsVisible="{Binding Eligible}"
                                                        Foreground="{StaticResource AccentAmberBrush}">
                                                 <TextBlock.Text>
-                                                    <MultiBinding StringFormat="{}~{0} dmg/min · {1} effective/round · {2} mana/round">
-                                                        <Binding Path="DamagePerMinute"/>
+                                                    <MultiBinding StringFormat="{}{0:0.0} dmg per mana · {1} rounds to kill · {2} mana to kill · {3} dmg/round">
+                                                        <Binding Path="DamagePerMana"/>
+                                                        <Binding Path="RoundsToKill"/>
+                                                        <Binding Path="ManaToKill"/>
                                                         <Binding Path="EffectiveDamage"/>
-                                                        <Binding Path="ManaCostPerRound"/>
                                                     </MultiBinding>
                                                 </TextBlock.Text>
                                             </TextBlock>
@@ -374,7 +375,7 @@
                                         </StackPanel>
                                     </DataTemplate>
                                 </StackPanel.Resources>
-                                <TextBlock Classes="FieldLabel" Text="Spell attacks, ranked" Margin="0,4,0,2"/>
+                                <TextBlock Classes="FieldLabel" Text="Spell attacks, ranked by mana efficiency" Margin="0,4,0,2"/>
                                 <StackPanel IsVisible="{Binding HasSingleTargetSpells}" Margin="0,0,0,4">
                                     <TextBlock Classes="DetailLine" FontWeight="SemiBold" Text="Single-target"
                                                Foreground="{StaticResource ChromeFgSecBrush}"/>
@@ -435,9 +436,6 @@
                                             <TextBlock Classes="DetailLine" Text="{Binding Detail}" Margin="10,0,0,0"/>
                                             <TextBlock Classes="DetailLine" Text="{Binding Energy}" Margin="10,0,0,0"
                                                        IsVisible="{Binding Energy, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-                                            <TextBlock Classes="DetailLine" Text="{Binding Dpm}" Margin="10,0,0,0"
-                                                       Foreground="{StaticResource AccentAmberBrush}"
-                                                       IsVisible="{Binding Dpm, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                                         </StackPanel>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>

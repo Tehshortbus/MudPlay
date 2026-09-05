@@ -4006,85 +4006,85 @@
   {
     "Number": 2161,
     "Name": "ruby spellbreaker",
-    "Relationship": "Neutral",
+    "Relationship": "Friend",
     "Priority": "Normal"
   },
   {
     "Number": 2162,
     "Name": "iron spellbreaker",
-    "Relationship": "Neutral",
+    "Relationship": "Friend",
     "Priority": "Normal"
   },
   {
     "Number": 2163,
     "Name": "topaz spellbreaker",
-    "Relationship": "Neutral",
+    "Relationship": "Friend",
     "Priority": "Normal"
   },
   {
     "Number": 2164,
     "Name": "copper spellbreaker",
-    "Relationship": "Neutral",
+    "Relationship": "Friend",
     "Priority": "Normal"
   },
   {
     "Number": 2165,
     "Name": "amber spellbreaker",
-    "Relationship": "Neutral",
+    "Relationship": "Friend",
     "Priority": "Normal"
   },
   {
     "Number": 2166,
     "Name": "brass spellbreaker",
-    "Relationship": "Neutral",
+    "Relationship": "Friend",
     "Priority": "Normal"
   },
   {
     "Number": 2167,
     "Name": "emerald spellbreaker",
-    "Relationship": "Neutral",
+    "Relationship": "Friend",
     "Priority": "Normal"
   },
   {
     "Number": 2168,
     "Name": "bronze spellbreaker",
-    "Relationship": "Neutral",
+    "Relationship": "Friend",
     "Priority": "Normal"
   },
   {
     "Number": 2169,
     "Name": "sapphire spellbreaker",
-    "Relationship": "Neutral",
+    "Relationship": "Friend",
     "Priority": "Normal"
   },
   {
     "Number": 2170,
     "Name": "elite amethyst guardian",
-    "Relationship": "Neutral",
+    "Relationship": "Friend",
     "Priority": "Normal"
   },
   {
     "Number": 2171,
     "Name": "onyx spellbreaker",
-    "Relationship": "Neutral",
+    "Relationship": "Friend",
     "Priority": "Normal"
   },
   {
     "Number": 2172,
     "Name": "silver spellbreaker",
-    "Relationship": "Neutral",
+    "Relationship": "Friend",
     "Priority": "Normal"
   },
   {
     "Number": 2173,
     "Name": "gold spellbreaker",
-    "Relationship": "Neutral",
+    "Relationship": "Friend",
     "Priority": "Normal"
   },
   {
     "Number": 2174,
     "Name": "diamond spellbreaker",
-    "Relationship": "Neutral",
+    "Relationship": "Friend",
     "Priority": "Normal"
   },
   {
@@ -4637,25 +4637,25 @@
   {
     "Number": 2511,
     "Name": "iron guardian",
-    "Relationship": "Neutral",
+    "Relationship": "Friend",
     "Priority": "Normal"
   },
   {
     "Number": 2514,
     "Name": "copper guardian",
-    "Relationship": "Neutral",
+    "Relationship": "Friend",
     "Priority": "Normal"
   },
   {
     "Number": 2517,
     "Name": "brass guardian",
-    "Relationship": "Neutral",
+    "Relationship": "Friend",
     "Priority": "Normal"
   },
   {
     "Number": 2520,
     "Name": "bronze guardian",
-    "Relationship": "Neutral",
+    "Relationship": "Friend",
     "Priority": "Normal"
   },
   {
@@ -5029,6 +5029,90 @@
     "Number": 2814,
     "Name": "hedge wizard",
     "Relationship": "Neutral",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2510,
+    "Name": "elite ruby guardian",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2512,
+    "Name": "elite iron guardian",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2513,
+    "Name": "elite topaz guardian",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2515,
+    "Name": "elite copper guardian",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2516,
+    "Name": "elite amber guardian",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2518,
+    "Name": "elite brass guardian",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2519,
+    "Name": "elite emerald guardian",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2521,
+    "Name": "elite bronze guardian",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2522,
+    "Name": "elite sapphire guardian",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2525,
+    "Name": "elite amethyst guardian",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2528,
+    "Name": "elite onyx guardian",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2531,
+    "Name": "elite silver guardian",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2534,
+    "Name": "elite gold guardian",
+    "Relationship": "Friend",
+    "Priority": "Normal"
+  },
+  {
+    "Number": 2537,
+    "Name": "elite diamond guardian",
+    "Relationship": "Friend",
     "Priority": "Normal"
   }
 ]

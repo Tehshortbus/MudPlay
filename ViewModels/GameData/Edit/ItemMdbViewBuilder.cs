@@ -55,6 +55,7 @@ public sealed class ItemMdbViewBuilder
         List<ShopSaleRow> shops = new();
         List<DroppedByRow> droppedBy = new();
         List<PlacedInRow> placedIn = new();
+        List<CastsSpellRow> castsSpells = new();
         bool isLight = false;
         bool isContainer = false;
 
@@ -232,20 +233,22 @@ public sealed class ItemMdbViewBuilder
                     pendingTrigger = "kill";
                     continue;
                 }
-                if (isWeapon && code == 43)        // CastsSp — fold any pending modifier
+                // CastsSp (43) — a spell the item delivers, on any item type. Rendered
+                // as a clickable link to the cast spell's record (where its on-use / proc
+                // wording lives, shared across every item casting it), with the spell's
+                // effect / damage at the item's required level. A weapon %Spell (114) /
+                // CastOnKill% (1114) that preceded it folds in as the proc trigger; a bare
+                // CastsSp is a command-activated "use <item>" cast. val 0 is a no-op slot.
+                if (code == 43)
                 {
-                    string castLabel = pendingTrigger is null
-                        ? "Casts (on use)"
-                        : $"Casts ({pendingPercent}%/{pendingTrigger})";
-                    otherInfo.Add(new KeyValuePair<string, string>(castLabel, ResolveSpellName(val)));
-
-                    // Indented sub-row showing the cast spell's effect /
-                    // damage at the item's required level (e.g. "Dmg 10–40").
-                    // Suppressed when the spell yields no figure or isn't in the set.
-                    string castEffect = CastEffect(val, itemCastLevel);
-                    if (castEffect.Length > 0)
-                        otherInfo.Add(new KeyValuePair<string, string>("  Effect", castEffect));
-
+                    if (val > 0)
+                    {
+                        string castLabel = pendingTrigger is null
+                            ? "Casts (on use)"
+                            : $"Casts ({pendingPercent}%/{pendingTrigger})";
+                        castsSpells.Add(new CastsSpellRow(
+                            castLabel, val, ResolveSpellName(val), CastEffect(val, itemCastLevel)));
+                    }
                     pendingPercent = 0;
                     pendingTrigger = null;
                     continue;
@@ -254,19 +257,6 @@ public sealed class ItemMdbViewBuilder
                 string label = AbilityNames.GetName(code) ?? $"Ability {code}";
                 string value = AbilityValueForDialog(code, val);
                 otherInfo.Add(new KeyValuePair<string, string>(label, value));
-
-                // A CastsSp (43) on a non-weapon item — potion / wand / scroll —
-                // is a use-activated cast. The weapon branch above renders the
-                // cast spell's effect inline; do the same here so "use this item"
-                // effects surface the damage / heal they do, not just the spell
-                // name. (Weapon CastsSp is consumed by the isWeapon branch and
-                // never reaches this row.)
-                if (code == 43)
-                {
-                    string castEffect = CastEffect(val, itemCastLevel);
-                    if (castEffect.Length > 0)
-                        otherInfo.Add(new KeyValuePair<string, string>("  Effect", castEffect));
-                }
             }
 
             // Dropped By — one clickable monster link per "Monster #N(X%)" token,
@@ -289,7 +279,7 @@ public sealed class ItemMdbViewBuilder
 
             break;
         }
-        return new ItemMdbView(otherInfo, shops, isLight, isContainer, droppedBy, placedIn);
+        return new ItemMdbView(otherInfo, shops, isLight, isContainer, droppedBy, placedIn, castsSpells);
     }
 
     // Placed In: one clickable room row per "Room {map}/{room}" token in Obtained
@@ -660,4 +650,5 @@ public sealed record ItemMdbView(
     bool IsLight = false,
     bool IsContainer = false,
     IReadOnlyList<DroppedByRow>? DroppedBy = null,
-    IReadOnlyList<PlacedInRow>? PlacedIn = null);
+    IReadOnlyList<PlacedInRow>? PlacedIn = null,
+    IReadOnlyList<CastsSpellRow>? CastsSpells = null);

@@ -1,3 +1,4 @@
+using System;
 using System.IO;
 using MudPlay.Game.Map;
 using MudPlay.Services;
@@ -35,7 +36,8 @@ public sealed class MovementRefusalDetectorTests : IDisposable
         ]
         """;
 
-    private (RoomTracker Tracker, MovementRefusalDetector Detector) NewDetector()
+    private (RoomTracker Tracker, MovementRefusalDetector Detector) NewDetector(
+        Func<string, bool>? isConfuseFumble = null)
     {
         Directory.CreateDirectory(Path.Combine(_root, "alpha"));
         File.WriteAllText(Path.Combine(_root, "alpha", "Rooms.json"), GraphJson);
@@ -45,8 +47,19 @@ public sealed class MovementRefusalDetectorTests : IDisposable
         graph.OnActiveSetChanged("alpha");
         RoomTracker tracker = new(graph);
         LineExtractor lines = new(new TerminalEmulator(80, 25));
-        MovementRefusalDetector detector = new(lines, tracker);
+        MovementRefusalDetector detector = new(lines, tracker, null, isConfuseFumble);
         return (tracker, detector);
+    }
+
+    // Test stand-in for ConditionTracker.IsConfuseFumbleLine: the three wordings the seed
+    // carries on Confused records, matched whole-line with the trailing-'!'/'.' tolerance
+    // the real predicate applies.
+    private static bool IsTestConfuseFumble(string text)
+    {
+        string n = text.Trim().TrimEnd('.', '!').TrimEnd();
+        return n.Equals("You fumble in confusion", StringComparison.OrdinalIgnoreCase)
+            || n.Equals("You convulse violently", StringComparison.OrdinalIgnoreCase)
+            || n.Equals("You look around stupidly and do nothing", StringComparison.OrdinalIgnoreCase);
     }
 
     private void SetupPending(RoomTracker tracker)
@@ -86,13 +99,6 @@ public sealed class MovementRefusalDetectorTests : IDisposable
     // exit our alignment can't use bonks here; revert cleanly, don't strand.
     [InlineData("Your current alignment prevents you from entering this exit.")]
     [InlineData("Your current alignment prevents you from entering this exit!")]
-    // Confusion fumbles the just-sent move — it never executes, so the pending step
-    // must revert or the tracker strands (report -080223). Both the generic fumble
-    // line and `convulsions`' own wording bonk here.
-    [InlineData("You fumble in confusion!")]
-    [InlineData("You convulse violently!")]
-    // A third convulsions fumble wording, same mechanic as the two above.
-    [InlineData("You look around stupidly and do nothing!")]
     public void RefusalLines_RevertPendingToLocated(string line)
     {
         (RoomTracker tracker, MovementRefusalDetector detector) = NewDetector();
@@ -115,13 +121,45 @@ public sealed class MovementRefusalDetectorTests : IDisposable
         Assert.Equal(RoomConfidence.Pending, tracker.State.Confidence);
     }
 
+    // Confusion fumbles the just-sent move — it never executes, so the pending step
+    // must revert or the tracker strands (report -080223). The wordings are no longer
+    // hardcoded: they come from Confused records' ConfuseFumbleLine via the injected
+    // predicate (ConditionTracker.IsConfuseFumbleLine in the app), so a match still bonks.
+    [Theory]
+    [InlineData("You fumble in confusion!")]
+    [InlineData("You convulse violently!")]
+    [InlineData("You look around stupidly and do nothing!")]
+    public void ConfuseFumbleLine_RevertsPendingToLocated(string line)
+    {
+        (RoomTracker tracker, MovementRefusalDetector detector) = NewDetector(IsTestConfuseFumble);
+        SetupPending(tracker);
+
+        detector.FeedTestLine(line);
+
+        Assert.Equal(RoomConfidence.Confirmed, tracker.State.Confidence);
+        Assert.Equal(new RoomKey(1, 1), tracker.State.CurrentRoom!.Key);
+    }
+
+    // Fully data-driven: with no predicate wired, a confuse-fumble line no longer bonks
+    // on its own — the recognition lives in game data, not a hardcoded regex.
+    [Fact]
+    public void ConfuseFumbleLine_NotRecognizedWithoutPredicate()
+    {
+        (RoomTracker tracker, MovementRefusalDetector detector) = NewDetector();
+        SetupPending(tracker);
+
+        detector.FeedTestLine("You fumble in confusion!");
+
+        Assert.Equal(RoomConfidence.Pending, tracker.State.Confidence);
+    }
+
     // "You are in convulsions!" is the condition's ambient onset/round-tick line,
-    // distinct from "You convulse violently!" (its action-fumble reply) — must
-    // not be mistaken for a refusal, or a genuinely-landed move would revert.
+    // distinct from "You convulse violently!" (its action-fumble reply) — the predicate
+    // matches only the fumble wordings, so the onset must not revert a landed move.
     [Fact]
     public void ConvulsionsOnsetLine_DoesNotTrigger()
     {
-        (RoomTracker tracker, MovementRefusalDetector detector) = NewDetector();
+        (RoomTracker tracker, MovementRefusalDetector detector) = NewDetector(IsTestConfuseFumble);
         SetupPending(tracker);
 
         detector.FeedTestLine("You are in convulsions!");

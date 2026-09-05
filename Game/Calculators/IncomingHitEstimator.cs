@@ -51,7 +51,14 @@ public static class IncomingHitEstimator
         EquipmentStatSummary totals = gear.Totals;
 
         BuffDefense buff = BuffDefenseCalculator.Compute(buffs, stats.Level, spells);
-        int ac = (int)Math.Round(totals.PlusAC) + buff.Ac;
+        // Truncate the fractional AC, don't round: item AC is stored ×10 so the
+        // summed PlusAC carries tenths (e.g. gear +36.5), and the game's integer
+        // combat AC is the FLOOR of that total — the same value Character Info's
+        // "Projected AC" reflects. Math.Round pushed a trailing .5 up to the next
+        // integer, over-stating AC by 1 (user-confirmed: projected 61.5 = actual,
+        // but the sim was seeding 62). buff.Ac is already an integer, so truncating
+        // PlusAC alone floors the whole.
+        int ac = (int)totals.PlusAC + buff.Ac;
         int dodge = CombatCalculator.CalcDodge(
             stats.Level, stats.Agility, stats.Charm, totals.PlusDodge,
             encum.CurrentWeight, encum.MaxWeight);

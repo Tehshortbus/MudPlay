@@ -57,16 +57,13 @@ public sealed class ConditionTrackerTests
         string name,
         MessageFlags flags,
         string applied,
-        string endsWith,
-        MessageAction action = MessageAction.Ignore)
+        string endsWith)
     {
         return new MessageRecord(
             Id: MessageRecord.ComputeId(name, "", "", "", applied, endsWith),
             Name: name,
-            Action: action,
             Flags: flags,
             RawFlagsHex: (ushort)flags,
-            Response: string.Empty,
             CasterMessage: string.Empty,
             TargetMessage: string.Empty,
             WitnessMessage: string.Empty,
@@ -81,15 +78,49 @@ public sealed class ConditionTrackerTests
     {
         using Harness h = new();
         h.Messages.Messages.Add(MakeRecord("Poison",
-            MessageFlags.Poisoned | MessageFlags.LosingHp,
+            MessageFlags.Poisoned,
             applied: "You have been poisoned!",
             endsWith: "The poison wears off."));
 
         h.Feed("You have been poisoned!");
 
         Assert.True(h.Tracker.IsPoisoned);
-        Assert.True(h.Tracker.IsLosingHp);
         Assert.Single(h.Applied);
+    }
+
+    [Fact]
+    public void AbsentSentinelLine_CompilesNoPattern()
+    {
+        // A {null}/{void}/{empty} sentinel means "this spell has no such line" — it must
+        // never index as a literal matcher, so even feeding the sentinel text verbatim
+        // latches nothing.
+        using Harness h = new();
+        h.Messages.Messages.Add(MakeRecord("Sentinel poison",
+            MessageFlags.Poisoned,
+            applied: "{void}",
+            endsWith: "{null}"));
+
+        h.Feed("{void}");
+
+        Assert.False(h.Tracker.IsPoisoned);
+        Assert.Empty(h.Applied);
+    }
+
+    [Fact]
+    public void DisabledRecord_IsIgnoredWholesale()
+    {
+        using Harness h = new();
+        h.Messages.Messages.Add(MakeRecord("Poison (off)",
+            MessageFlags.Poisoned | MessageFlags.Disabled,
+            applied: "You have been poisoned!",
+            endsWith: "The poison wears off."));
+
+        h.Feed("You have been poisoned!");
+
+        // A Disabled record never indexes: no apply event, no flag latched.
+        Assert.Empty(h.Applied);
+        Assert.False(h.Tracker.IsPoisoned);
+        Assert.Equal(MessageFlags.None, h.Tracker.ActiveFlags);
     }
 
     [Theory]
@@ -131,6 +162,47 @@ public sealed class ConditionTrackerTests
 
         Assert.Single(h.ActionFailed);
         Assert.Equal("fumble", h.ActionFailed[0].Name);
+    }
+
+    // ----- ConfuseFumbleLine (data-driven movement-refusal source) ----
+
+    [Fact]
+    public void IsConfuseFumbleLine_MatchesConfiguredWordings_WholeLineOnly()
+    {
+        using Harness h = new();
+        // A Confused record carrying two fumble wordings, one per line.
+        h.Messages.Messages.Add(new MessageRecord(
+            Id: "conv", Name: "convulsions",
+            Flags: MessageFlags.Confused, RawFlagsHex: 2,
+            CasterMessage: "", TargetMessage: "", WitnessMessage: "",
+            AppliedMessage: "You are in convulsions!", AppliedEndsWith: "",
+            Links: null,
+            ConfuseFumbleLine: "You fumble in confusion!\nYou convulse violently"));
+
+        // Whole-line match, tolerant of a trailing '!'/'.' and case.
+        Assert.True(h.Tracker.IsConfuseFumbleLine("You fumble in confusion!"));
+        Assert.True(h.Tracker.IsConfuseFumbleLine("you fumble in confusion."));
+        Assert.True(h.Tracker.IsConfuseFumbleLine("  You convulse violently  "));
+        // The onset line isn't a fumble wording, and a chat line quoting one must not
+        // match (whole-line, not substring).
+        Assert.False(h.Tracker.IsConfuseFumbleLine("You are in convulsions!"));
+        Assert.False(h.Tracker.IsConfuseFumbleLine("Bob says 'You fumble in confusion!'"));
+    }
+
+    [Fact]
+    public void IsConfuseFumbleLine_IgnoresFumbleLineOnNonConfusedRecord()
+    {
+        using Harness h = new();
+        // ConfuseFumbleLine only contributes from a Confused record.
+        h.Messages.Messages.Add(new MessageRecord(
+            Id: "x", Name: "x",
+            Flags: MessageFlags.Poisoned, RawFlagsHex: 4,
+            CasterMessage: "", TargetMessage: "", WitnessMessage: "",
+            AppliedMessage: "You are poisoned!", AppliedEndsWith: "",
+            Links: null,
+            ConfuseFumbleLine: "You fumble in confusion!"));
+
+        Assert.False(h.Tracker.IsConfuseFumbleLine("You fumble in confusion!"));
     }
 
     [Fact]
@@ -236,6 +308,32 @@ public sealed class ConditionTrackerTests
         h.Feed("The effects of the death dog's shriek wear off!");   // spell wears off
 
         Assert.False(h.Tracker.IsConfused);   // both Confused sources cleared
+    }
+
+    [Fact]
+    public void FlagWideClear_GeneralizesBeyondConfused_ToAnySharedFlag()
+    {
+        // The exact real-world shape (report paradigm-20260904-214452): several
+        // records with UNRELATED applied lines all carry Blinded ("black curse" vs.
+        // the generic "You are blind." family). The alias-group clear can't reach
+        // across different applied lines, so only the flag-wide clear does. When the
+        // curse's own wear-off fires, the "blind" sibling — latched on a totally
+        // different applied line, with its own wear-off text that never arrives —
+        // must clear too, or Blinded (and any auto-cure loop reading it) sticks
+        // forever.
+        using Harness h = new();
+        h.Messages.Messages.Add(MakeRecord("black curse", MessageFlags.Blinded,
+            applied: "A black curse is upon you", endsWith: "Your vision returns to normal"));
+        h.Messages.Messages.Add(MakeRecord("blind", MessageFlags.Blinded,
+            applied: "You are blind", endsWith: "You can see again"));
+
+        h.Feed("A black curse is upon you");   // curse latches Blinded
+        h.Feed("You are blind");               // ambiguous generic line co-latches Blinded
+        Assert.True(h.Tracker.IsBlinded);
+
+        h.Feed("Your vision returns to normal");   // only the curse's OWN wear-off fires
+
+        Assert.False(h.Tracker.IsBlinded);   // both Blinded sources cleared, not just the curse
     }
 
     [Fact]

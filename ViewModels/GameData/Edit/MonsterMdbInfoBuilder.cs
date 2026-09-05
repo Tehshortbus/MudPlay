@@ -140,9 +140,9 @@ public sealed class MonsterMdbInfoBuilder
             // Create / Death spells — cross-ref to Spells.Name with brief
             // effect descriptor when one of the primary Abil codes is set.
             int createSpell = ReadInt(el, "CreateSpell");
-            if (createSpell > 0) AddRow(kv, "Create Spell", ResolveSpellWithEffect(createSpell));
+            if (createSpell > 0) kv.Add(SpellRefRow("Create Spell", "", createSpell, 0, ""));
             int deathSpell = ReadInt(el, "DeathSpell");
-            if (deathSpell > 0) AddRow(kv, "Death Spell",  ResolveSpellWithEffect(deathSpell));
+            if (deathSpell > 0) kv.Add(SpellRefRow("Death Spell", "", deathSpell, 0, ""));
 
             int greetTxt = ReadInt(el, "GreetTXT");
             if (greetTxt > 0)
@@ -267,20 +267,19 @@ public sealed class MonsterMdbInfoBuilder
                         AddRow(kv, string.Empty, $"Accuracy: {acc}");
                         AddRow(kv, string.Empty, FormatEnergyRow(attEnergy, monsterEnergy));
                         if (hitSpell > 0)
-                            AddRow(kv, string.Empty, $"Hit Spell: {ResolveSpellWithEffect(hitSpell)}");
+                            kv.Add(SpellRefRow(string.Empty, "Hit Spell: ", hitSpell, 0, ""));
                     }
                     else // attType == 2 (spell-attack)
                     {
                         int spellId   = ReadInt(el, $"AttAcc-{i}");
                         int spellLvl  = ReadInt(el, $"AttMax-{i}");
                         int successPc = ReadInt(el, $"AttMin-{i}");
-                        string spell  = ResolveSpellWithEffect(spellId, spellLvl);
-                        AddRow(kv, string.Empty,
-                            spellLvl > 0 ? $"Spell: {spell} lvl {spellLvl}" : $"Spell: {spell}");
+                        kv.Add(SpellRefRow(string.Empty, "Spell: ", spellId, spellLvl,
+                            spellLvl > 0 ? $" lvl {spellLvl}" : ""));
                         AddRow(kv, string.Empty, $"Success %: {successPc}");
                         AddRow(kv, string.Empty, FormatEnergyRow(attEnergy, monsterEnergy));
                         if (hitSpell > 0)
-                            AddRow(kv, string.Empty, $"Hit Spell: {ResolveSpellWithEffect(hitSpell)}");
+                            kv.Add(SpellRefRow(string.Empty, "Hit Spell: ", hitSpell, 0, ""));
                     }
                 }
             }
@@ -300,15 +299,17 @@ public sealed class MonsterMdbInfoBuilder
                 cumulative = threshold;
                 int lvl = ReadInt(el, $"MidSpellLVL-{i}");
                 string spellName = ResolveSpellWithEffect(spellId, lvl);
-                string row = lvl > 0 ? $"({delta}%) [{spellName}, lvl {lvl}]" : $"({delta}%) [{spellName}]";
-                // The spell name links to its Spell record; the chance + level stay
-                // plain text around it. spellId is body-scoped so the lambda captures
-                // this slot's value.
+                string numTag = $" [#{spellId}]";                        // the Spells-table Number
+                string tail   = lvl > 0 ? $", lvl {lvl}]" : "]";
+                string row = $"({delta}%) [{spellName}{numTag}{tail}";
+                // The spell name links to its Spell record; the chance, spell number, and
+                // level stay plain text around it. spellId is body-scoped so the lambda
+                // captures this slot's value.
                 var inlines = new List<MdbInline>
                 {
                     new($"({delta}%) ["),
                     new(spellName, new AsyncRelayCommand(() => AppServices.Current.OpenSpellRecordAsync(spellId))),
-                    new(lvl > 0 ? $", lvl {lvl}]" : "]"),
+                    new(numTag + tail),
                 };
                 kv.Add(new MdbInfoRow(shown == 0 ? "Between Rounds" : string.Empty, row, Inlines: inlines));
                 shown++;
@@ -748,6 +749,28 @@ public sealed class MonsterMdbInfoBuilder
         string name = LookupSpellName(spellId) ?? $"Spell #{spellId}";
         string effect = ResolveSpellEffect(spellId, castLevel);
         return string.IsNullOrEmpty(effect) ? name : $"{name} ({effect})";
+    }
+
+    // A spell cross-reference row whose spell NAME links to its Spell record — the same
+    // clickable MdbInline treatment the Between Rounds / Summons rows use, so every spell
+    // a monster references (spell-attack, hit / create / death spell) opens its record on
+    // click, with the optional plain-text prefix/suffix ("Spell: " / " lvl N") around it.
+    // Falls back to a plain row when the id doesn't resolve to a spell.
+    private MdbInfoRow SpellRefRow(string key, string prefix, int spellId, int castLevel, string suffix)
+    {
+        string spell = ResolveSpellWithEffect(spellId, castLevel);
+        string num = spellId > 0 ? $" [#{spellId}]" : string.Empty;   // the Spells-table Number
+        string plain = $"{prefix}{spell}{num}{suffix}";
+        if (spellId <= 0) return new MdbInfoRow(key, plain);
+        int id = spellId;   // capture this slot's id for the click lambda
+        List<MdbInline> inlines = new();
+        if (prefix.Length > 0) inlines.Add(new MdbInline(prefix));
+        // The name (+ effect) is the clickable link; the [#N] spell number is plain
+        // identifying text after it.
+        inlines.Add(new MdbInline(spell, new AsyncRelayCommand(() => AppServices.Current.OpenSpellRecordAsync(id))));
+        inlines.Add(new MdbInline(num));
+        if (suffix.Length > 0) inlines.Add(new MdbInline(suffix));
+        return new MdbInfoRow(key, plain, Inlines: inlines);
     }
 
     // Brief comma-joined effect descriptor from a spell's primary Abil-N codes.

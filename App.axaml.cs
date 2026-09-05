@@ -398,6 +398,35 @@ public partial class App : Application
                     if (entry.Context is { Length: > 0 } word)
                         AddFlavorPrefixWord(word);
                 });
+
+            // A wire line neither the Messages catalogue nor any registered Router
+            // pattern recognized. LogEntry.Context already IS the exact raw
+            // candidate text (unlike RoomClassifier above, there's no substring to
+            // parse out of Message). Double-click opens the same edit dialog the
+            // Messages tab itself uses, pre-seeded with the raw text — Save commits
+            // a real record and resolves the candidate, Cancel leaves it pending.
+            AppServices.Current.Log.RegisterDetailHandler(
+                MudPlay.Game.MessageCandidateWatcher.LogCategory,
+                async (entry) =>
+                {
+                    if (entry.Context is not { Length: > 0 } rawText) return;
+                    string id = MudPlay.Models.GameData.MessageCandidateRecord.ComputeId(rawText);
+
+                    MudPlay.Models.GameData.MessageRecord seed =
+                        MudPlay.ViewModels.GameData.Edit.MessageCandidateCommit.BuildSeedRecord(
+                            new(id, rawText, default, default, 0, false));
+                    MudPlay.ViewModels.GameData.Edit.MessageEditDialogViewModel vm = new(
+                        seed, SettingsTier.Defaults, AppServices.Current.Messages.Messages,
+                        isNew: true, cache: AppServices.Current.GameData);
+                    MudPlay.ViewModels.GameData.Edit.MessageEditResult? result =
+                        await AppServices.Current.Dialogs
+                            .OpenWindowAsync<MudPlay.ViewModels.GameData.Edit.MessageEditDialogViewModel,
+                                MudPlay.ViewModels.GameData.Edit.MessageEditResult>(vm);
+                    if (result is null) return;   // Cancel — candidate stays pending, no re-nag
+
+                    MudPlay.ViewModels.GameData.Edit.MessageCandidateCommit.Commit(
+                        AppServices.Current.Messages, AppServices.Current.MessageCandidates, result, id);
+                });
         }
 
         base.OnFrameworkInitializationCompleted();

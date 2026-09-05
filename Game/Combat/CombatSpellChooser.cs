@@ -206,6 +206,23 @@ public sealed class CombatSpellChooser
         // spell, so we ignore the latch and wait for mana).
         bool singleTargetSpent = _attackSpellLatchedOff && !ctx.WeaponIneffective;
 
+        // A per-monster attack-SPELL override wins over the entire normal flow the
+        // same way a per-monster attack-COMMAND override already does (see
+        // CombatManager.Spells.cs's AttackCommandOverrideFor path, whose own
+        // comment already claims to mirror this contract) — it isn't subject to
+        // ActionOrder/alternation's preferSpell gate, only its own cap and mana
+        // floor. Previously it only ever got tried when preferSpell happened to
+        // already be true that round, so an Alternate*/CustomRoundCycle order
+        // silently skipped a still-available override on every physical-phase
+        // round, falling back to a plain weapon swing instead (report
+        // paradigm-20260904-220509).
+        if (!singleTargetSpent
+            && ctx.SpellsAvailable
+            && ctx.OverrideAttackSpell is { } overrideSpell
+            && CastsOk(ctx.OverrideAttackMaxCasts, _normalAttackCasts)
+            && ManaOk(settings.NormalAttackSpell, ctx, settings.SpellManaThresholdMode))
+            return new CombatSpellDecision(CombatSpellAction.NormalAttackSpell, overrideSpell);
+
         if (preferSpell
             && ctx.SpellsAvailable
             && TryAttackSpell(settings, ctx, settings.SpellManaThresholdMode, singleTargetSpent) is { } spell)
@@ -382,20 +399,16 @@ public sealed class CombatSpellChooser
         // reserve is spent or its MaxCasts rounds elapsed) — skip to the weapon.
         if (singleTargetSpent) return null;
 
+        // A per-monster attack-spell override occupies the normal-attack rung and
+        // is mutually exclusive with the configured NormalAttackSpell slot for
+        // this monster — Choose already attempted it (unconditionally, ahead of
+        // preferSpell) before ever calling here, so reaching this method with an
+        // override still configured means it was already rejected this round
+        // (cap spent / mana short). Skip straight to the alternate slot below
+        // rather than firing the unrelated global NormalAttackSpell instead.
         CombatSpellSlot normal = settings.NormalAttackSpell;
-        if (ctx.OverrideAttackSpell is { } attackOverride)
-        {
-            // Per-monster attack-spell override occupies the normal-attack rung:
-            // bypass the effectiveness gates (observed immunity / level / element
-            // resist) — the user vouched this spell works on the species — but
-            // keep the physical constraints: the slot's mana floor and the
-            // override's own per-room cast cap. Shares the normal-attack counter
-            // (override and configured slot are mutually exclusive per monster).
-            if (CastsOk(ctx.OverrideAttackMaxCasts, _normalAttackCasts)
-                && ManaOk(normal, ctx, mode))
-                return new CombatSpellDecision(CombatSpellAction.NormalAttackSpell, attackOverride);
-        }
-        else if (IsConfigured(normal)
+        if (ctx.OverrideAttackSpell is null
+            && IsConfigured(normal)
             && !IsImmune(ctx, CombatSpellAction.NormalAttackSpell)
             && !IsLevelBlocked(ctx, CombatSpellAction.NormalAttackSpell)
             && !IsResistBlocked(ctx, CombatSpellAction.NormalAttackSpell)

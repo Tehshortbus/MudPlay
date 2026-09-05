@@ -1,12 +1,101 @@
 # Version history
 
-## 3.49.0
+## 3.51.0
 
 - Reads the game's `sysop status` room dump for characters flagged with sysop / goto powers, and uses its exact map/room number to recover the client's position instead of walking backwards to work it out
 - A tracker that goes lost, or a loop blocked because it lost track of where it is, re-anchors from that instead of waiting for an "I am here" click
 - Fixed a loop hanging forever when a move went out and never confirmed, and one sitting idle after recovery had already succeeded
 - Sysop status stays trusted once it has answered even once; before that, an unanswered probe backs off and retries rather than switching off for the session
 - Recovery attempts are spaced out, so a reroute that instantly re-blocks can't spend the whole retry budget in one second
+## 3.50.8
+
+- Fixed a stuck-ailment loop: when several message records share one ambiguous applied line (e.g. many blindness sources all print "You are blind."), curing the one that actually landed now clears every co-latched sibling too, instead of leaving the ailment flag (and an auto-cure spell re-cast every combat round forever) stuck
+- Per-monster attack-spell overrides now fire every eligible round regardless of the Combat tab's Action Order (Alternate / Custom Round Cycle) setting, matching how a per-monster attack-command override already behaved — previously an override sat out every physical-phase round even with casts still available, silently falling back to a plain weapon swing
+- bug reports addressed: paradigm-20260904-214452, paradigm-20260904-220509
+
+## 3.50.6
+
+- Monster Intel: fixed the Hits-You-% sim reading your AC **1 too high** — item AC is stored in tenths, and a projected AC ending in .5 (e.g. 61.5) was being rounded up to 62 instead of floored to the game's actual 61. Now matches Character Info's Projected AC / your in-game AC
+- Monster override editor: widened the **Max casts** spinner so a two-digit cap is fully visible (was squished to just the arrows)
+
+## 3.50.4
+
+- Help guide: documented the clickable **End cast** link in the Spell Game Data view (chains to the follow-up spell, e.g. poison bolt → poison bite) — the one recent Game Data feature the guide hadn't caught up with
+- Help guide: the monster **Override Pre-attack / Override Attack** description now matches the type-ahead spell picker (with Max casts + Mana floor), not the old text box
+
+## 3.50.3
+
+- Settings → Toolbar + Shortcuts: rebinding a key that another action already owns no longer blocks — it now **steals** the key. The dialog shows an amber "*X* is now unbound" warning and, on save, unbinds that action and moves the key to the one you're editing (its row drops to "unbound"). Macro and system-reserved collisions still block
+
+## 3.50.2
+
+- Monster Intel → Attacks: a monster's **spell attack** now shows its **computed damage**, not just the spell number — the linked spell's formula scaled to the monster's assigned cast level (e.g. spits acid at level 11 → 12–40). It's a **single cast** figure (the monster's own attack energy governs how often it fires, so the spell's player-side energy cost isn't folded in); the same damage shows on between-round spells. Pure-effect casts (poison/blind/hold) show no damage
+- Fixed stale Help text that still described the removed per-attack damage/minute on the Attacks panel
+
+## 3.50.1
+
+- Monster Intel: replaced the damage-per-minute figures with a **mana-efficiency** read on the ranked attack spells — each spell now shows **damage per mana**, **rounds to kill**, and total **mana to kill** this monster, ranked most-efficient-first, so you can pick the cheapest kill for the mana. The incoming/outgoing "dmg/min" numbers are gone (melee lines now lead with rounds-to-kill + per-round damage)
+
+## 3.50.0
+
+- New: the client now notices its own Messages-catalogue gaps. A wire line that matches no existing spell/buff/debuff/proc record and no known line pattern is staged as a **candidate** (deduped by exact text, occurrence-counted) instead of silently falling through — a Warn row appears in the Program Log the first time it's seen, and double-clicking it opens the same editor the Incomplete Messages tab uses, pre-filled with the raw text, to turn it into a real record on the spot
+- Each captured candidate is tagged with the **map and room** you were in when it was first seen — a **Seen In** locator so you can trace where an unattributed message came from
+- New **Unrecognized Lines** tab in the Game Data Browser lists every staged candidate for batch review (with the **Seen In** map:room column) — search, multi-select, and dismiss (sticky: a dismissed line won't quietly resurface as "new" if it recurs, though it keeps counting occurrences)
+- New **Capture unrecognized messages** diagnostic toggle (Program Log window), on by default; recognized confuse-fumble lines are no longer falsely staged as unrecognized
+- Bug reports now include a pending-candidate count
+- New **Simulate entry** test button (top-right of the Unrecognized Lines tab) feeds a synthetic unknown line through the capture flow so you can see it work; it, plus the Simulate Death / Simulate Chest test buttons, now share one **Simulate buttons** dropdown on the Program Log (was three separate checkboxes)
+- Ailment **Effects flags** (Blinded / Confused / Poisoned / Movement-prevented) on every message are now re-derived from its linked spell's game-data ability codes — so a confuse/poison/blind/hold spell whose flag was missing (e.g. rose book confuse) is now marked correctly; both realm seeds are re-seeded once on update
+- Spell Game Data view: a spell's **End cast** chain now shows as a clickable link to the cast spell (with its #id), e.g. poison bolt → poison bite
+- Unrecognized Lines tab gains a **Likely source** column — the spells castable by monsters (placed / assigned / lair) in the room where the line was captured, so an unattributed line can be narrowed to a probable spell
+- Spells tab filter now understands ailment keywords — type **poison / confuse / blind / hold** to list every spell that applies that effect (read from its ability codes, following the EndCast chain), not just spells with the word in their name
+- Unrecognized Lines tab now has distinct **Dismiss** / **Remove** / **Export** actions: Dismiss freezes a line and the client ignores every future recurrence of it (no re-add, no re-count, no re-alert); Remove hard-deletes the row; Export writes all non-dismissed lines (with location + likely source) to a Desktop file
+- Message editor's Links picker is spell-only now — a message always attributes to a Spells record (item on-use and monster abilities both resolve to a spell), so the Items/Monsters table options and the table dropdown are gone; just type the spell number
+- Message editor auto-fills from the linked spell's record: when you add a spell number whose record already has message text, its empty slots fill in automatically, and any slot where the line you're committing differs surfaces an inline per-field picker (keep the record's value, or use the unrecognized line)
+
+## 3.49.1
+
+- Monster record's **Override Pre-attack / Override Attack** now mirror the Settings → Combat spell slots — aim a specific spell at a specific monster. Each override is a spell **picker** (type-ahead over your castable spells, commits the cast-code) with **Max casts** and **Min mana to cast** stacked beneath it, using the same controls as the Combat tab: Max casts is a spinner (blank = unlimited), Min mana to cast a spinner with the live %↔value label, read as % or absolute per the Combat tab's mana mode. Below the mana floor the override holds and the normal combat flow takes the round. Override Attack still accepts a raw verb (e.g. `bash`), sent verbatim with no gating. Compact two-column layout (narrower than before)
+
+## 3.49.0
+
+- Messages data rebuilt into realm-split **stock / paradigm** seeds (decoded from MegaMUD's messages.md, picked per game-data set) — the old single mixed-realm seed is retired
+- Messages are **recognition-only** now: the Action + Response fields are gone (player responses live in Triggers), and the tab is renamed **Incomplete Messages**, always shown
+- The **Incomplete Messages** tab doubles as a fill-from-game worklist: alongside orphan records (tied to no spell/item) it surfaces any spell-linked message still missing a required line — caster / target / witness / applied / wears-off, and the fumble line on a Confused record — naming the gaps in a **Missing** column, with a leading **Spell #** column showing the linked spell number
+- Mark a line a spell genuinely lacks by typing **{null}**, **{void}**, or **{empty}** into it: it counts as filled (clearing the record from the Incomplete list) while the recognizer treats it as no line
+- Both Messages seeds pre-fill `{null}` on the applied + wears-off slots of every **instant** spell — zero duration: attack/damage, heal, cure, dispel, life-drain, summon (629 paradigm / 537 stock records) — so they drop off the Incomplete worklist; a spell with **any duration** (a lasting effect — buffs like bless, and lasting debuffs like poison/confuse/hold/blind) keeps those slots, as do records already carrying an effect line or a condition flag. Duration, not energy cost, is the tell — a monster's Dur-0 damage breath and a per-round bolt are both instant, while a per-round bolt that *poisons* is not
+- Message catalogues (spell + monster) now fall back to the **bundled seed** shipped with the app when the Global seed is missing, so recognition and the Messages tab never come up empty just because a seed failed to bootstrap; the per-set file and Global seed still win, so it never overrides your edits
+- Program log now records each message-catalogue load on set load/swap — the set, realm, source (per-set file / Global seed / bundled seed) and record count — with a loud warning when a set loads **zero** message records
+- **Stock Messages seed completed** from the authoritative stock-engine (V1.11p) spell-message database: the ~54 lines the seed was genuinely missing (incantation cast lines + buff onset/wear-off) are ingested, and every slot the engine confirms has **no** line is `{null}`-marked — stock **Incomplete drops 551 → 7** (only condition records still awaiting an in-game onset). The same sync is applied to **paradigm** for spells whose number **and** name match the Paradigm-1.9.1 MDB (**661 → 146**), recovering onset/wear-off lines like *frenzy*, *ice storm*, *hypnotic hands*, *chaos shield*
+- Scrubbed corrupt binary message payloads (a handful of old-decode artifacts like `plague`/`sharp blade`/`power punch`) from both seeds
+- Opening a spell-linked record from the **Incomplete Messages** tab now shows the read-only **Game Data** tab (spell facts + damage calculator), the same as opening it from the Spells tab — so you can fill a message with the spell in view
+- Fixed `ember` (spell #210) in both seeds — it's a combat/damage spell, so its applied + wears-off are now `{null}` and the spurious *Diseased* flag (an artifact of the cure-disease removal list) is cleared
+- Collapsed duplicate spell-message records in both seeds — where two records shared a spell number + name but carried complementary or differing lines (a decode artifact), they're merged into one (perspective slots resolve a line mis-copied from another perspective, buff onset/wear-off prefers the more specific wording). Stock −56, paradigm −75 records
+- On first launch after this update, the Messages catalogue is **force-reseeded once** from the shipped seed: your older Global seed + any per-set message edits are backed up to sibling `.bak` files and replaced with the recurated catalogue, so every install lands on the new one-record-per-spell data. Re-apply any local wording afterward (the Incomplete Messages tab's Upload-edits workflow), or recover a line from the `.bak`
+- New **Upload edits** button on the Incomplete Messages tab (far right of Add / Remove): exports every message record you've changed or added versus the shipped seed — keyed by spell / item number, each field shown as seed → new, plus a machine-readable JSON block — to a timestamped Markdown file on your Desktop, so curated lines can be folded back into the seed for that game type
+- An item's **on-use / proc message now lives on its cast spell's record** (resolved via the item's CastsSp ability), shared by every item that casts that spell — edit it from any one of them and all update; the item record lists its cast spell(s) as a clickable **Casts** link showing the spell number, and the runtime proc recognizer resolves the same way. An item that casts nothing (a wield/remove trinket) keeps its own item-anchored message
+- **weapon major bless** (paradigm spell #114) filled in: self line *"You raise your weapon into the air, summoning its power!"* with *"Your weapon is blessed!"* onset and *"The effects of the blessing wear off!"* wear-off; target + witness `{null}` (self-only)
+- Consolidated per-item on-use message duplicates onto their cast spell's single record: exactly **one** message record per cast spell now — the shared spell record wins and the duplicate item-linked record is dropped (paradigm first adopts the item's corrected `{target}` wording where a clash was purely a bracketed-placeholder difference; ~38 `{spellname}`→`{target}` token / grammar variants auto-corrected; an item-specific perspective line is never pulled into the shared record; stock keeps its authoritative V1.11p spell-message-DB wording). A cast-less item's own wield/remove event (belt of might, midnight glare) stays anchored to the item — it isn't a spell message
+- A weapon **combat-proc** spell (a `%Spell` / on-swing cast) that only deals damage — no ailment — now has its message record **deleted** outright (stock −27, paradigm −60): it only ever needs a message when it applies a lasting effect (poison / blind / hold / disease, which its duration marks — e.g. the darkwood staff's HoldPerson proc is kept). A bare command **on-use** cast (the nexus spear's spear-slam) keeps and needs its messages. Gated on the spell being not player-learnable, so no castable spell's record is removed
+- Correlated the paradigm Messages seed against the latest Paramud MegaMUD export to back-fill buff onset / wear-off lines by spell name
+- New **Confuse fumble** field on a Confused message: the line(s) that source emits on a fumble (defaults to *"You fumble in confusion!"*) — a fumbled move reverts on it, so fumble wordings live in game data instead of hardcoded (convulsions keeps its *convulse violently* / *look around stupidly* wordings)
+- Message editor opens taller and its User Definitions tab scrolls, so the Confuse-fumble box + Effects flags no longer truncate
+- New **Cast response** field on a message (sent when its spell is detected cast): a monster whose DeathSpell is a silent *…temp* spell now fires it on death — seeded `^M^M` (two carriage returns) to unstick the game engine those spells stall
+- The ganghouse **guardians, elite guardians, and spellbreakers** now default to **Friend**, so auto-combat leaves the whole set alone
+- Monster record: every spell a monster references — its **spell-attacks, per-hit, create, death, and between-rounds** spells — now links to its Spell record and shows the spell's number (`[#N]`); previously only between-rounds spells linked
+- Removed the spurious *trap disarm* message records — trap-trigger lines wrongly flagged Last-action-failed, which fired a bogus combat re-swing when a trap went off
+- Trimmed the Incomplete Messages catalogue: removed the standalone condition-detector records (held / blind / confused / poison / fumble / combat-end) from both seeds
+- Paradigm Messages seed: back-filled the missing begin / wear-off lines on 8 buff/debuff spells (the *form of the …* animal spirits, yellow fungus, rosebush sleep, green beam, suffocating-fumes breath), and added 7 more that had no record at all (horrid wound, stone temple poison, stone regeneration, clay flask, nightfall, sunder armour, diffusive blast) — each tied to its Spell record — so those effects are recognized
+- Paradigm Messages seed: pulled the cast / incantation lines ("*{source} makes a sweeping gesture!*") from an older Paradigm export into empty caster/target/witness slots (46 across 30 spell records) and added 6 spells that had none — each gated on the export's spell id **and** name agreeing with the Paradigm-1.9.1 MDB, so renumbered / renamed / junk rows are skipped
+- Message **Effects** flags: the **Disabled (don't use)** checkbox is now honored — a disabled record is ignored wholesale (recognizes nothing, sets no flag), and the four effect bits no engine ever acted on (losing-HP, HP/mana regenerating, ends-combat) were retired from the editor + seeds
+- **Attack prevented** flag now works too: while a line carrying it is active (stun / petrify / bind), combat holds all offensive output — weapon swings, attack spells, and debuffs — and resumes on the wear-off
+- Message editor default size trimmed to match the smaller Effects box
+- Alias editor: greyed placeholder examples in the Name + Expansion boxes showing how an alias is filled out
+- Game Data record overrides (Monsters & Items): the Use-tier picker now offers **Installed defaults** — picking it *resets* the record (a confirm, then wipes your Character/BBS/Global edits for it back to the seed, so it returns to **Def**); the labels read in plain language (*only for this character / this BBS / for all characters*)
+- Editing a record's values back to the installed defaults now auto-removes that tier's redundant override (the row shifts back toward **Def**) instead of writing a no-op override — fixes a Global edit appearing not to "stick" when a Character override was shadowing it (character → BBS → global → defaults priority, unchanged)
+- Message editor: the duplicate-identity warning no longer blocks legitimate aliases — records with the same Name + lines but linked to a *different* spell/item (three separate 'disease' spells all read "You are diseased") are allowed; only a true duplicate sharing the same links is flagged
+- Spell record: its Removes / Casts / Cast By / Summons / Negated-by / Learned-from references now show the target's record number (`[#N]`) beside the name, matching the Monster record
+- Both Messages seeds (stock + paradigm): ailment flags — **Diseased / Poisoned / Blinded / Movement-prevented** — set on every spell that causes them, so the auto-cures and poison rest-gating recognize them. Disease is identified from the *cure disease* / *cure major disease* spells' explicit removal list (it has no engine effect code); poison / blind / hold-person from the causing spell's inflict ability code (Poison 19, BlindUser 107, HoldPerson 74 / Paralyze 75). Paradigm-custom spells with no message record yet were added as flagged placeholders (message text filled in as it's observed in-game). Also fixed a *him→his* typo in the *pain* spell's witness line
+- Trigger seed trimmed of MegaMUD carryovers; monster-message seed stripped of retired death/combat lines
 
 ## 3.48.0
 

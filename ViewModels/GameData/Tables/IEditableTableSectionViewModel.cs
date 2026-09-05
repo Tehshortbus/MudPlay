@@ -20,4 +20,25 @@ public interface IEditableTableSectionViewModel
     // null when the section can't remove rows. View binds IsEnabled to the selected-row
     // presence so the button greys out before invocation.
     ICommand? RemoveCommand => null;
+
+    // Optional Dismiss button next to Remove — a softer "decided, stop tracking" action
+    // distinct from a hard Remove. Only the Unrecognized Lines tab uses it (sticky-dismiss
+    // a candidate so its recurrences are ignored); every other section leaves it null.
+    ICommand? DismissCommand => null;
+    string? DismissLabel => null;
+
+    // Optional secondary action, rendered as a button at the far right of the toolbar row
+    // (opposite the Add / Remove group). Its label comes from ExportLabel. null when the
+    // section offers no such action — the Incomplete Messages tab uses it for "Upload edits".
+    ICommand? ExportCommand => null;
+    string? ExportLabel => null;
+
+    // Optional test-only action, rendered at the far right (left of Export). Unlike Export
+    // its visibility follows the live ShowSimulate flag (refreshed via INotifyPropertyChanged
+    // on the "ShowSimulate" property), so a diagnostic toggle can reveal/hide it while the
+    // window is open. Only the Unrecognized Lines tab uses it — a "Simulate entry" button
+    // gated by the Log pane's Simulate dropdown; every other section leaves it null/false.
+    ICommand? SimulateCommand => null;
+    string? SimulateLabel => null;
+    bool ShowSimulate => false;
 }

@@ -3,16 +3,18 @@ namespace MudPlay.Services;
 // Live per-character diagnostic switches. Two gate in-memory generation of the
 // Debug and Combat log channels; the third gates whether the on-disk
 // diagnostic files (program / memory / combat trace) are written at all; the
-// fourth gates the navigation hop-timing calibration trace. Surfaced as the
-// toggles in the Log pane.
+// fourth gates the navigation hop-timing calibration trace; the fifth gates
+// whether Game.MessageCandidateWatcher captures unrecognized wire lines.
+// Surfaced as the toggles in the Log pane.
 //
 // This is the in-memory source of truth. AppServices mirrors it to the
 // Char-tier LogDiagnosticsSettings section: it applies the persisted values
 // on ProfileLoaded, resets to the LogDiagnosticsSettings defaults on
 // ProfileClosed, and writes back on Changed. The field initializers below are
 // all false, but the effective per-character defaults come from
-// LogDiagnosticsSettings, which ships Debug + Combat ON (so a fresh character's
-// Program Log already carries the decision-trail a bug report needs) and
+// LogDiagnosticsSettings, which ships Debug + Combat + CaptureUnrecognizedMessages
+// ON (so a fresh character's Program Log already carries the decision-trail a
+// bug report needs, and silent message-recognition gaps get noticed) and
 // AutoCollect + HopTiming off (the heavier on-disk / trace affordances).
 //
 // DebugDiagnostics gates the cross-engine Debug traces; every
@@ -31,6 +33,7 @@ public sealed class LogDiagnosticState
     private bool _combatDiagnostics;
     private bool _autoCollectLogs;
     private bool _hopTiming;
+    private bool _captureUnrecognizedMessages;
 
     // Master toggle for the generation-gated Debug channel. Effectively on by
     // default (applied from LogDiagnosticsSettings on profile load); while on,
@@ -92,6 +95,21 @@ public sealed class LogDiagnosticState
         }
     }
 
+    // Master toggle for Game.MessageCandidateWatcher. Effectively on by
+    // default (applied from LogDiagnosticsSettings on profile load); while on,
+    // an unrecognized wire line stages a candidate in MessageCandidates and
+    // logs a Warn row — flip off to stop capturing (existing candidates stay).
+    public bool CaptureUnrecognizedMessages
+    {
+        get => _captureUnrecognizedMessages;
+        set
+        {
+            if (_captureUnrecognizedMessages == value) return;
+            _captureUnrecognizedMessages = value;
+            Changed?.Invoke();
+        }
+    }
+
     // Reveals the Death Recovery tab's "Simulate Death" button — a test-only
     // affordance. Off by default and NOT persisted (session-only: it resets to
     // off every launch), so a normal user never sees the button; a tester flips
@@ -121,6 +139,23 @@ public sealed class LogDiagnosticState
         {
             if (_showSimulateChest == value) return;
             _showSimulateChest = value;
+            Changed?.Invoke();
+        }
+    }
+
+    // Reveals the Game Data Browser Unrecognized Lines tab's "Simulate entry"
+    // button — feeds a synthetic never-seen line through MessageCandidateWatcher
+    // so the capture flow can be exercised without waiting for the game to emit
+    // an unknown message. Same contract as the two above: off by default,
+    // session-only (resets off every launch), never persisted.
+    private bool _showSimulateUnrecognized;
+    public bool ShowSimulateUnrecognized
+    {
+        get => _showSimulateUnrecognized;
+        set
+        {
+            if (_showSimulateUnrecognized == value) return;
+            _showSimulateUnrecognized = value;
             Changed?.Invoke();
         }
     }

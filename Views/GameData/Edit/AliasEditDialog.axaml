@@ -38,6 +38,7 @@
                 <TextBox   Grid.Column="1" Text="{Binding Name, Mode=TwoWay}"
                            FontFamily="{StaticResource FontMono}"
                            FontSize="12"
+                           PlaceholderText="e.g.  ws"
                            ToolTip.Tip="First-word match (case-insensitive). Whitespace and chat-channel collisions are rejected."/>
                 <CheckBox  Grid.Column="2" Content="Enabled"
                            IsChecked="{Binding Enabled, Mode=TwoWay}"
@@ -78,6 +79,7 @@
                          FontFamily="{StaticResource FontMono}"
                          FontSize="12"
                          MinHeight="100"
+                         PlaceholderText="e.g.  cast 'winds of shielding'^Mkill {0}&#x0a;(typing:  ws  →  buffs, then kills the rest of the line)"
                          ToolTip.Tip="Text sent to the game when the alias fires. {0} substitutes the whole rest of the typed line. {1}, {2}… substitute positional tokens. ^M or ; splits into multiple lines."/>
                 <TextBlock Grid.Row="1"
                            Classes="MutedHint"

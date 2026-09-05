@@ -346,7 +346,8 @@ public sealed partial class MonsterIntelViewModel : ObservableObject, IDisposabl
             _ownedAttackSpells.Add(new PlayerAttackSpell(
                 known.Name, known.Short, known.ReqLevel, attType,
                 maxDmg, SpellCalculator.ManaCost(known.Formula),
-                undeadOnly, livingOnly, known.Targets));
+                undeadOnly, livingOnly, known.Targets,
+                ManaCostPerCast: known.Formula.ManaCost));
         }
         KnownAttackSpellCount = _ownedAttackSpells.Count;
 
@@ -883,24 +884,17 @@ public sealed partial class MonsterIntelViewModel : ObservableObject, IDisposabl
         if (SelectedEntry is not { } entry) return;
         MonsterCatalogEntry m = entry.Source;
 
-        // Your flat physical damage-resist — the amount subtracted from each of the
-        // monster's hits, needed for the per-attack incoming DPM below. 0 without a
-        // character (the DPM then stays blank, like the per-attack hit%).
-        int playerDr = 0;
-        if (_hasCharacterContext)
-            playerDr = CharacterCalculator.BuildMeleeAttackProfile(
-                MudAttackType.Normal, _stats!, _inventory!.Snapshot.EquippedItems,
-                _inventory.Snapshot.Encumbrance, _gameData).DamageResist;
-
         foreach (MonsterAttackSlot a in m.Attacks)
         {
             int? hit = PerAttackHitYou(a, m);
-            AttackRows.Add(BuildAttackRow(a, hit, IncomingAttackDpm(a, m, hit, playerDr)));
+            AttackRows.Add(BuildAttackRow(a, hit));
         }
         foreach (MonsterMidSpellSlot mid in m.MidSpells)
             AttackRows.Add(new AttackRowViewModel(
                 $"({mid.Percent}%) Between-rounds spell", $"Spell #{mid.SpellId}"
-                + (mid.Level > 0 ? $" lvl {mid.Level}" : string.Empty), string.Empty, string.Empty, string.Empty));
+                + (mid.Level > 0 ? $" lvl {mid.Level}" : string.Empty),
+                mid.DmgMax > 0 ? $"{FormatDamageRange(mid.DmgMin, mid.DmgMax)} dmg" : string.Empty,
+                string.Empty));
 
         RebuildAbilities(m);
         RebuildYourMatchup(m);
@@ -1052,15 +1046,9 @@ public sealed partial class MonsterIntelViewModel : ObservableObject, IDisposabl
                 SimAc, _playerDodge, SimProtEvil, _playerProtGood,
                 _gameData.ActiveRealm, SimShadow, SimVileWard, SimEvilLevel) ?? threat.MonsterHitPercent;
             double dps = hitYou / 100.0 * threat.MonsterDamagePerHit * threat.MonsterSwingsPerRound;
-            // Per-minute rides the rollover-averaged (fractional) swing rate rather than
-            // the single-round floor above, so it reflects a real minute of combat.
-            double avgSwings = MonsterMatchupCalculator.AverageMonsterSwingsPerRound(
-                debuffed.EnergyPerRound, debuffed.PrimaryAttackEnergy);
-            double dpm = hitYou / 100.0 * threat.MonsterDamagePerHit * avgSwings
-                         * MonsterMatchupCalculator.RoundsPerMinute;
             IncomingThreatLines.Insert(0,
                 $"Melee: {hitYou}% to hit you · {threat.MonsterDamagePerHit} dmg/hit · "
-                + $"{threat.MonsterSwingsPerRound} attack{(threat.MonsterSwingsPerRound == 1 ? "" : "s")}/round · ~{dps:0}/round · ~{dpm:0} dmg/min"
+                + $"{threat.MonsterSwingsPerRound} attack{(threat.MonsterSwingsPerRound == 1 ? "" : "s")}/round · ~{dps:0}/round"
                 + (HasAppliedDebuffs ? "  (debuffed)" : string.Empty));
         }
 
@@ -1074,15 +1062,16 @@ public sealed partial class MonsterIntelViewModel : ObservableObject, IDisposabl
                 CharacterCalculator.BuildMeleeAttackProfile(mt, _stats!, worn, encum, _gameData),
                 debuffed);
             MatchupMeleeLines.Add(res.HasWeapon && res.RoundsToKill > 0
-                ? $"{MeleeLabel(mt)}: ~{res.PlayerDps * MonsterMatchupCalculator.RoundsPerMinute:0} dmg/min · {FormatRounds(res.RoundsToKill)} to kill · {res.PlayerHitPercent}% hit · {res.PlayerDamagePerHit} dmg/hit · {res.PlayerSwingsPerRound:0.0} swings"
+                ? $"{MeleeLabel(mt)}: {FormatRounds(res.RoundsToKill)} to kill · ~{res.PlayerDps:0}/round · {res.PlayerHitPercent}% hit · {res.PlayerDamagePerHit} dmg/hit · {res.PlayerSwingsPerRound:0.0} swings"
                 : $"{MeleeLabel(mt)}: can't out-damage it");
         }
 
-        // Attack spells, ranked by effective damage, split single-target vs AOE —
-        // hidden picks filtered out. (Stat debuffs don't touch spell resist, so
-        // this side is unaffected by the applied debuffs.)
+        // Attack spells, ranked by mana efficiency (damage per mana), split
+        // single-target vs AOE — hidden picks filtered out. Passing the monster's
+        // HP lets each row carry rounds-to-kill + total mana-to-kill. (Stat debuffs
+        // don't touch spell resist, so this side is unaffected by applied debuffs.)
         foreach (SpellEffectivenessResult r in MonsterMatchupCalculatorSpells.RankAttackSpells(
-            _ownedAttackSpells, m.SpellImmunity, m.ElementalResists, m.Undead))
+            _ownedAttackSpells, m.SpellImmunity, m.ElementalResists, m.Undead, m.Hp))
         {
             if (_hiddenAttackKeys.Contains(SpellKey(r.Short))) continue;
             if (r.IsAoe) AttackSpellsAoe.Add(r);
@@ -1105,41 +1094,41 @@ public sealed partial class MonsterIntelViewModel : ObservableObject, IDisposabl
             _gameData.ActiveRealm, SimShadow, SimVileWard, SimEvilLevel);
     }
 
-    // This attack's damage per MINUTE against the player: its own to-hit × its avg
-    // damage (after your damage-resist) × its rollover-averaged swings/round
-    // (m.Energy / attackEnergy, no cap) × 12 rounds. Null for a spell slot or without
-    // a character — the same gate as PerAttackHitYou (no AC-based to-hit there).
-    private int? IncomingAttackDpm(MonsterAttackSlot a, MonsterCatalogEntry m, int? hitYou, int playerDr)
-    {
-        if (hitYou is not { } h || a.Energy <= 0) return null;
-        double avgPerHit = System.Math.Max(0, (a.MinDamage + a.MaxDamage) / 2.0 - playerDr);
-        double swings = MonsterMatchupCalculator.AverageMonsterSwingsPerRound(m.Energy, a.Energy);
-        return (int)System.Math.Round(
-            h / 100.0 * avgPerHit * swings * MonsterMatchupCalculator.RoundsPerMinute);
-    }
-
     // "Majority" resolves a spell-attack slot's Accuracy field back to a spell
     // number for display (same field-reuse MonsterMdbInfoBuilder decodes). hitYou
     // is this physical attack's own chance to land on the player (null for spell
     // slots / no character), appended to the damage line so each attack shows its
     // individual to-hit next to its accuracy.
-    private static AttackRowViewModel BuildAttackRow(MonsterAttackSlot a, int? hitYou, int? incomingDpm)
+    private static AttackRowViewModel BuildAttackRow(MonsterAttackSlot a, int? hitYou)
     {
         string header = string.IsNullOrEmpty(a.Name) ? "Attack" : a.Name;
         string chance = $"({(a.TruePercent > 0 ? (int)Math.Round(a.TruePercent) : a.Percent)}%) {header}";
         if (a.Type == 2)
+        {
+            // A spell attack casts once when it lands, so lead its detail with the
+            // resolved single-cast damage (the linked spell scaled to this
+            // monster's cast level), then its cast-success chance — mirroring how a
+            // physical slot leads with its damage range.
+            string spellDetail = a.SpellDmgMax > 0
+                ? $"{FormatDamageRange(a.SpellDmgMin, a.SpellDmgMax)} dmg · Success {a.MinDamage}%"
+                : $"Success {a.MinDamage}%";
             return new AttackRowViewModel(chance, $"Spell #{a.Accuracy} lvl {a.MaxDamage}",
-                $"Success {a.MinDamage}%", a.Energy > 0 ? $"{a.Energy} energy" : string.Empty, string.Empty);
+                spellDetail, a.Energy > 0 ? $"{a.Energy} energy" : string.Empty);
+        }
         string kind = a.Type == 3 ? "Rob" : "Physical";
         string detail = $"{a.MinDamage}-{a.MaxDamage} dmg, acc {a.Accuracy}"
             + (hitYou is { } h ? $" → {h}% to hit you" : string.Empty);
-        string dpm = incomingDpm is { } d ? $"~{d} dmg/min incoming" : string.Empty;
         return new AttackRowViewModel(chance, kind, detail,
-            a.Energy > 0 ? $"{a.Energy} energy" : string.Empty, dpm);
+            a.Energy > 0 ? $"{a.Energy} energy" : string.Empty);
     }
+
+    // A damage range, collapsing an equal min/max to a single figure ("40" not
+    // "40-40").
+    private static string FormatDamageRange(int min, int max)
+        => min == max ? max.ToString() : $"{min}-{max}";
 }
 
 // One line of the Attacks panel — deliberately loose text fields (Header,
 // Kind, Detail, Energy) rather than a rigid schema, since a physical slot and
 // a spell slot show genuinely different information.
-public sealed record AttackRowViewModel(string Header, string Kind, string Detail, string Energy, string Dpm);
+public sealed record AttackRowViewModel(string Header, string Kind, string Detail, string Energy);

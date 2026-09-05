@@ -83,10 +83,28 @@ it isn't here and you're unsure, ask.
   (remaining % energy) + 1000`).
 - **No realm swing cap for monsters** — unlike the player's 5 (Stock) / 6 (Paradigm) ceiling,
   a monster is limited only by energy ÷ attack cost.
-- Damage-per-minute = `hit% × avg-dmg(after DR) × (Energy ÷ AttEnergy) × 12` (12 rounds/min, a
-  round being 5s). Monster Intel's per-attack incoming DPM + the melee threat line use this;
-  `MonsterMatchupCalculator.AverageMonsterSwingsPerRound` / `RoundsPerMinute`. Related:
+- **Spell mana efficiency** (Monster Intel's ranked attack spells): `damage-per-mana =
+  effective-damage-per-round ÷ mana-per-round`; `rounds-to-kill = ceil(monster HP ÷
+  effective-damage-per-round)`; `mana-to-kill = rounds-to-kill × mana-per-round`. Both the
+  per-round damage and per-round mana carry the same energy multiplier, so the ratio reads as
+  damage output per point of mana. `MonsterMatchupCalculatorSpells.RankAttackSpells` (takes a
+  `monsterHp`, sorts eligible spells most-efficient first). Related:
   [[project_monster_intel_matchup_arc_20260902]].
+
+**Monster spell-attack damage — single cast, monster-owned energy** *([CONFIRMED] 2026-09-04, user)*
+- A monster's spell attack (`AttType-N == 2`) stores the **spell number** in its `AttAcc-N` field
+  and the **cast level** in `AttMax-N`; the linked **Spells** record holds the scaling formula
+  (Min/MaxBase + per-level slope). The monster's own **`AttEnergy-N`** (shown as "N energy" in the
+  attack row) is its per-round attack-budget cost for that cast — a *monster-owned* value.
+- The spell record's own **`EnergyCost`** is a **player-cadence** field (how many times a *player*
+  fires it per round); it does **not** apply to a monster's cast. A monster casts the spell **once**
+  when the attack lands, so its per-cast damage is the **single cast** value: the formula's Min/Max
+  scaled to the monster's cast level with **no per-round energy multiplier**. (User anchor: spits
+  acid #325 at level 11 = **12–40**, exactly its MinBase..MaxBase — a naïve `MaxDamage` would double
+  a 500-energy spell like lightning bolt and 6× a 166-energy one.)
+- `SpellCalculator.SingleCastMin/MaxDamage` computes this (the player getters keep the multiplier);
+  `MonsterCatalog` resolves each spell-attack / mid-spell slot's damage range at build time
+  (`MonsterAttackSlot.SpellDmg*`, `MonsterMidSpellSlot.Dmg*`), shown in Monster Intel's Attacks panel.
 
 ## Equipment & gear
 
@@ -385,6 +403,19 @@ it isn't here and you're unsure, ask.
 
 ## Combat & backstab
 
+### Attack-prevented states *([CONFIRMED] 2026-09-03, user)*
+
+- Some status effects — a **stun**, **petrification/petrify**, a leg/body **bind** — leave the
+  character **unable to issue an attack command at all**. While the state is up the server refuses
+  the attack; when the wear-off message lands the block clears and attacking resumes.
+- The block covers **both physical and spell attacks** — it is not one or the other. A message
+  tagged with the **AttackPrevented** effect flag means "hold every attack" (weapon swing, attack
+  spell, and offensive debuff) until the paired wear-off fires. Non-attack casts (self cures /
+  buffs / heals) are a separate concern and not governed by this flag.
+- The client honours this by gating every combat attack chokepoint on
+  `ConditionTracker.IsAttackPrevented` (see `CombatManager.AttacksBlocked`): while true it sends
+  nothing and re-attempts each round, so the fight resumes the instant the effect wears off.
+
 - **[OBSERVED]** Backstab command: `bs <target>`.
 - **[OBSERVED]** A monster in the room with the **see-hidden** ability reveals the sneaker to
   the whole room, so the opening move falls back to a normal attack rather than `bs`.
@@ -522,6 +553,19 @@ it isn't here and you're unsure, ask.
   dropped for that target** — a mana-regen tick that lifts mana back above the reserve must NOT flip
   the client back to the spell mid-fight; it commits to the weapon until the monster dies (or the room
   clears). This is a per-target latch, mirroring the observed-immunity latch.
+- **[CONFIRMED]** *(2026-09-03, user + Spells-table trace, Paradigm 1.9.1 + Stock)* **`EnergyCost` sets a
+  spell's per-round firing rate, but `Dur` — not energy — decides whether it carries an applied +
+  wear-off line.** `EnergyCost` 1–1000 fires `floor(1000 ÷ EnergyCost)` times per round (mmis/lbol at
+  500 → 2×); `EnergyCost` 0 is cast between rounds. That does NOT track lasting-effect, though: a
+  monster's damage breath can be `EnergyCost` 0 yet purely instant, and a per-round bolt can still
+  *poison*. The reliable tell is the spell's **duration**: `Dur > 0` (or `DurInc > 0`) ⟺ a lasting
+  effect ⟺ it has an applied + wear-off pair — this covers **every** buff (bless `Dur`=40, prot-evil
+  `Dur`=50) *and* every lasting debuff (poison `Dur`=5000, black curse `Dur`=40, a `Dur`=5 confuse
+  breath, hold/blind). `Dur` == 0 ⟺ an **instant** spell (attack/damage `Abil` 1/17, heal 18,
+  cure 20/81/84/122, dispel 73, life-drain 8, summon 12) ⟺ **no** applied/wear-off. Verified across
+  both realms: **no** `Dur`==0 spell carries a poison/confuse/hold/paralyze/blind ability. The Messages
+  seeds pre-mark `{null}` on both slots for every `Dur`==0 record that has no condition flag and no
+  already-authored effect line.
 - **[CONFIRMED]** *(2026-08-05, user)* **"You attempt to cast <spell>, but fail." means the spell DID
   cast — mana was spent — but it missed the target (a hit-roll failure), NOT a fizzle and NOT
   out-of-mana.** So an attack spell drains mana every round it repeats whether it lands or misses; a
@@ -2178,6 +2222,26 @@ named "go obtain the &lt;item&gt;" message rather than trying to fetch it.
   secondary = spell **742** → `12/335`. Earlier "begins to stiffen up!" wording was spell **#327
   "paralyzed"** (a beholder-type), NOT the undead priest's hold person #66.
 
+## Ailment identification — which spells cause disease / poison / blind / hold *([CONFIRMED] 2026-09-03, user + AbilityNames.cs)*
+
+To mark which spells inflict a curable condition (for the Messages seed's Effect flags), the
+identification differs by ailment because of how the engine models each:
+
+- **Disease has NO engine effect code** — it isn't an enumerated ability. So a *cure disease*
+  spell can't target "the disease effect"; it instead lists the specific spells it removes via
+  ability **122 (RemovesSpell)**, whose `AbilVal` is each removed Spell.Number. Disease-causing
+  spells are therefore found by unioning the RemovesSpell targets of *cure disease* and *cure
+  major disease* (the only two cures that enumerate). *cure major disease* is Paradigm-only.
+- **Poison / blind / hold-person ARE enumerated engine effects**, so their cures clear the
+  effect wholesale and the causing spells are found by the spell's own **inflict ability code**:
+  Poison = **19**, BlindUser = **107**, HoldPerson = **74**, Paralyze = **75** (74+75 →
+  "Movement prevented"). CurePoison is code 20; a cure poison spell also lists 794/798 explicitly
+  via RemovesSpell as special cases. (Ability 19 is the lingering-poison DoT; instant poison
+  *damage* spells like `poison bolt` use a different code and are not "poisoned"-condition.)
+
+The ailment→flag map: Diseased, Poisoned, Blinded, MovementPrevented. Both realm seeds are
+flagged from their own realm MDB (Euphoria-Stock-ish for stock, Paradigm-1.9.1 for paradigm).
+
 ## Attack spells: why one fails to damage a monster
 
 **Three independent mechanics** decide whether an attack spell damages a monster — do not
@@ -2607,6 +2671,15 @@ Sources that feed a character's effective AC beyond the item/race/class/quest `+
 - **VileWard** (ability code **1113**) — an AC bonus whose **magnitude scales with the wearer's own
   evil**. The exact scale is unconfirmed (and it's unclear MME models it), so the client notes its
   **presence only** and never prints a magnitude.
+
+### Fractional AC — the integer combat AC is the FLOOR of the total *([CONFIRMED] 2026-09-04, user)*
+
+Item AC is stored **×10** in game data (`ArmourClass 615` = +61.5 AC), so a character's summed AC
+carries tenths. The integer AC the game uses for to-hit — the value the `stat` screen reports, and
+what Character Info's "Projected AC" reflects — is the **floor** (truncation) of that fractional
+total, **not** a round-half-up. A projected **61.5** is an in-game AC of **61**. Rounding the half up
+over-states AC by 1 (Monster Intel's Hits-You-% sim was seeding 62; `IncomingHitEstimator` truncates
+now). Buff/shadow/prot AC are integers, so they don't affect the fractional part.
 
 ### Blur AC (ability code 10) — encumbrance-scaled, NOT flat *([CONFIRMED] 2026-08-08, user)*
 
@@ -3540,3 +3613,97 @@ Hidden items: 1845(0) 14(0) 894(0) 223(0) 879(0) 870(0) 897(1) 876(1) 402(0) 430
 - The lists **wrap at the terminal margin mid-token** — `47` + `0(0)` is item `470`, `430` +
   `(0)` splits an id from its value. Rejoin the block before tokenizing.
 - The dump carries **no `Obvious exits:` line**, so it is not mistakable for a room display.
+
+## MegaMUD `messages.md` format *([CONFIRMED] 2026-08-17, user + decode of both stock/paramud files)*
+
+The MegaMUD "Messages/Responses" catalogue ships as a plain-text `messages.md` (one per
+game-type folder: `…(Stock)/Default/messages.md`, `…(Paramud)/Default/MESSAGES.md`). It is
+the ORIGINAL source our Messages seed (and Triggers seed) were derived from. Structure —
+**rigid, exactly 3 lines per record**, `\r\n`-terminated (validated: 612 stock / 840 paramud
+records, zero misalignment):
+
+- **Line 1** — `name : FLAGS(4-hex) : ACTION(decimal) : RESPONSE`
+  - `name` — the message name. **A spell's message is named exactly after the spell; an item's
+    after the item** (paramud names item procs after the item, e.g. `acid slasher`; stock used a
+    generic effect name, e.g. `acid hits`). This name is how message→spell/item is linked.
+  - `FLAGS` — the Effects checkboxes as an **additive hex bitfield**, identical bit layout to our
+    `MessageFlags`: `0001` Blinded, `0002` Confused, `0004` Poisoned, `0008` Losing-HP, `0010`
+    Movement-prevented, `0020` Attack-prevented, `0040` Diseased, `0080` HP-regen, `0100`
+    Find-in-conversations*, `0200` Mana-regen, `0400` Find-in-text*, `0800` reserved*, `1000`
+    Ends-combat, `2000` Last-action-failed, `4000` Use-when-chasing*, `8000` Disabled. (`*` = the
+    find-mode/chasing bits the importer strips.) Validated end-to-end against message text.
+  - `ACTION` — the Action radio, a top-down index 0–6 (0 Ignore, 1 Check-who's-in-room,
+    2 Wait-until-wears-off, 3 Rest-full-HP, 4 Rest-full-Mana, 5 Don't-rest-run, 6 Hangup).
+    **Read but NOT emitted** — every one of these is handled by the client's own engines /
+    settings, so a MudPlay message is recognition only and carries no action.
+  - `RESPONSE` — literal text the server-echo would trigger MegaMUD to send. **Read but NOT
+    emitted** — a player response to a seen line is a *Trigger* in MudPlay, not a message.
+- **Line 2** — the **Message** line (the pattern matched on the wire).
+- **Line 3** — the **Ends-with** line (wear-off). **Blank when the effect has no wear-off.**
+
+Tokens are `{dmg}` (numeric), `{target}`, `{source}` — already understood by
+`CasterMessageMatcher` — plus `{1}` = a user-defined **wildcard** handled by the Triggers matcher.
+
+**The .md is the source for THREE of our tables** (not just Messages): a record whose name matches
+a Spell → Messages seed w/ `Spells#N`; matches an Item → Messages seed w/ `Items#N`; carries an
+ailment flag / applied+wear-off → Messages seed (ConditionTracker detector); **everything else
+(pattern + response/action) → the Triggers seed** (e.g. `1 life left` → say warning + hangup; the
+separate `X end` records → response `stat` to refresh status). Decode → our record: Ends-with
+present OR ailment flag → `AppliedMessage`(+`AppliedEndsWith`); else → `CasterMessage`.
+
+## Item-cast spells: on-use vs combat proc (CONFIRMED, user + item panels)
+
+An item delivers a spell via an `Abil 43` (CastsSp) slot, and HOW it fires depends on
+the slot that precedes it:
+- **Bare CastsSp** (no modifier) = a command **on-use** cast — the player `use <item>`s
+  it (weapon major bless #114 blesses your weapon; the nexus spear's spear-slam #72).
+  These are player-visible casts and their message records (caster/target/witness, plus
+  applied/wear-off for a lasting effect) are worth keeping and filling.
+- **CastsSp preceded by `Abil 114` (%Spell) or `1114` (CastOnKill%)** = a **combat proc** —
+  it fires only while the item is equipped and you send a physical attack (the % is the
+  per-swing / per-kill chance; nexus spear's energy-hits #431 at 25%/swing, darkwood
+  staff #849 at 10%/swing). This is the "casts a spell during combat rounds" case.
+
+The on-use / proc MESSAGE lives on the **cast spell's** record (Spells#N), shared by
+every item that casts the same spell — never on the item (see `ItemCastSpells`,
+`Game/GameData/`). A weapon-proc spell that only **deals damage** (no lasting effect —
+`Dur==0`, which excludes every ailment) is not worth a message record and is dropped
+from the seeds; the generic colour combat recognizer still tallies its damage. A proc
+that applies an ailment (poison/blind/hold/disease — `Dur>0`) keeps its record and its
+condition flag; an on-use cast always keeps its record.
+
+## Condition Effects flags derive from the linked spell's ability codes *([CONFIRMED] 2026-09-04, user + game-data, Paradigm 1.9.1 / Stock 1.11.p)*
+
+A Messages record's Effects flags (Blinded / Confused / Poisoned / MovementPrevented)
+come from the **linked Spell's** `Abil-N` ability codes — everything that inflicts a
+condition (monster cast, item proc, player spell) routes through a Spell record, so the
+spell's codes are the authoritative source. Ability code → flag:
+
+| Abil code | name | Effects flag | example spell |
+|---|---|---|---|
+| **19** | Poison | **Poisoned** | savagely bites #81 (direct); poison bolt #35 → **EndCast** → poison bite #1366 (chain) |
+| **107** | BlindUser | **Blinded** | blind book #200, blind #77, sand blind #539 |
+| **74** | HoldPerson | **MovementPrevented** | hold person #66 — "can't move, can still act" (Movement only, NOT Attack) |
+| **71** | Confusion | **Confused** | rose book confuse #199, convulsions #951, beholder death #1111 |
+
+Key nuances:
+- **Poison follows the `EndCast` (151) cast-chain** — a damage spell (poison bolt) does
+  its damage then EndCasts the actual DoT (poison bite), which carries the `19`. Only
+  EndCast is followed for condition-inflict; `GiveTempSpell` (160) GRANTS a castable spell
+  to the caster (its code confuses only when the player later casts it), so it is NOT
+  followed.
+- **`Confusion` (71) is shared with sleep / stun / paralyze** — those are code-71 too
+  (paralyze = `71` +100 = fumble 100% = full incapacitation). They carry NO distinct hold
+  code; their "can't move OR attack" is a manual Movement+Attack-prevented classification.
+  So Confused is added from code 71 **only when the record isn't already Movement/Attack-
+  prevented**, keeping the hand-authored full-holds as hold.
+- **`LastActionFailed`** is for spell/item-use FAILURES, *not* confusion — a record that
+  ends up Confused must not also carry it (stripped in the re-derivation).
+- **Mute** (`76`, prevents casting) has no Effects flag and is out of scope (rare, PVP-only
+  on a learned spell). **Diseased** is monster/trap-inflicted with no spell code — left
+  hand-authored.
+
+The flags are recomputed **additively** (add what the codes prove, never strip a
+hand-authored flag except the LastActionFailed-on-confuse cleanup). `SelfAilmentChipResponder` /
+`PartyAilmentTracker` / `ConditionTracker` all read these flags, so a missing flag silently
+breaks ailment + confuse-fumble recognition (the reason rose book #199 was invisible).

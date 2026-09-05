@@ -1548,6 +1548,54 @@ public sealed class CombatSpellChooserTests
             sut.Choose(settings, AltCtx(preferSpell: true, backstabPending: true)).Action);
     }
 
+    [Fact]
+    public void Alternation_PhysicalPhase_AttackOverrideStillFires()
+    {
+        // report paradigm-20260904-220509: a per-monster attack-spell override
+        // must win over the round-alternation's physical phase the same way a
+        // per-monster attack-COMMAND override already does — the whole point of
+        // an "override" is that it isn't subject to the general ActionOrder
+        // setting. Previously the override was only ever consulted when
+        // preferSpell was already true, so half the rounds under an
+        // Alternate*/CustomRoundCycle order silently fell back to the weapon
+        // even with the override's cap nowhere near spent.
+        CombatSpellChooser sut = new();
+        CombatSettings settings = new() { NormalAttackSpell = Slot("harm") };
+        CombatSpellContext ctx = new(
+            EnemyCount: 1, TargetRawName: "big blood skeleton", Mana: 100, MaxMana: 100,
+            BackstabPending: false,
+            OverrideAttackSpell: "disr", OverrideAttackMaxCasts: 3,
+            AlternationPreferSpell: false);   // physical-phase round
+
+        CombatSpellDecision d = sut.Choose(settings, ctx);
+
+        Assert.Equal(CombatSpellAction.NormalAttackSpell, d.Action);
+        Assert.Equal("disr", d.Spell);   // the override, not a weapon swing
+    }
+
+    [Fact]
+    public void Alternation_PhysicalPhase_AttackOverrideCapSpent_FallsToWeapon()
+    {
+        // Once the override's own cap is spent, a physical-phase round falls back
+        // to the weapon exactly as before — the fix only removes the alternation
+        // gate on an override that's still eligible, it doesn't make the override
+        // unconditional.
+        CombatSpellChooser sut = new();
+        CombatSettings settings = new() { NormalAttackSpell = Slot("harm") };
+        CombatSpellContext ctx = new(
+            EnemyCount: 1, TargetRawName: "big blood skeleton", Mana: 100, MaxMana: 100,
+            BackstabPending: false,
+            OverrideAttackSpell: "disr", OverrideAttackMaxCasts: 1,
+            AlternationPreferSpell: false);
+
+        sut.MarkCast(new CombatSpellDecision(CombatSpellAction.NormalAttackSpell, "disr"),
+            "big blood skeleton");   // spend the cap (1)
+
+        CombatSpellDecision d = sut.Choose(settings, ctx);
+
+        Assert.Equal(CombatSpellAction.WeaponAttack, d.Action);
+    }
+
     // ----- Drain (life-steal) override ----------------------------------
 
     private static CombatSpellContext DrainCtx(

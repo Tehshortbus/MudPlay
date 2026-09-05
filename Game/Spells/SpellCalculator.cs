@@ -20,22 +20,43 @@ public static class SpellCalculator
     // Minimum per-round damage at level.
     public static long MinDamage(in SpellFormulaInput spell, int level,
         Func<int, SpellFormulaInput?>? resolveChain = null)
-        => Scaled(spell, level, healsInstead: false, useMax: false, resolveChain, energyRem: 0);
+        => Scaled(spell, level, healsInstead: false, useMax: false, resolveChain, energyRem: 0,
+                  applyEnergyMultiplier: true, visited: null);
 
     // Maximum per-round damage at level.
     public static long MaxDamage(in SpellFormulaInput spell, int level,
         Func<int, SpellFormulaInput?>? resolveChain = null)
-        => Scaled(spell, level, healsInstead: false, useMax: true, resolveChain, energyRem: 0);
+        => Scaled(spell, level, healsInstead: false, useMax: true, resolveChain, energyRem: 0,
+                  applyEnergyMultiplier: true, visited: null);
+
+    // Single-cast damage (one discrete cast), NOT the per-round total. A monster's
+    // spell attack fires the spell once when the attack lands — how many times per
+    // round is governed by the monster's own attack energy budget, not the spell's
+    // EnergyCost — so the per-cast figure omits the per-round energy multiplier the
+    // player getters fold in. (User-confirmed: spits acid #325 at level 11 casts for
+    // 12–40, exactly its MinBase..MaxBase; a 500-energy spell like lightning bolt
+    // would otherwise double.) An EndCast chain still fires once on the cast.
+    public static long SingleCastMinDamage(in SpellFormulaInput spell, int level,
+        Func<int, SpellFormulaInput?>? resolveChain = null)
+        => Scaled(spell, level, healsInstead: false, useMax: false, resolveChain, energyRem: 0,
+                  applyEnergyMultiplier: false, visited: null);
+
+    public static long SingleCastMaxDamage(in SpellFormulaInput spell, int level,
+        Func<int, SpellFormulaInput?>? resolveChain = null)
+        => Scaled(spell, level, healsInstead: false, useMax: true, resolveChain, energyRem: 0,
+                  applyEnergyMultiplier: false, visited: null);
 
     // Minimum per-round healing at level.
     public static long MinHeal(in SpellFormulaInput spell, int level,
         Func<int, SpellFormulaInput?>? resolveChain = null)
-        => Scaled(spell, level, healsInstead: true, useMax: false, resolveChain, energyRem: 0);
+        => Scaled(spell, level, healsInstead: true, useMax: false, resolveChain, energyRem: 0,
+                  applyEnergyMultiplier: true, visited: null);
 
     // Maximum per-round healing at level.
     public static long MaxHeal(in SpellFormulaInput spell, int level,
         Func<int, SpellFormulaInput?>? resolveChain = null)
-        => Scaled(spell, level, healsInstead: true, useMax: true, resolveChain, energyRem: 0);
+        => Scaled(spell, level, healsInstead: true, useMax: true, resolveChain, energyRem: 0,
+                  applyEnergyMultiplier: true, visited: null);
 
     // Seconds per spell-duration round. Duration is returned in spell rounds;
     // multiply by this for wall-clock seconds. Deliberately distinct from the
@@ -99,7 +120,9 @@ public static class SpellCalculator
         bool healsInstead,
         bool useMax,
         Func<int, SpellFormulaInput?>? resolveChain,
-        int energyRem)
+        int energyRem,
+        bool applyEnergyMultiplier,
+        HashSet<int>? visited)
     {
         long result = 0;
         bool doesDamage = false;
@@ -146,6 +169,24 @@ public static class SpellCalculator
             castLevel = level;
         }
 
+        // Single cast (a monster's spell attack, one discrete cast): no per-round
+        // energy fold. An EndCast chain still fires once on completion (acid bolt →
+        // poison bite), guarded so a chain that loops back can't recurse forever
+        // (the player path self-terminates via energy depletion; this one has no
+        // such bound).
+        if (!applyEnergyMultiplier)
+        {
+            if (endCast != 0 && resolveChain?.Invoke(endCast) is { } chainedOnce)
+            {
+                visited ??= new HashSet<int>();
+                if (spell.Number != 0) visited.Add(spell.Number);
+                if (visited.Add(endCast))
+                    result += Scaled(chainedOnce, castLevel, healsInstead: false, useMax,
+                        resolveChain, energyRem: 0, applyEnergyMultiplier: false, visited);
+            }
+            return result;
+        }
+
         // Per-round energy multiplier.
         if (energyRem == 0) energyRem = 1000;
         energyRem -= spell.EnergyCost;
@@ -162,7 +203,8 @@ public static class SpellCalculator
             {
                 // Chained end-cast is always computed in damage mode — the
                 // recursion drops the heal flag.
-                result += Scaled(chained, castLevel, healsInstead: false, useMax, resolveChain, energyRem);
+                result += Scaled(chained, castLevel, healsInstead: false, useMax, resolveChain,
+                    energyRem, applyEnergyMultiplier: true, visited);
             }
         }
 

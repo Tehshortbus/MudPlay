@@ -203,6 +203,19 @@ public sealed class SpellInfoRowsBuilder
                     continue;
                 }
 
+                // EndCast (151) — the spell this one chain-casts at the end of its
+                // effect (e.g. poison bolt's damage then EndCasts the poison-bite DoT
+                // #1366). Render a clickable Spells link with its [#N] id, like
+                // Casts/Removes/Negate, instead of the generic "EndCast 1366 (…)" text.
+                if (code == 151)
+                {
+                    if (_cache.FindNameByNumber("Spells", val) is not null)
+                        rows.Add(BuildLinkRow("End cast", "Spells", new[] { val }));
+                    else if (val > 0)
+                        rows.Add(new GameDataInfoRow("End cast", val.ToString(CultureInfo.InvariantCulture)));
+                    continue;
+                }
+
                 // NegateAbility (124) — its value is the negated spell.
                 if (code == 124)
                 {
@@ -343,9 +356,11 @@ public sealed class SpellInfoRowsBuilder
         for (int i = 0; i < ids.Count; i++)
         {
             string name = _cache.FindNameByNumber(table, ids[i]) ?? $"{table.TrimEnd('s')} #{ids[i]}";
-            names.Add(name);
-            string trailing = i < ids.Count - 1 ? ", " : string.Empty;
-            links.Add(new GameDataRecordLink(name, trailing, OpenCommand(table, ids[i])));
+            names.Add($"{name} [#{ids[i]}]");
+            string sep = i < ids.Count - 1 ? ", " : string.Empty;
+            // The [#N] record number rides in the (plain) trailing so it's shown but isn't
+            // part of the clickable name — matching how the Monster record shows its spell refs.
+            links.Add(new GameDataRecordLink(name, $" [#{ids[i]}]{sep}", OpenCommand(table, ids[i])));
         }
         return new GameDataInfoRow(label, string.Join(", ", names), links);
     }
@@ -408,7 +423,10 @@ public sealed class SpellInfoRowsBuilder
             if (table is not null && _cache.FindNameByNumber(table, number) is { } name)
             {
                 bool linked = table is "Monsters" or "Items" or "Spells";
-                return (name, linked ? OpenCommand(table, number) : NoOpCommand, linked);
+                // Show the record number on a spell/monster/item reference, same as the
+                // Removes/Casts link rows and the Monster record's spell refs.
+                string display = linked ? $"{name} [#{number}]" : name;
+                return (display, linked ? OpenCommand(table, number) : NoOpCommand, linked);
             }
         }
         return (token, NoOpCommand, false);

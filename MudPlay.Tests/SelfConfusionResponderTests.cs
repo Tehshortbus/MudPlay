@@ -26,10 +26,8 @@ public sealed class SelfConfusionResponderTests
     private static MessageRecord Confusion() => new(
         Id: MessageRecord.ComputeId("Confusion", "", "", "", "You are confused!", "You feel less confused."),
         Name: "Confusion",
-        Action: MessageAction.Ignore,
         Flags: MessageFlags.Confused,
         RawFlagsHex: (ushort)MessageFlags.Confused,
-        Response: string.Empty,
         CasterMessage: string.Empty,
         TargetMessage: string.Empty,
         WitnessMessage: string.Empty,
@@ -204,10 +202,8 @@ public sealed class SelfConfusionResponderTests
     private static MessageRecord HypnoticHands() => new(
         Id: MessageRecord.ComputeId("HypnoticHands", "", "", "", "You are confused!", "The effect of hypnotic hands wears off."),
         Name: "hypnotic hands",
-        Action: MessageAction.WaitForEnd,
         Flags: MessageFlags.Confused,
         RawFlagsHex: (ushort)MessageFlags.Confused,
-        Response: string.Empty,
         CasterMessage: string.Empty,
         TargetMessage: string.Empty,
         WitnessMessage: string.Empty,

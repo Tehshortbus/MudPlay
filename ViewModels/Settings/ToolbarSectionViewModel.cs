@@ -694,10 +694,13 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
 
     partial void OnShowBbsWebsiteInHelpChanged(bool value) => Dirty();
 
-    // Open the keybind editor for row. The dialog handles both rebinding and
-    // clearing — conflict detection inside it blocks Save when the chosen combo
-    // collides with another built-in action or any user macro. No-ops for rows
-    // whose action isn't rebindable (separators, or any non-BuiltInAction).
+    // Open the keybind editor for row. The dialog allows a chord that already
+    // belongs to another built-in action (it warns which one loses it); on save we
+    // steal it — unbinding that owner first so no two actions hold the same chord.
+    // Both rows refresh their displayed chord via the store's BindingChanged event
+    // (the previous owner's row falls back to "unbound"). A macro / system-reserved
+    // collision still blocks Save inside the dialog. No-ops for rows whose action
+    // isn't rebindable (separators, or any non-BuiltInAction).
     private async Task ChangeKeybindForRowAsync(ToolbarRowViewModel? row)
     {
         if (row?.BoundAction is not BuiltInAction action) return;
@@ -706,8 +709,11 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
             new(action, _keybindings, _macros);
         KeyChord chord = await _dialogs
             .OpenWindowAsync<ViewModels.Keybind.KeybindEditDialogViewModel, KeyChord>(vm);
-        if (!chord.Equals(_keybindings.Get(action)))
-            _keybindings.Rebind(action, chord);
+        if (chord.Equals(_keybindings.Get(action))) return;
+
+        if (!chord.IsEmpty && _keybindings.FindAction(chord) is BuiltInAction victim && victim != action)
+            _keybindings.Rebind(victim, KeyChord.Empty);
+        _keybindings.Rebind(action, chord);
     }
 
     [RelayCommand(CanExecute = nameof(CanChangeToolbarKeybind))]

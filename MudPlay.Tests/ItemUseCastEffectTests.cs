@@ -8,13 +8,11 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Pins the Game Data → Items "Other Info" use-cast rendering: a non-weapon
-/// usable item (potion / wand / scroll) carrying a CastsSp (Abil 43) must
-/// surface the cast spell's effect — the damage / heal it does — not just the
-/// spell's name. The weapon use-cast path already did this; this guards the
-/// non-weapon path that previously dropped the effect sub-row.
-/// </summary>
+// Pins the Game Data → Items use-cast rendering: an item carrying a CastsSp
+// (Abil 43) surfaces the cast spell as a clickable "Casts" link (name + record
+// number) carrying the spell's effect — the damage / heal it does. Weapon and
+// non-weapon usables both route through the typed CastsSpells collection now
+// (the on-use / proc message lives on the shared spell record).
 public sealed class ItemUseCastEffectTests : IDisposable
 {
     private readonly string _root;
@@ -40,11 +38,9 @@ public sealed class ItemUseCastEffectTests : IDisposable
         File.WriteAllText(Path.Combine(dir, $"{table}.json"), json);
     }
 
-    private IReadOnlyList<KeyValuePair<string, string>> OtherInfoFor(string itemNumber)
-    {
-        ItemsSectionViewModel vm = new(_cache);
-        return vm.BuildOtherInfoForTests(itemNumber);
-    }
+    private IReadOnlyList<CastsSpellRow> CastsFor(string itemNumber) =>
+        new ItemMdbViewBuilder(_cache, playerCharm: 50).Build(itemNumber).CastsSpells
+        ?? System.Array.Empty<CastsSpellRow>();
 
     private IReadOnlyList<ShopSaleRow> ShopSalesFor(string itemNumber)
     {
@@ -80,14 +76,13 @@ public sealed class ItemUseCastEffectTests : IDisposable
              "\"Abil-0\":43,\"AbilVal-0\":7}]");
         _cache.SwitchSet("v1.11p");
 
-        IReadOnlyList<KeyValuePair<string, string>> info = OtherInfoFor("100");
+        CastsSpellRow cast = Assert.Single(CastsFor("100"));
 
-        // The cast spell's name still surfaces (CastsSp → Spells.Name).
-        Assert.Contains(info, kv => kv.Value == "lightning");
-        // ...and now its effect/damage does too.
-        KeyValuePair<string, string> effect =
-            info.Single(kv => kv.Key.Trim() == "Effect");
-        Assert.Equal("Dmg 30–50", effect.Value);
+        // The cast spell surfaces as a clickable link (name + record number)...
+        Assert.Equal("Casts (on use)", cast.Label);
+        Assert.Equal("lightning (#7)", cast.SpellName);
+        // ...carrying the spell's effect / damage.
+        Assert.Equal("Dmg 30–50", cast.Effect);
     }
 
     [Fact]
@@ -110,12 +105,11 @@ public sealed class ItemUseCastEffectTests : IDisposable
              "\"Abil-0\":135,\"AbilVal-0\":45,\"Abil-1\":43,\"AbilVal-1\":8}]");
         _cache.SwitchSet("v1.11p");
 
-        IReadOnlyList<KeyValuePair<string, string>> info = OtherInfoFor("102");
+        CastsSpellRow cast = Assert.Single(CastsFor("102"));
 
-        Assert.Contains(info, kv => kv.Key == "Casts (on use)" && kv.Value == "spear");
-        KeyValuePair<string, string> effect =
-            info.Single(kv => kv.Key.Trim() == "Effect");
-        Assert.Equal("Dmg 90–135", effect.Value);
+        Assert.Equal("Casts (on use)", cast.Label);
+        Assert.Equal("spear (#8)", cast.SpellName);
+        Assert.Equal("Dmg 90–135", cast.Effect);
     }
 
     [Fact]
@@ -141,12 +135,11 @@ public sealed class ItemUseCastEffectTests : IDisposable
              "\"Abil-2\":43,\"AbilVal-2\":20}]");
         _cache.SwitchSet("v1.11p");
 
-        IReadOnlyList<KeyValuePair<string, string>> info = OtherInfoFor("103");
+        CastsSpellRow cast = Assert.Single(CastsFor("103"));
 
-        Assert.Contains(info, kv => kv.Key == "Casts (100%/swing)" && kv.Value == "random dmg");
-        KeyValuePair<string, string> effect =
-            info.Single(kv => kv.Key.Trim() == "Effect");
-        Assert.Equal("EndCast (random): rocks / ice / fire (Dmg 5–15)", effect.Value);
+        Assert.Equal("Casts (100%/swing)", cast.Label);
+        Assert.Equal("random dmg (#20)", cast.SpellName);
+        Assert.Equal("EndCast (random): rocks / ice / fire (Dmg 5–15)", cast.Effect);
     }
 
     [Fact]
@@ -162,12 +155,11 @@ public sealed class ItemUseCastEffectTests : IDisposable
              "\"Abil-0\":43,\"AbilVal-0\":7}]");
         _cache.SwitchSet("v1.11p");
 
-        IReadOnlyList<KeyValuePair<string, string>> info = OtherInfoFor("101");
+        CastsSpellRow cast = Assert.Single(CastsFor("101"));
 
-        Assert.Contains(info, kv => kv.Key == "Casts (on use)" && kv.Value == "lightning");
-        KeyValuePair<string, string> effect =
-            info.Single(kv => kv.Key.Trim() == "Effect");
-        Assert.Equal("Dmg 30–50", effect.Value);
+        Assert.Equal("Casts (on use)", cast.Label);
+        Assert.Equal("lightning (#7)", cast.SpellName);
+        Assert.Equal("Dmg 30–50", cast.Effect);
     }
 
     [Fact]

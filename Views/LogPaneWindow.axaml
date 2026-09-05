@@ -84,16 +84,40 @@
                           Foreground="{StaticResource ChromeFgSecBrush}"
                           FontSize="11"
                           ToolTip.Tip="Log one Info line per confirmed room hop with the measured wall-clock time + current encumbrance. Use it to tune the Auto-Lair travel-cost table against in-game truth, then turn off for normal play. Persisted per-character."/>
-                <CheckBox IsChecked="{Binding ShowSimulateDeath}"
-                          Content="Simulate Death button"
+                <CheckBox IsChecked="{Binding CaptureUnrecognizedMessages}"
+                          Content="Capture unrecognized messages"
                           Foreground="{StaticResource ChromeFgSecBrush}"
                           FontSize="11"
-                          ToolTip.Tip="Reveal the 'Simulate Death' test button on the Character Workshop → Death Recovery tab. Off by default and reset off every launch, so a normal session never shows the test button."/>
-                <CheckBox IsChecked="{Binding ShowSimulateChest}"
-                          Content="Simulate Chest button"
-                          Foreground="{StaticResource ChromeFgSecBrush}"
-                          FontSize="11"
-                          ToolTip.Tip="Reveal the 'Simulate Chest' test button on the Chest Offload window (Bosses tab → Chest Offload). Off by default and reset off every launch, so a normal session never shows the test button."/>
+                          ToolTip.Tip="Stage wire lines the Messages catalogue doesn't recognize as review candidates (Game Data → Unrecognized Lines), and log a Warn row on first sighting. On by default. Persisted per-character."/>
+
+                <!-- The test-only "Simulate …" buttons all share one dropdown of
+                     checkboxes rather than a checkbox each: each reveals a hidden
+                     test button on its feature window. All off by default and
+                     session-only (reset off every launch), so a normal session
+                     never shows any of them. -->
+                <DropDownButton Content="Simulate buttons"
+                                FontSize="11"
+                                Foreground="{StaticResource ChromeFgSecBrush}"
+                                ToolTip.Tip="Reveal test-only 'Simulate …' buttons on their feature windows. All off by default and reset off every launch.">
+                    <DropDownButton.Flyout>
+                        <Flyout Placement="Bottom">
+                            <StackPanel Orientation="Vertical" Spacing="8" Margin="4">
+                                <CheckBox IsChecked="{Binding ShowSimulateDeath}"
+                                          Content="Simulate Death button"
+                                          FontSize="11"
+                                          ToolTip.Tip="Reveal the 'Simulate Death' test button on the Character Workshop → Death Recovery tab."/>
+                                <CheckBox IsChecked="{Binding ShowSimulateChest}"
+                                          Content="Simulate Chest button"
+                                          FontSize="11"
+                                          ToolTip.Tip="Reveal the 'Simulate Chest' test button on the Chest Offload window (Bosses tab → Chest Offload)."/>
+                                <CheckBox IsChecked="{Binding ShowSimulateUnrecognized}"
+                                          Content="Simulate entry button"
+                                          FontSize="11"
+                                          ToolTip.Tip="Reveal the 'Simulate entry' test button on the Game Data → Unrecognized Lines tab — feeds a synthetic unrecognized line through the capture flow so a candidate appears."/>
+                            </StackPanel>
+                        </Flyout>
+                    </DropDownButton.Flyout>
+                </DropDownButton>
             </StackPanel>
             </StackPanel>
         </Border>

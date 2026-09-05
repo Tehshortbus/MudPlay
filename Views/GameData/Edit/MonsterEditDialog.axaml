@@ -1,6 +1,8 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:MudPlay.ViewModels.GameData.Edit"
+        xmlns:conv="using:MudPlay.ViewModels"
+        xmlns:spells="using:MudPlay.Game.Spells"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d" d:DesignWidth="920" d:DesignHeight="780"
@@ -9,6 +11,15 @@
         Title="{Binding Title}"
         Width="920" Height="780"
         WindowStartupLocation="CenterOwner">
+
+    <Window.Resources>
+        <!-- Override spell-picker dropdown row: "code — name". The box commits the
+             Short cast-code (ValueMemberBinding); this only shapes the list display,
+             mirroring the Settings → Combat spell slots. -->
+        <DataTemplate x:Key="SpellPickItem" x:DataType="spells:SpellPick">
+            <TextBlock Text="{Binding Display}"/>
+        </DataTemplate>
+    </Window.Resources>
 
     <Window.Styles>
         <!-- Right-aligned so the label hugs its input regardless of column
@@ -95,7 +106,14 @@
                                 <ComboBox  Grid.Row="1" Grid.Column="1"
                                            ItemsSource="{Binding AvailableTiers}"
                                            SelectedItem="{Binding UseTier, Mode=TwoWay}"
-                                           HorizontalAlignment="Stretch"/>
+                                           HorizontalAlignment="Stretch"
+                                           ToolTip.Tip="Where this override is stored. 'Installed defaults' resets the record — it wipes your Global, BBS, and Character edits for it.">
+                                  <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                      <TextBlock Text="{Binding Converter={x:Static conv:SettingsTierLabelConverter.Instance}}"/>
+                                    </DataTemplate>
+                                  </ComboBox.ItemTemplate>
+                                </ComboBox>
                             </Grid>
 
                             <!-- Details — left-aligned grid, fixed value
@@ -106,8 +124,14 @@
                                  cast-codes are all short, so the old 280 was
                                  wasted width. -->
                             <TextBlock Classes="SectionHeader" Text="Details"/>
-                            <Grid ColumnDefinitions="130,140,8,Auto,64"
-                                  RowDefinitions="Auto,Auto,Auto"
+                            <!-- Override spell rows mirror the Settings → Combat spell
+                                 slots: a spell picker (code/name typeahead) on its own
+                                 row, with a per-room "Max casts" cap + a "Min mana to
+                                 cast" floor stacked beneath it (same NumericUpDown + %↔
+                                 value label as the Combat tab). Narrow two-column layout;
+                                 the sub-rows span both columns, indented under the picker. -->
+                            <Grid ColumnDefinitions="130,210"
+                                  RowDefinitions="Auto,Auto,Auto,Auto,Auto"
                                   ColumnSpacing="6" RowSpacing="4"
                                   HorizontalAlignment="Left">
 
@@ -118,16 +142,48 @@
                                            HorizontalAlignment="Stretch"/>
 
                                 <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Override Pre-attack"
-                                           ToolTip.Tip="Spell.Number to cast on this monster before melee — takes priority over the global Combat-tab pre-attack."/>
-                                <TextBox   Grid.Row="1" Grid.Column="1" Text="{Binding PreAttackSpellId, Mode=TwoWay}"/>
-                                <TextBlock Grid.Row="1" Grid.Column="3" Classes="FieldLabel" Text="Max"/>
-                                <TextBox   Grid.Row="1" Grid.Column="4" Text="{Binding PreAttackCount, Mode=TwoWay}"/>
+                                           ToolTip.Tip="Spell to cast on this monster before melee — takes priority over the global Combat-tab pre-attack. Pick from the list (or type a cast-code / Spell.Number). Max casts caps casts per room (blank = unlimited); Min mana to cast is read as % or absolute per the Combat tab's mana mode."/>
+                                <AutoCompleteBox Grid.Row="1" Grid.Column="1"
+                                                 Text="{Binding PreAttackSpellId, Mode=TwoWay}"
+                                                 ItemsSource="{Binding SpellSuggestions}"
+                                                 ValueMemberBinding="{ReflectionBinding Short}"
+                                                 ItemFilter="{Binding SpellSuggestionFilter}"
+                                                 ItemTemplate="{StaticResource SpellPickItem}"
+                                                 PlaceholderText="code or name…"/>
+                                <StackPanel Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2"
+                                            Orientation="Horizontal" Spacing="6" Margin="16,0,0,0">
+                                    <TextBlock Classes="FieldLabel" Text="Max casts"/>
+                                    <NumericUpDown Value="{Binding PreAttackCount, Mode=TwoWay}"
+                                                   Minimum="0" Maximum="100" FormatString="0" Increment="1" Width="100"
+                                                   ToolTip.Tip="Casts per room — blank = no limit, 0 = never, N = at most N."/>
+                                    <TextBlock Classes="FieldLabel" Text="Min mana to cast" Margin="8,0,0,0"/>
+                                    <NumericUpDown Value="{Binding PreAttackMinMana, Mode=TwoWay}"
+                                                   Minimum="0" Maximum="{Binding SpellManaMax}"
+                                                   FormatString="0" Increment="1" Width="108"/>
+                                    <TextBlock Classes="FieldLabel" Text="{Binding PreAttackMinManaConverted}"/>
+                                </StackPanel>
 
-                                <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Override Attack"
-                                           ToolTip.Tip="Force a specific attack on this monster, over the global Combat-tab flow. A Spell.Number OR a spell's cast-code (e.g. &quot;turn&quot;) both cast through the mana-gated attack-spell rung — a typed cast-code auto-resolves to its number. Max is an optional per-room cast cap; leave it blank for unlimited casts. Anything else (e.g. &quot;attack&quot;, &quot;bash&quot;) is sent verbatim as a raw command every round, with no mana/cap gating."/>
-                                <TextBox   Grid.Row="2" Grid.Column="1" Text="{Binding AttackOverride, Mode=TwoWay}"/>
-                                <TextBlock Grid.Row="2" Grid.Column="3" Classes="FieldLabel" Text="Max"/>
-                                <TextBox   Grid.Row="2" Grid.Column="4" Text="{Binding AttackCount, Mode=TwoWay}"/>
+                                <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="Override Attack"
+                                           ToolTip.Tip="Force a specific attack on this monster, over the global Combat-tab flow. Pick a spell (or type its cast-code / Spell.Number) to cast through the mana-gated attack-spell rung — Max casts caps casts per room (blank = unlimited), Min mana to cast is the floor (% or absolute per the Combat tab's mana mode). Anything that isn't a spell (e.g. &quot;attack&quot;, &quot;bash&quot;) is sent verbatim as a raw command every round, with no mana/cap gating."/>
+                                <AutoCompleteBox Grid.Row="3" Grid.Column="1"
+                                                 Text="{Binding AttackOverride, Mode=TwoWay}"
+                                                 ItemsSource="{Binding SpellSuggestions}"
+                                                 ValueMemberBinding="{ReflectionBinding Short}"
+                                                 ItemFilter="{Binding SpellSuggestionFilter}"
+                                                 ItemTemplate="{StaticResource SpellPickItem}"
+                                                 PlaceholderText="spell, or a raw verb…"/>
+                                <StackPanel Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="2"
+                                            Orientation="Horizontal" Spacing="6" Margin="16,0,0,0">
+                                    <TextBlock Classes="FieldLabel" Text="Max casts"/>
+                                    <NumericUpDown Value="{Binding AttackCount, Mode=TwoWay}"
+                                                   Minimum="0" Maximum="100" FormatString="0" Increment="1" Width="100"
+                                                   ToolTip.Tip="Casts per room — blank = no limit, 0 = never, N = at most N."/>
+                                    <TextBlock Classes="FieldLabel" Text="Min mana to cast" Margin="8,0,0,0"/>
+                                    <NumericUpDown Value="{Binding AttackMinMana, Mode=TwoWay}"
+                                                   Minimum="0" Maximum="{Binding SpellManaMax}"
+                                                   FormatString="0" Increment="1" Width="108"/>
+                                    <TextBlock Classes="FieldLabel" Text="{Binding AttackMinManaConverted}"/>
+                                </StackPanel>
                             </Grid>
 
                             <!-- Attack Priority + Options border boxes —

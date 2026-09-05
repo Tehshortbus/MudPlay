@@ -4,11 +4,11 @@
         xmlns:spells="using:MudPlay.Game.Spells"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="660" d:DesignHeight="820"
+        mc:Ignorable="d" d:DesignWidth="660" d:DesignHeight="840"
         x:Class="MudPlay.Views.GameData.Edit.MessageEditDialog"
         x:DataType="vm:MessageEditDialogViewModel"
         Title="{Binding Title}"
-        Width="660" Height="820"
+        Width="660" Height="840" MinWidth="560" MinHeight="560"
         WindowStartupLocation="CenterOwner">
 
     <Window.Styles>
@@ -45,11 +45,15 @@
 
           <TabControl Grid.Row="0" SelectedIndex="{Binding InitialTabIndex, Mode=OneTime}">
             <TabItem Header="User Definitions">
-              <Grid RowDefinitions="Auto,Auto,*" RowSpacing="10" Margin="0,8,0,0">
+              <!-- Scrollable so the fields + Effects never truncate on a short window
+                   (the Confuse-fumble row makes this tab tall); rows are all Auto so the
+                   grid measures to natural height inside the ScrollViewer. -->
+              <ScrollViewer VerticalScrollBarVisibility="Auto">
+              <Grid RowDefinitions="Auto,Auto,Auto" RowSpacing="10" Margin="0,8,8,0">
 
-            <!-- ===== Header fields (Name / Use / 4 perspective lines + EndsWith pair / Response) ===== -->
+            <!-- ===== Header fields (Name / Use / 4 perspective lines + EndsWith pair) ===== -->
             <Grid Grid.Row="0"
-                  ColumnDefinitions="100,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto"
+                  ColumnDefinitions="100,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto"
                   ColumnSpacing="8" RowSpacing="6">
 
                 <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Name"/>
@@ -83,16 +87,31 @@
                            ToolTip.Tip="Wear-off line YOU see when the buff/debuff above expires."/>
                 <TextBox   Grid.Row="6" Grid.Column="1" Text="{Binding AppliedEndsWith, Mode=TwoWay}"/>
 
-                <TextBlock Grid.Row="7" Grid.Column="0" Classes="FieldLabel" Text="Response"
-                           VerticalAlignment="Top" Margin="0,6,0,0"/>
-                <TextBox   Grid.Row="7" Grid.Column="1"
-                           Text="{Binding Response, Mode=TwoWay}"
-                           AcceptsReturn="True" TextWrapping="Wrap" MinHeight="56"
-                           FontFamily="{StaticResource FontMono}"
-                           ToolTip.Tip="Verbatim response — exactly as MegaMUD would display it. Use literal ^M (two characters) to separate commands; the runtime sends each as its own CR-terminated line."/>
+                <!-- Confuse fumble: only shown when the Confused effect is checked. The
+                     wire line(s) this confuse source emits when it fumbles a just-sent
+                     command (one wording per line) — a fumbled MOVE reverts on any of them.
+                     Defaults to the generic "You fumble in confusion!"; add a spell's own
+                     wording here instead of hardcoding it. -->
+                <TextBlock Grid.Row="7" Grid.Column="0" Classes="FieldLabel" Text="Confuse fumble"
+                           IsVisible="{Binding FlagConfused}"
+                           ToolTip.Tip="Line(s) this confuse source emits when it fumbles a command — one per line. A fumbled move reverts on a match. Defaults to 'You fumble in confusion!'."/>
+                <TextBox   Grid.Row="7" Grid.Column="1" Text="{Binding ConfuseFumbleLine, Mode=TwoWay}"
+                           IsVisible="{Binding FlagConfused}"
+                           AcceptsReturn="True" TextWrapping="Wrap" MinHeight="46"
+                           PlaceholderText="You fumble in confusion!"/>
+
+                <!-- Cast response: an engine-driven response sent when this record's spell
+                     is detected cast — the one exception to messages being recognition-only.
+                     Its use case is the silent "…temp" death-spells: a monster whose
+                     DeathSpell is a temp spell fires this on death, seeded "^M^M" (two
+                     carriage returns) to nudge the game engine past its stall. '^M' = a
+                     carriage return, like the Triggers table. -->
+                <TextBlock Grid.Row="8" Grid.Column="0" Classes="FieldLabel" Text="Cast response"
+                           ToolTip.Tip="Sent to the server when this spell is detected cast (e.g. a temp death-spell). '^M' = carriage return; temp spells default to '^M^M' (two CRs) to unstick the engine."/>
+                <TextBox   Grid.Row="8" Grid.Column="1" Text="{Binding CastResponse, Mode=TwoWay}"/>
             </Grid>
 
-            <!-- Under the Response field: when the record is valid, show the
+            <!-- Below the line fields: when the record is valid, show the
                  placeholder-token legend so an author knows which bracket pins
                  which capture slot (meaning on hover). When validation fails,
                  the red error replaces it. -->
@@ -121,6 +140,9 @@
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
+                <TextBlock Text="No wording for a line this spell simply doesn't have? Type {null}, {void}, or {empty} — it counts as filled, so the record clears the Incomplete Messages list."
+                           Foreground="{StaticResource ChromeFgMutedBrush}"
+                           FontSize="11" TextWrapping="Wrap"/>
             </StackPanel>
             <TextBlock Grid.Row="1"
                        Margin="108,0,0,0"
@@ -128,111 +150,135 @@
                        Foreground="#FFE06D6D" FontSize="11" TextWrapping="Wrap"
                        IsVisible="{Binding HasError}"/>
 
-            <!-- ===== Effects + Action ===== -->
-            <Grid Grid.Row="2" ColumnDefinitions="*,*" ColumnSpacing="14">
+            <!-- ===== Links (top, full width) + Effects (two columns) ===== -->
+            <Grid Grid.Row="2" RowDefinitions="Auto,Auto" RowSpacing="10">
 
-                <!-- Left: Effect checkboxes — no section header (the
-                     column position + content makes it obvious). The
-                     three MegaMUD-specific find-mode flags (FindInText,
-                     FindInConversations, UseWhenChasing) are dropped
-                     from the UI entirely; the underlying bits round-
-                     trip as "reserved" via RawFlagsHex so importing
-                     a legacy file + re-saving doesn't strip them. -->
-                <Border Grid.Column="0"
+                <!-- Links stretch across the top: the game-data row(s) this message
+                     is anchored to. Always visible so the first link can be added on
+                     a brand-new record. A message is recognition only — it identifies
+                     a line and, via the Effects flags below, the condition it means;
+                     player responses to a seen line live in the Triggers table. -->
+                <Border Grid.Row="0"
                         BorderBrush="{StaticResource ChromeBorderBrush}"
                         BorderThickness="1" CornerRadius="3" Padding="10">
                     <StackPanel>
-                        <CheckBox Content="Blinded"             IsChecked="{Binding FlagBlinded, Mode=TwoWay}"/>
-                        <CheckBox Content="Confused"            IsChecked="{Binding FlagConfused, Mode=TwoWay}"/>
-                        <CheckBox Content="Poisoned"            IsChecked="{Binding FlagPoisoned, Mode=TwoWay}"/>
-                        <CheckBox Content="Diseased"            IsChecked="{Binding FlagDiseased, Mode=TwoWay}"/>
-                        <CheckBox Content="Losing HP's (on fire, etc.)" IsChecked="{Binding FlagLosingHp, Mode=TwoWay}"/>
-                        <CheckBox Content="HP regenerating"     IsChecked="{Binding FlagHpRegenerating, Mode=TwoWay}"/>
-                        <CheckBox Content="Mana regenerating"   IsChecked="{Binding FlagManaRegenerating, Mode=TwoWay}"/>
-                        <CheckBox Content="Movement prevented"  IsChecked="{Binding FlagMovementPrevented, Mode=TwoWay}"/>
-                        <CheckBox Content="Attack prevented"    IsChecked="{Binding FlagAttackPrevented, Mode=TwoWay}"/>
-                        <CheckBox Content="Ends combat"         IsChecked="{Binding FlagEndsCombat, Mode=TwoWay}"/>
-                        <CheckBox Content="Last action failed"  IsChecked="{Binding FlagLastActionFailed, Mode=TwoWay}"/>
-                        <CheckBox Content="Disabled (don't use)" IsChecked="{Binding FlagDisabled, Mode=TwoWay}"/>
+                        <TextBlock Classes="SectionHeader" Text="Links"/>
+                        <TextBlock Text="The spell record(s) this message provides text for."
+                                   Classes="FieldLabel"
+                                   TextWrapping="Wrap" Margin="0,0,0,8"/>
+
+                        <!-- Existing links — each row has its own X button. -->
+                        <ItemsControl ItemsSource="{Binding LinkRows}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:LinkRow">
+                                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6" Margin="0,1">
+                                        <TextBlock Grid.Column="0"
+                                                   Text="{Binding Label}"
+                                                   Foreground="{StaticResource ChromeFgBrush}"
+                                                   FontFamily="{StaticResource FontMono}"
+                                                   FontSize="11"
+                                                   VerticalAlignment="Center"/>
+                                        <Button Grid.Column="1"
+                                                Content="×"
+                                                Padding="6,0"
+                                                MinWidth="22" MinHeight="22"
+                                                ToolTip.Tip="Remove this link"
+                                                Command="{Binding $parent[Window].((vm:MessageEditDialogViewModel)DataContext).RemoveLinkCommand}"
+                                                CommandParameter="{Binding}"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <!-- Add-link row: a message always attributes to a Spells row,
+                             so there's no table picker — just the spell Number + Add. -->
+                        <Border Height="1" Margin="0,8"
+                                Background="{StaticResource ChromeBorderBrush}"/>
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                            <TextBox  Grid.Column="0"
+                                      Text="{Binding AddLinkNumber, Mode=TwoWay}"
+                                      PlaceholderText="Spell number"
+                                      FontFamily="{StaticResource FontMono}"/>
+                            <Button   Grid.Column="1"
+                                      Content="Add"
+                                      Command="{Binding AddLinkCommand}"/>
+                        </Grid>
+                        <TextBlock Text="{Binding AddLinkStatus}"
+                                   Foreground="{StaticResource ChromeFgMutedBrush}"
+                                   FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"/>
+
+                        <!-- Inline collision resolver: appears when the linked spell's
+                             record already has text that differs from the line being
+                             committed. Per field, keep the record's value (checked) or
+                             use the unrecognized line (unchecked), then Apply. -->
+                        <Border IsVisible="{Binding HasLinkFillConflicts}"
+                                Margin="0,10,0,0" Padding="10"
+                                Background="{StaticResource ChromeBgElevBrush}"
+                                BorderBrush="{StaticResource ChromeBorderBrush}"
+                                BorderThickness="1" CornerRadius="3">
+                            <StackPanel Spacing="6">
+                                <TextBlock Text="This spell's record already has different text. Pick which to keep for each field:"
+                                           Classes="FieldLabel" TextWrapping="Wrap"/>
+                                <ItemsControl ItemsSource="{Binding LinkFillConflicts}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:LinkFillConflict">
+                                            <StackPanel Margin="0,4" Spacing="2">
+                                                <TextBlock Text="{Binding FieldLabel}"
+                                                           FontWeight="SemiBold" FontSize="11"/>
+                                                <TextBlock Text="{Binding RecordValue, StringFormat='Record: {0}'}"
+                                                           Foreground="{StaticResource ChromeFgSecBrush}"
+                                                           FontFamily="{StaticResource FontMono}"
+                                                           FontSize="11" TextWrapping="Wrap"/>
+                                                <TextBlock Text="{Binding UnrecognizedValue, StringFormat='Unrecognized: {0}'}"
+                                                           Foreground="{StaticResource ChromeFgSecBrush}"
+                                                           FontFamily="{StaticResource FontMono}"
+                                                           FontSize="11" TextWrapping="Wrap"/>
+                                                <CheckBox IsChecked="{Binding UseRecord, Mode=TwoWay}"
+                                                          FontSize="11"
+                                                          Content="Keep the record's value (uncheck to use the unrecognized line)"/>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <Button Content="Apply choices"
+                                        HorizontalAlignment="Right"
+                                        Command="{Binding ApplyLinkFillCommand}"/>
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
                 </Border>
 
-                <!-- Right: Action picker + Links panel -->
-                <StackPanel Grid.Column="1" Spacing="8">
-                    <Border BorderBrush="{StaticResource ChromeBorderBrush}"
-                            BorderThickness="1" CornerRadius="3" Padding="10">
-                        <StackPanel>
-                            <TextBlock Classes="SectionHeader" Text="Action"/>
-                            <TextBlock Text="What the engine does when this message fires."
-                                       Classes="FieldLabel"
-                                       TextWrapping="Wrap" Margin="0,0,0,8"/>
-                            <ComboBox ItemsSource="{Binding AvailableActions}"
-                                      SelectedItem="{Binding Action, Mode=TwoWay}"
-                                      HorizontalAlignment="Stretch"/>
-                        </StackPanel>
-                    </Border>
-
-                    <!-- Editable back-references to the game-data row(s)
-                         this message is associated with. Always
-                         visible so the user can add the first link on
-                         a brand-new record without hunting for the
-                         panel. -->
-                    <Border BorderBrush="{StaticResource ChromeBorderBrush}"
-                            BorderThickness="1" CornerRadius="3" Padding="10">
-                        <StackPanel>
-                            <TextBlock Classes="SectionHeader" Text="Links"/>
-                            <TextBlock Text="Game-data rows that fire this message."
-                                       Classes="FieldLabel"
-                                       TextWrapping="Wrap" Margin="0,0,0,8"/>
-
-                            <!-- Existing links — each row has its own X button. -->
-                            <ItemsControl ItemsSource="{Binding LinkRows}">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate x:DataType="vm:LinkRow">
-                                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6" Margin="0,1">
-                                            <TextBlock Grid.Column="0"
-                                                       Text="{Binding Label}"
-                                                       Foreground="{StaticResource ChromeFgBrush}"
-                                                       FontFamily="{StaticResource FontMono}"
-                                                       FontSize="11"
-                                                       VerticalAlignment="Center"/>
-                                            <Button Grid.Column="1"
-                                                    Content="×"
-                                                    Padding="6,0"
-                                                    MinWidth="22" MinHeight="22"
-                                                    ToolTip.Tip="Remove this link"
-                                                    Command="{Binding $parent[Window].((vm:MessageEditDialogViewModel)DataContext).RemoveLinkCommand}"
-                                                    CommandParameter="{Binding}"/>
-                                        </Grid>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-
-                            <!-- Add-link row: Table dropdown + Number textbox + Add. -->
-                            <Border Height="1" Margin="0,8"
-                                    Background="{StaticResource ChromeBorderBrush}"/>
-                            <Grid ColumnDefinitions="*,80,Auto" ColumnSpacing="6">
-                                <ComboBox Grid.Column="0"
-                                          ItemsSource="{Binding LinkTables}"
-                                          SelectedItem="{Binding AddLinkTable, Mode=TwoWay}"
-                                          HorizontalAlignment="Stretch"/>
-                                <TextBox  Grid.Column="1"
-                                          Text="{Binding AddLinkNumber, Mode=TwoWay}"
-                                          PlaceholderText="Number"
-                                          FontFamily="{StaticResource FontMono}"/>
-                                <Button   Grid.Column="2"
-                                          Content="Add"
-                                          Command="{Binding AddLinkCommand}"/>
-                            </Grid>
-                            <TextBlock Text="{Binding AddLinkStatus}"
-                                       Foreground="{StaticResource ChromeFgMutedBrush}"
-                                       FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"/>
-                        </StackPanel>
-                    </Border>
-                </StackPanel>
+                <!-- Effects: the condition this line means, as flag checkboxes. Two
+                     columns. The MegaMUD find-mode flags (FindInText /
+                     FindInConversations / UseWhenChasing) and the four retired inert
+                     effect bits (LosingHp / HpRegenerating / ManaRegenerating /
+                     EndsCombat) are not shown; their bits round-trip as "reserved" via
+                     RawFlagsHex so a legacy re-save keeps them. -->
+                <Border Grid.Row="1"
+                        BorderBrush="{StaticResource ChromeBorderBrush}"
+                        BorderThickness="1" CornerRadius="3" Padding="10">
+                    <StackPanel>
+                        <TextBlock Classes="SectionHeader" Text="Effects" Margin="0,0,0,8"/>
+                        <Grid ColumnDefinitions="*,*" ColumnSpacing="14">
+                            <StackPanel Grid.Column="0">
+                                <CheckBox Content="Blinded"             IsChecked="{Binding FlagBlinded, Mode=TwoWay}"/>
+                                <CheckBox Content="Confused"            IsChecked="{Binding FlagConfused, Mode=TwoWay}"/>
+                                <CheckBox Content="Poisoned"            IsChecked="{Binding FlagPoisoned, Mode=TwoWay}"/>
+                                <CheckBox Content="Diseased"            IsChecked="{Binding FlagDiseased, Mode=TwoWay}"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1">
+                                <CheckBox Content="Movement prevented"  IsChecked="{Binding FlagMovementPrevented, Mode=TwoWay}"/>
+                                <CheckBox Content="Attack prevented"    IsChecked="{Binding FlagAttackPrevented, Mode=TwoWay}"/>
+                                <CheckBox Content="Last action failed"  IsChecked="{Binding FlagLastActionFailed, Mode=TwoWay}"/>
+                                <CheckBox Content="Disabled (don't use)" IsChecked="{Binding FlagDisabled, Mode=TwoWay}"/>
+                            </StackPanel>
+                        </Grid>
+                    </StackPanel>
+                </Border>
             </Grid>
 
               </Grid>
+              </ScrollViewer>
             </TabItem>
 
             <!-- ===== Game Data (read-only source-row fields) ===== -->

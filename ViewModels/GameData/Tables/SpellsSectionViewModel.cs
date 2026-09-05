@@ -30,6 +30,7 @@ public sealed class SpellsSectionViewModel : JsonTableSectionViewModel, IEditabl
     private readonly GameDataCache _cache;
     private readonly MessageStore? _messages;
     private readonly DialogService? _dialogs;
+    private readonly SpellAilmentIndex _ailments;
 
     public override string Id => "spells";
     public override string Title => "Spells";
@@ -59,7 +60,12 @@ public sealed class SpellsSectionViewModel : JsonTableSectionViewModel, IEditabl
     public override IEnumerable<string> SearchableLabels => new[]
     {
         Title, "spell", "magery", "mana", "cast", "level", "code", "short", "target",
+        // Ailment keywords the filter box understands (see RowMatches).
+        "poison", "confuse", "blind", "hold", "ailment",
     };
+
+    public override string? FilterHint =>
+        "Filter by name, or type an ailment — poison / confuse / blind / hold — to list every spell that applies it.";
 
     // Enum-column formatters live on the shared SpellInfoRowsBuilder so the grid and the
     // dialog's Game Data tab always render enum columns the same way.
@@ -80,7 +86,22 @@ public sealed class SpellsSectionViewModel : JsonTableSectionViewModel, IEditabl
         _cache    = cache;
         _messages = messages;
         _dialogs  = dialogs;
+        _ailments = new SpellAilmentIndex(cache);
         OpenLinkedMessagesCommand = new AsyncRelayCommand<GameDataRow?>(OpenLinkedMessagesAsync);
+    }
+
+    // Extend the base name/text filter with ailment-keyword matching: typing an
+    // exact ailment word (poison / confuse / blind / hold) also surfaces every
+    // spell that APPLIES it, read from the spell's ability codes (following the
+    // EndCast chain) rather than just spells with the word in their name.
+    protected override bool RowMatches(GameDataRow row, string filter)
+    {
+        if (base.RowMatches(row, filter)) return true;
+        if (SpellAilmentIndex.AilmentCodes.ContainsKey(filter)
+            && int.TryParse(row.Get("Number"), NumberStyles.Integer, CultureInfo.InvariantCulture, out int number)
+            && _ailments.Applies(number, filter))
+            return true;
+        return false;
     }
 
     private async Task OpenLinkedMessagesAsync(GameDataRow? row)
@@ -123,10 +144,8 @@ public sealed class SpellsSectionViewModel : JsonTableSectionViewModel, IEditabl
             record = new MessageRecord(
                 Id:              string.Empty,
                 Name:            spellName,
-                Action:          MessageAction.Ignore,
                 Flags:           MessageFlags.None,
                 RawFlagsHex:     0,
-                Response:        string.Empty,
                 CasterMessage:   string.Empty,
                 TargetMessage:   string.Empty,
                 WitnessMessage:  string.Empty,

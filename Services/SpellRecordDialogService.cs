@@ -33,12 +33,28 @@ public sealed class SpellRecordDialogService
         _dialogs = dialogs;
     }
 
-    public async Task OpenAsync(int spellNumber)
+    // One-line preview of the message record linked to this spell (first populated
+    // perspective/applied line), or "" when no record anchors to it. Drives the item
+    // dialog's on-use "Message" section summary when the on-use ties here via CastsSp.
+    public string SummaryFor(int spellNumber)
     {
-        if (spellNumber <= 0) return;
+        if (spellNumber <= 0) return string.Empty;
+        MessageRecord? m = _messages.Messages.FirstOrDefault(r => r.Links is not null && r.Links.Any(l =>
+            string.Equals(l.Table, "Spells", StringComparison.OrdinalIgnoreCase) && l.Number == spellNumber));
+        if (m is null) return string.Empty;
+        foreach (string v in new[] { m.AppliedMessage, m.CasterMessage, m.TargetMessage, m.WitnessMessage })
+            if (!string.IsNullOrWhiteSpace(v)) return v.Trim();
+        return string.Empty;
+    }
+
+    // Returns the post-edit summary so an item's Message section (on-use tied here via
+    // CastsSp) refreshes in place; callers that only open the dialog can ignore it.
+    public async Task<string?> OpenAsync(int spellNumber)
+    {
+        if (spellNumber <= 0) return null;
 
         // Re-opening the spell already showing is a no-op — don't tear down edits.
-        if (_openVm is not null && _openSpell == spellNumber) return;
+        if (_openVm is not null && _openSpell == spellNumber) return SummaryFor(spellNumber);
 
         string spellName = _cache.FindNameByNumber("Spells", spellNumber) ?? $"Spell #{spellNumber}";
 
@@ -54,10 +70,8 @@ public sealed class SpellRecordDialogService
         MessageRecord record = match ?? new MessageRecord(
             Id:              string.Empty,
             Name:            spellName,
-            Action:          MessageAction.Ignore,
             Flags:           MessageFlags.None,
             RawFlagsHex:     0,
-            Response:        string.Empty,
             CasterMessage:   string.Empty,
             TargetMessage:   string.Empty,
             WitnessMessage:  string.Empty,
@@ -92,7 +106,7 @@ public sealed class SpellRecordDialogService
         {
             if (ReferenceEquals(_openVm, vm)) { _openVm = null; _openSpell = 0; }
         }
-        if (result is null) return;
+        if (result is null) return SummaryFor(spellNumber);
 
         // Id-keyed update-or-append into the store + persist (mirrors the browser's ApplyResult).
         int idx = -1;
@@ -101,5 +115,7 @@ public sealed class SpellRecordDialogService
         if (idx >= 0) _messages.Messages[idx] = result.Updated;
         else          _messages.Messages.Add(result.Updated);
         _messages.Save();
+
+        return SummaryFor(spellNumber);
     }
 }

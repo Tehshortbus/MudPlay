@@ -1,6 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:MudPlay.ViewModels.GameData.Edit"
+        xmlns:conv="using:MudPlay.ViewModels"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d" d:DesignWidth="920" d:DesignHeight="740"
@@ -82,7 +83,14 @@
                                 <ComboBox  Grid.Row="1" Grid.Column="1"
                                            ItemsSource="{Binding AvailableTiers}"
                                            SelectedItem="{Binding UseTier, Mode=TwoWay}"
-                                           HorizontalAlignment="Stretch"/>
+                                           HorizontalAlignment="Stretch"
+                                           ToolTip.Tip="Where this override is stored. 'Installed defaults' resets the record — it wipes your Global, BBS, and Character edits for it.">
+                                  <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                      <TextBlock Text="{Binding Converter={x:Static conv:SettingsTierLabelConverter.Instance}}"/>
+                                    </DataTemplate>
+                                  </ComboBox.ItemTemplate>
+                                </ComboBox>
                             </Grid>
 
                             <!-- Options — 9 checkboxes laid out in two columns.
@@ -158,6 +166,27 @@
                                           ToolTip.Tip="When a route needs this item, acquire it automatically (party redistribute, shop buy via bank withdraw, or drop reroute) instead of failing the sole route or surfacing the choice in the route picker."/>
                             </Border>
 
+                            <!-- On-use / proc message — an item-claimed message record
+                                 (its "use <item>" buff line, or a weapon-proc line) is
+                                 authored / edited here, not from the Messages tab, mirroring
+                                 how a spell's message is edited from the Spells tab. Hidden
+                                 when the dialog was built with no message-editing surface. -->
+                            <TextBlock Classes="SectionHeader" Text="Message" Margin="0,10,0,4"
+                                       IsVisible="{Binding CanEditAttachedMessage}"/>
+                            <Border BorderBrush="{StaticResource ChromeBorderBrush}"
+                                    BorderThickness="1" CornerRadius="3" Padding="8"
+                                    HorizontalAlignment="Left"
+                                    IsVisible="{Binding CanEditAttachedMessage}">
+                                <StackPanel Spacing="6">
+                                    <TextBlock Text="{Binding AttachedMessageDisplay}"
+                                               TextWrapping="Wrap" MaxWidth="300"
+                                               Foreground="{StaticResource ChromeFgMutedBrush}"/>
+                                    <Button Content="{Binding AttachedMessageButtonText}"
+                                            Command="{Binding EditAttachedMessageCommand}"
+                                            HorizontalAlignment="Left"/>
+                                </StackPanel>
+                            </Border>
+
                         </StackPanel>
                     </ScrollViewer>
                 </Border>
@@ -187,6 +216,29 @@
                                         <Grid ColumnDefinitions="140,*" Margin="0,1">
                                             <TextBlock Grid.Column="0" Classes="MdbKey"   Text="{Binding Key}"/>
                                             <TextBlock Grid.Column="1" Classes="MdbValue" Text="{Binding Value}" TextWrapping="Wrap"/>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <!-- Casts — spells this item delivers (use-cast / proc). Each
+                                 links to that spell's record, where its on-use / proc wording
+                                 lives (shared across every item casting the same spell).
+                                 Hidden for an item that casts nothing. -->
+                            <ItemsControl ItemsSource="{Binding CastsSpells}" IsVisible="{Binding HasCastsSpells}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate DataType="vm:CastsSpellRow">
+                                        <Grid ColumnDefinitions="140,*" Margin="0,1">
+                                            <TextBlock Grid.Column="0" Classes="MdbKey" Text="{Binding Label}"/>
+                                            <StackPanel Grid.Column="1">
+                                                <Button Classes="MdbLink"
+                                                        Content="{Binding SpellName}"
+                                                        Command="{Binding Open}"
+                                                        HorizontalAlignment="Left"
+                                                        ToolTip.Tip="Open this spell's record — its on-use / proc messages live here"/>
+                                                <TextBlock Classes="MdbValue" Text="{Binding Effect}"
+                                                           IsVisible="{Binding HasEffect}" TextWrapping="Wrap"/>
+                                            </StackPanel>
                                         </Grid>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>

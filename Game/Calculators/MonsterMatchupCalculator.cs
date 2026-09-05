@@ -101,20 +101,6 @@ public static class MonsterMatchupCalculator
         if (energyPerRound <= 0 || primaryAttackEnergy <= 0) return 1;
         return System.Math.Max(1, energyPerRound / primaryAttackEnergy);
     }
-
-    // Combat rounds per minute — a round is 5 seconds, so 12 rounds = 1 minute.
-    // Damage-per-minute figures multiply a per-round damage by this.
-    public const int RoundsPerMinute = 12;
-
-    // Average swings/round the monster lands over a long window (a minute), honouring
-    // energy ROLLOVER: a monster always spends its whole budget, and leftover energy
-    // (budget mod cost) carries into the next round, so across many rounds the mean
-    // swing count is the true FRACTIONAL budget/cost ratio — not the single-round
-    // integer floor MonsterSwingsPerRound returns. Monsters have no realm swing cap
-    // (unlike the player's 5/6): energy is the only limit. Used for DPM, where the
-    // fractional part matters (e.g. 1000/300 averages 3.33/round, not 3).
-    public static double AverageMonsterSwingsPerRound(int energyPerRound, int attackEnergy)
-        => energyPerRound <= 0 || attackEnergy <= 0 ? 1.0 : (double)energyPerRound / attackEnergy;
 }
 
 // Player-side inputs to MonsterMatchupCalculator.Compute — the offensive numbers
@@ -218,20 +204,28 @@ public readonly record struct MonsterMatchupResult(
 public readonly record struct PlayerAttackSpell(
     string Name, string Short, int ReqLevel, int AttType,
     long MaxDamagePerRound, long ManaCostPerRound,
-    bool AffectsUndeadOnly = false, bool AffectsLivingOnly = false, int Targets = 0);
+    bool AffectsUndeadOnly = false, bool AffectsLivingOnly = false, int Targets = 0,
+    int ManaCostPerCast = 0);
 
 // One spell's effectiveness against a specific monster — either blocked
 // (SpellImmu too high, or the monster resists its element at or above 100%)
-// with a human-readable reason, or eligible with its resist-adjusted
-// effective damage.
+// with a human-readable reason, or eligible with its resist-adjusted effective
+// damage AND its mana efficiency against that monster: how many rounds to kill,
+// the total mana that costs, and the damage-per-mana ratio — so the user can
+// judge which spell is the cheapest kill (RankAttackSpells fills RoundsToKill /
+// ManaToKill only when a target HP is supplied).
 public readonly record struct SpellEffectivenessResult(
     string Name, string Short, string Element, long EffectiveDamage,
-    long ManaCostPerRound, bool Eligible, string? BlockedReason, bool IsAoe = false)
+    long ManaCostPerRound, bool Eligible, string? BlockedReason, bool IsAoe = false,
+    int ManaCostPerCast = 0, int RoundsToKill = 0, long ManaToKill = 0)
 {
-    // EffectiveDamage is already the resist-adjusted PER-ROUND figure (level-scaled
-    // + energy-multiplied at the caster side, then resist-adjusted here), so a minute
-    // is simply ×12 rounds. Meaningful only when Eligible.
-    public long DamagePerMinute => EffectiveDamage * MonsterMatchupCalculator.RoundsPerMinute;
+    // Effective damage per point of mana — the efficiency headline. Uses the
+    // per-round figures (both damage and mana carry the same energy multiplier),
+    // so it reads as damage output per mana spent. 0 when free / blocked.
+    public double DamagePerMana => ManaCostPerRound > 0 ? (double)EffectiveDamage / ManaCostPerRound : 0;
+
+    // True once a target HP was supplied, so RoundsToKill / ManaToKill are real.
+    public bool HasKillEstimate => RoundsToKill > 0;
 }
 
 // Spell-matchup additions to MonsterMatchupCalculator below — kept as their
@@ -349,7 +343,8 @@ public static class MonsterMatchupCalculatorSpells
         IReadOnlyList<PlayerAttackSpell> spells,
         int monsterSpellImmunity,
         IReadOnlyDictionary<int, int> monsterElementalResists,
-        bool monsterIsUndead = false)
+        bool monsterIsUndead = false,
+        long monsterHp = 0)
     {
         ArgumentNullException.ThrowIfNull(spells);
         ArgumentNullException.ThrowIfNull(monsterElementalResists);
@@ -397,12 +392,22 @@ public static class MonsterMatchupCalculatorSpells
 
             long effective = (long)System.Math.Round(
                 s.MaxDamagePerRound * (100 - resistPercent) / 100.0, System.MidpointRounding.AwayFromZero);
+            // Kill estimate against this monster (only when a HP was supplied):
+            // rounds = ceil(HP / effective-per-round), mana-to-kill = rounds × mana/round.
+            int roundsToKill = effective > 0 && monsterHp > 0
+                ? (int)System.Math.Ceiling(monsterHp / (double)effective) : 0;
+            long manaToKill = roundsToKill > 0 ? (long)roundsToKill * s.ManaCostPerRound : 0;
             results.Add(new SpellEffectivenessResult(
-                s.Name, s.Short, element, effective, s.ManaCostPerRound, Eligible: true, BlockedReason: null, IsAoe: isAoe));
+                s.Name, s.Short, element, effective, s.ManaCostPerRound, Eligible: true, BlockedReason: null,
+                IsAoe: isAoe, ManaCostPerCast: s.ManaCostPerCast, RoundsToKill: roundsToKill, ManaToKill: manaToKill));
         }
 
+        // Eligible first, then most mana-efficient (damage per mana) first — the
+        // point of the panel is picking the cheapest kill — with raw effective
+        // damage as the tiebreak; blocked spells trail in input order.
         return results
             .OrderByDescending(r => r.Eligible)
+            .ThenByDescending(r => r.DamagePerMana)
             .ThenByDescending(r => r.EffectiveDamage)
             .ToList();
     }

@@ -40,6 +40,11 @@ public partial class GameDataTableSectionView : UserControl
     // target row on-screen. Tracked here so re-binding swaps cleanly.
     private GameDataTableSectionViewModel? _scrollSubscriptionTarget;
 
+    // The section whose PropertyChanged we watch to keep the test-only Simulate
+    // button's visibility in sync with the live ShowSimulate flag. Tracked so a
+    // re-bind unhooks the old section cleanly.
+    private GameDataTableSectionViewModel? _simulateVisibilityTarget;
+
     public GameDataTableSectionView()
     {
         InitializeComponent();
@@ -206,6 +211,45 @@ public partial class GameDataTableSectionView : UserControl
             RemoveButton.Command   = remove;
             RemoveButton.IsVisible = true;
         }
+        if (editable.DismissCommand is { } dismiss)
+        {
+            DismissButton.Command   = dismiss;
+            DismissButton.Content   = editable.DismissLabel ?? "Dismiss";
+            DismissButton.IsVisible = true;
+        }
+        if (editable.ExportCommand is { } export)
+        {
+            ExportButton.Command   = export;
+            ExportButton.Content   = editable.ExportLabel ?? "Export";
+            ExportButton.IsVisible = true;
+        }
+
+        // Unhook any prior section's PropertyChanged before (re)wiring — the View
+        // can be re-DataContext'd onto a different section.
+        if (_simulateVisibilityTarget is { } prevSim)
+            prevSim.PropertyChanged -= OnSimulateVisibilityChanged;
+        _simulateVisibilityTarget = null;
+
+        if (editable.SimulateCommand is { } simulate)
+        {
+            SimulateButton.Command   = simulate;
+            SimulateButton.Content   = editable.SimulateLabel ?? "Simulate";
+            SimulateButton.IsVisible = editable.ShowSimulate;
+            // The flag flips live when the Log pane's Simulate dropdown toggles;
+            // track it so the button appears/hides without reopening the tab.
+            if (DataContext is GameDataTableSectionViewModel vm)
+            {
+                vm.PropertyChanged += OnSimulateVisibilityChanged;
+                _simulateVisibilityTarget = vm;
+            }
+        }
+    }
+
+    private void OnSimulateVisibilityChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(IEditableTableSectionViewModel.ShowSimulate)) return;
+        if (DataContext is IEditableTableSectionViewModel editable)
+            SimulateButton.IsVisible = editable.ShowSimulate;
     }
 
     private void TryBuildColumns()

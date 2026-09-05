@@ -16,13 +16,22 @@ public sealed partial class MovementRefusalDetector : IDisposable
     private readonly RoomTracker _tracker;
     private readonly LogService? _log;
 
-    public MovementRefusalDetector(LineExtractor lines, RoomTracker tracker, LogService? log = null)
+    // Recognizes a confusion-fumble wire line as a move-refusal, from game data rather
+    // than a hardcoded regex: the fumble wordings ("You fumble in confusion!", plus a
+    // spell's own wording like convulsions' "You convulse violently") live on Confused
+    // MessageRecords' ConfuseFumbleLine and are queried via ConditionTracker. Left null
+    // in tests that don't exercise the confusion path.
+    private readonly Func<string, bool>? _isConfuseFumbleLine;
+
+    public MovementRefusalDetector(LineExtractor lines, RoomTracker tracker, LogService? log = null,
+        Func<string, bool>? isConfuseFumbleLine = null)
     {
         ArgumentNullException.ThrowIfNull(lines);
         ArgumentNullException.ThrowIfNull(tracker);
         _lines = lines;
         _tracker = tracker;
         _log = log;
+        _isConfuseFumbleLine = isConfuseFumbleLine;
         _lines.LineEmitted += OnLineEmitted;
     }
 
@@ -60,7 +69,11 @@ public sealed partial class MovementRefusalDetector : IDisposable
             return;
         }
 
-        if (!Patterns.Any(p => p.IsMatch(text))) return;
+        // A confusion fumble consumes the just-sent command — for a MOVE the step never
+        // lands, so revert like any other refusal. The wordings come from game data
+        // (Confused records' ConfuseFumbleLine) via the injected predicate, not a
+        // hardcoded regex; combat re-sends its own lost swing on ConditionTracker.ActionFailed.
+        if (!Patterns.Any(p => p.IsMatch(text)) && _isConfuseFumbleLine?.Invoke(text) != true) return;
 
         _tracker.NoteMoveBlocked(when);
         _log?.Info("MoveRefusal", $"blocked: {text.Trim()}");
@@ -81,9 +94,6 @@ public sealed partial class MovementRefusalDetector : IDisposable
         TooEncumberedToMove(),
         FlatOnYourBack(),
         AlignmentBlocksExit(),
-        FumbleInConfusion(),
-        ConvulseViolently(),
-        LooksAroundStupidly(),
     };
 
     [GeneratedRegex(
@@ -158,33 +168,9 @@ public sealed partial class MovementRefusalDetector : IDisposable
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex AlignmentBlocksExit();
 
-    // Confusion fumbles the just-sent command — it's consumed and never executes —
-    // which for a MOVE means the pending step never lands and the tracker strands
-    // (it wrongly matches the stale move against later unrelated text, poisoning
-    // recovery). A fumble can hit ANY action, not just combat: combat re-sends its
-    // swing on ConditionTracker.ActionFailed, but a fumbled MOVE has to revert here.
-    // Confusion surfaces two lines — the generic fumble every source shares, and
-    // `convulsions`' own wording — so both are recognized (report
-    // paradigm-20260901-080223 was the convulsion case; the generic has the same
-    // failure mode).
-    [GeneratedRegex(
-        @"^\s*You fumble in confusion[.!]?\s*$",
-        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
-    private static partial Regex FumbleInConfusion();
-
-    [GeneratedRegex(
-        @"^\s*You convulse violently[.!]?\s*$",
-        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
-    private static partial Regex ConvulseViolently();
-
-    // A third convulsions fumble wording, alongside the generic fumble and
-    // "You convulse violently!" above — same consumed-command mechanic, a
-    // different line. Found via a messages.md cross-reference, not a live bug
-    // report: without this, a move fumbled with this exact wording never
-    // reverts, reproducing the same stranded-tracker failure the other two
-    // wordings were fixed for.
-    [GeneratedRegex(
-        @"^\s*You look around stupidly and do nothing[.!]?\s*$",
-        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
-    private static partial Regex LooksAroundStupidly();
+    // Confusion-fumble wordings ("You fumble in confusion!", convulsions' "You convulse
+    // violently" / "You look around stupidly and do nothing") are no longer hardcoded
+    // here — they live on Confused MessageRecords' ConfuseFumbleLine and reach HandleLine
+    // through the _isConfuseFumbleLine predicate (ConditionTracker.IsConfuseFumbleLine),
+    // so the user can correct a spell's fumble wording in game data without an engine edit.
 }

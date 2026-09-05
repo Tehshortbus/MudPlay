@@ -25,6 +25,8 @@ public sealed partial class KeybindEditDialogViewModel : ObservableObject, IDial
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(KeyDisplay))]
     [NotifyPropertyChangedFor(nameof(HasError))]
+    [NotifyPropertyChangedFor(nameof(HasWarning))]
+    [NotifyPropertyChangedFor(nameof(HasInfo))]
     [NotifyPropertyChangedFor(nameof(StatusMessage))]
     [NotifyPropertyChangedFor(nameof(CanSave))]
     private Key? _selectedKey;
@@ -32,6 +34,8 @@ public sealed partial class KeybindEditDialogViewModel : ObservableObject, IDial
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(KeyDisplay))]
     [NotifyPropertyChangedFor(nameof(HasError))]
+    [NotifyPropertyChangedFor(nameof(HasWarning))]
+    [NotifyPropertyChangedFor(nameof(HasInfo))]
     [NotifyPropertyChangedFor(nameof(StatusMessage))]
     [NotifyPropertyChangedFor(nameof(CanSave))]
     private bool _ctrl;
@@ -39,6 +43,8 @@ public sealed partial class KeybindEditDialogViewModel : ObservableObject, IDial
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(KeyDisplay))]
     [NotifyPropertyChangedFor(nameof(HasError))]
+    [NotifyPropertyChangedFor(nameof(HasWarning))]
+    [NotifyPropertyChangedFor(nameof(HasInfo))]
     [NotifyPropertyChangedFor(nameof(StatusMessage))]
     [NotifyPropertyChangedFor(nameof(CanSave))]
     private bool _shift;
@@ -46,6 +52,8 @@ public sealed partial class KeybindEditDialogViewModel : ObservableObject, IDial
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(KeyDisplay))]
     [NotifyPropertyChangedFor(nameof(HasError))]
+    [NotifyPropertyChangedFor(nameof(HasWarning))]
+    [NotifyPropertyChangedFor(nameof(HasInfo))]
     [NotifyPropertyChangedFor(nameof(StatusMessage))]
     [NotifyPropertyChangedFor(nameof(CanSave))]
     private bool _alt;
@@ -86,10 +94,12 @@ public sealed partial class KeybindEditDialogViewModel : ObservableObject, IDial
             // never live in any store but still need to be refused.
             if (IsSystemReserved(SelectedKey.Value, Ctrl, Shift, Alt, out string? sysReason))
                 return sysReason!;
-            // Built-in collision: another action already owns this chord.
+            // Built-in collision: another action owns this chord. We don't block —
+            // saving steals the chord and unbinds that owner, so warn which action
+            // loses it rather than refusing the bind.
             BuiltInAction? builtIn = _keybindings.FindAction(CurrentChord);
             if (builtIn is BuiltInAction b && b != _action)
-                return $"Already bound to built-in action: {KeybindingStore.ActionLabel(b)}.";
+                return $"{KeybindingStore.ActionLabel(b)} is now unbound.";
             // Macro collision: a user-defined macro owns this chord.
             Macro? macro = _macros.FindMatch(SelectedKey.Value.ToString(), Ctrl, Shift, Alt);
             if (macro is not null)
@@ -105,12 +115,30 @@ public sealed partial class KeybindEditDialogViewModel : ObservableObject, IDial
             if (SelectedKey is null) return false;  // empty chord is valid (unbind)
             if (KeybindRegistry.ExcludedKeys.Contains(SelectedKey.Value)) return true;
             if (IsSystemReserved(SelectedKey.Value, Ctrl, Shift, Alt, out _)) return true;
-            BuiltInAction? builtIn = _keybindings.FindAction(CurrentChord);
-            if (builtIn is BuiltInAction b && b != _action) return true;
+            // A built-in collision is NOT an error — saving steals the chord (see
+            // HasWarning). Only a macro collision stays blocking, since a macro
+            // isn't in this list to be re-pointed from here.
             if (_macros.FindMatch(SelectedKey.Value.ToString(), Ctrl, Shift, Alt) is not null) return true;
             return false;
         }
     }
+
+    // A non-blocking warning (amber): the chosen chord currently belongs to another
+    // built-in action, which saving will unbind so the chord moves to this action.
+    // Distinct from HasError (excluded key / system-reserved / macro), which blocks Save.
+    public bool HasWarning
+    {
+        get
+        {
+            if (SelectedKey is null || HasError) return false;
+            return _keybindings.FindAction(CurrentChord) is BuiltInAction b && b != _action;
+        }
+    }
+
+    // The status line is plain info (muted) only when it's neither an error nor a
+    // steal warning — the three states are mutually exclusive so exactly one
+    // TextBlock shows.
+    public bool HasInfo => !HasError && !HasWarning;
 
     public bool CanSave => !HasError && !IsCapturing;
 

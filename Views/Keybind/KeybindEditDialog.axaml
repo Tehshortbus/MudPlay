@@ -53,12 +53,19 @@
                            ToolTip.Tip="Leaves the action unbound — no keyboard shortcut until rebound."/>
             </Grid>
 
-            <!-- Live status / error line. Muted preview when valid, red when forbidden. -->
+            <!-- Live status line. Muted preview when valid, amber when the chord is
+                 stolen from another action (that action is unbound on save), red
+                 when forbidden. Exactly one shows (HasInfo / HasWarning / HasError). -->
             <TextBlock Grid.Row="2"
                        Text="{Binding StatusMessage}"
                        Foreground="{StaticResource ChromeFgMutedBrush}"
                        FontSize="11" TextWrapping="Wrap"
-                       IsVisible="{Binding !HasError}"/>
+                       IsVisible="{Binding HasInfo}"/>
+            <TextBlock Grid.Row="2"
+                       Text="{Binding StatusMessage}"
+                       Foreground="#FFE0B36D"
+                       FontSize="11" TextWrapping="Wrap"
+                       IsVisible="{Binding HasWarning}"/>
             <TextBlock Grid.Row="2"
                        Text="{Binding StatusMessage}"
                        Foreground="#FFE06D6D"

@@ -123,4 +123,45 @@ public sealed class MessageRouterTests
         router.Dispatch(Line("X2"));
         Assert.Equal(1, extraHits);   // and now it fires
     }
+
+    // ----- AnyPatternMatches (read-only probe) ----------------------------
+
+    [Fact]
+    public void AnyPatternMatches_MatchesRegisteredCatalogPattern()
+    {
+        MessageRouter router = new();
+        router.RegisterPattern(new PrefixPattern("a", "Hello"));
+
+        Assert.True(router.AnyPatternMatches(Line("Hello world!")));
+    }
+
+    [Fact]
+    public void AnyPatternMatches_NoMatch_ReturnsFalse()
+    {
+        MessageRouter router = new();
+        router.RegisterPattern(new PrefixPattern("a", "Hello"));
+
+        Assert.False(router.AnyPatternMatches(Line("Goodbye world!")));
+    }
+
+    [Fact]
+    public void AnyPatternMatches_DoesNotDispatchOrFireHandlers()
+    {
+        MessageRouter router = new();
+        int hits = 0;
+        bool lineDispatchedFired = false;
+        // Catalog entry (what AnyPatternMatches probes) and a separate real
+        // subscription (what a genuine Dispatch would fire) — distinct ids so
+        // a regression that made AnyPatternMatches call Dispatch internally
+        // would show up as hits > 0 / lineDispatchedFired == true below.
+        router.RegisterPattern(new PrefixPattern("a", "Hello"));
+        router.Register(new PrefixPattern("a2", "Hello"), _ => hits++);
+        router.LineDispatched += _ => lineDispatchedFired = true;
+
+        bool matched = router.AnyPatternMatches(Line("Hello world!"));
+
+        Assert.True(matched);
+        Assert.Equal(0, hits);
+        Assert.False(lineDispatchedFired);
+    }
 }

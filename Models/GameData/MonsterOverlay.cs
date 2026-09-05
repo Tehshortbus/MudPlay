@@ -47,6 +47,12 @@ public sealed record MonsterOverlay
     // Per-room cast cap for OverridePreAttackSpellId; null/0 = unlimited.
     public int? OverridePreAttackCount { get; init; }
 
+    // Minimum mana before the override pre-attack spell fires, interpreted per the
+    // character's Combat-tab SpellManaThresholdMode (Percentage / Value) — the same
+    // gate as CombatSpellSlot.MinManaPerCast. null/0 = no floor. Below it the override
+    // holds and the normal combat flow takes the round.
+    public int? OverridePreAttackMinMana { get; init; }
+
     // Override attack spell — Spell.Number to cast as the primary attack on
     // this monster, regardless of the global Combat-tab attack-spell
     // choice, routed through the mana-gated attack-spell rung. null = no
@@ -55,6 +61,11 @@ public sealed record MonsterOverlay
 
     // Per-room cast cap for OverrideAttackSpellId; null/0 = unlimited.
     public int? OverrideAttackCount { get; init; }
+
+    // Minimum mana before the override attack spell fires, same interpretation as
+    // OverridePreAttackMinMana. null/0 = no floor. Ignored for a raw-command override
+    // (OverrideAttackCommand), which never mana-gates.
+    public int? OverrideAttackMinMana { get; init; }
 
     // Override attack COMMAND — a raw verb ("attack", "bash") sent verbatim as
     // this monster's attack, forced over the whole normal spell/weapon flow.

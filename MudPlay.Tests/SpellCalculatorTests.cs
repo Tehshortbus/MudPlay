@@ -321,4 +321,82 @@ public sealed class SpellCalculatorTests
         // resolveChain returns null → chain contributes nothing, parent = base 10
         Assert.Equal(10, SpellCalculator.MinDamage(parent, 5, _ => null));
     }
+
+    // ----- single cast (monster spell attack): no per-round energy fold ----
+    // A monster casts its assigned spell once when the attack lands; how often
+    // it fires per round rides the monster's own attack energy, not the spell's
+    // EnergyCost. So the per-cast figure is the base/slope value with NO
+    // multiplier — the same figure the per-round getters inflate.
+
+    [Theory]
+    [InlineData(1000)] // spits acid #325 — clamps to 1× anyway
+    [InlineData(500)]  // lightning bolt — per-round getter doubles this
+    [InlineData(166)]  // magma blast — per-round getter 6×'s this
+    [InlineData(0)]    // 0-energy monster spell
+    public void SingleCast_IgnoresEnergyMultiplier_RegardlessOfEnergyCost(int energyCost)
+    {
+        SpellFormulaInput spell = new()
+        {
+            MinBase = 12, MaxBase = 40,
+            EnergyCost = energyCost,
+            Abilities = [Dmg()],
+        };
+
+        Assert.Equal(12, SpellCalculator.SingleCastMinDamage(spell, 11));
+        Assert.Equal(40, SpellCalculator.SingleCastMaxDamage(spell, 11));
+    }
+
+    [Fact]
+    public void SingleCast_StillScalesByLevel()
+    {
+        // lightning bolt shape: 12 + L min, 20 + 2L max — a monster at level 20
+        // casts 32–60 per cast (not the per-round total).
+        SpellFormulaInput spell = new()
+        {
+            MinBase = 12, MinInc = 1, MinIncLVLs = 1,
+            MaxBase = 20, MaxInc = 2, MaxIncLVLs = 1,
+            EnergyCost = 500,
+            Abilities = [Dmg()],
+        };
+
+        Assert.Equal(32, SpellCalculator.SingleCastMinDamage(spell, 20));
+        Assert.Equal(60, SpellCalculator.SingleCastMaxDamage(spell, 20));
+    }
+
+    [Fact]
+    public void SingleCast_FollowsEndCastChainOnce_NoMultiplier()
+    {
+        SpellFormulaInput child = new()
+        {
+            Number = 42,
+            MinBase = 5,
+            EnergyCost = 200, // per-round getter would multiply; single cast must not
+            Abilities = [Dmg()],
+        };
+        SpellFormulaInput parent = new()
+        {
+            Number = 41,
+            MinBase = 10,
+            EnergyCost = 200,
+            Abilities = [Dmg(), EndCast(42)],
+        };
+
+        SpellFormulaInput? Resolve(int n) => n == 42 ? child : null;
+
+        // parent base 10 + child base 5, both single-cast → 15 (vs 30 per-round).
+        Assert.Equal(15, SpellCalculator.SingleCastMinDamage(parent, 5, Resolve));
+    }
+
+    [Fact]
+    public void SingleCast_ChainLoop_TerminatesViaVisitedGuard()
+    {
+        // A → B → A. The per-round path self-terminates via energy depletion, but
+        // single cast has no such bound, so the visited-guard must stop it.
+        SpellFormulaInput a = new() { Number = 1, MinBase = 10, Abilities = [Dmg(), EndCast(2)] };
+        SpellFormulaInput b = new() { Number = 2, MinBase = 5, Abilities = [Dmg(), EndCast(1)] };
+        SpellFormulaInput? Resolve(int n) => n == 1 ? a : n == 2 ? b : null;
+
+        // A(10) → B(5) → A already visited, stops → 15.
+        Assert.Equal(15, SpellCalculator.SingleCastMinDamage(a, 5, Resolve));
+    }
 }

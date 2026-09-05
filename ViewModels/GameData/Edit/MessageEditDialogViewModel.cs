@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -7,11 +8,12 @@ using MudPlay.Services;
 
 namespace MudPlay.ViewModels.GameData.Edit;
 
-// View-model for the Game Data Browser → Messages tab's per-record edit dialog. Edits
-// one MessageRecord end-to-end: Name / Use-tier / four perspective line slots (Caster /
-// Target / Witness / Applied + AppliedEndsWith) / Action / Effects flags / Response /
-// Links. Commits on Save (Defaults tier writes back to MessageStore; other tiers are
-// stubbed for the future SettingsResolver.WriteGameDataAt path) or discards on Cancel.
+// View-model for the Game Data Browser → Incomplete Messages tab's per-record edit
+// dialog. Edits one MessageRecord end-to-end: Name / Use-tier / four perspective line
+// slots (Caster / Target / Witness / Applied + AppliedEndsWith) / Effects flags / Links.
+// A message is recognition only — no action, no response (those live in Triggers).
+// Commits on Save (Defaults tier writes back to MessageStore; other tiers are stubbed
+// for the future SettingsResolver.WriteGameDataAt path) or discards on Cancel.
 //
 // Validation runs live — StatusMessage + HasError flag the dialog when Name is blank,
 // when no perspective line has any text (record would carry no matchable content), or
@@ -65,30 +67,34 @@ public sealed partial class MessageEditDialogViewModel : ObservableObject, IDial
     [NotifyPropertyChangedFor(nameof(CanSave))]
     private string _appliedEndsWith = string.Empty;
 
-    // Verbatim response field — stored exactly as MegaMUD's UI would display it, including
-    // literal ^M separators. No splitting happens here; the runtime consumer interprets
-    // ^M / CR as multi-step boundaries when actually sending.
-    [ObservableProperty] private string _response = string.Empty;
-    [ObservableProperty] private MessageAction _action = MessageAction.Ignore;
-
     // Typed effect flags — bound to checkboxes in the dialog. Twelve
-    // bits surfaced; the three MegaMUD-specific find-mode flags are
-    // NOT exposed in the UI (the importer strips them at read time).
+    // bits surfaced; the MegaMUD find-mode flags and the four retired inert
+    // effect bits (LosingHp / HpRegenerating / ManaRegenerating / EndsCombat)
+    // are NOT exposed in the UI.
     [ObservableProperty] private bool _flagBlinded;
     [ObservableProperty] private bool _flagConfused;
     [ObservableProperty] private bool _flagPoisoned;
-    [ObservableProperty] private bool _flagLosingHp;
     [ObservableProperty] private bool _flagMovementPrevented;
     [ObservableProperty] private bool _flagAttackPrevented;
     [ObservableProperty] private bool _flagDiseased;
-    [ObservableProperty] private bool _flagHpRegenerating;
-    [ObservableProperty] private bool _flagManaRegenerating;
-    [ObservableProperty] private bool _flagEndsCombat;
     [ObservableProperty] private bool _flagLastActionFailed;
     [ObservableProperty] private bool _flagDisabled;
 
-    public IReadOnlyList<MessageAction> AvailableActions { get; } =
-        Enum.GetValues<MessageAction>().ToArray();
+    // Per-source confusion fumble line(s), one wording per line — the textbox binding
+    // it is shown only while Confused is checked. Not part of the record identity, so
+    // editing it never re-Ids the record.
+    [ObservableProperty] private string _confuseFumbleLine = string.Empty;
+
+    // Engine-driven response sent when this record's spell is detected cast (the temp
+    // death-spell recovery), '^M' = carriage return. Not part of the record identity.
+    [ObservableProperty] private string _castResponse = string.Empty;
+
+    // Pending per-field collisions surfaced when a spell number is linked whose
+    // record already has content that differs from what's in the dialog (an
+    // unrecognized line being committed). The inline resolver panel binds these;
+    // empty when there are none (silent auto-fill only). See TryAutofillFromRecord.
+    public ObservableCollection<LinkFillConflict> LinkFillConflicts { get; } = new();
+    public bool HasLinkFillConflicts => LinkFillConflicts.Count > 0;
 
     public IReadOnlyList<TierOption> AvailableTiers { get; } = new[]
     {
@@ -101,9 +107,12 @@ public sealed partial class MessageEditDialogViewModel : ObservableObject, IDial
     // Editable Links list — see LinkRow for shape.
     public System.Collections.ObjectModel.ObservableCollection<LinkRow> LinkRows { get; } = new();
 
-    public IReadOnlyList<string> LinkTables { get; } = new[] { "Spells", "Items", "Monsters" };
-
-    [ObservableProperty] private string _addLinkTable = "Spells";
+    // A message always attributes to a Spells row — this dialog exists to author
+    // the message text a spell record lacks (the MDB imports every spell field
+    // EXCEPT its caster/target/witness/applied/wears-off lines). Item on-use and
+    // monster abilities both resolve to a spell in the Spells table, so the
+    // add-link table is a fixed "Spells" (no picker); AddLink builds its link from it.
+    private const string LinkTable = "Spells";
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(AddLinkStatus))]
@@ -113,12 +122,12 @@ public sealed partial class MessageEditDialogViewModel : ObservableObject, IDial
     {
         get
         {
-            if (string.IsNullOrWhiteSpace(AddLinkNumber)) return "Pick a table + type a Number to add a link.";
+            if (string.IsNullOrWhiteSpace(AddLinkNumber)) return "Type a spell number to add a link.";
             if (!int.TryParse(AddLinkNumber, out int n)) return $"'{AddLinkNumber}' is not a number.";
-            string? name = _cache?.FindNameByNumber(AddLinkTable, n);
+            string? name = _cache?.FindNameByNumber(LinkTable, n);
             return name is null
-                ? $"{AddLinkTable}#{n} — no row with that Number in the active set."
-                : $"Will add: {AddLinkTable}#{n} — {name}";
+                ? $"{LinkTable}#{n} — no row with that Number in the active set."
+                : $"Will add: {LinkTable}#{n} — {name}";
         }
     }
 
@@ -150,7 +159,7 @@ public sealed partial class MessageEditDialogViewModel : ObservableObject, IDial
 
     public string Title => _isNew ? "Message — (new)" : $"Message — {_original.Name}";
 
-    // Placeholder-token legend shown under the Response field so an author editing a
+    // Placeholder-token legend shown below the line fields so an author editing a
     // message line can see which bracket pins which capture slot (the meaning surfaces on
     // hover). Sourced from the matcher itself so the editor and the runtime interpreter
     // never drift.
@@ -188,9 +197,28 @@ public sealed partial class MessageEditDialogViewModel : ObservableObject, IDial
         foreach (MessageRecord r in _existingRecords)
         {
             if (!_isNew && string.Equals(r.Id, _original.Id, StringComparison.Ordinal)) continue;
-            if (string.Equals(r.Id, projected, StringComparison.Ordinal)) return r;
+            if (!string.Equals(r.Id, projected, StringComparison.Ordinal)) continue;
+            // Same Name + all four lines — but a record anchored to a DIFFERENT game-data
+            // row (another spell/item) is a legitimate alias, not a duplicate: the game
+            // shows the same text for several spells (three separate 'disease' spells all
+            // read "You are diseased"). Only a record that shares THIS one's links (or, like
+            // it, carries none) is a true duplicate worth blocking.
+            if (LinksEqual(r)) return r;
         }
         return null;
+    }
+
+    // The record's back-references (Table#Number, table stem lower-cased) as a set,
+    // compared to the links currently in the editor. Two link-less records match.
+    private bool LinksEqual(MessageRecord r)
+    {
+        HashSet<string> mine = LinkRows
+            .Select(l => $"{l.Table.ToLowerInvariant()}#{l.Number}")
+            .ToHashSet(StringComparer.Ordinal);
+        HashSet<string> theirs = (r.Links ?? Array.Empty<GameDataLink>())
+            .Select(l => $"{l.Table.ToLowerInvariant()}#{l.Number}")
+            .ToHashSet(StringComparer.Ordinal);
+        return mine.SetEquals(theirs);
     }
 
     public bool HasError => GetValidationError() is not null;
@@ -240,21 +268,22 @@ public sealed partial class MessageEditDialogViewModel : ObservableObject, IDial
         WitnessMessage  = original.WitnessMessage;
         AppliedMessage  = original.AppliedMessage;
         AppliedEndsWith = original.AppliedEndsWith;
-        Response        = original.Response;
-        Action          = original.Action;
+        ConfuseFumbleLine = original.ConfuseFumbleLine;
+        CastResponse      = original.CastResponse;
 
-        FlagBlinded           = original.Flags.HasFlag(MessageFlags.Blinded);
-        FlagConfused          = original.Flags.HasFlag(MessageFlags.Confused);
-        FlagPoisoned          = original.Flags.HasFlag(MessageFlags.Poisoned);
-        FlagLosingHp          = original.Flags.HasFlag(MessageFlags.LosingHp);
-        FlagMovementPrevented = original.Flags.HasFlag(MessageFlags.MovementPrevented);
-        FlagAttackPrevented   = original.Flags.HasFlag(MessageFlags.AttackPrevented);
-        FlagDiseased          = original.Flags.HasFlag(MessageFlags.Diseased);
-        FlagHpRegenerating    = original.Flags.HasFlag(MessageFlags.HpRegenerating);
-        FlagManaRegenerating  = original.Flags.HasFlag(MessageFlags.ManaRegenerating);
-        FlagEndsCombat        = original.Flags.HasFlag(MessageFlags.EndsCombat);
-        FlagLastActionFailed  = original.Flags.HasFlag(MessageFlags.LastActionFailed);
-        FlagDisabled          = original.Flags.HasFlag(MessageFlags.Disabled);
+        LoadFlags(original.Flags);
+    }
+
+    private void LoadFlags(MessageFlags flags)
+    {
+        FlagBlinded           = flags.HasFlag(MessageFlags.Blinded);
+        FlagConfused          = flags.HasFlag(MessageFlags.Confused);
+        FlagPoisoned          = flags.HasFlag(MessageFlags.Poisoned);
+        FlagMovementPrevented = flags.HasFlag(MessageFlags.MovementPrevented);
+        FlagAttackPrevented   = flags.HasFlag(MessageFlags.AttackPrevented);
+        FlagDiseased          = flags.HasFlag(MessageFlags.Diseased);
+        FlagLastActionFailed  = flags.HasFlag(MessageFlags.LastActionFailed);
+        FlagDisabled          = flags.HasFlag(MessageFlags.Disabled);
     }
 
     [RelayCommand]
@@ -270,16 +299,16 @@ public sealed partial class MessageEditDialogViewModel : ObservableObject, IDial
                                  Name, CasterMessage, TargetMessage, WitnessMessage,
                                  AppliedMessage, AppliedEndsWith),
             Name:            Name,
-            Action:          Action,
             Flags:           typed,
             RawFlagsHex:     raw,
-            Response:        Response ?? string.Empty,
             CasterMessage:   CasterMessage   ?? string.Empty,
             TargetMessage:   TargetMessage   ?? string.Empty,
             WitnessMessage:  WitnessMessage  ?? string.Empty,
             AppliedMessage:  AppliedMessage  ?? string.Empty,
             AppliedEndsWith: AppliedEndsWith ?? string.Empty,
-            Links:           LinkRows.Select(r => new GameDataLink(r.Table, r.Number)).ToList());
+            Links:           LinkRows.Select(r => new GameDataLink(r.Table, r.Number)).ToList(),
+            ConfuseFumbleLine: ConfuseFumbleLine ?? string.Empty,
+            CastResponse:      CastResponse ?? string.Empty);
 
         CloseRequested?.Invoke(new MessageEditResult(_original, updated, UseTier));
     }
@@ -293,13 +322,66 @@ public sealed partial class MessageEditDialogViewModel : ObservableObject, IDial
         if (!int.TryParse(AddLinkNumber, out int n)) return;
         foreach (LinkRow existing in LinkRows)
         {
-            if (string.Equals(existing.Table, AddLinkTable, StringComparison.Ordinal) &&
+            if (string.Equals(existing.Table, LinkTable, StringComparison.Ordinal) &&
                 existing.Number == n)
                 return;
         }
-        string? name = _cache?.FindNameByNumber(AddLinkTable, n);
-        LinkRows.Add(new LinkRow(AddLinkTable, n, name));
+        string? name = _cache?.FindNameByNumber(LinkTable, n);
+        LinkRows.Add(new LinkRow(LinkTable, n, name));
         AddLinkNumber = string.Empty;
+        TryAutofillFromRecord(n);
+    }
+
+    // When a spell number is linked whose record already carries message text,
+    // pull that text in: empty slots fill silently; a slot the dialog already
+    // holds (the unrecognized line being committed) that DIFFERS from the record
+    // surfaces as a per-field collision in the inline resolver. Name fills when
+    // blank; on a fresh commit the record's Effects flags are adopted (a candidate
+    // starts with none). No matching record ⇒ no-op.
+    private void TryAutofillFromRecord(int spellNumber)
+    {
+        MessageRecord? rec = _existingRecords.FirstOrDefault(r =>
+            !ReferenceEquals(r, _original)
+            && r.Links is { } ls
+            && ls.Any(l => string.Equals(l.Table, LinkTable, StringComparison.OrdinalIgnoreCase)
+                           && l.Number == spellNumber));
+        if (rec is null) return;
+
+        if (string.IsNullOrWhiteSpace(Name) && !string.IsNullOrWhiteSpace(rec.Name)) Name = rec.Name;
+        if (_isNew) LoadFlags(rec.Flags);
+
+        LinkFillConflicts.Clear();
+        MergeField("Caster",         rec.CasterMessage,   () => CasterMessage,   v => CasterMessage = v);
+        MergeField("Target",         rec.TargetMessage,   () => TargetMessage,   v => TargetMessage = v);
+        MergeField("Witness",        rec.WitnessMessage,  () => WitnessMessage,  v => WitnessMessage = v);
+        MergeField("Applied",        rec.AppliedMessage,  () => AppliedMessage,  v => AppliedMessage = v);
+        MergeField("Wears off",      rec.AppliedEndsWith, () => AppliedEndsWith, v => AppliedEndsWith = v);
+        MergeField("Confuse fumble", rec.ConfuseFumbleLine, () => ConfuseFumbleLine, v => ConfuseFumbleLine = v);
+        MergeField("Cast response",  rec.CastResponse,    () => CastResponse,    v => CastResponse = v);
+        OnPropertyChanged(nameof(HasLinkFillConflicts));
+    }
+
+    // Silent-fill when the dialog's slot is empty; skip when equal or when the
+    // record's value is empty (nothing to overwrite the unrecognized line with);
+    // otherwise record it as a collision for the user to resolve.
+    private void MergeField(string label, string? recordValue, Func<string> get, Action<string> set)
+    {
+        string current = get() ?? string.Empty;
+        string incoming = recordValue ?? string.Empty;
+        if (string.IsNullOrEmpty(current)) { if (incoming.Length > 0) set(incoming); return; }
+        if (string.Equals(current, incoming, StringComparison.Ordinal)) return;
+        if (incoming.Length == 0) return;
+        LinkFillConflicts.Add(new LinkFillConflict(label, incoming, current, set));
+    }
+
+    // Resolve every pending collision to its chosen source, then clear the panel.
+    [RelayCommand]
+    private void ApplyLinkFill()
+    {
+        foreach (LinkFillConflict c in LinkFillConflicts)
+            c.Apply(c.UseRecord ? c.RecordValue : c.UnrecognizedValue);
+        LinkFillConflicts.Clear();
+        OnPropertyChanged(nameof(HasLinkFillConflicts));
     }
 
     [RelayCommand]
@@ -315,13 +397,9 @@ public sealed partial class MessageEditDialogViewModel : ObservableObject, IDial
         if (FlagBlinded)           f |= MessageFlags.Blinded;
         if (FlagConfused)          f |= MessageFlags.Confused;
         if (FlagPoisoned)          f |= MessageFlags.Poisoned;
-        if (FlagLosingHp)          f |= MessageFlags.LosingHp;
         if (FlagMovementPrevented) f |= MessageFlags.MovementPrevented;
         if (FlagAttackPrevented)   f |= MessageFlags.AttackPrevented;
         if (FlagDiseased)          f |= MessageFlags.Diseased;
-        if (FlagHpRegenerating)    f |= MessageFlags.HpRegenerating;
-        if (FlagManaRegenerating)  f |= MessageFlags.ManaRegenerating;
-        if (FlagEndsCombat)        f |= MessageFlags.EndsCombat;
         if (FlagLastActionFailed)  f |= MessageFlags.LastActionFailed;
         if (FlagDisabled)          f |= MessageFlags.Disabled;
         return f;
@@ -360,4 +438,29 @@ public sealed record LinkRow(string Table, int Number, string? DisplayName)
     public string Label => DisplayName is null
         ? $"{Table}#{Number} (unknown)"
         : $"{Table}#{Number} — {DisplayName}";
+}
+
+// One field collision surfaced when a linked spell's record and the dialog (the
+// unrecognized line being committed) both have text for the same slot. UseRecord
+// (default true) is the user's per-field pick; Apply writes the chosen value back
+// into the dialog field via the captured setter.
+public sealed partial class LinkFillConflict : ObservableObject
+{
+    private readonly Action<string> _apply;
+
+    public string FieldLabel { get; }
+    public string RecordValue { get; }
+    public string UnrecognizedValue { get; }
+
+    [ObservableProperty] private bool _useRecord = true;
+
+    public LinkFillConflict(string fieldLabel, string recordValue, string unrecognizedValue, Action<string> apply)
+    {
+        FieldLabel        = fieldLabel;
+        RecordValue       = recordValue;
+        UnrecognizedValue = unrecognizedValue;
+        _apply            = apply;
+    }
+
+    public void Apply(string value) => _apply(value);
 }

@@ -106,7 +106,7 @@ public sealed class SpellInfoRowsBuilderTests : IDisposable
             new SpellInfoRowsBuilder(cache).Build(50).Where(r => r.Label == "Cast By"));
 
         Assert.True(row.HasLinks);
-        Assert.Equal(new[] { "vampire magus", "vampire acolyte" }, row.Links!.Select(l => l.Name));
+        Assert.Equal(new[] { "vampire magus [#200]", "vampire acolyte [#201]" }, row.Links!.Select(l => l.Name));
         Assert.All(row.Links!, l => Assert.True(l.IsLinked));
     }
 

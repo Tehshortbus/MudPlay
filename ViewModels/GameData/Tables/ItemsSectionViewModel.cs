@@ -192,6 +192,16 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
         IReadOnlyList<ItemGiver>? givers =
             itemNum > 0 ? _itemSources?.GiversOf(itemNum) : null;
 
+        // On-use / proc message editing — item-claimed message records live with
+        // the item now (hidden from the Messages tab), so the dialog opens their
+        // editor via the shared ItemMessageDialogService. Null in a headless test
+        // (no AppServices) — the Message section then hides itself.
+        ItemMessageDialogService? itemMsg = AppServices.Current?.ItemMessage;
+        Func<Task<string?>>? editMsg = (itemMsg is not null && itemNum > 0)
+            ? () => itemMsg.OpenAsync(itemNum)
+            : null;
+        string? msgSummary = (itemMsg is not null && itemNum > 0) ? itemMsg.SummaryFor(itemNum) : null;
+
         ItemEditDialogViewModel vm = new(
             wccNoStr:         wcc,
             mdbName:          row.Get("Name") ?? string.Empty,
@@ -199,6 +209,8 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
             currentTier:      row.SourceTier,
             mdbInfo:          mdb.OtherInfo,
             shops:            mdb.Shops,
+            writableTiers:    _resolverRef?.WritableTiers(),
+            installedDefaults: seedDefaults,
             isLight:          mdb.IsLight,
             isContainer:      mdb.IsContainer,
             chest:            chest,
@@ -206,7 +218,10 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
             givers:           givers,
             shopSalesForCharm: ShopsForCharm,
             droppedBy:        mdb.DroppedBy,
-            placedIn:         mdb.PlacedIn);
+            placedIn:         mdb.PlacedIn,
+            castsSpells:      mdb.CastsSpells,
+            editAttachedMessage:    editMsg,
+            attachedMessageSummary: msgSummary);
 
         // Replace any open item menu with the new one: a double-click on another
         // row swaps the shown item instead of opening a second window. Closing
@@ -228,10 +243,12 @@ public sealed class ItemsSectionViewModel : JsonTableSectionViewModel, IEditable
         }
         if (result is null) return;
 
-        // Defaults tier is read-only (MDB is the source of truth) — fall
-        // back to Character if the user picks it. Same guard MonstersTab uses.
-        SettingsTier tier = result.Tier == SettingsTier.Defaults ? SettingsTier.Character : result.Tier;
-        _resolverRef?.WriteGameDataAt(tier, "Items", result.WccNoStr, result.Overlay);
+        // Installed-defaults reset (confirm + wipe all tiers), redundant-override
+        // cleanup (edit == seed → clear the tier), or a normal write — one shared path.
+        if (_resolverRef is { } resolver && AppServices.Current is { } app)
+            await GameDataOverrideApplier.ApplyAsync(
+                resolver, app.Confirm, "Items", result.WccNoStr,
+                result.Tier, result.Overlay, result.EqualsInstalledDefaults);
 
         Reload();
     }

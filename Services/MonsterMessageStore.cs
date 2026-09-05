@@ -44,17 +44,45 @@ public sealed class MonsterMessageStore
     //      first launch; the monster Number ↔ message mapping is universal for
     //      1.11p, usable as a starting point for other realms (the editor lets
     //      the user fix mismatches).
-    // The seed itself is never written.
+    //   3. Bundled seed AppPaths.BundledMonsterMessagesSeedFile shipped beside the
+    //      app — the read-only floor. Reached only when the Global copy is missing
+    //      (never bootstrapped, or deleted), so the catalogue is never empty; last,
+    //      so it never overrides a user's per-set edits.
+    // Neither seed is ever written.
     public void Load(string? setName)
     {
         ActiveSet = setName;
-        if (string.IsNullOrWhiteSpace(setName)) { Messages.ReplaceAll([]); return; }
+        if (string.IsNullOrWhiteSpace(setName))
+        {
+            Messages.ReplaceAll([]);
+            _log?.Log(LogSeverity.Info, "MonsterMessages", "no active game-data set — monster-message catalogue cleared.");
+            return;
+        }
 
-        List<MonsterMessageRecord> loaded =
-            TryLoad(AppPaths.MonsterMessagesFile(setName)) ??
-            TryLoad(AppPaths.DefaultMonsterMessagesSeedFile) ??
-            [];
+        (List<MonsterMessageRecord> loaded, string source) = LoadFrom(setName);
         Messages.ReplaceAll(loaded);
+
+        if (loaded.Count == 0)
+            _log?.Log(LogSeverity.Warn, "MonsterMessages",
+                $"set '{setName}': 0 monster-message records — no per-set file, Global seed, or bundled seed was " +
+                "found or parsed, so monster combat lines are not recognized.");
+        else
+            _log?.Log(LogSeverity.Info, "MonsterMessages",
+                $"set '{setName}': loaded {loaded.Count} monster-message records from {source}.");
+    }
+
+    // First readable source wins (per-set edits → Global seed → bundled floor); the
+    // bundled copy is last so it never overrides a user's edits, and keeps the catalogue
+    // non-empty even when the Global seed was never bootstrapped or was deleted.
+    private (List<MonsterMessageRecord> Records, string Source) LoadFrom(string setName)
+    {
+        if (TryLoad(AppPaths.MonsterMessagesFile(setName)) is { } perSet)
+            return (perSet, "per-set file");
+        if (TryLoad(AppPaths.DefaultMonsterMessagesSeedFile) is { } globalSeed)
+            return (globalSeed, "Global seed");
+        if (TryLoad(AppPaths.BundledMonsterMessagesSeedFile) is { } bundled)
+            return (bundled, "bundled seed");
+        return ([], "none");
     }
 
     // Parsed list (possibly empty) iff the file existed AND parsed cleanly;

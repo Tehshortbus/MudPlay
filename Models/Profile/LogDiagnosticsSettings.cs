@@ -26,4 +26,9 @@ public sealed class LogDiagnosticsSettings
     // Gate for the navigation hop-timing calibration trace. Default off. When
     // on, HopTimingCalibrator emits one Info line per confirmed room hop.
     public bool HopTiming { get; set; }
+
+    // Gate for Game.MessageCandidateWatcher. Default on — the point of the
+    // feature is catching silent Messages-catalogue misses, matching Debug/
+    // Combat's "default to visibility" rationale.
+    public bool CaptureUnrecognizedMessages { get; set; } = true;
 }

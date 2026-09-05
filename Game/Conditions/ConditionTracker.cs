@@ -56,6 +56,12 @@ public sealed partial class ConditionTracker : ObservableObject, IDisposable
     // any confusion source), so ending any alias ends the whole group — see OnLine.
     private Dictionary<string, List<MessageRecord>> _appliedAliases = new(StringComparer.Ordinal);
 
+    // Normalized confusion-fumble wordings pulled from every Confused record's
+    // ConfuseFumbleLine (one per line). A fumbled MOVE reverts on any of these — see
+    // MovementRefusalDetector, which queries IsConfuseFumbleLine instead of hardcoding
+    // the wordings. Rebuilt with the other indexes on every MessageStore change.
+    private List<string> _confuseFumbleIndex = new();
+
     private LineExtractor? _lines;
     private bool _disposed;
 
@@ -70,11 +76,8 @@ public sealed partial class ConditionTracker : ObservableObject, IDisposable
     public bool IsConfused           => ActiveFlags.HasFlag(MessageFlags.Confused);
     public bool IsPoisoned           => ActiveFlags.HasFlag(MessageFlags.Poisoned);
     public bool IsDiseased           => ActiveFlags.HasFlag(MessageFlags.Diseased);
-    public bool IsLosingHp           => ActiveFlags.HasFlag(MessageFlags.LosingHp);
     public bool IsMovementPrevented  => ActiveFlags.HasFlag(MessageFlags.MovementPrevented);
     public bool IsAttackPrevented    => ActiveFlags.HasFlag(MessageFlags.AttackPrevented);
-    public bool IsHpRegenerating     => ActiveFlags.HasFlag(MessageFlags.HpRegenerating);
-    public bool IsManaRegenerating   => ActiveFlags.HasFlag(MessageFlags.ManaRegenerating);
 
     // Fires when a record's AppliedMessage matches and the record wasn't already
     // active. Carries the record itself so downstream engines can read its Action
@@ -84,12 +87,15 @@ public sealed partial class ConditionTracker : ObservableObject, IDisposable
     // Fires when a previously-active record's AppliedEndsWith matches.
     public event Action<MessageRecord>? ConditionEnded;
 
-    // Fires per matching line for a record carrying LastActionFailed — a
-    // transient per-action outcome (the confusion fumble "You fumble in
-    // confusion"), not a lasting condition. Unlike ConditionApplied this is NOT
-    // deduped by the active set: a confused character fumbles command after
-    // command, re-emitting the same line each time, and combat must re-send its
-    // lost swing on EVERY fumble, not just the first. Fires at most once per line.
+    // Fires per matching line for a record carrying LastActionFailed — the
+    // transient "the action you just sent didn't take, resend it" outcome (a
+    // fizzle, an interrupted/eaten command), NOT a lasting condition and NOT
+    // confusion-specific. (Confusion's fumbled MOVE revert rides the separate
+    // ConfuseFumbleLine path; a fumble line merely happens to be one thing that
+    // can carry this flag.) Unlike ConditionApplied this is NOT deduped by the
+    // active set: the same failure line can recur action after action, and combat
+    // must re-send its lost swing on EVERY occurrence, not just the first. Fires
+    // at most once per line.
     public event Action<MessageRecord>? ActionFailed;
 
     public ConditionTracker(MessageStore messages, LogService? log = null)
@@ -134,6 +140,31 @@ public sealed partial class ConditionTracker : ObservableObject, IDisposable
         return false;
     }
 
+    // True when text is one of the confusion-fumble wordings configured on a Confused
+    // record's ConfuseFumbleLine — the WHOLE line must match (ignoring surrounding
+    // whitespace, a trailing '.'/'!', and case) so a chat line quoting the phrase can't
+    // false-trigger. MovementRefusalDetector calls this to revert a fumbled move without
+    // hardcoding the wordings.
+    public bool IsConfuseFumbleLine(string text)
+    {
+        if (_confuseFumbleIndex.Count == 0 || string.IsNullOrEmpty(text)) return false;
+        string norm = NormalizeFumbleLine(text);
+        if (norm.Length == 0) return false;
+        foreach (string wording in _confuseFumbleIndex)
+            if (string.Equals(norm, wording, StringComparison.OrdinalIgnoreCase)) return true;
+        return false;
+    }
+
+    // Trim surrounding whitespace and one trailing sentence terminator so a stored
+    // "You fumble in confusion!" matches the wire "You fumble in confusion." and vice
+    // versa — the same tolerance the old anchored regexes carried.
+    private static string NormalizeFumbleLine(string s)
+    {
+        s = s.Trim();
+        if (s.Length > 0 && (s[^1] == '.' || s[^1] == '!')) s = s[..^1].TrimEnd();
+        return s;
+    }
+
     // Force-clear all conditions. Wire on disconnect / death / session reset —
     // server state changes reset the truth, our observation log is stale. This is
     // a safe over-clear: the tracker is an observation log, so any condition still
@@ -156,21 +187,38 @@ public sealed partial class ConditionTracker : ObservableObject, IDisposable
         List<(string, MessageRecord)> applied = new();
         List<(string, MessageRecord)> ends = new();
         Dictionary<string, List<MessageRecord>> aliases = new(StringComparer.Ordinal);
+        List<string> fumbles = new();
         foreach (MessageRecord r in _messages.Messages)
         {
-            if (!string.IsNullOrWhiteSpace(r.AppliedMessage))
+            // 'Disabled (don't use)' — ignore the record wholesale: it never indexes,
+            // so it can't latch a condition, set a flag, contribute a fumble wording,
+            // or fire ActionFailed. Any active copy is dropped in the prune below.
+            if (r.Flags.HasFlag(MessageFlags.Disabled)) continue;
+
+            // A slot holding a {null}/{void}/{empty} sentinel means "this spell has no such
+            // line" — treat it as absent so it never compiles into a matcher (IsBlankOrAbsent),
+            // exactly as an empty slot would. Only real wording indexes.
+            if (!MessageRecord.IsBlankOrAbsent(r.AppliedMessage))
             {
                 applied.Add((r.AppliedMessage, r));
                 if (!aliases.TryGetValue(r.AppliedMessage, out List<MessageRecord>? group))
                     aliases[r.AppliedMessage] = group = new List<MessageRecord>();
                 group.Add(r);
             }
-            if (!string.IsNullOrWhiteSpace(r.AppliedEndsWith))
+            if (!MessageRecord.IsBlankOrAbsent(r.AppliedEndsWith))
                 ends.Add((r.AppliedEndsWith, r));
+            if (r.Flags.HasFlag(MessageFlags.Confused) && !MessageRecord.IsBlankOrAbsent(r.ConfuseFumbleLine))
+                foreach (string wording in r.ConfuseFumbleLine.Split('\n'))
+                {
+                    if (MessageRecord.IsAbsentSentinel(wording)) continue;
+                    string norm = NormalizeFumbleLine(wording);
+                    if (norm.Length > 0) fumbles.Add(norm);
+                }
         }
         _appliedIndex = applied;
         _endsIndex = ends;
         _appliedAliases = aliases;
+        _confuseFumbleIndex = fumbles;
         _log?.Debug(LogCategory,
             $"index built — applied={applied.Count} endsWith={ends.Count} totalRecords={_messages.Messages.Count}");
 
@@ -182,7 +230,7 @@ public sealed partial class ConditionTracker : ObservableObject, IDisposable
         {
             HashSet<string> known = new(StringComparer.Ordinal);
             foreach (MessageRecord r in _messages.Messages)
-                known.Add(r.Id);
+                if (!r.Flags.HasFlag(MessageFlags.Disabled)) known.Add(r.Id);
             _active.RemoveWhere(id => !known.Contains(id));
             RecomputeFlags();
         }
@@ -232,18 +280,26 @@ public sealed partial class ConditionTracker : ObservableObject, IDisposable
                     if (alias.Id != r.Id) _active.Remove(alias.Id);
             }
 
-            // Confusion is a single state: any confusion wear-off clears EVERY
-            // latched Confused source, not just this record's applied-line aliases.
-            // A source-specific wear-off (the death dog's shriek) thus also releases
-            // a co-latched generic "you fumble in confusion" — which carries Confused
-            // (so it can flag a confuse whose set-line we missed) but never emits its
-            // own wear-off — instead of leaving the flag, and the nav pause it drives,
-            // stuck. The fumble record keeps latching as that fallback indicator; this
-            // just guarantees the clear reaches it once any real confusion wears off.
-            if (r.Flags.HasFlag(MessageFlags.Confused))
+            // Every flag is a single toggle state, not a per-source stack: any
+            // wear-off clears EVERY other latched record sharing that flag, not
+            // just this record's applied-line aliases. A source-specific wear-off
+            // (e.g. "black curse"'s own "Your vision returns to normal.") thus
+            // also releases a co-latched sibling that shares the flag through a
+            // different, ambiguous applied line (the generic "You are blind."
+            // wording shared by several unrelated effects) whose own wear-off
+            // text never arrives this session — instead of leaving the flag, and
+            // whatever it gates (a nav pause, an auto-cure loop), stuck forever.
+            // Originally scoped to Confused only (report -092219: a monster
+            // confuse's death-dog-shriek wear-off had to also release a
+            // co-latched generic fumble record); generalized after the identical
+            // symptom reproduced for Blinded (report paradigm-20260904-214452:
+            // 8 "You are blind." aliases latched on one shaman's "black curse",
+            // only the curse's own wear-off matched, and the other 7 spent every
+            // remaining combat round re-casting cure blindness forever).
+            if (r.Flags != MessageFlags.None)
             {
                 foreach (MessageRecord other in _messages.Messages)
-                    if (other.Flags.HasFlag(MessageFlags.Confused)) _active.Remove(other.Id);
+                    if ((other.Flags & r.Flags) != MessageFlags.None) _active.Remove(other.Id);
             }
         }
 
@@ -259,8 +315,8 @@ public sealed partial class ConditionTracker : ObservableObject, IDisposable
             {
                 if (!text.Contains(pattern, StringComparison.Ordinal)) continue;
                 // Capture a LastActionFailed match BEFORE the active-set dedup below —
-                // the fumble line re-fires while confusion persists but the record is
-                // only "applied" once, so ActionFailed must ride the raw line. First
+                // a failure line can recur while its record stays "applied" only once,
+                // so ActionFailed must ride the raw line, not the deduped apply. First
                 // match only; alias records sharing the line must not double the retry.
                 if (actionFailed is null && r.Flags.HasFlag(MessageFlags.LastActionFailed))
                     actionFailed = r;

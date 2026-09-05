@@ -712,37 +712,9 @@ public sealed class KnownSpellCatalog
             Targets: ReadInt(row, "Targets"),
             Formula: ToFormula(row));
 
-    private static SpellFormulaInput ToFormula(JsonElement row)
-    {
-        List<SpellAbility> abilities = new();
-        for (int x = 0; x < 10; x++)
-        {
-            int code = ReadInt(row, $"Abil-{x}");
-            if (code == 0) continue; // empty slot — the calculator ignores code 0 anyway
-            abilities.Add(new SpellAbility(code, ReadInt(row, $"AbilVal-{x}")));
-        }
-
-        return new SpellFormulaInput
-        {
-            Number = ReadInt(row, "Number"),
-            MinBase = ReadInt(row, "MinBase"),
-            MinInc = ReadInt(row, "MinInc"),
-            MinIncLVLs = ReadInt(row, "MinIncLVLs"),
-            MaxBase = ReadInt(row, "MaxBase"),
-            MaxInc = ReadInt(row, "MaxInc"),
-            MaxIncLVLs = ReadInt(row, "MaxIncLVLs"),
-            Dur = ReadInt(row, "Dur"),
-            DurInc = ReadInt(row, "DurInc"),
-            DurIncLVLs = ReadInt(row, "DurIncLVLs"),
-            Cap = ReadInt(row, "Cap"),
-            ReqLevel = ReadInt(row, "ReqLevel"),
-            EnergyCost = ReadInt(row, "EnergyCost"),
-            ManaCost = ReadInt(row, "ManaCost"),
-            Diff = ReadInt(row, "Diff"),
-            AttType = ReadInt(row, "AttType"),
-            Abilities = abilities,
-        };
-    }
+    // The formula projection is shared with MonsterCatalog via SpellFormulaReader
+    // so both read a spell's scaling fields the same way.
+    private static SpellFormulaInput ToFormula(JsonElement row) => SpellFormulaReader.Read(row);
 
     // ----- NUL-aware JSON readers ---------------------------------------
     // The MdbImporter writes a literal NUL char ("\0") for empty Jet text
