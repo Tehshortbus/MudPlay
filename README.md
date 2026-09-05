@@ -1,8 +1,8 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.50.10**
-> - Fixed the between-round caster spending a round on a buff/cure/debuff right after a big hit instead of healing: a combat round's damage lands a beat before the prompt that reports your new HP, so a tick fired straight off the damage could act on stale HP and burn the round's one cast on a buff while you were actually critical. It now holds non-heal casts until your real HP is confirmed (heals are never held) — so a round that chunks you low heals instead of buffing
+> **Version 3.50.11**
+> - Built-in game-data seeds (monster/item overlays, messages, boss & quest defs) now **refresh on update** — they're embedded in the executable and re-synced into your data folder on launch, so shipped fixes (e.g. a monster's default relationship) reach existing installs instead of being frozen at whatever first-launch wrote. Your own overrides and per-set edits are untouched (they resolve above the seed); user-defined triggers are never overwritten
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

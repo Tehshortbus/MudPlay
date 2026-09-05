@@ -24,9 +24,21 @@ public sealed class BossCatalogTests
     [Fact]
     public void BundledSeed_ParsesWithExpectedShape()
     {
-        string path = AppPaths.BundledBossDefsSeedFile;
-        Assert.True(File.Exists(path), $"bundled seed missing at {path}");
-        List<BossDef>? seed = JsonStore.Load<List<BossDef>>(path);
+        // The seed ships embedded in the assembly; extract to a scratch dir and read
+        // it there rather than the launch-materialized cache under the data root.
+        string dir = Path.Combine(Path.GetTempPath(), "mudplay-boss-" + Path.GetRandomFileName());
+        List<BossDef>? seed;
+        try
+        {
+            AppPaths.ExtractEmbeddedSeeds(dir);
+            string path = Path.Combine(dir, "BossDefs.seed.json");
+            Assert.True(File.Exists(path), $"bundled seed missing at {path}");
+            seed = JsonStore.Load<List<BossDef>>(path);
+        }
+        finally
+        {
+            try { Directory.Delete(dir, recursive: true); } catch { /* temp cleanup */ }
+        }
         Assert.NotNull(seed);
 
         List<BossDef> bosses = seed!;

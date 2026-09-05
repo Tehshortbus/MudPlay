@@ -29,7 +29,7 @@
          (~1000+ line) rewrite/expansion of an existing one, PATCH = bug
          fixes AND ordinary enhancements to existing features (one bump per
          report handled or per enhancement). -->
-    <Version>3.50.10</Version>
+    <Version>3.50.11</Version>
 
     <!-- Memory footprint: pin the Workstation GC (one small heap) rather than
          the Server GC (a heap + background thread per core), which on a
@@ -50,14 +50,18 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Defaults/ ships app-default seed data alongside the executable
-         (Messages catalogues per game-data set, the trigger seed list,
-         and any future per-tab defaults). Copied to bin/ on every
-         build so MessageStore / TriggerEngine can load them on first
-         launch when the per-character / per-set file doesn't exist
-         yet. NOT embedded as a resource — kept as loose files so
-         users can hand-edit them outside the build. -->
-    <Content Include="Defaults\**">
+    <!-- Defaults/ ships app-default seed data (Messages catalogues per game-data
+         set, the trigger seed list, monster/item overlays, boss + quest defs).
+         EMBEDDED in the assembly, not loose files — so a self-contained
+         single-file build carries the seeds INSIDE the exe. That way replacing
+         just the binary refreshes the seeds too: AppPaths.MaterializeBundledSeeds
+         extracts them to Global/_bundled on launch, and EnsureGlobalSeedsBootstrapped
+         syncs the read-only ones into Global (users who only swap the exe used to
+         keep stale seeds forever — the loose Defaults/ folder never updated). -->
+    <EmbeddedResource Include="Defaults\*.seed.json" />
+    <!-- nav-seed (starter Loops + Favorites, a directory tree read by path) stays
+         loose content — it's a separate subsystem from the .seed.json data files. -->
+    <Content Include="Defaults\nav-seed\**">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
