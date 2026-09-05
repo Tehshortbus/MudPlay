@@ -545,6 +545,8 @@ MudPlay's automation reads from **game data** — the monster, item, spell, room
 
 MudPlay also ships **built-in defaults** for the automation-facing bits (a monster's default relationship/priority, item auto-flags, the message catalogue, boss and quest lists). These are baked into the program, so **updating the app refreshes them automatically** on the next launch — a shipped fix reaches you just by running the new version. Your own edits are never lost: overrides you make in the Browser (and your per-set message edits) resolve *above* the defaults, so they keep winning; and your custom **triggers** are left completely alone.
 
+The same applies to the **starter navigation loops and GOTO favourites** that come bundled with each set: they're baked into the program too, so **new ones added in a later release are added to your existing sets on the next launch** — added only, never overwriting a loop or favourite you already have, and **never re-adding one you deleted** (MudPlay remembers what it has already offered each set). Your own loops and favourites are always left untouched.
+
 ## Importing and switching sets
 
 The top **Game Data** menu (in the menu bar) manages your data sets:

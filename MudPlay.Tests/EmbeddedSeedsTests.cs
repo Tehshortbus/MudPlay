@@ -62,4 +62,22 @@ public sealed class EmbeddedSeedsTests : IDisposable
         string window = json.Substring(at, Math.Min(160, json.Length - at));
         Assert.Contains("\"Friend\"", window);
     }
+
+    [Fact]
+    public void ExtractEmbeddedNavSeed_UnzipsEachRealmTree()
+    {
+        // nav-seed ships as an embedded zip per realm; the extract must reconstruct
+        // the Loops tree + Favorites.json under nav-seed/{realm}/ (portable unzip).
+        AppPaths.ExtractEmbeddedNavSeed(_dir);
+
+        foreach (string realm in new[] { "stock", "paradigm" })
+        {
+            string realmDir = Path.Combine(_dir, "nav-seed", realm);
+            Assert.True(File.Exists(Path.Combine(realmDir, "Favorites.json")),
+                $"{realm} Favorites.json not unzipped");
+            string loops = Path.Combine(realmDir, "Loops");
+            Assert.True(Directory.Exists(loops), $"{realm} Loops/ not unzipped");
+            Assert.NotEmpty(Directory.EnumerateFiles(loops, "*.loop", SearchOption.AllDirectories));
+        }
+    }
 }
