@@ -3623,12 +3623,25 @@ Hidden items: 1845(0) 14(0) 894(0) 223(0) 879(0) 870(0) 897(1) 876(1) 402(0) 430
   content-sync fodder.
 
 ### Other sysop powers *([CONFIRMED] 2026-09-04, user)*
+- **Each `sys …` command is a SEPARATELY-gated permission with its own level** *([CONFIRMED]
+  2026-09-05, user)* — a board can grant one and deny another. In particular, **many stock boards
+  grant `sys map` but NOT `sys status`**, so for those players `sys map` is the *only* game-side
+  "where am I?" tool. That's why the client's three sysop powers are independent per-BBS checkboxes,
+  and why `sys map` auto-locate matters as much as `sys status`.
 - **`sys god <name> add life`** — adds one life to the named character. The client's **Sysop god
   lives** power auto-sends `sys god <own-name> add life` the moment it observes the character's own
   death, to recover the life just spent (one send per death). Requires real sysop/god access — the
   command is refused otherwise.
-- **`sys map`** — draws a text area map (no map/room numbers). The **Sysop map** power records that
-  the client may use it; reading it for location is a later addition (format capture pending).
+- **`sys map`** — draws a text ASCII area map centred on the player, with **no map/room numbers**
+  (unlike `sys st`). *([CONFIRMED] 2026-09-05, user + live captures.)* Symbol legend:
+  **`X`** = your current room, **`*`** = a plain room (neither shop nor lair), **`S`** = shop,
+  **`L`** = lair. Links: **`-`** (E↔W), **`|`** (N↔S), **`/`** (NE↔SW diagonal exit), **`\`**
+  (NW↔SE diagonal exit) — i.e. the eight compass directions N/S/E/W/NE/SE/NW/SW. A room whose only
+  exit is **vertical (up/down)** draws as a lone `X` — up/down aren't rendered on the flat grid.
+  Only remaining unknown: whether letters other than S/L can appear (surfaces during parsing). The
+  **Sysop map** power records that the client may use `sys map`; parsing
+  it to help locate (matching the drawn shape against the room graph, since there are no numbers) is
+  a later addition.
 - **Nav-recovery composition:** the sysop `sys st` position locate mirrors the Paradigm `rm`
   re-anchor at **every** point `rm` fires — first mismatch, engine stall, the tier-3 give-up ladder,
   the terminal pre-Lost shot, the no-engine drift gap, `@where`, and a blocked loop/replan — sharing
