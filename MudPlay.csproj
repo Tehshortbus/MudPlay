@@ -29,7 +29,7 @@
          (~1000+ line) rewrite/expansion of an existing one, PATCH = bug
          fixes AND ordinary enhancements to existing features (one bump per
          report handled or per enhancement). -->
-    <Version>3.50.11</Version>
+    <Version>3.50.12</Version>
 
     <!-- Memory footprint: pin the Workstation GC (one small heap) rather than
          the Server GC (a heap + background thread per core), which on a
@@ -59,12 +59,28 @@
          syncs the read-only ones into Global (users who only swap the exe used to
          keep stale seeds forever — the loose Defaults/ folder never updated). -->
     <EmbeddedResource Include="Defaults\*.seed.json" />
-    <!-- nav-seed (starter Loops + Favorites, a directory tree read by path) stays
-         loose content — it's a separate subsystem from the .seed.json data files. -->
-    <Content Include="Defaults\nav-seed\**">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
   </ItemGroup>
+
+  <!-- nav-seed (starter Loops + Favorites) is a directory tree whose .loop filenames
+       carry spaces/parens that don't survive per-file embedded-resource naming, so
+       zip each realm and embed the zip; AppPaths unzips it into _bundled/nav-seed on
+       launch. Zipped fresh from the loose Defaults/nav-seed/ source each build (into
+       obj/, gitignored). ZipDirectory + ZipFile are managed .NET, so this is portable
+       across Linux/Windows/macOS. The target runs before the compiler collects
+       @(EmbeddedResource); the added items use explicit LogicalName so their manifest
+       names are stable regardless of build path. -->
+  <Target Name="ZipAndEmbedNavSeed" BeforeTargets="AssignTargetPaths">
+    <ZipDirectory SourceDirectory="Defaults\nav-seed\stock"
+                  DestinationFile="$(IntermediateOutputPath)nav-seed.stock.zip" Overwrite="true" />
+    <ZipDirectory SourceDirectory="Defaults\nav-seed\paradigm"
+                  DestinationFile="$(IntermediateOutputPath)nav-seed.paradigm.zip" Overwrite="true" />
+    <ItemGroup>
+      <EmbeddedResource Include="$(IntermediateOutputPath)nav-seed.stock.zip"
+                        LogicalName="MudPlay.Defaults.nav-seed.stock.zip" />
+      <EmbeddedResource Include="$(IntermediateOutputPath)nav-seed.paradigm.zip"
+                        LogicalName="MudPlay.Defaults.nav-seed.paradigm.zip" />
+    </ItemGroup>
+  </Target>
 
   <ItemGroup>
     <!-- MudPlay.Tests lives at the repo root as a sibling project. Without

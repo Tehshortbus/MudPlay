@@ -1,8 +1,8 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.50.11**
-> - Built-in game-data seeds (monster/item overlays, messages, boss & quest defs) now **refresh on update** — they're embedded in the executable and re-synced into your data folder on launch, so shipped fixes (e.g. a monster's default relationship) reach existing installs instead of being frozen at whatever first-launch wrote. Your own overrides and per-set edits are untouched (they resolve above the seed); user-defined triggers are never overwritten
+> **Version 3.50.12**
+> - Starter navigation loops & GOTO favourites now **update with the app**: they're embedded in the executable, and new ones added in a later release are added to your existing sets on launch — additively, and **never re-adding a loop or GOTO you deleted** (a per-set ledger tracks what's already been offered). Your own loops/favourites are untouched
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

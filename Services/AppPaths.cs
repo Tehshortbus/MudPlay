@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using System.Reflection;
 
 namespace MudPlay.Services;
@@ -487,7 +488,11 @@ public static class AppPaths
     // always matches the running build. Every Bundled*SeedFile accessor reads from
     // that cache, so the rest of the bootstrap sees the current build's seeds even
     // though nothing ships loose next to the exe. Best-effort per file.
-    public static void MaterializeBundledSeeds() => ExtractEmbeddedSeeds(BundledSeedsDir);
+    public static void MaterializeBundledSeeds()
+    {
+        ExtractEmbeddedSeeds(BundledSeedsDir);
+        ExtractEmbeddedNavSeed(BundledSeedsDir);
+    }
 
     // Write every embedded Defaults/*.seed.json resource into destDir (created if
     // needed), overwriting. Split out from MaterializeBundledSeeds so it can be
@@ -504,12 +509,42 @@ public static class AppPaths
             int at = resource.IndexOf(marker, StringComparison.Ordinal);
             if (at < 0) continue;                       // not a Defaults/ seed resource
             string fileName = resource[(at + marker.Length)..];
+            if (!fileName.EndsWith(".seed.json", StringComparison.OrdinalIgnoreCase))
+                continue;                               // nav-seed zips handled separately
             try
             {
                 using Stream? src = asm.GetManifestResourceStream(resource);
                 if (src is null) continue;
                 using FileStream dst = File.Create(Path.Combine(destDir, fileName));
                 src.CopyTo(dst);
+            }
+            catch { /* best-effort */ }
+        }
+    }
+
+    // Unzip the embedded nav-seed bundles (Defaults.nav-seed.{realm}.zip) into
+    // destDir/nav-seed/{realm}/, overwriting the realm folder each launch so it
+    // tracks the current build's starter Loops + Favorites. Portable: ZipArchive /
+    // ExtractToDirectory are managed .NET, and the zip stores '/'-separated entries
+    // that extract to the local separator on any OS.
+    public static void ExtractEmbeddedNavSeed(string destDir)
+    {
+        Assembly asm = typeof(AppPaths).Assembly;
+        const string marker = ".Defaults.nav-seed.";
+        foreach (string resource in asm.GetManifestResourceNames())
+        {
+            int at = resource.IndexOf(marker, StringComparison.Ordinal);
+            if (at < 0 || !resource.EndsWith(".zip", StringComparison.Ordinal)) continue;
+            string realm = resource[(at + marker.Length)..^".zip".Length];
+            string realmDir = Path.Combine(destDir, "nav-seed", realm);
+            try
+            {
+                using Stream? src = asm.GetManifestResourceStream(resource);
+                if (src is null) continue;
+                if (Directory.Exists(realmDir)) Directory.Delete(realmDir, recursive: true);
+                Directory.CreateDirectory(realmDir);
+                using ZipArchive zip = new(src);
+                zip.ExtractToDirectory(realmDir, overwriteFiles: true);
             }
             catch { /* best-effort */ }
         }
@@ -578,7 +613,14 @@ public static class AppPaths
     // freshly-imported set of the matching realm so it arrives pre-populated with
     // base navigation loops + GOTO favourites. Additive + once-only.
     public static string BundledNavSeedDir(string realm) =>
-        Path.Combine(AppContext.BaseDirectory, "Defaults", "nav-seed", realm);
+        Path.Combine(BundledSeedsDir, "nav-seed", realm);
+
+    // Per-set ledger of nav-seed item identities (loop relative-paths + favourite
+    // keys) already offered to this set. Replaces the old binary .nav-seeded marker:
+    // an item in the ledger is never re-added (so a user deletion stays deleted),
+    // while a NEW bundled item absent from the ledger is added on the next launch.
+    public static string NavSeedLedgerFile(string setName) =>
+        Path.Combine(GameDataSetDir(setName), ".nav-seed-ledger.json");
 
     // Per-set sentinel written once the nav seed has been applied, so re-importing
     // the set (or the user deleting a seeded loop/favourite) never re-adds it.

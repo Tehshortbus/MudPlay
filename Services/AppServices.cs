@@ -2197,6 +2197,18 @@ public sealed class AppServices
         // the renumber — no need to re-apply the profile's persisted names here.
         GameData.ActiveSetChanged += _ => SeedSpellbook(Profile.Current?.LastKnownStats, reseed: true);
 
+        // Nav-seed additive apply on set-activate: starter loops / GOTO favourites
+        // added in a LATER build reach an already-imported set on launch, never
+        // re-adding ones the user deleted (per-set ledger in NavSeedBootstrapper).
+        // Off the UI thread — it enumerates the bundle + set folder — and a no-op
+        // (nothing new) touches no disk. Import still seeds a fresh set synchronously.
+        GameData.ActiveSetChanged += _ =>
+        {
+            string? set = GameData.ActiveSet;
+            if (!string.IsNullOrWhiteSpace(set))
+                System.Threading.Tasks.Task.Run(() => NavSeedBootstrapper.SeedIfNeeded(set, Log));
+        };
+
         // Persist the learned-spell set with the rest of the profile. Snapshot
         // only when the book has a resolved class — with no class the obtained
         // set is empty for lack of a spell list, and blindly writing that would
