@@ -1,3 +1,5 @@
+using System.Reflection;
+
 namespace MudPlay.Services;
 
 // Resolves and exposes every directory and file path MudPlay reads or writes.
@@ -294,6 +296,17 @@ public static class AppPaths
     public static string FlavorPrefixesFile(string setName) =>
         Path.Combine(GameDataSetDir(setName), "flavor-prefixes.json");
 
+    // Writable cache the embedded seed data is materialized into on launch
+    // (MaterializeBundledSeeds). The seeds ship EMBEDDED in the assembly — a
+    // self-contained single-file build carries them inside the exe — so there's
+    // no loose Defaults/ folder to read at runtime; we extract them here (always
+    // overwriting, so it tracks the current build) and every Bundled*SeedFile
+    // accessor below points into this dir. That's what lets a user who only
+    // swaps the exe still get fresh seed data: the new embedded copy lands here,
+    // and EnsureGlobalSeedsBootstrapped syncs the read-only seeds into Global.
+    public static string BundledSeedsDir =>
+        Path.Combine(DataRoot, "_bundled");
+
     // User-writable MonsterMessages seed JSON, hosted in the XDG-resolved
     // Global/ folder. Acts as the fallback when the per-set
     // MonsterMessagesFile doesn't exist yet for a set. Bootstrapped from
@@ -303,8 +316,8 @@ public static class AppPaths
         Path.Combine(DataRoot, "Global", "MonsterMessages.seed.json");
 
     // Read-only bundled copy shipped next to the executable — the bootstrap source.
-    public static string BundledMonsterMessagesSeedFile { get; } =
-        Path.Combine(AppContext.BaseDirectory, "Defaults", "MonsterMessages.seed.json");
+    public static string BundledMonsterMessagesSeedFile =>
+        Path.Combine(BundledSeedsDir, "MonsterMessages.seed.json");
 
     // User-writable MonsterOverlay seed JSON for the given realm flavor, hosted
     // in the XDG-resolved Global/ folder. Holds the Defaults-tier baseline
@@ -319,7 +332,7 @@ public static class AppPaths
 
     // Read-only bundled copy of the realm's overlay seed, shipped next to the executable.
     public static string BundledMonsterOverlaySeedFile(string realm) =>
-        Path.Combine(AppContext.BaseDirectory, "Defaults", $"MonsterOverlay.{realm}.seed.json");
+        Path.Combine(BundledSeedsDir, $"MonsterOverlay.{realm}.seed.json");
 
     // User-writable ItemOverlay seed JSON for the given realm flavor — parallel
     // of MonsterOverlaySeedFile, but for items. Holds the Defaults-tier
@@ -336,7 +349,7 @@ public static class AppPaths
 
     // Read-only bundled copy of the realm's item-overlay seed, shipped next to the executable.
     public static string BundledItemOverlaySeedFile(string realm) =>
-        Path.Combine(AppContext.BaseDirectory, "Defaults", $"ItemOverlay.{realm}.seed.json");
+        Path.Combine(BundledSeedsDir, $"ItemOverlay.{realm}.seed.json");
 
     // Per-set Triggers file scoped inside the game-data set's folder. Stores
     // only the TriggerLocation.GameData-scoped triggers; the
@@ -371,7 +384,7 @@ public static class AppPaths
 
     // Read-only bundled copy of the realm's message seed, shipped next to the executable.
     public static string BundledMessagesSeedFile(string realm) =>
-        Path.Combine(AppContext.BaseDirectory, "Defaults", $"Messages.{realm}.seed.json");
+        Path.Combine(BundledSeedsDir, $"Messages.{realm}.seed.json");
 
     // The pre-split single universal Messages seed in Global/. Retained only so the
     // one-time migration can detect and retire an existing user's stale copy — nothing
@@ -387,8 +400,8 @@ public static class AppPaths
         Path.Combine(DataRoot, "Global", "Triggers.seed.json");
 
     // Read-only bundled copy shipped next to the executable — the bootstrap source.
-    public static string BundledTriggersSeedFile { get; } =
-        Path.Combine(AppContext.BaseDirectory, "Defaults", "Triggers.seed.json");
+    public static string BundledTriggersSeedFile =>
+        Path.Combine(BundledSeedsDir, "Triggers.seed.json");
 
     // User-writable Quest definitions seed JSON, hosted in the XDG-resolved
     // Global/ folder. Universal across every game-data set — keyed by
@@ -401,8 +414,8 @@ public static class AppPaths
         Path.Combine(DataRoot, "Global", "QuestDefs.seed.json");
 
     // Read-only bundled copy shipped next to the executable — the bootstrap source.
-    public static string BundledQuestDefsSeedFile { get; } =
-        Path.Combine(AppContext.BaseDirectory, "Defaults", "QuestDefs.seed.json");
+    public static string BundledQuestDefsSeedFile =>
+        Path.Combine(BundledSeedsDir, "QuestDefs.seed.json");
 
     // Per-set boss-catalog overlay scoped inside the game-data set's folder — the
     // user-owned boss layer (added/removed bosses, edited rooms, stop-before flags),
@@ -424,40 +437,81 @@ public static class AppPaths
         Path.Combine(DataRoot, "Global", "BossDefs.seed.json");
 
     // Read-only bundled copy shipped next to the executable — the bootstrap source.
-    public static string BundledBossDefsSeedFile { get; } =
-        Path.Combine(AppContext.BaseDirectory, "Defaults", "BossDefs.seed.json");
+    public static string BundledBossDefsSeedFile =>
+        Path.Combine(BundledSeedsDir, "BossDefs.seed.json");
 
-    // Bootstrap missing seed files in Global/ by copying from the bundled
-    // Defaults/ next to the executable. Called once during app startup.
-    // Pre-existing user-edited Global seeds are never overwritten — to reset a
-    // seed, delete the Global copy and the next launch re-bootstraps from the
-    // bundled source.
+    // Bootstrap the Global/ seed files from the seeds embedded in the assembly.
+    // Called once during app startup. First MaterializeBundledSeeds extracts the
+    // embedded copies into BundledSeedsDir (always overwriting, so they track the
+    // running build); then each seed is either copied-if-missing (Triggers — user-
+    // writable, must never be clobbered) or byte-synced (the read-only seeds, whose
+    // user customization lives in a separate overlay tier that resolves ABOVE the
+    // seed). Syncing is what lets a shipped seed update reach EXISTING installs:
+    // pre-this-change the read-only seeds were copy-if-missing, so a user who
+    // updated the app kept stale defaults forever (report: a monster that shipped
+    // as Friend still showed Enemy after an update).
     public static void EnsureGlobalSeedsBootstrapped()
     {
         Directory.CreateDirectory(Path.Combine(DataRoot, "Global"));
-        TryCopySeed(BundledMonsterMessagesSeedFile, DefaultMonsterMessagesSeedFile);
-        TryCopySeed(BundledTriggersSeedFile,        DefaultTriggersSeedFile);
-        // The quest-defs seed is read-only — user edits live in the BBS-tier
-        // overlay (BBS/{bbs}/quests.json), which resolves ABOVE the seed, so a
-        // refreshed seed never clobbers customization. A first-launch-only copy
-        // would freeze shipped guide updates out of existing installs (and reseeds
-        // it if it's ever missing), so keep it in sync with the bundled copy.
-        SyncReadOnlySeed(BundledQuestDefsSeedFile,  DefaultQuestDefsSeedFile);
-        TryCopySeed(BundledBossDefsSeedFile,        DefaultBossDefsSeedFile);
+        MaterializeBundledSeeds();
 
-        // MonsterOverlay + ItemOverlay + Messages seeds are realm-flavored —
-        // one file per realm family. The active set picks which to
-        // apply via Info.Legit. Bootstrap every realm file we ship so
-        // the user can browse / edit any seed without first having to
-        // switch active sets.
+        // Read-only seeds — user edits live in a higher-resolving overlay, so a
+        // refreshed seed never clobbers customization. Byte-synced so shipped
+        // updates reach existing installs.
+        SyncReadOnlySeed(BundledMonsterMessagesSeedFile, DefaultMonsterMessagesSeedFile);
+        SyncReadOnlySeed(BundledQuestDefsSeedFile,       DefaultQuestDefsSeedFile);
+        SyncReadOnlySeed(BundledBossDefsSeedFile,        DefaultBossDefsSeedFile);
+        // Triggers are FULLY user-defined — the seed IS the user's universal list,
+        // so it stays copy-if-missing; byte-syncing it would wipe hand-authored
+        // triggers on every update.
+        TryCopySeed(BundledTriggersSeedFile,             DefaultTriggersSeedFile);
+
+        // MonsterOverlay + ItemOverlay + Messages seeds are realm-flavored — one
+        // file per realm family. The active set picks which to apply via Info.Legit;
+        // seed every realm we ship so the user can browse / edit any without first
+        // switching active sets. All three are read-only (edits go to higher tiers /
+        // the per-set file), so byte-sync them.
         foreach (string realm in new[] { "stock", "paradigm" })
         {
-            TryCopySeed(BundledMonsterOverlaySeedFile(realm),
-                        MonsterOverlaySeedFile(realm));
-            TryCopySeed(BundledItemOverlaySeedFile(realm),
-                        ItemOverlaySeedFile(realm));
-            TryCopySeed(BundledMessagesSeedFile(realm),
-                        MessagesSeedFile(realm));
+            SyncReadOnlySeed(BundledMonsterOverlaySeedFile(realm),
+                             MonsterOverlaySeedFile(realm));
+            SyncReadOnlySeed(BundledItemOverlaySeedFile(realm),
+                             ItemOverlaySeedFile(realm));
+            SyncReadOnlySeed(BundledMessagesSeedFile(realm),
+                             MessagesSeedFile(realm));
+        }
+    }
+
+    // Extract the seed data embedded in the assembly (Defaults/*.seed.json) into
+    // the writable BundledSeedsDir cache, overwriting each launch so the cache
+    // always matches the running build. Every Bundled*SeedFile accessor reads from
+    // that cache, so the rest of the bootstrap sees the current build's seeds even
+    // though nothing ships loose next to the exe. Best-effort per file.
+    public static void MaterializeBundledSeeds() => ExtractEmbeddedSeeds(BundledSeedsDir);
+
+    // Write every embedded Defaults/*.seed.json resource into destDir (created if
+    // needed), overwriting. Split out from MaterializeBundledSeeds so it can be
+    // exercised against a scratch dir without touching the real data root. Best-
+    // effort per file — a failed extract leaves the store to fall through to an
+    // empty/older seed rather than crashing launch.
+    public static void ExtractEmbeddedSeeds(string destDir)
+    {
+        Directory.CreateDirectory(destDir);
+        Assembly asm = typeof(AppPaths).Assembly;
+        const string marker = ".Defaults.";
+        foreach (string resource in asm.GetManifestResourceNames())
+        {
+            int at = resource.IndexOf(marker, StringComparison.Ordinal);
+            if (at < 0) continue;                       // not a Defaults/ seed resource
+            string fileName = resource[(at + marker.Length)..];
+            try
+            {
+                using Stream? src = asm.GetManifestResourceStream(resource);
+                if (src is null) continue;
+                using FileStream dst = File.Create(Path.Combine(destDir, fileName));
+                src.CopyTo(dst);
+            }
+            catch { /* best-effort */ }
         }
     }
 

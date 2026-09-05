@@ -543,6 +543,8 @@ Beyond the engines, you can script your own automation. All three editors live i
 
 MudPlay's automation reads from **game data** — the monster, item, spell, room, and shop tables imported from a MajorMUD `.MDB` database. The **Game Data Browser** (press **F3**, or the toolbar's *Game Data Browser* button) lets you inspect all of it and override individual records for your character.
 
+MudPlay also ships **built-in defaults** for the automation-facing bits (a monster's default relationship/priority, item auto-flags, the message catalogue, boss and quest lists). These are baked into the program, so **updating the app refreshes them automatically** on the next launch — a shipped fix reaches you just by running the new version. Your own edits are never lost: overrides you make in the Browser (and your per-set message edits) resolve *above* the defaults, so they keep winning; and your custom **triggers** are left completely alone.
+
 ## Importing and switching sets
 
 The top **Game Data** menu (in the menu bar) manages your data sets:
