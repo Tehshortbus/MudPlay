@@ -115,6 +115,9 @@ public sealed class MapControl : Control
     public static readonly StyledProperty<IReadOnlySet<RoomKey>?> LevelBlockedRoomsProperty =
         AvaloniaProperty.Register<MapControl, IReadOnlySet<RoomKey>?>(nameof(LevelBlockedRooms));
 
+    public static readonly StyledProperty<IReadOnlySet<RoomKey>?> LevelGatedRoomsProperty =
+        AvaloniaProperty.Register<MapControl, IReadOnlySet<RoomKey>?>(nameof(LevelGatedRooms));
+
     // Rooms the user has marked as stash drops. Rendered with a gold outline so
     // the user can spot them at a glance. Game.Cash.StashRoomManager reads the
     // same set from Models.Profile.CharacterProfile.StashRooms and dispatches
@@ -321,6 +324,12 @@ public sealed class MapControl : Control
     {
         get => GetValue(LevelBlockedRoomsProperty);
         set => SetValue(LevelBlockedRoomsProperty, value);
+    }
+
+    public IReadOnlySet<RoomKey>? LevelGatedRooms
+    {
+        get => GetValue(LevelGatedRoomsProperty);
+        set => SetValue(LevelGatedRoomsProperty, value);
     }
 
     public IReadOnlySet<RoomKey>? StashRooms
@@ -787,6 +796,14 @@ public sealed class MapControl : Control
     // reachability, it doesn't replace what the room IS.
     private static readonly IBrush LevelBlockedFill = new SolidColorBrush(Color.Parse("#66DD3344"));
     private static readonly IPen   LevelBlockedPen  = new Pen(new SolidColorBrush(Color.Parse("#FFDD3344")), 2.0);
+
+    // Level-gate marker — a filled amber wedge in the room's top-left corner,
+    // for a room you can still walk into whose way onward is shut by level.
+    // Deliberately NOT a coloured exit stub: stubs mean traps, and reusing that
+    // vocabulary for a level gate reads as danger rather than a locked door.
+    // A corner wedge is a property OF the room, which is what a gate is here.
+    private static readonly IBrush LevelGateFill = new SolidColorBrush(Color.Parse("#FFE0A020"));
+    private static readonly IPen   LevelGateRim  = new Pen(new SolidColorBrush(Color.Parse("#FF7A4E00")), 1.0);
     // Death-marker skull — bone-white silhouette with dark hollows, drawn on
     // rooms that still hold an un-recovered deathpile. The dark eye / nose / tooth
     // features carry the contrast so the glyph reads on both light and dark room
@@ -847,7 +864,7 @@ public sealed class MapControl : Control
             HighlightShopsProperty, SpellModeProperty,
             WalkPathProperty, LoopPathProperty, LoopBuilderPathProperty, LoopBuilderWaypointsProperty,
             AutoLairWaypointsProperty, AutoLairApproachPathProperty,
-            LoopApproachPreviewPathProperty, AvoidedRoomsProperty, LevelBlockedRoomsProperty, StashRoomsProperty, GhRoomsProperty, GhFullRoomsProperty, LoopSequenceNumbersProperty,
+            LoopApproachPreviewPathProperty, AvoidedRoomsProperty, LevelBlockedRoomsProperty, LevelGatedRoomsProperty, StashRoomsProperty, GhRoomsProperty, GhFullRoomsProperty, LoopSequenceNumbersProperty,
             AutoLairRoomsProperty, WalkPathIsAutoLairProperty, SelectedRoomKeyProperty,
             PreviewPathProperty, TeleportRoomsProperty, DeathRoomsProperty,
             BossRoomsProperty, StopBeforeBossRoomsProperty, TrainerRoomsProperty,
@@ -1278,6 +1295,11 @@ public sealed class MapControl : Control
 
             if (LevelBlockedRooms is { } blocked && blocked.Contains(kvp.Value))
                 DrawLevelBlockedHighlight(context, cell);
+
+            // After the blocked fill so the wedge stays legible when a room is
+            // both sealed off and holding a gate of its own.
+            if (LevelGatedRooms is { } gated && gated.Contains(kvp.Value))
+                DrawLevelGateMarker(context, cell);
 
             // @where target — a transient green flash the VM clears after ~12s.
             // Drawn right on the node so it reads as a marked square.
@@ -1748,6 +1770,26 @@ public sealed class MapControl : Control
     // of room markers, in red rather than green.
     private static void DrawLevelBlockedHighlight(DrawingContext ctx, Rect cell)
         => ctx.DrawRectangle(LevelBlockedFill, LevelBlockedPen, new RoundedRect(cell.Deflate(1), cell.Width * 0.14));
+
+    // Right-triangle wedge seated in the tile's top-left corner. Sized off the
+    // tile so it holds its proportion at every zoom, and kept off the centre
+    // where the room's own glyphs (lair count, spell letter) live.
+    private static void DrawLevelGateMarker(DrawingContext ctx, Rect cell)
+    {
+        Rect inner = cell.Deflate(1);
+        double side = inner.Width * 0.38;
+        if (side < 2) return;
+
+        StreamGeometry wedge = new();
+        using (StreamGeometryContext g = wedge.Open())
+        {
+            g.BeginFigure(inner.TopLeft, isFilled: true);
+            g.LineTo(new Point(inner.X + side, inner.Y));
+            g.LineTo(new Point(inner.X, inner.Y + side));
+            g.EndFigure(isClosed: true);
+        }
+        ctx.DrawGeometry(LevelGateFill, LevelGateRim, wedge);
+    }
 
     private static void DrawWhereHighlight(DrawingContext ctx, Rect cell)
         => ctx.DrawRectangle(WhereTargetFill, WhereTargetPen, new RoundedRect(cell.Deflate(1), cell.Width * 0.14));

@@ -55,22 +55,12 @@ public static class LevelBlockedRooms
                 // The origin itself is never "blocked" — we're standing in it —
                 // so only the far side of an exit is gated. Crossing OUT of a
                 // gated room is unrestricted; the game tests entry, not exit.
-                if (honourGates && ExcludedByLevel(exit, level)) continue;
+                if (honourGates && exit.ExcludesLevel(level)) continue;
                 if (seen.Add(exit.Target)) pending.Push(exit.Target);
             }
         }
 
         return seen;
-    }
-
-    // Mirrors MovementFilter's self-level branch: a zero bound means no bound on
-    // that side, and the MDB's 0/999 sentinels are already normalised away at
-    // parse time.
-    private static bool ExcludedByLevel(in RoomExit exit, int level)
-    {
-        if (!exit.HasLevelGate) return false;
-        if (exit.MinLevel > 0 && level < exit.MinLevel) return true;
-        return exit.MaxLevel > 0 && level > exit.MaxLevel;
     }
 
     private static readonly IReadOnlySet<RoomKey> EmptySet = new HashSet<RoomKey>();

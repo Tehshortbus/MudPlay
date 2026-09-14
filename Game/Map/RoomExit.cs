@@ -107,6 +107,17 @@ public readonly partial record struct RoomExit(
     // cap, or both).
     public bool HasLevelGate => MinLevel > 0 || MaxLevel > 0;
 
+    // True when a character at this level is refused entry. A zero bound means
+    // no bound on that side — the MDB's 0/999 no-cap sentinels are normalised
+    // away at parse time. Level 0 is "unknown" and never excludes, mirroring
+    // MovementFilter's rule of not refusing on what it can't evaluate.
+    public bool ExcludesLevel(int level)
+    {
+        if (!HasLevelGate || level <= 0) return false;
+        if (MinLevel > 0 && level < MinLevel) return true;
+        return MaxLevel > 0 && level > MaxLevel;
+    }
+
     // True when this exit only admits a single character class.
     public bool HasClassGate => ClassGate > 0;
 

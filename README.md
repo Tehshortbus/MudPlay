@@ -3,7 +3,9 @@
 <!-- current-version:start -->
 > **Version 3.84.0**
 > - New map overlay: **Level-blocked** paints the rooms your current level shuts you out of in red — the gated room and everything sealed behind it — with a chip beside Lairs / Shops / Spells and an entry in the Legend
-> - Off by default and saved per character; it costs nothing while it's off
+> - New map overlay: **Level gates** marks the rooms holding a gate you can't pass with an amber corner wedge — the doorway itself, which the blocked overlay structurally can't show
+> - Level gates covers level-restricted boat sailings too, so a dock whose captain won't take you yet is marked
+> - Both overlays off by default and saved per character; they cost nothing while off
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

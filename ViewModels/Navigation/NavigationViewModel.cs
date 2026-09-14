@@ -54,6 +54,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
             _lairMode = lairProfile.NavLairMode;
             _spellMode = lairProfile.NavSpellMode;
             _showLevelBlocked = lairProfile.NavShowLevelBlocked;
+            _showLevelGates = lairProfile.NavShowLevelGates;
         }
 
         // 1 s tick — keeps the CURRENT NAV lair countdowns + the
@@ -769,7 +770,9 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     // Narrowed to Level so the rest of the stat screen's churn costs nothing.
     private void OnPlayerStatsChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(Game.PlayerStats.Level)) RefreshLevelBlockedRooms();
+        if (e.PropertyName != nameof(Game.PlayerStats.Level)) return;
+        RefreshLevelBlockedRooms();
+        RefreshLevelGatedRooms();
     }
 
     private void RefreshLevelBlockedRooms()
@@ -779,6 +782,30 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
             _services.RoomGraph,
             _services.RoomTracker.State.CurrentRoom?.Key,
             _services.PlayerStats.Level);
+    }
+
+    // Rooms holding a level gate we can't pass. Unlike the blocked set this one
+    // doesn't depend on where we're standing — a gate is on the room whatever
+    // side of it we're on — so it only recomputes on the toggle and on level-up,
+    // not on every move.
+    [ObservableProperty] private IReadOnlySet<RoomKey>? _levelGatedRooms;
+
+    [ObservableProperty] private bool _showLevelGates;
+
+    partial void OnShowLevelGatesChanged(bool value)
+    {
+        RefreshLevelGatedRooms();
+        if (_services.Profile.Current is not { } profile) return;
+        if (profile.NavShowLevelGates == value) return;
+        profile.NavShowLevelGates = value;
+        _services.Profile.Save();
+    }
+
+    private void RefreshLevelGatedRooms()
+    {
+        if (!ShowLevelGates) { LevelGatedRooms = null; return; }
+        LevelGatedRooms = Game.Map.LevelGatedRooms.Compute(
+            _services.RoomGraph, _services.PlayerStats.Level);
     }
 
     [ObservableProperty] private bool _legendVisible;
@@ -816,6 +843,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _                       => SpellDisplayMode.Mono,
     };
     [RelayCommand] private void ToggleLevelBlocked() => ShowLevelBlocked = !ShowLevelBlocked;
+    [RelayCommand] private void ToggleLevelGates() => ShowLevelGates = !ShowLevelGates;
     [RelayCommand] private void ToggleLegend() => LegendVisible   = !LegendVisible;
 
     // ----- Map binding ----------------------------------------------

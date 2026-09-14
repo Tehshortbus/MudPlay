@@ -138,6 +138,12 @@ public sealed class CharacterProfile
     // change, so nobody pays for an overlay they didn't ask for.
     public bool NavShowLevelBlocked { get; set; }
 
+    // The Navigation map's level-gate overlay (rooms holding a level gate this
+    // character can't pass, marked with a corner wedge). Separate from the
+    // overlay above: that one paints what you can't reach, this one shows where
+    // the gate is. Defaults OFF, same reasoning.
+    public bool NavShowLevelGates { get; set; }
+
     // Persisted left-pane proportions for resizable two-pane dialogs keyed by
     // stable id (e.g. "MonsterEditDialog"). Each value is the fraction (0.0–1.0)
     // of the splittable area occupied by the LEFT pane at the user's last close.

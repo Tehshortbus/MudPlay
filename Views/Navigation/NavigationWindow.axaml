@@ -53,6 +53,12 @@
             <Setter Property="BorderBrush" Value="#DD3344"/>
             <Setter Property="Foreground" Value="#FFFFFF"/>
         </Style>
+        <!-- Level-gate: amber wedge (MapControl.LevelGateFill) -->
+        <Style Selector="Button.ToggleChip.LevelGateFill">
+            <Setter Property="Background" Value="#E0A020"/>
+            <Setter Property="BorderBrush" Value="#7A4E00"/>
+            <Setter Property="Foreground" Value="#0E0E0E"/>
+        </Style>
         <!-- Legend: neutral amber (no map equivalent) -->
         <Style Selector="Button.ToggleChip.LegendFill">
             <Setter Property="Background" Value="{StaticResource AccentAmberBrush}"/>
@@ -546,6 +552,11 @@
                                             HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
                                             ToolTip.Tip="Highlight rooms your level shuts you out of, in red — the level-gated room and everything sealed behind it, judged against your current level from where you're standing. Off by default; your choice is saved per character."
                                             Classes.LevelBlockedFill="{Binding ShowLevelBlocked}"/>
+                                    <Button Classes="ToggleChip" Content="Level gates"
+                                            Command="{Binding ToggleLevelGatesCommand}"
+                                            HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                            ToolTip.Tip="Mark rooms holding a level gate you can't pass, with an amber corner wedge — the room you can still walk into whose way onward is shut. Covers gated exits and level-restricted boat sailings. Off by default; your choice is saved per character."
+                                            Classes.LevelGateFill="{Binding ShowLevelGates}"/>
                                     <Button Classes="ToggleChip" Content="Legend"
                                             Command="{Binding ToggleLegendCommand}"
                                             HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
@@ -682,6 +693,7 @@
                                  LoopApproachPreviewPath="{Binding LoopApproachPreviewPath}"
                                  AvoidedRooms="{Binding AvoidedRooms}"
                                  LevelBlockedRooms="{Binding LevelBlockedRooms}"
+                                 LevelGatedRooms="{Binding LevelGatedRooms}"
                                  StashRooms="{Binding StashRooms}"
                                  GhRooms="{Binding GhRooms}"
                                  GhFullRooms="{Binding GhFullRooms}"
@@ -934,6 +946,17 @@
                         <Border Width="14" Height="14" Background="#66DD3344"
                                 BorderBrush="#DD3344" BorderThickness="2"/>
                         <TextBlock Text="Blocked by your level" FontSize="11" Foreground="{StaticResource ChromeFgSecBrush}"/>
+                    </StackPanel>
+                    <!-- Level gate = the amber corner wedge (LevelGateFill /
+                         LevelGateRim). The room is still enterable; the way on
+                         is not. Approximated here with a corner-anchored box. -->
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Border Width="14" Height="14">
+                            <Border Width="7" Height="7" Background="#E0A020"
+                                    BorderBrush="#7A4E00" BorderThickness="1"
+                                    HorizontalAlignment="Left" VerticalAlignment="Top"/>
+                        </Border>
+                        <TextBlock Text="Holds a level gate" FontSize="11" Foreground="{StaticResource ChromeFgSecBrush}"/>
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <Border Width="14" Height="14" Background="#6428A0"/>
