@@ -110,8 +110,9 @@ public sealed class MapControl : Control
     public static readonly StyledProperty<IReadOnlySet<RoomKey>?> AvoidedRoomsProperty =
         AvaloniaProperty.Register<MapControl, IReadOnlySet<RoomKey>?>(nameof(AvoidedRooms));
 
-    // Rooms holding a level gate the character can't pass — the doorway itself,
-    // which they can still walk into. Null/empty while the overlay is off.
+    // Rooms holding a level gate — the doorway itself, which is still walkable
+    // into. A map property, not a per-character one: it marks where the gates
+    // are, not which refuse this character. Null/empty while the overlay is off.
     public static readonly StyledProperty<IReadOnlySet<RoomKey>?> LevelGatedRoomsProperty =
         AvaloniaProperty.Register<MapControl, IReadOnlySet<RoomKey>?>(nameof(LevelGatedRooms));
 
@@ -783,8 +784,9 @@ public sealed class MapControl : Control
     private static readonly IPen   WhereTargetPen  = new Pen(new SolidColorBrush(Color.Parse("#FF33DD66")), 2.5);
 
     // Level-gate marker — a filled amber wedge in the room node's top-left
-    // corner, for a room you can still walk into whose way onward is shut by
-    // level. Deliberately NOT a coloured exit stub: stubs mean traps, and
+    // corner, for a room you can walk into whose way onward is shut to anyone
+    // outside the gate's level window. Deliberately NOT a coloured exit stub:
+    // stubs mean traps, and
     // reusing that vocabulary for a level gate reads as danger rather than a
     // locked door. A corner badge is a property OF the room, which is what a
     // gate is here; it shares the U/D badges' dark rim and takes the free

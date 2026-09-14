@@ -163,10 +163,8 @@ public static class TBInfoActionResolver
     // and the `minlevel` floor (0 when it has none). The tiered case is the jail
     // "bribe guard" — its six powers-of-ten prices mean "the guard takes the
     // largest tier you can afford, up to the max" (confirmed by the user), so
-    // only the ceiling is meaningful.
-    // MinLevel is the `minlevel N [failTextblock]` floor on the same line, 0 when
-    // the command has none. A charge and a level floor travel together often
-    // enough (a captain's passage carries both) that they share a row.
+    // only the ceiling is meaningful. A charge and a level floor travel together
+    // often enough (a captain's passage carries both) that they share a row.
     public readonly record struct CommandRequirement(string Keyword, long MaxCopper, bool Tiered, int MinLevel = 0);
 
     // Yields the commands in a room's CMD chain that ask something of the player

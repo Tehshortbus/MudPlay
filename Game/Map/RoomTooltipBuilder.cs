@@ -735,17 +735,18 @@ public static class RoomTooltipBuilder
         // west" / "jump east" → bridge jump) collapse to one entry.
         List<CastTeleportGroup> castGroups = ResolveCastGroups(room, tbinfo, spellCatalog);
 
-        // Paid commands (a `price` directive): gambling, healer / summon buys,
-        // passage fares, the jail "bribe guard". Keyed by keyword so a teleport /
-        // cast / action line that shares the keyword can append the cost, and any
-        // priced command not otherwise surfaced still gets listed with its price.
-        List<TBInfoActionResolver.CommandRequirement> priced =
+        // Commands that demand something before they work — a `price` (gambling,
+        // healer / summon buys, passage fares, the jail "bribe guard"), a
+        // `minlevel` floor, or both. Keyed by keyword so a teleport / cast /
+        // action line sharing the keyword can append what it demands, and any
+        // command not otherwise surfaced still gets listed with its own line.
+        List<TBInfoActionResolver.CommandRequirement> requirements =
             TBInfoActionResolver.EnumerateCommandRequirements(tbinfo, room.Cmd).ToList();
-        Dictionary<string, TBInfoActionResolver.CommandRequirement> pricedByKeyword =
+        Dictionary<string, TBInfoActionResolver.CommandRequirement> requirementByKeyword =
             new(StringComparer.OrdinalIgnoreCase);
-        foreach (TBInfoActionResolver.CommandRequirement pc in priced)
-            pricedByKeyword[pc.Keyword] = pc;
-        HashSet<string> pricedShown = new(StringComparer.OrdinalIgnoreCase);
+        foreach (TBInfoActionResolver.CommandRequirement pc in requirements)
+            requirementByKeyword[pc.Keyword] = pc;
+        HashSet<string> requirementShown = new(StringComparer.OrdinalIgnoreCase);
 
         // Room-action keywords (`remoteaction` CMD lines — "pull drawer",
         // "clear rubble", etc.) that change the world in place rather than
@@ -764,7 +765,7 @@ public static class RoomTooltipBuilder
         if (!shownByExit)
         {
             foreach (string kw in TBInfoActionResolver.EnumerateRemoteActionKeywords(tbinfo, room.Cmd))
-                if (!pricedByKeyword.ContainsKey(kw)
+                if (!requirementByKeyword.ContainsKey(kw)
                     && !actionKeywords.Contains(kw, StringComparer.OrdinalIgnoreCase))
                     actionKeywords.Add(kw);
         }
@@ -774,7 +775,7 @@ public static class RoomTooltipBuilder
         // exit, so unlike the remoteaction keywords above they surface regardless
         // of the MultiActionHidden guard.
         foreach (string kw in TBInfoActionResolver.EnumerateRoomActionKeywords(tbinfo, room.Cmd))
-            if (!pricedByKeyword.ContainsKey(kw)
+            if (!requirementByKeyword.ContainsKey(kw)
                 && !actionKeywords.Contains(kw, StringComparer.OrdinalIgnoreCase))
                 actionKeywords.Add(kw);
 
@@ -792,7 +793,7 @@ public static class RoomTooltipBuilder
             ResolveRoomEffectRows(room, data, tbinfo, renderedKeywords);
 
         if (byDest.Count == 0 && castGroups.Count == 0 && actionKeywords.Count == 0
-            && priced.Count == 0 && effectRows.Count == 0)
+            && requirements.Count == 0 && effectRows.Count == 0)
             return string.Empty;
 
         // Append what a rendered group's keyword demands (marking it shown so it
@@ -804,10 +805,10 @@ public static class RoomTooltipBuilder
         {
             TBInfoActionResolver.CommandRequirement? found = null;
             foreach (string kw in keywords)
-                if (pricedByKeyword.TryGetValue(kw, out TBInfoActionResolver.CommandRequirement pc))
+                if (requirementByKeyword.TryGetValue(kw, out TBInfoActionResolver.CommandRequirement pc))
                 {
                     found ??= pc;
-                    pricedShown.Add(kw);
+                    requirementShown.Add(kw);
                 }
             if (found is not { } f) return string.Empty;
             string text = FormatRequirement(f, includeLevel: !levelShown);
@@ -863,7 +864,7 @@ public static class RoomTooltipBuilder
         // command would render twice, once for what it does and once for the price.
         foreach (RoomEffectRow row in effectRows)
         {
-            foreach (string kw in row.Keywords) pricedShown.Add(kw);
+            foreach (string kw in row.Keywords) requirementShown.Add(kw);
             sb.Append('\n').Append("  ").Append(string.Join(" / ", row.Keywords))
               .Append(" — ").Append(row.EffectText);
             if (row.CostText.Length > 0) sb.Append(" — ").Append(row.CostText);
@@ -871,10 +872,10 @@ public static class RoomTooltipBuilder
 
         // Paid commands not already surfaced above (a healer's buy list, a
         // summoner's services, the jail bribe) get one line each with the cost.
-        foreach (TBInfoActionResolver.CommandRequirement pc in priced)
+        foreach (TBInfoActionResolver.CommandRequirement pc in requirements)
         {
-            if (pricedShown.Contains(pc.Keyword)) continue;
-            pricedShown.Add(pc.Keyword);
+            if (requirementShown.Contains(pc.Keyword)) continue;
+            requirementShown.Add(pc.Keyword);
             sb.Append('\n').Append("  ").Append(pc.Keyword)
               .Append(" — ").Append(FormatRequirement(pc));
         }
@@ -911,11 +912,11 @@ public static class RoomTooltipBuilder
         var shown = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (alreadyShown is not null) shown.UnionWith(alreadyShown);
 
-        Dictionary<string, TBInfoActionResolver.CommandRequirement> pricedByKeyword =
+        Dictionary<string, TBInfoActionResolver.CommandRequirement> requirementByKeyword =
             new(StringComparer.OrdinalIgnoreCase);
         foreach (TBInfoActionResolver.CommandRequirement pc
                  in TBInfoActionResolver.EnumerateCommandRequirements(tbinfo, room.Cmd))
-            pricedByKeyword[pc.Keyword] = pc;
+            requirementByKeyword[pc.Keyword] = pc;
 
         // One effect per KEYWORD, at its highest priority. The export writes a
         // separate line per outcome branch of the same command — 14/6275's "destroy
@@ -932,7 +933,7 @@ public static class RoomTooltipBuilder
                  in TBInfoActionResolver.EnumerateEffectCommands(tbinfo, room.Cmd))
         {
             if (shown.Contains(ec.Keyword)) continue;
-            string cost = pricedByKeyword.TryGetValue(ec.Keyword, out TBInfoActionResolver.CommandRequirement pc)
+            string cost = requirementByKeyword.TryGetValue(ec.Keyword, out TBInfoActionResolver.CommandRequirement pc)
                 ? FormatRequirement(pc)
                 : string.Empty;
             if (bestByKeyword.TryGetValue(ec.Keyword, out var existing))
