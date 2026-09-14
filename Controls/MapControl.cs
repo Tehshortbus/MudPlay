@@ -110,8 +110,8 @@ public sealed class MapControl : Control
     public static readonly StyledProperty<IReadOnlySet<RoomKey>?> AvoidedRoomsProperty =
         AvaloniaProperty.Register<MapControl, IReadOnlySet<RoomKey>?>(nameof(AvoidedRooms));
 
-    // Rooms the character's level shuts them out of — the gated room plus
-    // everything sealed behind it. Null/empty while the overlay is off.
+    // Rooms holding a level gate the character can't pass — the doorway itself,
+    // which they can still walk into. Null/empty while the overlay is off.
     public static readonly StyledProperty<IReadOnlySet<RoomKey>?> LevelGatedRoomsProperty =
         AvaloniaProperty.Register<MapControl, IReadOnlySet<RoomKey>?>(nameof(LevelGatedRooms));
 
@@ -781,7 +781,6 @@ public sealed class MapControl : Control
     // Cleared by the VM's ~12s timer.
     private static readonly IBrush WhereTargetFill = new SolidColorBrush(Color.Parse("#8833DD66"));
     private static readonly IPen   WhereTargetPen  = new Pen(new SolidColorBrush(Color.Parse("#FF33DD66")), 2.5);
-
 
     // Level-gate marker — a filled amber wedge in the room node's top-left
     // corner, for a room you can still walk into whose way onward is shut by
@@ -1746,10 +1745,6 @@ public sealed class MapControl : Control
         ctx.DrawLine(pen, topRight, bottomLeft);
     }
 
-    // Green flash for the room an @where reply located — a translucent fill + ring
-    // over the whole cell so it stands out at a glance; the VM clears it after ~12s.
-    // Same rounded-square shape as the @where flash so the two read as one family
-    // of room markers, in red rather than green.
     // Amber wedge in the room node's TOP-LEFT corner — the third member of the
     // corner-badge family, opposite the U/D badges on the right so position
     // alone tells them apart. Sized to the drawn room NODE (DrawRoomNode's
@@ -1773,6 +1768,8 @@ public sealed class MapControl : Control
         ctx.DrawGeometry(LevelGateFill, VerticalBadgeEdgePen, wedge);
     }
 
+    // Green flash for the room an @where reply located — a translucent fill + ring
+    // over the whole cell so it stands out at a glance; the VM clears it after ~12s.
     private static void DrawWhereHighlight(DrawingContext ctx, Rect cell)
         => ctx.DrawRectangle(WhereTargetFill, WhereTargetPen, new RoundedRect(cell.Deflate(1), cell.Width * 0.14));
 

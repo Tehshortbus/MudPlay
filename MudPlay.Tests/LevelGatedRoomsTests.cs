@@ -60,9 +60,8 @@ public sealed class LevelGatedRoomsTests : IDisposable
         return graph;
     }
 
-    // The room holding the gate is marked — and only it. The sealed rooms beyond
-    // hold no gate of their own, so they belong to the blocked overlay, not this
-    // one.
+    // The room holding the gate is marked — and only it. The rooms beyond hold
+    // no gate of their own, so nothing marks them.
     [Fact]
     public void OverLevel_MarksTheRoomHoldingTheGate()
     {
@@ -75,8 +74,8 @@ public sealed class LevelGatedRoomsTests : IDisposable
 
 
     // A gate is a property of the room, so the mark depends on the level and
-    // nothing else — same as the blocked overlay beside it. Neither needs to
-    // know where the character is standing.
+    // nothing else. There is no standpoint to compute it from and no current
+    // room to wait for.
     [Fact]
     public void TheAnswerDoesNotDependOnWhereWeStand()
     {

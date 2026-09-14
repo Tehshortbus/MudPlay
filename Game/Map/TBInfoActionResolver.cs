@@ -157,23 +157,26 @@ public static class TBInfoActionResolver
         }
     }
 
-    // One paid room command: the player keyword, the highest `price` it charges
-    // (in copper, the base coin), and whether the line carries several DISTINCT
-    // escalating prices. The tiered case is the jail "bribe guard" — its six
-    // powers-of-ten prices mean "the guard takes the largest tier you can afford,
-    // up to the max" (confirmed by the user), so only the ceiling is meaningful.
+    // What a room command demands of the player before it will work: the
+    // keyword, the highest `price` it charges (in copper, the base coin, 0 when
+    // it's free), whether the line carries several DISTINCT escalating prices,
+    // and the `minlevel` floor (0 when it has none). The tiered case is the jail
+    // "bribe guard" — its six powers-of-ten prices mean "the guard takes the
+    // largest tier you can afford, up to the max" (confirmed by the user), so
+    // only the ceiling is meaningful.
     // MinLevel is the `minlevel N [failTextblock]` floor on the same line, 0 when
     // the command has none. A charge and a level floor travel together often
     // enough (a captain's passage carries both) that they share a row.
-    public readonly record struct PricedCommand(string Keyword, long MaxCopper, bool Tiered, int MinLevel = 0);
+    public readonly record struct CommandRequirement(string Keyword, long MaxCopper, bool Tiered, int MinLevel = 0);
 
-    // Yields the paid commands in a room's CMD chain — every keyword line that
-    // carries at least one `price <copper> [failTextblock]` directive (gambling,
-    // healer / summon buys, passage fares, bribe guard). The first integer after
-    // `price` is the copper cost; a second integer is the can't-afford textblock,
-    // not a cost. MaxCopper is the largest price on the line; Tiered is set when
-    // the line lists more than one distinct price.
-    public static IEnumerable<PricedCommand> EnumeratePricedCommands(TBInfoStore store, int roomCmd)
+    // Yields the commands in a room's CMD chain that ask something of the player
+    // — a `price <copper> [failTextblock]` charge (gambling, healer / summon
+    // buys, passage fares, bribe guard), a `minlevel <N> [failTextblock]` floor,
+    // or both, as a captain's passage carries. In each the first integer is the
+    // value and a second is the refusal textblock, not part of it. MaxCopper is
+    // the largest price on the line; Tiered is set when the line lists more than
+    // one distinct price. A command demanding neither is not yielded.
+    public static IEnumerable<CommandRequirement> EnumerateCommandRequirements(TBInfoStore store, int roomCmd)
     {
         ArgumentNullException.ThrowIfNull(store);
         if (roomCmd <= 0) yield break;
@@ -215,7 +218,7 @@ public static class TBInfoActionResolver
             // A level floor alone earns a row: the player still needs telling why
             // the command will refuse them, charge or no charge.
             if (distinct.Count == 0 && minLevel <= 0) continue;
-            yield return new PricedCommand(keyword, max, distinct.Count > 1, minLevel);
+            yield return new CommandRequirement(keyword, max, distinct.Count > 1, minLevel);
         }
     }
 

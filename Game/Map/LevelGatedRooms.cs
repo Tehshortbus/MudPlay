@@ -3,15 +3,15 @@ namespace MudPlay.Game.Map;
 // Rooms holding a level gate this character can't pass — the room you can walk
 // into and stand in while the way onward is shut to you.
 //
-// This is the other half of LevelBlockedRooms. That one answers "what can't I
-// reach", so a gate room never appears in it: you can reach a gate room by
-// definition, it's the far side that's sealed. Asking where the gate IS is a
-// separate question, and a cheaper one — no reachability, just a scan.
+// A scan, not a reachability sweep: it asks each room whether any way onward is
+// shut to us, which is a question about the room itself rather than about how we
+// got there. So the answer depends on the level and nothing else — the same
+// wherever the character is standing, and computable with no position at all.
 //
 // Level is the only thing consulted. Doors, locks, keys, stat requirements and
-// class / alignment windows are deliberately out of scope: this is the level
-// filter, and folding other gating in would make it answer a question nobody
-// asked it. A room shut by a 1000-picklock door is not level-blocked.
+// class / alignment windows are deliberately out of scope: folding other gating
+// in would make a level filter answer a question nobody asked it. A room shut
+// by a door nobody can pick is not gated by level and is not marked here.
 public static class LevelGatedRooms
 {
     // Empty when the level is unknown — an unknown level never gates, matching

@@ -133,9 +133,9 @@ public sealed class CharacterProfile
     public SpellDisplayMode NavSpellMode { get; set; } = SpellDisplayMode.Mono;
 
     // The Navigation map's level-gate overlay (rooms holding a level gate this
-    // character can't pass, marked with a corner wedge). Separate from the
-    // overlay above: that one paints what you can't reach, this one shows where
-    // the gate is. Defaults OFF, same reasoning.
+    // character can't pass, marked with an amber corner wedge). Persisted
+    // per-character like the two above. Defaults ON — it costs one scan per
+    // level-up, and a gate you can't pass is worth seeing before you walk to it.
     public bool NavShowLevelGates { get; set; } = true;
 
     // Persisted left-pane proportions for resizable two-pane dialogs keyed by

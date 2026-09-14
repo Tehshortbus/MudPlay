@@ -99,7 +99,7 @@ public sealed class TBInfoActionResolverTests : IDisposable
     }
 
     [Fact]
-    public void PricedCommands_SinglePrice_ParsesCost_SkipsFailTextblock()
+    public void CommandRequirements_SinglePrice_ParsesCost_SkipsFailTextblock()
     {
         // The real Paradigm dice game (TB#997): "price 10000 1560" — 10000 copper
         // is the cost, 1560 is the can't-afford textblock, not a second price.
@@ -110,7 +110,7 @@ public sealed class TBInfoActionResolverTests : IDisposable
             """;
         TBInfoStore store = NewStore(json);
 
-        var cmds = TBInfoActionResolver.EnumeratePricedCommands(store, 400).ToArray();
+        var cmds = TBInfoActionResolver.EnumerateCommandRequirements(store, 400).ToArray();
 
         Assert.Equal(2, cmds.Length);
         Assert.Equal("roll dice", cmds[0].Keyword);
@@ -119,7 +119,7 @@ public sealed class TBInfoActionResolverTests : IDisposable
     }
 
     [Fact]
-    public void PricedCommands_BribeGuard_IsTiered_MaxIsCeiling()
+    public void CommandRequirements_BribeGuard_IsTiered_MaxIsCeiling()
     {
         // The jail bribe-guard's six escalating prices (1 gold → 10 runic): the
         // charge is the largest tier the player can afford, so only the ceiling
@@ -131,7 +131,7 @@ public sealed class TBInfoActionResolverTests : IDisposable
             """;
         TBInfoStore store = NewStore(json);
 
-        var pc = Assert.Single(TBInfoActionResolver.EnumeratePricedCommands(store, 500).ToArray());
+        var pc = Assert.Single(TBInfoActionResolver.EnumerateCommandRequirements(store, 500).ToArray());
 
         Assert.Equal("bribe guard", pc.Keyword);
         Assert.Equal(10000000L, pc.MaxCopper);
@@ -139,9 +139,50 @@ public sealed class TBInfoActionResolverTests : IDisposable
     }
 
     [Fact]
-    public void PricedCommands_NoPrice_YieldsNothing()
+    public void CommandRequirements_NoPriceNoLevel_YieldsNothing()
     {
         TBInfoStore store = NewStore(MineOreJson);
-        Assert.Empty(TBInfoActionResolver.EnumeratePricedCommands(store, 1061));
+        Assert.Empty(TBInfoActionResolver.EnumerateCommandRequirements(store, 1061));
+    }
+
+    [Fact]
+    public void CommandRequirements_Passage_CarriesBothFareAndLevelFloor()
+    {
+        // Paradigm's Blackwater Harbor wharf (CMD 4986): the captain charges a
+        // fare AND refuses you under a level. Surfacing only the fare hid why
+        // the sailing would be refused.
+        const string json = """
+            [ { "Number": 4986, "LinkTo": 0,
+                "Action": "secure passage to albion:minlevel 50 3887:price 2000000 3890:random 4987\n",
+                "Called From": "Room 14/759" } ]
+            """;
+        TBInfoStore store = NewStore(json);
+
+        var pc = Assert.Single(TBInfoActionResolver.EnumerateCommandRequirements(store, 4986).ToArray());
+
+        Assert.Equal("secure passage to albion", pc.Keyword);
+        Assert.Equal(2000000L, pc.MaxCopper);
+        Assert.Equal(50, pc.MinLevel);   // 3887 is the refusal textblock, not the level
+    }
+
+    [Fact]
+    public void CommandRequirements_LevelFloorAlone_StillYields()
+    {
+        // A free but level-gated command used to be dropped for having no price
+        // to show, so the tooltip said nothing about why it would refuse. The
+        // bare `minlevel 20` form (no trailing textblock) has to parse too.
+        const string json = """
+            [ { "Number": 9801, "LinkTo": 0,
+                "Action": "dive sinkhole:minlevel 20:message 8702:cast 5100\n",
+                "Called From": "Room 12/1075" } ]
+            """;
+        TBInfoStore store = NewStore(json);
+
+        var pc = Assert.Single(TBInfoActionResolver.EnumerateCommandRequirements(store, 9801).ToArray());
+
+        Assert.Equal("dive sinkhole", pc.Keyword);
+        Assert.Equal(0L, pc.MaxCopper);
+        Assert.False(pc.Tiered);
+        Assert.Equal(20, pc.MinLevel);
     }
 }

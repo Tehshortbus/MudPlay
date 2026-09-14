@@ -739,11 +739,11 @@ public static class RoomTooltipBuilder
         // passage fares, the jail "bribe guard". Keyed by keyword so a teleport /
         // cast / action line that shares the keyword can append the cost, and any
         // priced command not otherwise surfaced still gets listed with its price.
-        List<TBInfoActionResolver.PricedCommand> priced =
-            TBInfoActionResolver.EnumeratePricedCommands(tbinfo, room.Cmd).ToList();
-        Dictionary<string, TBInfoActionResolver.PricedCommand> pricedByKeyword =
+        List<TBInfoActionResolver.CommandRequirement> priced =
+            TBInfoActionResolver.EnumerateCommandRequirements(tbinfo, room.Cmd).ToList();
+        Dictionary<string, TBInfoActionResolver.CommandRequirement> pricedByKeyword =
             new(StringComparer.OrdinalIgnoreCase);
-        foreach (TBInfoActionResolver.PricedCommand pc in priced)
+        foreach (TBInfoActionResolver.CommandRequirement pc in priced)
             pricedByKeyword[pc.Keyword] = pc;
         HashSet<string> pricedShown = new(StringComparer.OrdinalIgnoreCase);
 
@@ -799,14 +799,14 @@ public static class RoomTooltipBuilder
         // shown so it isn't also listed standalone). Synonyms share the price.
         string CostSuffix(IReadOnlyList<string> keywords)
         {
-            TBInfoActionResolver.PricedCommand? found = null;
+            TBInfoActionResolver.CommandRequirement? found = null;
             foreach (string kw in keywords)
-                if (pricedByKeyword.TryGetValue(kw, out TBInfoActionResolver.PricedCommand pc))
+                if (pricedByKeyword.TryGetValue(kw, out TBInfoActionResolver.CommandRequirement pc))
                 {
                     found ??= pc;
                     pricedShown.Add(kw);
                 }
-            return found is { } f ? " — " + FormatPricedCost(f) : string.Empty;
+            return found is { } f ? " — " + FormatRequirement(f) : string.Empty;
         }
 
         StringBuilder sb = new();
@@ -866,12 +866,12 @@ public static class RoomTooltipBuilder
 
         // Paid commands not already surfaced above (a healer's buy list, a
         // summoner's services, the jail bribe) get one line each with the cost.
-        foreach (TBInfoActionResolver.PricedCommand pc in priced)
+        foreach (TBInfoActionResolver.CommandRequirement pc in priced)
         {
             if (pricedShown.Contains(pc.Keyword)) continue;
             pricedShown.Add(pc.Keyword);
             sb.Append('\n').Append("  ").Append(pc.Keyword)
-              .Append(" — ").Append(FormatPricedCost(pc));
+              .Append(" — ").Append(FormatRequirement(pc));
         }
         return sb.ToString();
     }
@@ -906,10 +906,10 @@ public static class RoomTooltipBuilder
         var shown = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (alreadyShown is not null) shown.UnionWith(alreadyShown);
 
-        Dictionary<string, TBInfoActionResolver.PricedCommand> pricedByKeyword =
+        Dictionary<string, TBInfoActionResolver.CommandRequirement> pricedByKeyword =
             new(StringComparer.OrdinalIgnoreCase);
-        foreach (TBInfoActionResolver.PricedCommand pc
-                 in TBInfoActionResolver.EnumeratePricedCommands(tbinfo, room.Cmd))
+        foreach (TBInfoActionResolver.CommandRequirement pc
+                 in TBInfoActionResolver.EnumerateCommandRequirements(tbinfo, room.Cmd))
             pricedByKeyword[pc.Keyword] = pc;
 
         // One effect per KEYWORD, at its highest priority. The export writes a
@@ -927,8 +927,8 @@ public static class RoomTooltipBuilder
                  in TBInfoActionResolver.EnumerateEffectCommands(tbinfo, room.Cmd))
         {
             if (shown.Contains(ec.Keyword)) continue;
-            string cost = pricedByKeyword.TryGetValue(ec.Keyword, out TBInfoActionResolver.PricedCommand pc)
-                ? FormatPricedCost(pc)
+            string cost = pricedByKeyword.TryGetValue(ec.Keyword, out TBInfoActionResolver.CommandRequirement pc)
+                ? FormatRequirement(pc)
                 : string.Empty;
             if (bestByKeyword.TryGetValue(ec.Keyword, out var existing))
             {
@@ -990,20 +990,22 @@ public static class RoomTooltipBuilder
         };
     }
 
+    // Everything a command demands, in one phrase: "costs 200 Platinum",
+    // "Level 50+", or "costs 200 Platinum, Level 50+". A captain's passage
+    // carries both, and surfacing only the fare hid why the sailing would be
+    // refused.
+    private static string FormatRequirement(TBInfoActionResolver.CommandRequirement pc)
+    {
+        string charge = pc.MaxCopper > 0 ? FormatCharge(pc) : string.Empty;
+        string level = pc.MinLevel > 0 ? RoomExit.FormatLevelGate(pc.MinLevel, 0) : string.Empty;
+        if (charge.Length == 0) return level;
+        return level.Length == 0 ? charge : $"{charge}, {level}";
+    }
+
     // "costs 100 Gold", or for a tiered charge (the jail bribe-guard's escalating
     // prices) "costs up to 10 Runic (takes the most you can afford)". Copper is
     // reduced to its friendliest coin by the shared shop formatter.
-    private static string FormatPricedCost(TBInfoActionResolver.PricedCommand pc)
-        => JoinRequirements(FormatPricedCharge(pc), pc.MinLevel > 0 ? RoomExit.FormatLevelGate(pc.MinLevel, 0) : string.Empty);
-
-    // A command can carry a charge, a level floor, or both. Both matter to the
-    // player before they try it, so neither hides the other.
-    private static string JoinRequirements(string charge, string level)
-        => charge.Length > 0 && level.Length > 0 ? $"{charge}, {level}"
-         : charge.Length > 0 ? charge
-         : level;
-
-    private static string FormatPricedCharge(TBInfoActionResolver.PricedCommand pc)
+    private static string FormatCharge(TBInfoActionResolver.CommandRequirement pc)
     {
         string amount = ShopPriceCalculator.FormatCopper(pc.MaxCopper);
         return pc.Tiered

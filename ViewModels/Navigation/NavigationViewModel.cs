@@ -101,6 +101,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _services.GhSweep.PhaseChanged += RefreshGhFullRooms;
         RefreshGhRooms();
         RefreshTrainerRooms();   // trainers come from game data; refreshed on set swap via OnGraphReloaded
+        RefreshLevelGatedRooms();
         _services.AutoLair.MarkedChanged += OnAutoLairMarkedChanged;
         _services.AutoLair.ActiveChanged += OnAutoLairActiveChanged;
         _services.AutoLair.PhaseChanged  += OnAutoLairPhaseChanged;
@@ -748,10 +749,9 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         if (e.PropertyName == nameof(Game.PlayerStats.Level)) RefreshLevelGatedRooms();
     }
 
-    // Rooms holding a level gate we can't pass. Unlike the blocked set this one
-    // doesn't depend on where we're standing — a gate is on the room whatever
-    // side of it we're on — so it only recomputes on the toggle and on level-up,
-    // not on every move.
+    // Rooms holding a level gate we can't pass. A gate belongs to the room, not
+    // to where we're standing, so this only recomputes when the answer can
+    // actually change: the toggle, a level-up, and a game-data set swap.
     [ObservableProperty] private IReadOnlySet<RoomKey>? _levelGatedRooms;
 
     [ObservableProperty] private bool _showLevelGates = true;
@@ -3416,6 +3416,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         RefreshLayout();
         RefreshTeleportRooms();
         RefreshTrainerRooms();   // trainer set is per game-data set
+        RefreshLevelGatedRooms();   // gates are per game-data set too
     }
 
     // Walk every room with a non-zero Cmd and ask TBInfo whether the CMD's
