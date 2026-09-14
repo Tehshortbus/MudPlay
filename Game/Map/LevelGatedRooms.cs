@@ -27,7 +27,7 @@ public static class LevelGatedRooms
         {
             foreach (RoomExit exit in room.Exits.Values)
             {
-                if (!exit.ExcludesLevel(level)) continue;
+                if (!ExcludesLevel(in exit, level)) continue;
                 gated.Add(room.Key);
                 break;
             }
@@ -43,6 +43,17 @@ public static class LevelGatedRooms
         }
 
         return gated;
+    }
+
+    // True when this exit's level window refuses us. A zero bound means no bound
+    // on that side — the MDB's 0 and 999 no-cap sentinels are normalised away at
+    // parse time, so a gate only ever tests the bounds it actually has. Compute
+    // has already rejected an unknown (zero) level before this runs.
+    private static bool ExcludesLevel(in RoomExit exit, int level)
+    {
+        if (!exit.HasLevelGate) return false;
+        if (exit.MinLevel > 0 && level < exit.MinLevel) return true;
+        return exit.MaxLevel > 0 && level > exit.MaxLevel;
     }
 
     private static readonly IReadOnlySet<RoomKey> EmptySet = new HashSet<RoomKey>();
