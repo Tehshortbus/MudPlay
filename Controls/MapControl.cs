@@ -112,9 +112,6 @@ public sealed class MapControl : Control
 
     // Rooms the character's level shuts them out of — the gated room plus
     // everything sealed behind it. Null/empty while the overlay is off.
-    public static readonly StyledProperty<IReadOnlySet<RoomKey>?> LevelBlockedRoomsProperty =
-        AvaloniaProperty.Register<MapControl, IReadOnlySet<RoomKey>?>(nameof(LevelBlockedRooms));
-
     public static readonly StyledProperty<IReadOnlySet<RoomKey>?> LevelGatedRoomsProperty =
         AvaloniaProperty.Register<MapControl, IReadOnlySet<RoomKey>?>(nameof(LevelGatedRooms));
 
@@ -318,12 +315,6 @@ public sealed class MapControl : Control
     {
         get => GetValue(AvoidedRoomsProperty);
         set => SetValue(AvoidedRoomsProperty, value);
-    }
-
-    public IReadOnlySet<RoomKey>? LevelBlockedRooms
-    {
-        get => GetValue(LevelBlockedRoomsProperty);
-        set => SetValue(LevelBlockedRoomsProperty, value);
     }
 
     public IReadOnlySet<RoomKey>? LevelGatedRooms
@@ -791,11 +782,6 @@ public sealed class MapControl : Control
     private static readonly IBrush WhereTargetFill = new SolidColorBrush(Color.Parse("#8833DD66"));
     private static readonly IPen   WhereTargetPen  = new Pen(new SolidColorBrush(Color.Parse("#FF33DD66")), 2.5);
 
-    // Level-blocked rooms. Red for "you can't go here", and translucent so the
-    // room's own lair/shop/spell fill still reads underneath — the overlay marks
-    // reachability, it doesn't replace what the room IS.
-    private static readonly IBrush LevelBlockedFill = new SolidColorBrush(Color.Parse("#66DD3344"));
-    private static readonly IPen   LevelBlockedPen  = new Pen(new SolidColorBrush(Color.Parse("#FFDD3344")), 2.0);
 
     // Level-gate marker — a filled amber wedge in the room node's top-left
     // corner, for a room you can still walk into whose way onward is shut by
@@ -865,7 +851,7 @@ public sealed class MapControl : Control
             HighlightShopsProperty, SpellModeProperty,
             WalkPathProperty, LoopPathProperty, LoopBuilderPathProperty, LoopBuilderWaypointsProperty,
             AutoLairWaypointsProperty, AutoLairApproachPathProperty,
-            LoopApproachPreviewPathProperty, AvoidedRoomsProperty, LevelBlockedRoomsProperty, LevelGatedRoomsProperty, StashRoomsProperty, GhRoomsProperty, GhFullRoomsProperty, LoopSequenceNumbersProperty,
+            LoopApproachPreviewPathProperty, AvoidedRoomsProperty, LevelGatedRoomsProperty, StashRoomsProperty, GhRoomsProperty, GhFullRoomsProperty, LoopSequenceNumbersProperty,
             AutoLairRoomsProperty, WalkPathIsAutoLairProperty, SelectedRoomKeyProperty,
             PreviewPathProperty, TeleportRoomsProperty, DeathRoomsProperty,
             BossRoomsProperty, StopBeforeBossRoomsProperty, TrainerRoomsProperty,
@@ -1294,11 +1280,6 @@ public sealed class MapControl : Control
 
             DrawRoomNode(context, cell, kvp.Value);
 
-            if (LevelBlockedRooms is { } blocked && blocked.Contains(kvp.Value))
-                DrawLevelBlockedHighlight(context, cell);
-
-            // After the blocked fill so the wedge stays legible when a room is
-            // both sealed off and holding a gate of its own.
             if (LevelGatedRooms is { } gated && gated.Contains(kvp.Value))
                 DrawLevelGateMarker(context, cell);
 
@@ -1769,9 +1750,6 @@ public sealed class MapControl : Control
     // over the whole cell so it stands out at a glance; the VM clears it after ~12s.
     // Same rounded-square shape as the @where flash so the two read as one family
     // of room markers, in red rather than green.
-    private static void DrawLevelBlockedHighlight(DrawingContext ctx, Rect cell)
-        => ctx.DrawRectangle(LevelBlockedFill, LevelBlockedPen, new RoundedRect(cell.Deflate(1), cell.Width * 0.14));
-
     // Amber wedge in the room node's TOP-LEFT corner — the third member of the
     // corner-badge family, opposite the U/D badges on the right so position
     // alone tells them apart. Sized to the drawn room NODE (DrawRoomNode's

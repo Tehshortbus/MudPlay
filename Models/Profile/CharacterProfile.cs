@@ -132,17 +132,11 @@ public sealed class CharacterProfile
     // name, defaults to Mono (the original flat-purple "has a room spell" cue).
     public SpellDisplayMode NavSpellMode { get; set; } = SpellDisplayMode.Mono;
 
-    // The Navigation map's level-blocked overlay (rooms this character's level
-    // shuts them out of, painted red). Persisted per-character like the two
-    // above. Defaults OFF — it costs two reachability sweeps per level/room
-    // change, so nobody pays for an overlay they didn't ask for.
-    public bool NavShowLevelBlocked { get; set; }
-
     // The Navigation map's level-gate overlay (rooms holding a level gate this
     // character can't pass, marked with a corner wedge). Separate from the
     // overlay above: that one paints what you can't reach, this one shows where
     // the gate is. Defaults OFF, same reasoning.
-    public bool NavShowLevelGates { get; set; }
+    public bool NavShowLevelGates { get; set; } = true;
 
     // Persisted left-pane proportions for resizable two-pane dialogs keyed by
     // stable id (e.g. "MonsterEditDialog"). Each value is the fraction (0.0–1.0)

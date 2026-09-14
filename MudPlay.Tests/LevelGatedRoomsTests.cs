@@ -7,9 +7,8 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-// Rooms holding a level gate the character can't pass. The companion to
-// LevelBlockedRoomsTests: that set is "what can't I reach", this one is "where
-// is the gate", and the two never overlap on the gate room itself.
+// Rooms holding a level gate the character can't pass — the room you can still
+// walk into whose way onward is shut. Depends on the level and nothing else.
 public sealed class LevelGatedRoomsTests : IDisposable
 {
     private readonly string _root;
@@ -74,35 +73,15 @@ public sealed class LevelGatedRoomsTests : IDisposable
         Assert.Equal(new HashSet<RoomKey> { new(1, 1) }, new HashSet<RoomKey>(gated));
     }
 
-    // The two overlays are complementary: the gate room is the one room the
-    // blocked sweep structurally cannot paint (you can reach it), and it is
-    // exactly the room this one marks. Pinning both together so a change to
-    // either can't quietly leave the gate unreported by both.
-    [Fact]
-    public void TheGateRoomIsPreciselyWhatTheBlockedSweepMisses()
-    {
-        RoomGraphManager graph = NewGraph();
 
-        IReadOnlySet<RoomKey> blocked = LevelBlockedRooms.Compute(graph, filter: null, new RoomKey(1, 1), level: 40);
-        IReadOnlySet<RoomKey> gated = LevelGatedRooms.Compute(graph, level: 40);
-
-        Assert.DoesNotContain(new RoomKey(1, 1), blocked);
-        Assert.Contains(new RoomKey(1, 1), gated);
-        Assert.Contains(new RoomKey(1, 2), blocked);
-        Assert.DoesNotContain(new RoomKey(1, 2), gated);
-    }
-
-    // A gate is a property of the room, not of where we're standing — unlike the
-    // blocked sweep, which is judged from the current room. Same answer wherever
-    // the character is.
+    // A gate is a property of the room, so the mark depends on the level and
+    // nothing else — same as the blocked overlay beside it. Neither needs to
+    // know where the character is standing.
     [Fact]
     public void TheAnswerDoesNotDependOnWhereWeStand()
     {
         RoomGraphManager graph = NewGraph();
 
-        // Standing inside the sealed pocket empties the blocked set — the way
-        // out isn't gated — but the gate itself hasn't moved.
-        Assert.Empty(LevelBlockedRooms.Compute(graph, filter: null, new RoomKey(1, 2), level: 40));
         Assert.Contains(new RoomKey(1, 1), LevelGatedRooms.Compute(graph, level: 40));
     }
 

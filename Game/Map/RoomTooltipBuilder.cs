@@ -994,6 +994,16 @@ public static class RoomTooltipBuilder
     // prices) "costs up to 10 Runic (takes the most you can afford)". Copper is
     // reduced to its friendliest coin by the shared shop formatter.
     private static string FormatPricedCost(TBInfoActionResolver.PricedCommand pc)
+        => JoinRequirements(FormatPricedCharge(pc), pc.MinLevel > 0 ? RoomExit.FormatLevelGate(pc.MinLevel, 0) : string.Empty);
+
+    // A command can carry a charge, a level floor, or both. Both matter to the
+    // player before they try it, so neither hides the other.
+    private static string JoinRequirements(string charge, string level)
+        => charge.Length > 0 && level.Length > 0 ? $"{charge}, {level}"
+         : charge.Length > 0 ? charge
+         : level;
+
+    private static string FormatPricedCharge(TBInfoActionResolver.PricedCommand pc)
     {
         string amount = ShopPriceCalculator.FormatCopper(pc.MaxCopper);
         return pc.Tiered

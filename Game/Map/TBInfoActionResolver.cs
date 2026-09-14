@@ -162,7 +162,10 @@ public static class TBInfoActionResolver
     // escalating prices. The tiered case is the jail "bribe guard" — its six
     // powers-of-ten prices mean "the guard takes the largest tier you can afford,
     // up to the max" (confirmed by the user), so only the ceiling is meaningful.
-    public readonly record struct PricedCommand(string Keyword, long MaxCopper, bool Tiered);
+    // MinLevel is the `minlevel N [failTextblock]` floor on the same line, 0 when
+    // the command has none. A charge and a level floor travel together often
+    // enough (a captain's passage carries both) that they share a row.
+    public readonly record struct PricedCommand(string Keyword, long MaxCopper, bool Tiered, int MinLevel = 0);
 
     // Yields the paid commands in a room's CMD chain — every keyword line that
     // carries at least one `price <copper> [failTextblock]` directive (gambling,
@@ -190,9 +193,18 @@ public static class TBInfoActionResolver
             if (string.IsNullOrWhiteSpace(keyword)) continue;
 
             long max = 0;
+            int minLevel = 0;
             var distinct = new HashSet<long>();
             for (int i = 1; i < parts.Length; i++)
             {
+                if (parts[i].StartsWith("minlevel ", StringComparison.OrdinalIgnoreCase))
+                {
+                    // `minlevel <N> [failTextblock]` — the second arg is the
+                    // refusal text, not part of the level.
+                    string[] lvl = parts[i][9..].Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                    if (lvl.Length >= 1) int.TryParse(lvl[0], out minLevel);
+                    continue;
+                }
                 if (!parts[i].StartsWith("price", StringComparison.OrdinalIgnoreCase)) continue;
                 if (TryFirstAmount(parts[i], out long copper) && copper > 0)
                 {
@@ -200,8 +212,10 @@ public static class TBInfoActionResolver
                     if (copper > max) max = copper;
                 }
             }
-            if (distinct.Count == 0) continue;
-            yield return new PricedCommand(keyword, max, distinct.Count > 1);
+            // A level floor alone earns a row: the player still needs telling why
+            // the command will refuse them, charge or no charge.
+            if (distinct.Count == 0 && minLevel <= 0) continue;
+            yield return new PricedCommand(keyword, max, distinct.Count > 1, minLevel);
         }
     }
 
