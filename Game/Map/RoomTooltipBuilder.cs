@@ -795,9 +795,12 @@ public static class RoomTooltipBuilder
             && priced.Count == 0 && effectRows.Count == 0)
             return string.Empty;
 
-        // Append the cost of any priced keyword in a rendered group (marking it
-        // shown so it isn't also listed standalone). Synonyms share the price.
-        string CostSuffix(IReadOnlyList<string> keywords)
+        // Append what a rendered group's keyword demands (marking it shown so it
+        // isn't also listed standalone). Synonyms share the requirement.
+        // levelShown says the caller has already printed the level floor beside
+        // the destination — a teleport reads its level off the same directive, so
+        // repeating it here would render "(Level 20+) — Level 20+".
+        string CostSuffix(IReadOnlyList<string> keywords, bool levelShown)
         {
             TBInfoActionResolver.CommandRequirement? found = null;
             foreach (string kw in keywords)
@@ -806,7 +809,9 @@ public static class RoomTooltipBuilder
                     found ??= pc;
                     pricedShown.Add(kw);
                 }
-            return found is { } f ? " — " + FormatRequirement(f) : string.Empty;
+            if (found is not { } f) return string.Empty;
+            string text = FormatRequirement(f, includeLevel: !levelShown);
+            return text.Length > 0 ? " — " + text : string.Empty;
         }
 
         StringBuilder sb = new();
@@ -819,11 +824,11 @@ public static class RoomTooltipBuilder
             int ml = minLevelByDest.GetValueOrDefault(entry.Key);
             if (ml > 0)
                 sb.Append(" (").Append(RoomExit.FormatLevelGate(ml, 0)).Append(')');
-            sb.Append(CostSuffix(entry.Value));
+            sb.Append(CostSuffix(entry.Value, levelShown: ml > 0));
         }
         foreach (CastTeleportGroup g in castGroups)
         {
-            string castCost = CostSuffix(g.Keywords);
+            string castCost = CostSuffix(g.Keywords, levelShown: g.MinLevel > 0);
             sb.Append('\n').Append("  ")
               .Append(string.Join(" / ", g.Keywords)).Append(" → ");
             if (g.Destinations.Count == 1)
@@ -994,10 +999,15 @@ public static class RoomTooltipBuilder
     // "Level 50+", or "costs 200 Platinum, Level 50+". A captain's passage
     // carries both, and surfacing only the fare hid why the sailing would be
     // refused.
-    private static string FormatRequirement(TBInfoActionResolver.CommandRequirement pc)
+    // includeLevel is false when the caller has already rendered the floor —
+    // a teleport prints it beside the destination it reads it from.
+    private static string FormatRequirement(
+        TBInfoActionResolver.CommandRequirement pc, bool includeLevel = true)
     {
         string charge = pc.MaxCopper > 0 ? FormatCharge(pc) : string.Empty;
-        string level = pc.MinLevel > 0 ? RoomExit.FormatLevelGate(pc.MinLevel, 0) : string.Empty;
+        string level = includeLevel && pc.MinLevel > 0
+            ? RoomExit.FormatLevelGate(pc.MinLevel, 0)
+            : string.Empty;
         if (charge.Length == 0) return level;
         return level.Length == 0 ? charge : $"{charge}, {level}";
     }

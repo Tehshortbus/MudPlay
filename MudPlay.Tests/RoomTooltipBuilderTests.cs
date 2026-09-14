@@ -1077,6 +1077,21 @@ public sealed class RoomTooltipBuilderTests : IDisposable
         string text = RoomTooltipBuilder.Build(room, graph, cache, tbinfo);
 
         Assert.Contains("go vortex → Vortex Landing (3/669) (Level 20+)", text);
+
+        // The floor is rendered ONCE. A teleport reads its level off the same
+        // directive the requirement row does, so appending the requirement's
+        // copy too gave "(Level 20+) — Level 20+".
+        Assert.DoesNotContain("— Level 20+", text);
+        Assert.Equal(1, CountOccurrences(text, "Level 20+"));
+    }
+
+    private static int CountOccurrences(string haystack, string needle)
+    {
+        int count = 0;
+        for (int i = haystack.IndexOf(needle, StringComparison.Ordinal); i >= 0;
+             i = haystack.IndexOf(needle, i + needle.Length, StringComparison.Ordinal))
+            count++;
+        return count;
     }
 
     [Fact]
