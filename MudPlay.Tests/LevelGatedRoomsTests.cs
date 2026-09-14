@@ -83,7 +83,7 @@ public sealed class LevelGatedRoomsTests : IDisposable
     {
         RoomGraphManager graph = NewGraph();
 
-        IReadOnlySet<RoomKey> blocked = LevelBlockedRooms.Compute(graph, new RoomKey(1, 1), level: 40);
+        IReadOnlySet<RoomKey> blocked = LevelBlockedRooms.Compute(graph, filter: null, new RoomKey(1, 1), level: 40);
         IReadOnlySet<RoomKey> gated = LevelGatedRooms.Compute(graph, level: 40);
 
         Assert.DoesNotContain(new RoomKey(1, 1), blocked);
@@ -102,7 +102,7 @@ public sealed class LevelGatedRoomsTests : IDisposable
 
         // Standing inside the sealed pocket empties the blocked set — the way
         // out isn't gated — but the gate itself hasn't moved.
-        Assert.Empty(LevelBlockedRooms.Compute(graph, new RoomKey(1, 2), level: 40));
+        Assert.Empty(LevelBlockedRooms.Compute(graph, filter: null, new RoomKey(1, 2), level: 40));
         Assert.Contains(new RoomKey(1, 1), LevelGatedRooms.Compute(graph, level: 40));
     }
 

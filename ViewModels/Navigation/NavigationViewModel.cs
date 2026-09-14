@@ -778,8 +778,11 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     private void RefreshLevelBlockedRooms()
     {
         if (!ShowLevelBlocked) { LevelBlockedRooms = null; return; }
+        // Same filter the router plans with, so the overlay and the route
+        // picker can't disagree about whether a room is reachable.
         LevelBlockedRooms = Game.Map.LevelBlockedRooms.Compute(
             _services.RoomGraph,
+            _services.Movement,
             _services.RoomTracker.State.CurrentRoom?.Key,
             _services.PlayerStats.Level);
     }

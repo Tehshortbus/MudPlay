@@ -3279,6 +3279,36 @@ design.** Do not expect the pattern to be common; treat it as a known one-off un
 - **General lesson: absence of a gate in the data is not proof the game has no gate.** Treat a
   refusal on an exit the graph believes is open as possible evidence of a room-level block.
 
+### The Ancient Fortress — the "hard trainer", sealed by an exit-level gate *([CONFIRMED] 2026-09-14, user)*
+
+Unlike the Arena above, this one **is** an ordinary exit-level gate and is fully represented in
+the MDB. It matters because it's the reference case for the map's level overlays.
+
+- **Experienced players know the Ancient Fortress as the hard trainer.** On **Paradigm** you
+  cannot get in below **level 75**; on **stock** the restriction is lower — the user recalls it
+  being **in the 60s** *(approximate — not yet read off stock's tables)*.
+- **The gate is `12/2369 E -> 12/2371` `(Level: 75 to 999)`** on Paradigm (`999` is the no-cap
+  sentinel, normalised to 0 at parse). It is the **only** way in.
+- **The sealed area is much larger than the fortress** — 348 rooms across maps 12/16/17, taking
+  in the Hedge Maze, Grassy Meadow, Clock Tower **and the Deep Black Pit**. The pit is *inside*
+  the fortress; you cannot reach it without first crossing the level gate.
+- **The data appears to offer other ways in, and none of them work:**
+  - `12/2252` (Deep Black Pit) has `Hidden/Passable` drops into the jail cells — but the pit is
+    itself inside, so these are internal, not entrances.
+  - The pit is entered from the Great Pyramid only through `(Door [1000 picklocks/strength])`.
+- **`1000 picklocks/strength` reads as an impossible sentinel, not a threshold** *(inferred from
+  data, NOT user-confirmed — treat as unverified)*. Paradigm's requirements ramp smoothly to
+  **351** across ~1600 exits, then jump straight to **801** (3 exits) and **1000** (216 exits)
+  with nothing in between. `DoorPolicy.UnbashableStrengthThreshold = 200` already treats anything
+  above the realm's max achievable Strength as bash-impossible.
+- **Client consequence:** a reachability sweep that honours *only* level gates walks that pyramid
+  door, decides the fortress is already reachable, and paints nothing. `LevelBlockedRooms` now
+  takes the router's `IRoomFilter` and masks `ExitBlockReason.Level` out of the ignore-pass, so
+  non-level obstacles apply to both passes, cancel out, and can neither paint nor suppress a room.
+- **Verification method that works:** route from a named, obviously-outside origin (`12/221`
+  Scorching Desert) and read the route. A reverse-BFS frontier is not proof — its far end can
+  still be inside the sealed area.
+
 ## Currency & cash
 
 - **[CONFIRMED]** Five denominations, each with its own full coin name:

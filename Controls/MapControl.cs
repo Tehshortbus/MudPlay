@@ -797,13 +797,14 @@ public sealed class MapControl : Control
     private static readonly IBrush LevelBlockedFill = new SolidColorBrush(Color.Parse("#66DD3344"));
     private static readonly IPen   LevelBlockedPen  = new Pen(new SolidColorBrush(Color.Parse("#FFDD3344")), 2.0);
 
-    // Level-gate marker — a filled amber wedge in the room's top-left corner,
-    // for a room you can still walk into whose way onward is shut by level.
-    // Deliberately NOT a coloured exit stub: stubs mean traps, and reusing that
-    // vocabulary for a level gate reads as danger rather than a locked door.
-    // A corner wedge is a property OF the room, which is what a gate is here.
+    // Level-gate marker — a filled amber wedge in the room node's top-left
+    // corner, for a room you can still walk into whose way onward is shut by
+    // level. Deliberately NOT a coloured exit stub: stubs mean traps, and
+    // reusing that vocabulary for a level gate reads as danger rather than a
+    // locked door. A corner badge is a property OF the room, which is what a
+    // gate is here; it shares the U/D badges' dark rim and takes the free
+    // top-left corner so position alone separates the three.
     private static readonly IBrush LevelGateFill = new SolidColorBrush(Color.Parse("#FFE0A020"));
-    private static readonly IPen   LevelGateRim  = new Pen(new SolidColorBrush(Color.Parse("#FF7A4E00")), 1.0);
     // Death-marker skull — bone-white silhouette with dark hollows, drawn on
     // rooms that still hold an un-recovered deathpile. The dark eye / nose / tooth
     // features carry the contrast so the glyph reads on both light and dark room
@@ -1771,24 +1772,27 @@ public sealed class MapControl : Control
     private static void DrawLevelBlockedHighlight(DrawingContext ctx, Rect cell)
         => ctx.DrawRectangle(LevelBlockedFill, LevelBlockedPen, new RoundedRect(cell.Deflate(1), cell.Width * 0.14));
 
-    // Right-triangle wedge seated in the tile's top-left corner. Sized off the
-    // tile so it holds its proportion at every zoom, and kept off the centre
-    // where the room's own glyphs (lair count, spell letter) live.
+    // Amber wedge in the room node's TOP-LEFT corner — the third member of the
+    // corner-badge family, opposite the U/D badges on the right so position
+    // alone tells them apart. Sized to the drawn room NODE (DrawRoomNode's
+    // cell.Width * 0.45 square), not the whole tile, so it sits inside the
+    // visible room square instead of spilling across the gap between tiles.
     private static void DrawLevelGateMarker(DrawingContext ctx, Rect cell)
     {
-        Rect inner = cell.Deflate(1);
-        double side = inner.Width * 0.38;
-        if (side < 2) return;
+        double nodeSize = Math.Max(cell.Width * 0.45, 3.0);
+        double nx = cell.X + (cell.Width  - nodeSize) / 2;
+        double ny = cell.Y + (cell.Height - nodeSize) / 2;
+        double size = Math.Max(nodeSize * 0.50, 7.0);
 
         StreamGeometry wedge = new();
         using (StreamGeometryContext g = wedge.Open())
         {
-            g.BeginFigure(inner.TopLeft, isFilled: true);
-            g.LineTo(new Point(inner.X + side, inner.Y));
-            g.LineTo(new Point(inner.X, inner.Y + side));
+            g.BeginFigure(new Point(nx + size, ny), isFilled: true);
+            g.LineTo(new Point(nx, ny));
+            g.LineTo(new Point(nx, ny + size));
             g.EndFigure(isClosed: true);
         }
-        ctx.DrawGeometry(LevelGateFill, LevelGateRim, wedge);
+        ctx.DrawGeometry(LevelGateFill, VerticalBadgeEdgePen, wedge);
     }
 
     private static void DrawWhereHighlight(DrawingContext ctx, Rect cell)
