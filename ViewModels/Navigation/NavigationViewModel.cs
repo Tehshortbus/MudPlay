@@ -76,7 +76,6 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _sailingTick.Stop();
 
         _services.RoomTracker.StateChanged += OnTrackerStateChanged;
-        _services.PlayerStats.PropertyChanged += OnPlayerStatsChanged;
         _services.Recovery.TierChanged    += OnRecoveryTierChanged;
         _services.Walker.Event += OnWalkerEvent;
         _services.MovementCoordinator.PauseStateChanged += OnPauseChanged;
@@ -168,7 +167,6 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _whereHighlightPump?.Stop();
         _services.Settings.GlobalSettingsChanged -= OnGlobalSettingsChanged;
         _services.RoomTracker.StateChanged -= OnTrackerStateChanged;
-        _services.PlayerStats.PropertyChanged -= OnPlayerStatsChanged;
         _services.Recovery.TierChanged    -= OnRecoveryTierChanged;
         _services.Walker.Event -= OnWalkerEvent;
         _services.MovementCoordinator.PauseStateChanged -= OnPauseChanged;
@@ -742,16 +740,9 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _services.Profile.Save();
     }
 
-    // A level-up moves the gate windows we clear, so the overlay repaints on it.
-    // Narrowed to Level so the rest of the stat screen's churn costs nothing.
-    private void OnPlayerStatsChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
-    {
-        if (e.PropertyName == nameof(Game.PlayerStats.Level)) RefreshLevelGatedRooms();
-    }
-
-    // Rooms holding a level gate we can't pass. A gate belongs to the room, not
-    // to where we're standing, so this only recomputes when the answer can
-    // actually change: the toggle, a level-up, and a game-data set swap.
+    // Rooms holding a level gate. A property of the map rather than of the
+    // character, so the only things that can change the answer are the toggle
+    // and a game-data set swap — not our level, and not where we're standing.
     [ObservableProperty] private IReadOnlySet<RoomKey>? _levelGatedRooms;
 
     [ObservableProperty] private bool _showLevelGates = true;
@@ -768,8 +759,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     private void RefreshLevelGatedRooms()
     {
         if (!ShowLevelGates) { LevelGatedRooms = null; return; }
-        LevelGatedRooms = Game.Map.LevelGatedRooms.Compute(
-            _services.RoomGraph, _services.PlayerStats.Level);
+        LevelGatedRooms = Game.Map.LevelGatedRooms.Compute(_services.RoomGraph);
     }
 
     [ObservableProperty] private bool _legendVisible;

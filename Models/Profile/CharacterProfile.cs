@@ -132,10 +132,10 @@ public sealed class CharacterProfile
     // name, defaults to Mono (the original flat-purple "has a room spell" cue).
     public SpellDisplayMode NavSpellMode { get; set; } = SpellDisplayMode.Mono;
 
-    // The Navigation map's level-gate overlay (rooms holding a level gate this
-    // character can't pass, marked with an amber corner wedge). Persisted
-    // per-character like the two above. Defaults ON — it costs one scan per
-    // level-up, and a gate you can't pass is worth seeing before you walk to it.
+    // The Navigation map's level-gate overlay (rooms holding a level gate,
+    // marked with an amber corner wedge). Persisted per-character like the two
+    // above. Defaults ON — it costs one scan per game-data set swap, and a gate
+    // is worth seeing before you walk to it.
     public bool NavShowLevelGates { get; set; } = true;
 
     // Persisted left-pane proportions for resizable two-pane dialogs keyed by

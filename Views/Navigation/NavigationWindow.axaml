@@ -544,7 +544,7 @@
                                     <Button Classes="ToggleChip" Content="Level gates"
                                             Command="{Binding ToggleLevelGatesCommand}"
                                             HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
-                                            ToolTip.Tip="Mark rooms holding a level gate you can't pass, with an amber corner wedge — the room you can still walk into whose way onward is shut. Covers gated exits and level-restricted boat sailings. On by default; your choice is saved per character."
+                                            ToolTip.Tip="Mark rooms holding a level gate, with an amber corner wedge — a room you can still walk into whose way onward is shut unless you are inside the gate's level window. Covers gated exits, level-gated room teleports, and level-restricted boat sailings. On by default; your choice is saved per character."
                                             Classes.LevelGateFill="{Binding ShowLevelGates}"/>
                                     <Button Classes="ToggleChip" Content="Legend"
                                             Command="{Binding ToggleLegendCommand}"
