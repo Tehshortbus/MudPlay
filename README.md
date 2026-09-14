@@ -1,8 +1,9 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.83.9**
-> - Newhaven's Arena is recognised as level 1-3 only on stock, so a higher-level character is routed around the entrance instead of walking down and being refused
+> **Version 3.84.0**
+> - New map overlay: **Level-blocked** paints the rooms your current level shuts you out of in red — the gated room and everything sealed behind it — with a chip beside Lairs / Shops / Spells and an entry in the Legend
+> - Off by default and saved per character; it costs nothing while it's off
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

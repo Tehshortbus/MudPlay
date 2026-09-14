@@ -47,6 +47,12 @@
             <Setter Property="BorderBrush" Value="#6428A0"/>
             <Setter Property="Foreground" Value="#FFFFFF"/>
         </Style>
+        <!-- Level-blocked: red (MapControl.LevelBlockedPen) -->
+        <Style Selector="Button.ToggleChip.LevelBlockedFill">
+            <Setter Property="Background" Value="#DD3344"/>
+            <Setter Property="BorderBrush" Value="#DD3344"/>
+            <Setter Property="Foreground" Value="#FFFFFF"/>
+        </Style>
         <!-- Legend: neutral amber (no map equivalent) -->
         <Style Selector="Button.ToggleChip.LegendFill">
             <Setter Property="Background" Value="{StaticResource AccentAmberBrush}"/>
@@ -535,6 +541,11 @@
                                             HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
                                             ToolTip.Tip="Room-spell highlight: click to cycle one flat colour → colour each room by its spell (hover a room to see the spell name) → off. Your choice is saved per character."
                                             Classes.SpellFill="{Binding HighlightSpells}"/>
+                                    <Button Classes="ToggleChip" Content="Level-blocked"
+                                            Command="{Binding ToggleLevelBlockedCommand}"
+                                            HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                            ToolTip.Tip="Highlight rooms your level shuts you out of, in red — the level-gated room and everything sealed behind it, judged against your current level from where you're standing. Off by default; your choice is saved per character."
+                                            Classes.LevelBlockedFill="{Binding ShowLevelBlocked}"/>
                                     <Button Classes="ToggleChip" Content="Legend"
                                             Command="{Binding ToggleLegendCommand}"
                                             HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
@@ -670,6 +681,7 @@
                                  LoopBuilderWaypoints="{Binding LoopBuilderWaypoints}"
                                  LoopApproachPreviewPath="{Binding LoopApproachPreviewPath}"
                                  AvoidedRooms="{Binding AvoidedRooms}"
+                                 LevelBlockedRooms="{Binding LevelBlockedRooms}"
                                  StashRooms="{Binding StashRooms}"
                                  GhRooms="{Binding GhRooms}"
                                  GhFullRooms="{Binding GhFullRooms}"
@@ -915,6 +927,13 @@
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <Border Width="14" Height="14" Background="#4A7791"/>
                         <TextBlock Text="Shop / banks" FontSize="11" Foreground="{StaticResource ChromeFgSecBrush}"/>
+                    </StackPanel>
+                    <!-- Level-blocked = the translucent red square + ring the map draws
+                         (LevelBlockedFill / LevelBlockedPen) over whatever the room is. -->
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Border Width="14" Height="14" Background="#66DD3344"
+                                BorderBrush="#DD3344" BorderThickness="2"/>
+                        <TextBlock Text="Blocked by your level" FontSize="11" Foreground="{StaticResource ChromeFgSecBrush}"/>
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <Border Width="14" Height="14" Background="#6428A0"/>

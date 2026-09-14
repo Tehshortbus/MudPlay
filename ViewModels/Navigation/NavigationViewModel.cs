@@ -53,6 +53,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         {
             _lairMode = lairProfile.NavLairMode;
             _spellMode = lairProfile.NavSpellMode;
+            _showLevelBlocked = lairProfile.NavShowLevelBlocked;
         }
 
         // 1 s tick — keeps the CURRENT NAV lair countdowns + the
@@ -75,6 +76,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _sailingTick.Stop();
 
         _services.RoomTracker.StateChanged += OnTrackerStateChanged;
+        _services.PlayerStats.PropertyChanged += OnPlayerStatsChanged;
         _services.Recovery.TierChanged    += OnRecoveryTierChanged;
         _services.Walker.Event += OnWalkerEvent;
         _services.MovementCoordinator.PauseStateChanged += OnPauseChanged;
@@ -165,6 +167,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _whereHighlightPump?.Stop();
         _services.Settings.GlobalSettingsChanged -= OnGlobalSettingsChanged;
         _services.RoomTracker.StateChanged -= OnTrackerStateChanged;
+        _services.PlayerStats.PropertyChanged -= OnPlayerStatsChanged;
         _services.Recovery.TierChanged    -= OnRecoveryTierChanged;
         _services.Walker.Event -= OnWalkerEvent;
         _services.MovementCoordinator.PauseStateChanged -= OnPauseChanged;
@@ -738,6 +741,46 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         _services.Profile.Save();
     }
 
+    // Rooms this character's level shuts them out of — the gated room plus
+    // everything sealed behind it. Empty while the overlay is off, so nothing
+    // pays for the sweeps unless the chip is lit.
+    [ObservableProperty] private IReadOnlySet<RoomKey>? _levelBlockedRooms;
+
+    [ObservableProperty] private bool _showLevelBlocked;
+
+    // Persist the level-blocked overlay per-character (mirrors OnLairModeChanged)
+    // and recompute immediately so the chip lights the map without waiting for
+    // the next move.
+    partial void OnShowLevelBlockedChanged(bool value)
+    {
+        RefreshLevelBlockedRooms();
+        if (_services.Profile.Current is not { } profile) return;
+        if (profile.NavShowLevelBlocked == value) return;
+        profile.NavShowLevelBlocked = value;
+        _services.Profile.Save();
+    }
+
+    // Recompute the blocked set. Cheap no-op while the overlay is off — the two
+    // reachability sweeps only run when someone is looking at them. Driven by the
+    // three inputs that can change the answer: the toggle, our level, and where
+    // we're standing (the gate is tested on entry, so a character already inside
+    // a sealed pocket isn't blocked from it).
+    // A level-up moves the gate windows we clear, so the overlay repaints on it.
+    // Narrowed to Level so the rest of the stat screen's churn costs nothing.
+    private void OnPlayerStatsChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(Game.PlayerStats.Level)) RefreshLevelBlockedRooms();
+    }
+
+    private void RefreshLevelBlockedRooms()
+    {
+        if (!ShowLevelBlocked) { LevelBlockedRooms = null; return; }
+        LevelBlockedRooms = Game.Map.LevelBlockedRooms.Compute(
+            _services.RoomGraph,
+            _services.RoomTracker.State.CurrentRoom?.Key,
+            _services.PlayerStats.Level);
+    }
+
     [ObservableProperty] private bool _legendVisible;
 
     // Per-room lair respawn times (seconds) for the visible layout, keyed by
@@ -772,6 +815,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         SpellDisplayMode.ByName => SpellDisplayMode.Off,
         _                       => SpellDisplayMode.Mono,
     };
+    [RelayCommand] private void ToggleLevelBlocked() => ShowLevelBlocked = !ShowLevelBlocked;
     [RelayCommand] private void ToggleLegend() => LegendVisible   = !LegendVisible;
 
     // ----- Map binding ----------------------------------------------
@@ -3058,6 +3102,9 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         // trims correctly even while the walker is gated.
         RefreshFromWalker();
         RefreshDerivedState();
+        // The gate is tested on entry, so where we stand changes which rooms are
+        // sealed off — a character already inside a pocket isn't blocked from it.
+        RefreshLevelBlockedRooms();
     }
 
     private void OnRecoveryTierChanged(RecoveryTierChangedEvent _) => RefreshRecoveryTierBools();

@@ -110,6 +110,11 @@ public sealed class MapControl : Control
     public static readonly StyledProperty<IReadOnlySet<RoomKey>?> AvoidedRoomsProperty =
         AvaloniaProperty.Register<MapControl, IReadOnlySet<RoomKey>?>(nameof(AvoidedRooms));
 
+    // Rooms the character's level shuts them out of — the gated room plus
+    // everything sealed behind it. Null/empty while the overlay is off.
+    public static readonly StyledProperty<IReadOnlySet<RoomKey>?> LevelBlockedRoomsProperty =
+        AvaloniaProperty.Register<MapControl, IReadOnlySet<RoomKey>?>(nameof(LevelBlockedRooms));
+
     // Rooms the user has marked as stash drops. Rendered with a gold outline so
     // the user can spot them at a glance. Game.Cash.StashRoomManager reads the
     // same set from Models.Profile.CharacterProfile.StashRooms and dispatches
@@ -310,6 +315,12 @@ public sealed class MapControl : Control
     {
         get => GetValue(AvoidedRoomsProperty);
         set => SetValue(AvoidedRoomsProperty, value);
+    }
+
+    public IReadOnlySet<RoomKey>? LevelBlockedRooms
+    {
+        get => GetValue(LevelBlockedRoomsProperty);
+        set => SetValue(LevelBlockedRoomsProperty, value);
     }
 
     public IReadOnlySet<RoomKey>? StashRooms
@@ -770,6 +781,12 @@ public sealed class MapControl : Control
     // Cleared by the VM's ~12s timer.
     private static readonly IBrush WhereTargetFill = new SolidColorBrush(Color.Parse("#8833DD66"));
     private static readonly IPen   WhereTargetPen  = new Pen(new SolidColorBrush(Color.Parse("#FF33DD66")), 2.5);
+
+    // Level-blocked rooms. Red for "you can't go here", and translucent so the
+    // room's own lair/shop/spell fill still reads underneath — the overlay marks
+    // reachability, it doesn't replace what the room IS.
+    private static readonly IBrush LevelBlockedFill = new SolidColorBrush(Color.Parse("#66DD3344"));
+    private static readonly IPen   LevelBlockedPen  = new Pen(new SolidColorBrush(Color.Parse("#FFDD3344")), 2.0);
     // Death-marker skull — bone-white silhouette with dark hollows, drawn on
     // rooms that still hold an un-recovered deathpile. The dark eye / nose / tooth
     // features carry the contrast so the glyph reads on both light and dark room
@@ -830,7 +847,7 @@ public sealed class MapControl : Control
             HighlightShopsProperty, SpellModeProperty,
             WalkPathProperty, LoopPathProperty, LoopBuilderPathProperty, LoopBuilderWaypointsProperty,
             AutoLairWaypointsProperty, AutoLairApproachPathProperty,
-            LoopApproachPreviewPathProperty, AvoidedRoomsProperty, StashRoomsProperty, GhRoomsProperty, GhFullRoomsProperty, LoopSequenceNumbersProperty,
+            LoopApproachPreviewPathProperty, AvoidedRoomsProperty, LevelBlockedRoomsProperty, StashRoomsProperty, GhRoomsProperty, GhFullRoomsProperty, LoopSequenceNumbersProperty,
             AutoLairRoomsProperty, WalkPathIsAutoLairProperty, SelectedRoomKeyProperty,
             PreviewPathProperty, TeleportRoomsProperty, DeathRoomsProperty,
             BossRoomsProperty, StopBeforeBossRoomsProperty, TrainerRoomsProperty,
@@ -1258,6 +1275,9 @@ public sealed class MapControl : Control
             if (!cell.Intersects(viewport)) continue;
 
             DrawRoomNode(context, cell, kvp.Value);
+
+            if (LevelBlockedRooms is { } blocked && blocked.Contains(kvp.Value))
+                DrawLevelBlockedHighlight(context, cell);
 
             // @where target — a transient green flash the VM clears after ~12s.
             // Drawn right on the node so it reads as a marked square.
@@ -1724,6 +1744,11 @@ public sealed class MapControl : Control
 
     // Green flash for the room an @where reply located — a translucent fill + ring
     // over the whole cell so it stands out at a glance; the VM clears it after ~12s.
+    // Same rounded-square shape as the @where flash so the two read as one family
+    // of room markers, in red rather than green.
+    private static void DrawLevelBlockedHighlight(DrawingContext ctx, Rect cell)
+        => ctx.DrawRectangle(LevelBlockedFill, LevelBlockedPen, new RoundedRect(cell.Deflate(1), cell.Width * 0.14));
+
     private static void DrawWhereHighlight(DrawingContext ctx, Rect cell)
         => ctx.DrawRectangle(WhereTargetFill, WhereTargetPen, new RoundedRect(cell.Deflate(1), cell.Width * 0.14));
 
