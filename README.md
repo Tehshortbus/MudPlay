@@ -1,10 +1,9 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.88.14**
-> - The "walk to loop" itinerary in CURRENT NAV now lists only the walk-to steps, not the whole loop appended after them
-> - A running loop now draws numbered green waypoint bubbles on the map — matching the CURRENT NAV rows — so you can tell which row is which room, the way the loop builder's red numbered pins already do
-> - A loop no longer leaks one attack into a "do not attack" (or non-lair, under "only attack in lair rooms") room on entry — suppression now judges the room you're stepping into, not the one you're leaving, whether the flag was set live or configured before the run
+> **Version 3.89.0**
+> - The client now tracks the daily charges of your Paradigm **transport tokens** — on login it `look`s each held token to read its "Uses remaining" count, and re-reads after any `use`
+> - New **`@token`** remote command — bare, it lists every held token's remaining charges; with a name, just that one
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

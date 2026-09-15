@@ -95,6 +95,7 @@ public static class RemoteCommandCatalog
             ["@enc"]          = PlayerRemoteControls.QueryInventory,
             ["@have"]         = PlayerRemoteControls.QueryInventory,
             ["@inv"]          = PlayerRemoteControls.QueryInventory,   // carried pack + keys — what a look can't see
+            ["@token"]        = PlayerRemoteControls.QueryInventory,   // remaining daily charges of a held transport token
             ["@suicide"]      = PlayerRemoteControls.SysopCommands,   // irreversible — gated under Elevated Commands
             ["@invite"]       = PlayerRemoteControls.RequestInvite,
             ["@join"]         = PlayerRemoteControls.RequestInvite,
@@ -232,6 +233,7 @@ public static class RemoteCommandCatalog
             ["@enc"]          = new("@enc", "encumbrance"),
             ["@have"]         = new("@have <item>", "whether you carry, wear, or hold a matching item / key"),
             ["@inv"]          = new("@inv", "your carried pack and keys"),
+            ["@token"]        = new("@token <name>", "remaining daily charges of a held transport token"),
             ["@suicide"]      = new("@suicide", "forces your character's death (Elevated; uses your stored suicide password; blocked at/below your lives threshold)"),
             ["@invite"]       = new("@invite", "asks you to invite the sender into your party"),
             ["@join"]         = new("@join", "asks you to join the sender's party"),

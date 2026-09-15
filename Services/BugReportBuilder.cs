@@ -184,6 +184,15 @@ public static class BugReportBuilder
         // it was skipped because it already ran earlier today, not that it's broken.
         Kv(sb, "Quest flag sync last ran (date)",
             svc.QuestFlagSync.LastSyncDate?.ToString("yyyy-MM-dd") ?? "(never)");
+
+        // Paradigm transport-token charges read this session (from each held token's
+        // `look`) — so a "token wasn't offered / said no charges" report shows what
+        // the tracker actually knew.
+        IReadOnlyList<Game.Tokens.TokenTracker.TokenCharge> tokenCharges = svc.Tokens.KnownCharges();
+        Kv(sb, "Token charges read",
+            tokenCharges.Count == 0
+                ? "(none read this session)"
+                : string.Join(", ", tokenCharges.Select(c => $"{c.Place}={c.Remaining}")));
         // Diagnostic-channel state gates whether the Program-log tail carries any
         // decision trail: both flags default off, and every _log?.Debug/Combat
         // site is skipped at generation time when off, so a report captured with

@@ -430,6 +430,10 @@ public sealed class AppServices
     // GroundItems survey; replies only.
     public Game.Remote.InventoryQueryHandler InventoryQuery { get; private set; } = null!;
 
+    // Paradigm transport-token charge tracker + its @token read-only query handler.
+    public Game.Tokens.TokenTracker Tokens { get; private set; } = null!;
+    public Game.Remote.TokenQueryHandler TokenQuery { get; private set; } = null!;
+
     // Write-side consumer of RemoteCommands for the inventory /
     // cash action commands — @get-all / @drop-all /
     // @deposit-all (ExecuteCommands) and @share (party-whitelist).
@@ -4624,6 +4628,21 @@ public sealed class AppServices
         // InventoryManager snapshot; @what reports the GroundItems survey. No
         // wire output either.
         InventoryQuery = new Game.Remote.InventoryQueryHandler(RemoteCommands, Inventory, GroundItems, Currency);
+
+        // Paradigm transport-token daily-charge tracking. Reads each held token's
+        // "Uses remaining: N" via `look` (on login + after a `use`), Paradigm-only.
+        // The raw wire sender matches QuestFlagProbe; the outbound tap + line feed
+        // are wired in MainWindowViewModel. Cleared on profile / set swap so a new
+        // character re-reads from scratch.
+        Tokens = new Game.Tokens.TokenTracker(
+            send: cmd => SendGameCommand(cmd),
+            carried: () => Inventory.Snapshot.CarriedItems,
+            onParadigm: () => GameData.ActiveRealm == Game.RealmType.ParaMud,
+            log: Log);
+        Profile.ProfileLoaded += _ => Tokens.Clear();
+        GameData.ActiveSetChanged += _ => Tokens.Clear();
+        // @token <name> — read-only remaining-charges report off the tracker.
+        TokenQuery = new Game.Remote.TokenQueryHandler(RemoteCommands, Tokens);
 
         // @timer — read-only report of the boss respawn timers being tracked. Reads
         // the boss catalog + persisted kill-times; no wire output beyond its reply.

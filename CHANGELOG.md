@@ -1,5 +1,11 @@
 # Version history
 
+## 3.89.0
+
+- The client now tracks the daily charges of your Paradigm **transport tokens** — on login it `look`s each held token to read its "Uses remaining" count, and re-reads after any `use` (so a use blocked by an NPC in the room, too little gold, or too low a level never mis-counts)
+- New **`@token`** remote command — bare, it lists every held token's remaining charges; with a name, it reports just that one
+- (Foundation for token-aware routing and party token coordination — those land in follow-up PRs)
+
 ## 3.88.14
 
 - The "walk to loop" itinerary in CURRENT NAV now lists only the walk-to steps, not the whole loop appended after them
