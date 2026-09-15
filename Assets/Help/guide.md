@@ -569,6 +569,7 @@ Active party members get a few things for free regardless of the grid: the party
 | `@enc` | — | encumbrance |
 | `@have` | `<item>` | whether you carry, wear, or hold a matching item on the key ring |
 | `@inv` | — | your carried pack and keys |
+| `@token` | — or `<name>` | remaining daily charges of your held transport tokens — bare lists them all, a name reports just that one (Paradigm) |
 
 ### Move me around
 

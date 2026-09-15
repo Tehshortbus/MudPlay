@@ -1009,6 +1009,9 @@ public partial class MainWindowViewModel : ObservableObject
         // Quest-flag reader — parses the `abil` / `sys god … abil` replies during the
         // login completion sync.
         AppServices.Current.QuestFlagReader.AttachLineExtractor(Lines);
+        // Token charge tracker — parses each held token's `look` "Uses remaining: N"
+        // reply and the "You invoke the token…" use line (Paradigm transport tokens).
+        AppServices.Current.Tokens.AttachLineExtractor(Lines);
         // Inbound ailment chip-clear — PartyAilmentTracker watches server
         // lines for OUR cure spell landing on a party member (matched by the
         // cure spell's CasterMessage template) and clears that member's
@@ -1778,6 +1781,10 @@ public partial class MainWindowViewModel : ObservableObject
                 }
             }
             svc.QuestAvailability.AnnounceLoginAvailable();
+            // Read held Paradigm transport-token charges (no-op off Paradigm / with
+            // no tokens held). Fire-and-forget so it doesn't delay the announce; by
+            // this point (5s after login) the inventory `i` has been parsed.
+            _ = svc.Tokens.RefreshAsync();
         });
     }
 
@@ -3176,6 +3183,9 @@ public partial class MainWindowViewModel : ObservableObject
         // Unrecognized-line watcher — remember the command briefly so its server
         // echo isn't staged as an unknown candidate line.
         AppServices.Current.MessageCandidateWatcher.ObserveOutbound(data);
+        // Token tracker — a `use <token>` here triggers a re-look to reconcile its
+        // remaining charges (Paradigm-gated inside the observer).
+        AppServices.Current.Tokens.ObserveOutbound(data);
         var t = _telnet;
         if (t is not null) _ = FireSendAsync(t, data);
     }
