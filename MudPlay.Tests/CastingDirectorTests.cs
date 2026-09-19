@@ -29,6 +29,12 @@ public sealed class CastingDirectorTests
         public bool AutoHealRestEnabled { get; set; } = true;
         public bool AutoBlessEnabled { get; set; } = true;
 
+        /// <summary>Mirrors CombatManager.IsSpellAttackOwed — true while a prior
+        /// between-round cast left the engine owing an attack before any OTHER
+        /// survival/buff/cure/debuff category may fire. False by default (matches
+        /// every pre-existing test's assumption that nothing is ever owed).</summary>
+        public bool AttackOwed { get; set; }
+
         /// <summary>Cast-code → required mana. Empty by default, so the lookup
         /// returns null (unknown ⇒ no affordability block) and the legacy tests
         /// behave exactly as before. Populate to exercise the mana gate.</summary>
@@ -49,6 +55,7 @@ public sealed class CastingDirectorTests
             Director.SetManaCostLookup(
                 code => ManaCosts.TryGetValue(code, out int c) ? c : null);
             Director.SetAutoBlessGate(() => AutoBlessEnabled);
+            Director.SetAttackOwedGate(() => AttackOwed);
         }
 
         /// <summary>Mirror PromptParser's write order so HasPromptData
@@ -579,24 +586,62 @@ public sealed class CastingDirectorTests
     }
 
     [Fact]
-    public void EmergencyHeal_IsReorderable_DemotedBelowMajor_MajorFiresFirst()
+    public void EmergencyHeal_AlwaysFiresFirst_IgnoringConfiguredPriority()
     {
-        // Emergency is now an ordinary priority row, not a hardcoded always-lead.
-        // Rank it below Major and Major wins even in the emergency band — proving
-        // the position is genuinely user-controlled.
+        // Emergency is a last-resort self-save, not an ordinary reorderable priority
+        // row: it's checked in Evaluate() ahead of every pacing gate (and ahead of
+        // the whole RunDecisionPass priority walk), specifically so no configuration
+        // — including demoting its own priority number below Major's — can leave it
+        // waiting behind another category once it's genuinely due. "Nothing else
+        // matters" once Emergency is due (session 2026-09-18, user).
         using Harness h = new();
         h.Spells.EmergencyHealSpell = "lastresort";
         h.Spells.MajorHealSpell = "fullheal";
         h.Spells.MinorHealSpell = "heal";
-        h.Spells.PriorityEmergencyHeal = 9;   // demoted to the back
-        h.Spells.PriorityMajorSelfHeal = 1;   // Major promoted to lead
+        h.Spells.PriorityEmergencyHeal = 9;   // demoted — no longer has any effect
+        h.Spells.PriorityMajorSelfHeal = 1;   // "promoted" — still doesn't matter
         h.Health.MajorHealCombatTrigger = 40;
         h.Health.EmergencyHealTrigger = 20;
 
         h.SetPrompt(hp: 15, maxHp: 100, ma: 100, maxMa: 100, inCombat: true);
 
         Assert.Single(h.CastsSent);
-        Assert.Equal("fullheal", h.CastsSent[0]);
+        Assert.Equal("lastresort", h.CastsSent[0]);
+    }
+
+    [Fact]
+    public void EmergencyHeal_FiresDespiteAttackOwed_InsteadOfWaitingOutTheAlternation()
+    {
+        // Report 2026-09-18 (paradigm-20260918-190830): dmer sat as the top queued
+        // candidate for 5 real seconds at 31% HP, held purely by attackOwed — a
+        // client-side alternation debt with no server backing. Emergency must skip
+        // straight past it once due; every other category still respects it.
+        using Harness h = new();
+        h.Spells.EmergencyHealSpell = "dmer";
+        h.Health.EmergencyHealTrigger = 48;
+        h.AttackOwed = true;   // combat still owes an attack from an earlier cast
+
+        h.SetPrompt(hp: 134, maxHp: 426, ma: 386, maxMa: 677, inCombat: true);
+
+        Assert.Single(h.CastsSent);
+        Assert.Equal("dmer", h.CastsSent[0]);
+    }
+
+    [Fact]
+    public void MajorSelfHeal_StillHoldsForAttackOwed_WhenEmergencyIsntDue()
+    {
+        // The attackOwed bypass is Emergency-only — Major/Minor/etc. must still
+        // respect the alternation like before, or every category quietly stops
+        // pacing against attacks the instant one bypass exists.
+        using Harness h = new();
+        h.Spells.MajorHealSpell = "fullheal";
+        h.Health.MajorHealCombatTrigger = 75;
+        h.Health.EmergencyHealTrigger = 20;   // well below the HP used — not due
+        h.AttackOwed = true;
+
+        h.SetPrompt(hp: 60, maxHp: 100, ma: 100, maxMa: 100, inCombat: true);
+
+        Assert.Empty(h.CastsSent);
     }
 
     [Fact]

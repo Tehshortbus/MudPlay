@@ -1,5 +1,10 @@
 # Version history
 
+## 3.96.11
+
+- **Critical**: Emergency heal now fires immediately once it's due, full stop — a real auto-collected log showed `dmer` sitting as the top-priority queued candidate for 5 real seconds at 31% HP, held back purely by the attack-owed alternation debt (a client-side pacing rule with no server backing). Emergency now bypasses that debt, the between-round pacing cooldown, and the stale-repeat duplicate guard the instant it's due — a genuine server rejection (no mana, already cast this round, stunned) still applies exactly as before, only the engine's own self-imposed waiting is removed.
+- Emergency's priority slot is no longer reorderable relative to other heal categories — it always fires first now, by design.
+
 ## 3.96.10
 
 - Obtain-then-cross walk-to: the map route line and **Details…** now show the whole journey (to the shop, then on to the requested destination) instead of stopping at the shop the gate item is bought at

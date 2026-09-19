@@ -1,9 +1,8 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.96.10**
-> - Obtain-then-cross walk-to: the map route line and **Details…** now show the whole journey (to the shop, then on to the requested destination) instead of stopping at the shop the gate item is bought at
-> - Route picker window now grows to fit the cards when planning finishes, instead of staying at its "Calculating…" size and overflowing onto the buttons
+> **Version 3.96.11**
+> - **Critical**: Emergency heal now fires the instant it's due, always — it no longer waits behind the attack-owed alternation debt, the between-round pacing cooldown, or the stale-repeat duplicate guard. A genuine server rejection (no mana, stunned, already cast this round) still applies; only the engine's own self-imposed waiting is gone
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

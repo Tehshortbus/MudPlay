@@ -1421,13 +1421,31 @@ public sealed class CastingDirector : IDisposable
         // GAME_MECHANICS.md note that only attacks were governed by AttackPrevented —
         // a between-round self-heal is refused by it too.
         if (AttacksPrevented()) return null;
+
+        // Emergency is the last-resort self-save: once it's due, nothing client-side
+        // may hold it back — not the attack-owed alternation debt below, not the
+        // between-round pacing cooldown, not the stale-repeat duplicate guard that
+        // exists for a different scenario entirely. Those all pace OTHER categories
+        // against each other; Emergency skips the pacing, not the game's own rules —
+        // a genuine server rejection (no mana, a round the server says is already
+        // spent) still lands and is handled the normal way through TryCast, this
+        // only removes SELF-imposed waiting when nothing about the server actually
+        // blocks it. AttacksPrevented above still applies to Emergency too: that one
+        // is a real server block (stunned/petrified/bound refuses EVERY cast, no
+        // exceptions), so bypassing it would only waste the attempt without landing
+        // it any sooner — the wait there is unavoidable, not self-imposed. (Session
+        // 2026-09-18: dmer sat as the top queued candidate for 5 real seconds at 31%
+        // HP, held by attackOwed alone, while the character kept taking hits with a
+        // ready heal sitting unused — "nothing else matters" once Emergency is due.)
+        if (healRestEnabled && TryFireEmergencyNow() is { } emergencySpell)
+            return emergencySpell;
+
         if (_cast.IsCastBlocked) return null;
         // A prior survival cast already spent a round the combat engine's attack
         // spell was owed — sit out entirely so that resume can reclaim the very
         // next round, rather than re-firing again ourselves the instant HP dips
-        // (which it always will while nothing is fighting back). No exception for
-        // urgency: engage / attack / heal-or-buff / attack / heal-or-buff / ... is
-        // the fixed cadence regardless of how the fight is going.
+        // (which it always will while nothing is fighting back). Applies to every
+        // OTHER category — Emergency bypasses it above.
         if (_attackOwed?.Invoke() == true) return null;
 
         // One between-round spell (heal / cure / buff / debuff / item) per combat
@@ -1464,6 +1482,46 @@ public sealed class CastingDirector : IDisposable
                 : "between-round casts resumed — AttackPrevented condition cleared");
         }
         return blocked;
+    }
+
+    // Guards ONLY against the same instant's several reactive Evaluate() calls (an
+    // Hp property change and an Ma property change off ONE prompt line each fire
+    // their own OnStateChanged) sending the identical emergency cast twice — not a
+    // pacing choice like the gates Emergency bypasses, just enough to keep one real
+    // trigger from becoming two sends. Comfortably shorter than a combat round.
+    private static readonly TimeSpan EmergencyRefireGuard = TimeSpan.FromMilliseconds(800);
+    private DateTime _lastEmergencyFireAt = DateTime.MinValue;
+
+    // Fire Emergency ahead of every pacing gate in Evaluate() — see the call site's
+    // comment. Still goes through CastCoordinator.TryCast normally (a genuine
+    // server rejection — no mana, fizzle, already-cast-this-round — still applies
+    // and is handled exactly as any other cast's failure is), so this only removes
+    // the SELF-imposed waits: reset the between-round cooldown immediately before
+    // the attempt (instead of waiting out its ~5.5s timer) and skip the stale-
+    // repeat guard (built for a different scenario — a heal that already landed but
+    // whose confirm hasn't parsed yet — which would otherwise read a heal that was
+    // truly just BLOCKED, and so never moved Hp/Ma, as a suspicious duplicate).
+    private string? TryFireEmergencyNow()
+    {
+        string? spell = PickEmergencySelfHeal(_readSpells(), _readHealth());
+        if (spell is null) return null;
+        if (_now() - _lastEmergencyFireAt < EmergencyRefireGuard) return null;
+        if (_manaCostLookup?.Invoke(spell) is { } cost && _state.Ma < cost) return null;
+
+        _cast.ReleaseBetweenRoundCooldown();
+        if (!_cast.TryCast(spell, target: null, bypassRecastInterval: true)) return null;
+
+        _lastEmergencyFireAt = _now();
+        _lastSelfHealCast = (spell, _state.Hp, _state.Ma, _now());
+        _betweenRoundSlotUsedAt = _now();
+        _log?.Combat(LogCategory,
+            $"EmergencyHeal fired (priority bypass — ahead of attack-owed/pacing) "
+            + $"spell={spell} hp={_state.Hp}/{_state.MaxHp} ma={_state.Ma}/{_state.MaxMa}");
+        // Same downstream bookkeeping the normal dispatch fires on a successful cast
+        // (combat's attack-resume + attack-owed arming, stealth's re-sneak) — this is
+        // still a between-round cast, just one that skipped the pacing gates to get here.
+        CastFired?.Invoke();
+        return spell;
     }
 
     // Walk the priority list and fire the first ready candidate. Returns the spell
