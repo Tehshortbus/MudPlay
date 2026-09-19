@@ -67,10 +67,8 @@ public sealed class CombatCastingDirectorContentionTests
                 readHealth: () => Health,
                 isEnabled: () => AutoHealRestEnabled,
                 log: Log);
-            // Mirrors AppServices: CastDirector.CastFired += Combat.NoteBetweenRoundCast,
-            // CastDirector.SetAttackOwedGate(() => Combat.IsSpellAttackOwed).
+            // Mirrors AppServices: CastDirector.CastFired += Combat.NoteBetweenRoundCast.
             Director.CastFired += Combat.NoteBetweenRoundCast;
-            Director.SetAttackOwedGate(() => Combat.IsSpellAttackOwed);
         }
 
         public void AddMonster(int number, string name)
@@ -134,8 +132,9 @@ public sealed class CombatCastingDirectorContentionTests
         // so CastingDirector's stale-repeat guard doesn't suppress the heal),
         // the self-heal fires and interrupts the swing (*Combat Off*), and the
         // engine must resume. Real damage isn't modelled — the point is whether
-        // the attack spell EVER gets re-announced across many rounds while a
-        // heal keeps winning the round's cast slot, not whether the fight is won.
+        // the attack spell gets re-announced (via the same-round resume) while a
+        // heal fires each round on its own independent slot, not whether the fight
+        // is won.
         int hp = 60;
         for (int round = 0; round < 10; round++)
         {
@@ -155,17 +154,18 @@ public sealed class CombatCastingDirectorContentionTests
             "winning every round's single cast slot. Sent: " + string.Join(" | ", h.AllSent));
     }
 
-    // Reproduces the exact live transcript: "mihe, mihe, mihe, mihe" with no
-    // "harm" in between, while HP recovers each round (so the self-heal's own
-    // stale-repeat guard never suppresses it — this isn't that). The game allows
-    // one cast per round; a survival cast spending a round the attack spell was
-    // owed must be followed by that attack, not another survival cast. The cadence
-    // is a fixed alternation (attack, heal-or-buff, attack, heal-or-buff, ...),
-    // not something that relaxes just because HP is still below the heal trigger —
-    // it always will be, immediately after ANY hit lands, for as long as nothing
-    // is fighting back.
+    // The between-round survival cast and the combat attack are INDEPENDENT slots
+    // (GAME_MECHANICS.md): a heal can fire EVERY round, and the attack spell
+    // re-announces same-round on the heal's *Combat Off* resume — so across a
+    // losing fight the attack keeps going out between heals rather than being
+    // starved. Here HP oscillates (so the self-heal's own stale-repeat guard never
+    // suppresses it) and a heal is due every round; the invariant is that the
+    // attack re-announces between heals (no two heals land back-to-back with no
+    // attack resume between them). This is NOT an attack-owed alternation gate on
+    // the between-round slot — that coupling was removed; the interleaving comes
+    // from the resume, not from the heal sitting out a round.
     [Fact]
-    public void SpellsFirst_HealFiresEveryRound_AttackSpellAlternatesStrictly()
+    public void SpellsFirst_HealFiresEveryRound_AttackReAnnouncesBetweenHeals()
     {
         using Harness h = new();
         h.CombatSettings.ActionOrder = CombatActionOrder.SpellsFirst;

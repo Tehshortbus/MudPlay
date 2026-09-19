@@ -4187,11 +4187,6 @@ public sealed class AppServices
         // self-gates on auto-sneak being on, being out of combat, and no NPC present,
         // so this no-ops for a non-stealth character or an in-combat cast.
         CastDirector.CastFired += () => Stealth.ReSneakAfterCast();
-        // The round after a survival cast belongs to the attack spell it
-        // interrupted — CastDirector must sit out until that resume lands, or it
-        // just re-claims the round the instant HP dips again and the attack never
-        // gets a turn back.
-        CastDirector.SetAttackOwedGate(() => Combat.IsSpellAttackOwed);
         // Same resume, but for a HAND-typed cast: a manual cast-code never
         // routes through CastDirector, so sniff the wire for one and arm the
         // identical signal. A cast-code is any Spells.Short in the active

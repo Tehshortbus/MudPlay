@@ -413,9 +413,11 @@ public static class BugReportBuilder
         Kv(sb, "Announced spell", combat.AnnouncedSpell ?? "(none)");
         // The attack-spell cascade's own latch, surfaced separately — it can go
         // stale relative to CurrentTarget/AnnouncedSpell above (report
-        // paradigm-20260824-012300). A CastingSpellTarget the current room
-        // doesn't hold, or SpellAttackOwed=true with no live fight, means every
-        // automatic heal/cure/bless is being silently suppressed.
+        // paradigm-20260824-012300). A CastingSpellTarget the current room doesn't
+        // hold means the resume is waiting on a *Combat Off* that will never come,
+        // so the attack stays stranded. (SpellAttackOwed no longer gates between-round
+        // casting — heals/cures/buffs fire independently of the attack — but it still
+        // flags this stuck-resume shape alongside a stale CastingSpellTarget.)
         Kv(sb, "Casting spell target", combat.CastingSpellTarget ?? "(none)");
         Kv(sb, "Spell attack owed", combat.SpellAttackOwed.ToString());
         // True here alongside a live CastingSpellTarget/CurrentTarget means the

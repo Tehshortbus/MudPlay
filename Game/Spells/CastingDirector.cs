@@ -109,7 +109,6 @@ public sealed class CastingDirector : IDisposable
     private Action? _combatDebuffCommit;
     private Func<string, int?>? _manaCostLookup;
     private Func<bool>? _autoBlessEnabled;
-    private Func<bool>? _attackOwed;
     private Func<bool>? _isTriggeredRest;
     // True while a MANA-recovery rest is in progress — the mana-rest lock. Asserted
     // when mana drops below its rest trigger and held (through a combat interruption)
@@ -508,17 +507,6 @@ public sealed class CastingDirector : IDisposable
     {
         ArgumentNullException.ThrowIfNull(isConnected);
         _isConnected = isConnected;
-    }
-
-    // Wire CombatManager.IsSpellAttackOwed. The game allows exactly one cast per
-    // round; when a survival cast just spent a round that owed the combat engine
-    // its attack-spell resume, EVERY category here must sit out entirely until
-    // that attack goes back out — not just Buffing. Left unwired, this fails open
-    // (never suppressed), matching every other gate's default.
-    public void SetAttackOwedGate(Func<bool> isAttackOwed)
-    {
-        ArgumentNullException.ThrowIfNull(isAttackOwed);
-        _attackOwed = isAttackOwed;
     }
 
     // Wire HealthManager.IsRecoveringRest. True only while an auto-rest recovery
@@ -1422,13 +1410,15 @@ public sealed class CastingDirector : IDisposable
         // a between-round self-heal is refused by it too.
         if (AttacksPrevented()) return null;
         if (_cast.IsCastBlocked) return null;
-        // A prior survival cast already spent a round the combat engine's attack
-        // spell was owed — sit out entirely so that resume can reclaim the very
-        // next round, rather than re-firing again ourselves the instant HP dips
-        // (which it always will while nothing is fighting back). No exception for
-        // urgency: engage / attack / heal-or-buff / attack / heal-or-buff / ... is
-        // the fixed cadence regardless of how the fight is going.
-        if (_attackOwed?.Invoke() == true) return null;
+        // No attack-owed alternation gate here. A 0-energy between-round survival
+        // cast and the combat attack are INDEPENDENT slots that both land in the
+        // same round — the attack auto-repeats server-side and re-fires on the
+        // cast's *Combat Off*, so casting a heal never actually costs the round's
+        // attack (GAME_MECHANICS.md, "independent slots"). Gating this slot on the
+        // attack was wrong: it made a due top-priority survival cast (even an
+        // emergency heal) sit out a whole round while its own slot sat free, for a
+        // contention that doesn't exist. The one real per-round limit is the shared
+        // between-round slot itself — enforced below.
 
         // One between-round spell (heal / cure / buff / debuff / item) per combat
         // round: the game allows a single 0-energy cast per round, so a second draws

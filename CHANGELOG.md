@@ -1,5 +1,10 @@
 # Version history
 
+## 3.96.11
+
+- Between-round survival casts (heal / cure / buff) no longer sit out a round waiting on the combat attack: a due top-priority cast — including the emergency heal — now fires the round it's queued on its own independent slot, instead of being held for a full ~5s round by the attack-owed alternation
+- bug reports addressed: paradigm-20260918-190830
+
 ## 3.96.10
 
 - Obtain-then-cross walk-to: the map route line and **Details…** now show the whole journey (to the shop, then on to the requested destination) instead of stopping at the shop the gate item is bought at

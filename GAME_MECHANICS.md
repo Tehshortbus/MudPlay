@@ -737,6 +737,15 @@ there** — treat as close-but-unconfirmed until a Paradigm source or capture pi
     the client now recognizes the rejection and re-fires the debuff next round instead of leaving the mob
     falsely marked debuffed (and the monster un-debuffed). The combat ATTACK that round self-corrects on
     its own owed-and-retry path; only the debuff mark needed the rollback.
+  - **The independent-slots rule covers ALL between-round casts, not just debuffs** *(2026-09-18, user)*:
+    survival casts (heal / cure / buff) share the same independence from the combat attack. A due
+    between-round cast must fire on its own slot the round it's queued — it must NOT sit out a round
+    "so the attack can catch up," because the attack never competed for that slot in the first place
+    (it auto-repeats server-side and re-announces on the cast's `*Combat Off*`). The engine previously
+    coupled them: after a survival cast it withheld the *whole* between-round slot for a round (an
+    "attack-owed alternation"), so a top-priority heal — even an emergency heal — could sit queued and
+    unfired for a full ~5s round (report `paradigm-20260918-190830`). That coupling was removed; the
+    only real per-round limit is the single shared between-round cast slot itself.
 - **[CONFIRMED]** *(2026-08-05, user)* **`MaxCasts` counts combat ROUNDS, not individual casts.** It is
   the maximum number of rounds the client will spend casting this spell at a target — one round counts
   as one regardless of how many times the spell fires that round (e.g. a spell that casts twice per

@@ -2294,10 +2294,10 @@ public sealed class CombatManagerSpellsTests
     // _castingSpellTarget / _spellAttackOwed latched to a target no longer being
     // fought ("between-round cast noted (manual) — resume armed
     // (spellTarget=small blue dragon hatchling)" with the dragon long gone).
-    // CastingDirector's IsSpellAttackOwed gate is unconditional and runs before
-    // every category, so the stale latch silently blocked every automatic
-    // heal/cure/bless for the rest of the session. Disabling AutoCombat must
-    // drop the whole cascade, not just CurrentTarget.
+    // The stale _castingSpellTarget leaves the attack resume waiting on a *Combat
+    // Off* that never comes, stranding the attack. Disabling AutoCombat must drop
+    // the whole cascade, not just CurrentTarget. (IsSpellAttackOwed is asserted
+    // here as part of the cascade state; it's diagnostic now, not a cast gate.)
     [Fact]
     public void AutoCombatDisabled_ClearsStaleAttackSpellCascade()
     {

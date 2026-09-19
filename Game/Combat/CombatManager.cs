@@ -507,24 +507,24 @@ public sealed partial class CombatManager : IDisposable
     // misattributed.
     private static readonly TimeSpan CastInterruptResumeWindow = TimeSpan.FromSeconds(3);
 
-    // True when a between-round cast (survival heal / buff) just spent its round
-    // while we were mid attack-spell combat, and our attack spell hasn't gone back
-    // out since. Exposed to CastingDirector (IsSpellAttackOwed, wired to its
-    // attack-owed gate in AppServices) so it declines to fire ANOTHER survival cast
-    // until the owed attack round happens — the game allows exactly one cast per
-    // round, so back-to-back heal/buff rounds with no attack between them is a
-    // scheduling bug, not a losing fight: CastingDirector evaluates before
-    // CombatManager every tick and, with nothing to stop it, keeps re-claiming the
-    // round the instant HP dips again, which it always will while nothing is
-    // fighting back. Weapon-mode combat never sets this — a swing auto-repeats
-    // server-side and never competes with CastingDirector for the cast slot, only
-    // an attack SPELL does. Set in NoteBetweenRoundCast (only while
-    // _castingSpellTarget is live), cleared the moment a real attack goes back out
-    // (NoteAttackSent) or the room clears (OnRoomCleared).
+    // Set when a between-round cast (survival heal / buff) spent its round while we
+    // were mid attack-spell combat and our attack spell hasn't been re-announced
+    // since. It does NOT gate between-round casting: a 0-energy between-round cast
+    // and the combat attack are INDEPENDENT slots that both land the same round
+    // (the attack auto-repeats server-side and re-fires on the cast's *Combat Off* —
+    // GAME_MECHANICS.md, "independent slots"), so a heal never actually costs the
+    // round's attack and CastingDirector must not decline one on this. Retained as
+    // diagnostic / cascade state only: it's surfaced in the bug-report snapshot and
+    // read by the stale-state cleanup guards (a between-round cast leaves
+    // _castingSpellTarget live; if the fight ends before the *Combat Off* resume
+    // lands, that target must be cleared). Weapon-mode combat never sets this — only
+    // an attack SPELL does. Set in NoteBetweenRoundCast (only while _castingSpellTarget
+    // is live), cleared when a real attack goes back out (NoteAttackSent) or the room
+    // clears (OnRoomCleared).
     private bool _spellAttackOwed;
 
-    // CastingDirector's view of _spellAttackOwed — the round belongs to the
-    // pending attack spell, not another survival cast.
+    // Diagnostic view of _spellAttackOwed (surfaced in the combat snapshot / bug
+    // report). No longer consulted for between-round cast scheduling — see the field.
     public bool IsSpellAttackOwed => _spellAttackOwed;
 
     // A pre-attack DEBUFF fired the combat attack immediately this round
@@ -1725,16 +1725,15 @@ public sealed partial class CombatManager : IDisposable
     }
 
     // Reset the attack-spell cascade's per-target/per-room economy — the
-    // announced spell, the round-owed latch CastingDirector gates every
-    // survival cast on (IsSpellAttackOwed), the alternation/tally clocks, the
-    // observed-immunity set, and the chooser's own cast-cap counters. Shared by
-    // OnRoomCleared (a genuine end-of-fight), the AutoCombat-disabled early
-    // return (toggling combat off must not leave the round latched to a target
-    // that's no longer being fought), and OnPlayerDeath (the corpse/respawn
-    // room has nothing to do with whatever spell was mid-flight). Report
-    // paradigm-20260824-012300: a stale spellTarget on a monster long gone
-    // left IsSpellAttackOwed permanently true, silently blocking every
-    // automatic heal/cure/bless for the rest of the session.
+    // announced spell, the round-owed diagnostic latch (IsSpellAttackOwed), the
+    // alternation/tally clocks, the observed-immunity set, and the chooser's own
+    // cast-cap counters. Shared by OnRoomCleared (a genuine end-of-fight), the
+    // AutoCombat-disabled early return (toggling combat off must not leave the
+    // round latched to a target that's no longer being fought), and OnPlayerDeath
+    // (the corpse/respawn room has nothing to do with whatever spell was
+    // mid-flight). Report paradigm-20260824-012300: a stale spellTarget on a
+    // monster long gone left the resume logic waiting on a *Combat Off* that would
+    // never come, stranding the attack — clearing the cascade here is what frees it.
     private void ClearAttackSpellCascadeState()
     {
         _castingSpellTarget = null;
