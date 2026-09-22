@@ -1,5 +1,9 @@
 # Version history
 
+## 3.100.1
+
+- Player Workshop → Character Info: keys on the key-ring now show their remaining charges (e.g. `black serpent key - 17 Charges`), matching the readout other limited-use items already carry
+
 ## 3.100.0
 
 - Conversation window now renders emoji / emotes: `:lol:` / `:)` / `:(` and a broad set of common shortcodes become Unicode emoji, and a bundled Pepe image-emote set (`:sadge:`, `:copium:`, `:monkas:`, `:prayge:`, …) renders inline as pictures

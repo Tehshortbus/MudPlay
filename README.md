@@ -1,11 +1,8 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.100.0**
-> - Conversation window now renders emoji / emotes: `:lol:` / `:)` / `:(` and a broad set of common shortcodes become Unicode emoji, and a bundled Pepe image-emote set (`:sadge:`, `:copium:`, `:monkas:`, `:prayge:`, …) renders inline as pictures
-> - New **Settings → Talk → "Show emoji / emotes in the conversation window"** toggle (default on, applies live). Only the on-screen display changes; nothing sent to the game is altered. Unicode emoji need a colour-emoji font installed; the image emotes always render
-> - **Custom emotes** — build a global, all-characters emote set on the Talk tab: shortcode → emoji or image, override or remove defaults, staged behind Apply. **Export/import** a `.mudpack` package, or import a whole folder of images
-> - **Discord-style `:` picker** in the conversation input: type `:` + a few letters and a suggestion popup flies out (arrows / click to pick, Enter/Tab to insert)
+> **Version 3.100.1**
+> - Player Workshop → Character Info: keys on the key-ring now show their remaining charges (e.g. `black serpent key - 17 Charges`), matching the readout other limited-use items already carry
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

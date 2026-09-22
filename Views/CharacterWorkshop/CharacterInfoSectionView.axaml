@@ -371,11 +371,18 @@
                                 <ItemsControl ItemsSource="{Binding Keys}">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate x:DataType="vm:WorkshopItemRow">
-                                            <Button Classes="ItemLink" Content="{Binding Name}"
-                                                    Command="{Binding Open}"
-                                                    IsEnabled="{Binding CanOpen}"
-                                                    HorizontalAlignment="Left" Margin="0,0,0,1"
-                                                    ToolTip.Tip="Open this item's Game Data record"/>
+                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,1">
+                                                <Button Classes="ItemLink" Content="{Binding Name}"
+                                                        Command="{Binding Open}"
+                                                        IsEnabled="{Binding CanOpen}"
+                                                        HorizontalAlignment="Left"
+                                                        ToolTip.Tip="Open this item's Game Data record"/>
+                                                <TextBlock Classes="FieldValue" VerticalAlignment="Center"
+                                                           Margin="6,0,0,0"
+                                                           Foreground="{StaticResource AccentCyanBrush}"
+                                                           IsVisible="{Binding HasCharges}"
+                                                           Text="{Binding Charges, StringFormat='- {0}'}"/>
+                                            </StackPanel>
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
