@@ -167,6 +167,20 @@ public static class DefaultPatterns
         // no-article, blank-verb dodge shape that motivated this.
         yield return new RegexPattern(KnownPatterns.MobAttacksYou,
             @"^The [\w -]+ \w+ you\b");
+        // Damage landing on US, article-free so a NAMED monster counts — see
+        // KnownPatterns.IncomingDamage for why a leading "The " cannot be
+        // required: the game prints "Goru-Nezar swings at you!", never "The
+        // Goru-Nezar ...".
+        yield return new RegexPattern(KnownPatterns.IncomingDamage,
+            @"^(?!You )(?<source>.*?)\byou for (?<damage>\d+) damage!");
+        // Something swinging at us, hit or miss, with the article optional so a
+        // named monster counts — see KnownPatterns.IncomingAttack. Loose on
+        // purpose and NOT safe alone. `source` captures a PREFIX of the
+        // attacker ("bugbear" out of "bugbear captain swings at you"): name and
+        // verb cannot be told apart here, and the consumer only compares it
+        // with itself to spot a repeat, so a stable prefix is enough.
+        yield return new RegexPattern(KnownPatterns.IncomingAttack,
+            @"^(?!You )(?:The )?(?<source>[\w' -]+?) [\w' ]*?\bat you\b");
         yield return new RegexPattern(KnownPatterns.UserGainExperience,
             @"^You gain (?<exp>\d+) experience\.");
         // The local player's own swing missing. On the live realm a whiff

@@ -1,9 +1,10 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.107.0**
-> - New `@loop send <name>`: asks a player for a copy of one of their saved loops; they offer the best match, and `@loop send yes` sends it encoded (saved to your Loops, never over one of yours) while `@loop send no` calls it off
-> - `@loop` names ignore apostrophes (`kings road` finds King's Road)
+> **Version 3.107.1**
+> - Auto-combat now **fights back when something attacks you** — it reads the attacker's name off its own attack line and engages it there, instead of waiting for a room line to mention it. Reported after a monster followed the player into a dark tunnel: *"for the next hour it is fighting me without me doing anything"*. A dark room never prints an `Also here:`, so nothing else could name what was hitting them
+> - Three triggers, none of which needs a room display: a landed blow, the same source **swinging twice inside one round** (the reported capture is page after page of misses around a single landed blow), and an HP drop while a known monster is already in the room. All article-free, so a named monster counts — the game prints *"Goru-Nezar swings at you!"*, with no "The"
+> - It always engages **by name**, through the ordinary hostility filter and Target Order, so a neutral shopkeeper that trips a trigger is dropped rather than swung at, and an attacker it cannot resolve is left alone instead of provoking a blind swing
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

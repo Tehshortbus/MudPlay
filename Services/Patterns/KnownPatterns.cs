@@ -71,6 +71,40 @@ public static class KnownPatterns
     // an empty, stuck-gate room and abandoning the fight (report
     // stock-20260730-190736).
     public const string MobAttacksYou        = "combat.mob-attacks-you";
+
+    // SOMETHING DAMAGED US, whoever or whatever it was. Keyed on the one phrase
+    // that can only mean that — "... you for N damage!" — with NO article
+    // required, because MobHits demands a leading "The " and a NAMED monster
+    // does not get one: the game prints "Goru-Nezar swings at you!", not "The
+    // Goru-Nezar ...". 240 paradigm monsters and 128 stock ones carry a proper
+    // noun (Aiken, Thuluk, Lady Sentara, Sheriff Lionheart), so every boss's
+    // attack line was invisible to the article-bound patterns.
+    //
+    // It also catches damage with no attacker in the sentence at all, which is
+    // most spell wordings — "Evil vibrations tear through you for 23 damage!",
+    // "A shining spark strikes you for 12 damage!".
+    //
+    // Our own swing is excluded by the leading (?!You ): "You hit X for 41
+    // damage!" names a number too. A blow landing on a PARTY MEMBER says "...
+    // Bob for 8 damage!" and is likewise out — the literal "you for" is what
+    // makes this OUR health. Used by FightBackWatcher to decide we are under
+    // attack; deliberately NOT wired into the hit/miss statistics, which stay
+    // on MobHits so their denominators keep meaning what they meant.
+    public const string IncomingDamage       = "combat.incoming-damage";
+
+    // SOMETHING IS SWINGING AT US, hit or miss. Article-free for the same
+    // reason as IncomingDamage — "Goru-Nezar swings at you!" carries no
+    // "The" — and deliberately loose about the verb, because every monster
+    // brings its own from the .mdb ("swings at you with their greataxe",
+    // "lunges at you", "spits at you").
+    //
+    // THAT LOOSENESS MEANS IT CANNOT BE TRUSTED ALONE: "The barmaid smiles at
+    // you." fits it exactly, and nothing in the sentence separates the two.
+    // FightBackWatcher therefore requires the SAME source twice inside one
+    // round before it acts — a monster attacking names itself on every
+    // swing, and the reported session shows two per round, while an emote
+    // arrives once and is gone. Never use this as a standalone attack signal.
+    public const string IncomingAttack       = "combat.incoming-attack";
     public const string UserGainExperience   = "combat.user-gain-experience";
 
     // The local player's own swing MISSING. On the live realm a whiff prints the

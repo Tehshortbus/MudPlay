@@ -196,6 +196,38 @@ public sealed class DefaultPatternsTests
     }
 
     [Fact]
+    public void IncomingDamageRegex_IsArticleFree_AndOnlyOurOwnHealth()
+    {
+        IMessagePattern p = PatternById(KnownPatterns.IncomingDamage);
+
+        // The ordinary case, and the one MobHits already covered.
+        Assert.True(p.TryMatch(Line("The bugbear captain cleaves you for 8 damage!"),
+                               out MatchResult r));
+        Assert.Equal("8", r.Groups[1]);
+
+        // A PROPER NOUN TAKES NO ARTICLE — the game prints "Goru-Nezar swings
+        // at you!", never "The Goru-Nezar ...". MobHits requires the article, so
+        // every named monster's attack line was invisible to it.
+        Assert.True(p.TryMatch(Line("Goru-Nezar whomps you for 40 damage!"), out r));
+        Assert.Equal("40", r.Groups[1]);
+        Assert.True(p.TryMatch(Line("Lady Sentara smites you for 55 damage!"), out _));
+
+        // Damage whose line names no attacker at all — most spell wordings.
+        Assert.True(p.TryMatch(Line("Evil vibrations tear through you for 23 damage!"), out _));
+        Assert.True(p.TryMatch(Line("A shining spark strikes you for 12 damage!"), out _));
+        Assert.True(p.TryMatch(Line("The spinefin casts acid jet on you for 3 damage!"), out _));
+
+        // OUR OWN swing names a number too, and is not damage to us.
+        Assert.False(p.TryMatch(Line("You hit bugbear captain for 41 damage!"), out _));
+        Assert.False(p.TryMatch(Line("You critically hit dark monk for 14 damage!"), out _));
+        // A blow on a party member: the literal "you for" is what makes it ours.
+        Assert.False(p.TryMatch(Line("The bugbear captain cleaves Bob for 8 damage!"), out _));
+        // Chatter, and a miss (no number).
+        Assert.False(p.TryMatch(Line("The barmaid smiles at you."), out _));
+        Assert.False(p.TryMatch(Line("Goru-Nezar swings at you!"), out _));
+    }
+
+    [Fact]
     public void RoomEntryArrivalRegex_MatchesTheServersGenericForms()
     {
         IMessagePattern p = PatternById(KnownPatterns.RoomEntryArrival);

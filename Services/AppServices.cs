@@ -1350,6 +1350,14 @@ public sealed class AppServices
     // CombatManager engages it as if it had been listed.
     public Game.Combat.DarkRoomCombatWatcher DarkRoomCombat { get; private set; } = null!;
 
+    // The last resort into combat: when something is hurting us and nothing is
+    // engaged, it reads the attacker off its own ATTACK line and hands it to the
+    // classifier, so the engine engages it by name. Every other route learns the
+    // name from a ROOM line — the roster, the arrival notice — and each is one
+    // wording away from sitting idle while a mob swings (reported twice in a
+    // row). See the class note.
+    public Game.Combat.FightBackWatcher FightBack { get; private set; } = null!;
+
     // Holds the movement stack for a short beat after each dead-reckoned dark-room
     // advance, so the game engine has time to reveal a hostile (its "strides in"
     // arrival / first attack line) before the loop fires the next move. Without it
@@ -3668,6 +3676,22 @@ public sealed class AppServices
         // command had no effect." — the game's tell that the target has left.
         DarkRoomCombat = new Game.Combat.DarkRoomCombatWatcher(
             Router, RoomTracker, RoomClassifier,
+            currentTarget: () => Combat.CurrentTarget,
+            log: Log);
+
+        // ...and the backstop under all of it. Same master switch and the same
+        // room suppression CombatManager honours, so "off" still means off and a
+        // room the user marked no-combat stays quiet; it differs only in reading
+        // the attacker off the ATTACK line instead of off a room line.
+        //
+        // It sends nothing itself. It resolves the attacker to a real monster and
+        // hands it to the classifier, so CombatManager engages it BY NAME through
+        // the ordinary hostility filter — never a bare swing at whatever the
+        // room happens to hold.
+        FightBack = new Game.Combat.FightBackWatcher(
+            Router, RoomClassifier,
+            isEnabled: () => ReadAutoModeFlag(d => d.AutoCombat)
+                             && !CombatSuppressedInCurrentRoom(),
             currentTarget: () => Combat.CurrentTarget,
             log: Log);
 
