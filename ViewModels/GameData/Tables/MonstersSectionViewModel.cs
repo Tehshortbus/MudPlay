@@ -45,6 +45,9 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
     {
         "Number",
         "Name",
+        "Landmass",      // where it lives: Landmass → Region → Area (4-tier overlay-resolved; blank = not set)
+        "Region",
+        "Area",
         "Relationship",  // our set Enemy/Neutral/Friend/… for this monster (4-tier overlay-resolved)
         "OurPriority",   // our set attack priority (First/High/Normal/Low/Last), overlay-resolved
         "KillOnSight",   // our kill-on-sight flag (✓ when set)
@@ -315,6 +318,11 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
             // Our configured combat treatment for this monster — the same 4-tier overlay
             // the combat engine reads, so the columns show exactly how the engine treats it.
             // Each is its own column (like Relationship) rather than a merged blob.
+            // Location labels from the same overlay (seed → Global → BBS → Character); blank
+            // when nobody has set them, which is what the record's boxes are there to fix.
+            ["Landmass"]     = overlay.Landmass,
+            ["Region"]       = overlay.Region,
+            ["Area"]         = overlay.Area,
             ["Relationship"] = (overlay.Relationship ?? MonsterRelationship.Enemy).ToString(),
             ["OurPriority"]  = (overlay.Priority ?? MonsterAttackPriority.Normal).ToString(),
             ["KillOnSight"]  = overlay.KillOnSight  == true ? "✓" : null,
@@ -464,7 +472,8 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
             // Min-mana control parity with Settings → Combat (mode caps the box + drives
             // the %↔value label; live max mana snapshot for the conversion).
             manaModePercentage: AppServices.Current.CombatSpellManaModeIsPercentage,
-            liveMaxMa:          AppServices.Current.PlayerState.MaxMa);
+            liveMaxMa:          AppServices.Current.PlayerState.MaxMa,
+            locationSuggestions: _overlaySeed?.LocationSuggestions);
 
         MonsterEditResult? result = await _dialogs.OpenWindowAsync<MonsterEditDialogViewModel, MonsterEditResult>(vm);
         if (result is null) return;

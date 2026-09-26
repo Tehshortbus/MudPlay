@@ -110,11 +110,34 @@
                                  fits the longest monster names + the Use-tier
                                  labels without the old excess width. -->
                             <TextBlock Classes="SectionHeader" Text="Monster"/>
-                            <Grid ColumnDefinitions="68,240" RowDefinitions="Auto,Auto"
+                            <Grid ColumnDefinitions="68,240" RowDefinitions="Auto,Auto,Auto,Auto,Auto"
                                   ColumnSpacing="6" RowSpacing="4"
                                   HorizontalAlignment="Left">
                                 <TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Name"/>
                                 <TextBox   Grid.Row="0" Grid.Column="1" Text="{Binding Name, Mode=TwoWay}"/>
+                                <!-- Where it lives. Blank = not set; pick an existing label or type a
+                                     new one. A box still showing the installed label saves nothing. -->
+                                <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Landmass"
+                                           ToolTip.Tip="The big walkable landmass this monster lives on (e.g. Mainland). Blank = not set. Pick an existing label or type a new one."/>
+                                <AutoCompleteBox Grid.Row="2" Grid.Column="1"
+                                                 Text="{Binding Landmass, Mode=TwoWay}"
+                                                 ItemsSource="{Binding LocationSuggestions.Landmasses}"
+                                                 FilterMode="Contains" MinimumPrefixLength="0"
+                                                 PlaceholderText="not set"/>
+                                <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="Region"
+                                           ToolTip.Tip="The region you walk through to reach it (e.g. Volcano). Blank = not set."/>
+                                <AutoCompleteBox Grid.Row="3" Grid.Column="1"
+                                                 Text="{Binding Region, Mode=TwoWay}"
+                                                 ItemsSource="{Binding LocationSuggestions.Regions}"
+                                                 FilterMode="Contains" MinimumPrefixLength="0"
+                                                 PlaceholderText="not set"/>
+                                <TextBlock Grid.Row="4" Grid.Column="0" Classes="FieldLabel" Text="Area"
+                                           ToolTip.Tip="The named place inside the region (e.g. a lair or a cave). Blank = not set."/>
+                                <AutoCompleteBox Grid.Row="4" Grid.Column="1"
+                                                 Text="{Binding Area, Mode=TwoWay}"
+                                                 ItemsSource="{Binding LocationSuggestions.Areas}"
+                                                 FilterMode="Contains" MinimumPrefixLength="0"
+                                                 PlaceholderText="not set"/>
                                 <TextBlock Grid.Row="1" Grid.Column="0" Classes="FieldLabel" Text="Use"/>
                                 <ComboBox  Grid.Row="1" Grid.Column="1"
                                            ItemsSource="{Binding AvailableTiers}"

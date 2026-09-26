@@ -18,8 +18,10 @@ namespace MudPlay.Models.GameData;
 // flags don't map onto our automation engines (per user direction); not
 // stored.
 //
-// What IS overridable — per-monster automation behaviour: display name,
-// relationship, target priority, the DontBackstab flag, and the whole
+// What IS overridable — where the monster lives (Landmass / Region / Area, the
+// table's location columns — the shipped seed fills them for the realms we
+// carry, the user fills the rest), plus per-monster automation behaviour: display
+// name, relationship, target priority, the DontBackstab flag, and the whole
 // SINGLE-TARGET combat chain for this specific monster, mirroring the
 // Settings → Combat spell grid rung-for-rung. Four override slots take
 // priority over the global Combat-tab choices for this species:
@@ -45,6 +47,14 @@ public sealed record MonsterOverlay
 {
     // Display name override; null keeps the MDB value.
     public string? Name { get; init; }
+
+    // Where this monster lives, as the Landmass → Region → Area hierarchy the Game Data
+    // Browser's Monsters table shows. Labels only — nothing in the engines reads them.
+    // null = not set (the table cell and the record's box stay blank); a blank box saves
+    // back to null so a partial-tier override never masks a lower tier with an empty string.
+    public string? Landmass { get; init; }
+    public string? Region { get; init; }
+    public string? Area { get; init; }
 
     // How automation should treat this monster on sight.
     public MonsterRelationship? Relationship { get; init; }

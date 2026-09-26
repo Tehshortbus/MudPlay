@@ -64,6 +64,29 @@ public sealed class EmbeddedSeedsTests : IDisposable
     }
 
     [Fact]
+    public void ParadigmMonsterSeed_CarriesLocationsAsCompleteTriples()
+    {
+        // The Monsters table's Landmass / Region / Area columns read these out of the
+        // Defaults seed. A location with a label missing at one of the three levels would
+        // show a half-filled row, so the shipped file must carry all three or none.
+        AppPaths.ExtractEmbeddedSeeds(_dir);
+        using System.Text.Json.JsonDocument doc = System.Text.Json.JsonDocument.Parse(
+            File.ReadAllText(Path.Combine(_dir, "MonsterOverlay.paradigm.seed.json")));
+
+        int located = 0;
+        foreach (System.Text.Json.JsonElement rec in doc.RootElement.EnumerateArray())
+        {
+            bool landmass = rec.TryGetProperty("Landmass", out System.Text.Json.JsonElement l) && !string.IsNullOrWhiteSpace(l.GetString());
+            bool region = rec.TryGetProperty("Region", out System.Text.Json.JsonElement r) && !string.IsNullOrWhiteSpace(r.GetString());
+            bool area = rec.TryGetProperty("Area", out System.Text.Json.JsonElement a) && !string.IsNullOrWhiteSpace(a.GetString());
+            Assert.True(landmass == region && region == area,
+                $"monster {rec.GetProperty("Number")} has a partial location");
+            if (region) located++;
+        }
+        Assert.True(located > 1000, $"only {located} monsters carry a location in the paradigm seed");
+    }
+
+    [Fact]
     public void ExtractEmbeddedNavSeed_UnzipsEachRealmTree()
     {
         // nav-seed ships as an embedded zip per realm; the extract must reconstruct
