@@ -2,7 +2,7 @@
 
 <!-- current-version:start -->
 > **Version 3.108.0**
-> - Monsters table gains Landmass / Region / Area columns, filled for every Paradigm monster that has a spawn room
+> - Monsters table gains Landmass / Region / Area columns, filled for every Paradigm monster with a spawn room or a known summoner
 > - A monster's record has Landmass / Region / Area type-ahead boxes for anything the shipped data leaves unset, saved to the tier you pick
 >
 > See the [version history](CHANGELOG.md) for the full changelog.

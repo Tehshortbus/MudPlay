@@ -3,7 +3,10 @@
     "Number": 13,
     "Name": "guardsman",
     "Relationship": "Friend",
-    "Priority": "Normal"
+    "Priority": "Normal",
+    "Landmass": "Mainland",
+    "Region": "Silvermere",
+    "Area": "Silvermere"
   },
   {
     "Number": 14,
@@ -169,7 +172,7 @@
     "Name": "healer",
     "Relationship": "Friend",
     "Priority": "High",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Kingsport",
     "Area": "Temple"
   },
@@ -223,7 +226,7 @@
     "Name": "boatman",
     "Relationship": "Friend",
     "Priority": "High",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shadowmere",
     "Area": "Shadowmere"
   },
@@ -742,7 +745,10 @@
     "Number": 181,
     "Name": "greater hellion",
     "Relationship": "Enemy",
-    "Priority": "High"
+    "Priority": "High",
+    "Landmass": "Mainland",
+    "Region": "Black Fort",
+    "Area": "Black Fortress"
   },
   {
     "Number": 182,
@@ -866,7 +872,7 @@
     "Name": "practice dummy",
     "Relationship": "Friend",
     "Priority": "High",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Kingsport",
     "Area": "Kingsport"
   },
@@ -940,7 +946,10 @@
     "Number": 215,
     "Name": "Zanthus the Lich",
     "Relationship": "Enemy",
-    "Priority": "High"
+    "Priority": "High",
+    "Landmass": "Mainland",
+    "Region": "Arlysia",
+    "Area": "Bone Strewn Cavern"
   },
   {
     "Number": 216,
@@ -991,7 +1000,10 @@
     "Number": 239,
     "Name": "silvery skull",
     "Relationship": "Enemy",
-    "Priority": "High"
+    "Priority": "High",
+    "Landmass": "Mainland",
+    "Region": "Mossy Tunnels",
+    "Area": "Mossy Tunnel"
   },
   {
     "Number": 240,
@@ -1115,7 +1127,7 @@
     "Name": "barmaid",
     "Relationship": "Friend",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Kingsport",
     "Area": "Kingsport"
   },
@@ -1327,7 +1339,10 @@
     "Number": 306,
     "Name": "gibbering horror",
     "Relationship": "Enemy",
-    "Priority": "Low"
+    "Priority": "Low",
+    "Landmass": "Mainland",
+    "Region": "Ancient Ruin",
+    "Area": "Ancient Ruin"
   },
   {
     "Number": 307,
@@ -1396,7 +1411,10 @@
     "Number": 316,
     "Name": "frost hydra",
     "Relationship": "Enemy",
-    "Priority": "High"
+    "Priority": "High",
+    "Landmass": "Mainland",
+    "Region": "Ancient Ruin",
+    "Area": "Ancient Ruin"
   },
   {
     "Number": 317,
@@ -1501,7 +1519,10 @@
     "Number": 342,
     "Name": "dark-elf weaponsmaster",
     "Relationship": "Enemy",
-    "Priority": "High"
+    "Priority": "High",
+    "Landmass": "Mainland",
+    "Region": "Dark-Elf City",
+    "Area": "Castle"
   },
   {
     "Number": 343,
@@ -1543,7 +1564,10 @@
     "Number": 347,
     "Name": "obsidian statue",
     "Relationship": "Enemy",
-    "Priority": "High"
+    "Priority": "High",
+    "Landmass": "Mainland",
+    "Region": "Dark-Elf City",
+    "Area": "Dark-Elf City"
   },
   {
     "Number": 348,
@@ -1639,7 +1663,10 @@
     "Number": 365,
     "Name": "dying slaver leader",
     "Relationship": "Friend",
-    "Priority": "High"
+    "Priority": "High",
+    "Landmass": "Mainland",
+    "Region": "Slums",
+    "Area": "Building Rooftops"
   },
   {
     "Number": 366,
@@ -1735,7 +1762,10 @@
     "Number": 382,
     "Name": "bodyguard",
     "Relationship": "Neutral",
-    "Priority": "Normal"
+    "Priority": "Normal",
+    "Landmass": "Mainland",
+    "Region": "Misty Valley",
+    "Area": "Swamp Ridge Path"
   },
   {
     "Number": 383,
@@ -1768,13 +1798,19 @@
     "Number": 386,
     "Name": "old gypsy man",
     "Relationship": "Friend",
-    "Priority": "High"
+    "Priority": "High",
+    "Landmass": "Mainland",
+    "Region": "Misty Valley",
+    "Area": "Swampside Path"
   },
   {
     "Number": 387,
     "Name": "young gypsy",
     "Relationship": "Friend",
-    "Priority": "High"
+    "Priority": "High",
+    "Landmass": "Mainland",
+    "Region": "Misty Valley",
+    "Area": "Swampside Path"
   },
   {
     "Number": 388,
@@ -1816,7 +1852,10 @@
     "Number": 396,
     "Name": "dwarven guard",
     "Relationship": "Friend",
-    "Priority": "Normal"
+    "Priority": "Normal",
+    "Landmass": "Mainland",
+    "Region": "Gnome Village",
+    "Area": "Tilled Fields"
   },
   {
     "Number": 397,
@@ -2011,7 +2050,10 @@
     "Number": 426,
     "Name": "dwarven royal guard",
     "Relationship": "Friend",
-    "Priority": "Normal"
+    "Priority": "Normal",
+    "Landmass": "Mainland",
+    "Region": "Khazarad",
+    "Area": "Ornate Passageway"
   },
   {
     "Number": 427,
@@ -2077,7 +2119,10 @@
     "Number": 434,
     "Name": "ancient sand dragon",
     "Relationship": "Enemy",
-    "Priority": "High"
+    "Priority": "High",
+    "Landmass": "Mainland",
+    "Region": "Khazarad",
+    "Area": "Sandy Tunnel"
   },
   {
     "Number": 435,
@@ -2173,7 +2218,10 @@
     "Number": 459,
     "Name": "brain eater",
     "Relationship": "Enemy",
-    "Priority": "High"
+    "Priority": "High",
+    "Landmass": "Mainland",
+    "Region": "Dwarven Mines",
+    "Area": "Mithril Mine"
   },
   {
     "Number": 463,
@@ -2347,7 +2395,10 @@
     "Number": 514,
     "Name": "Tyrannosaur",
     "Relationship": "Enemy",
-    "Priority": "High"
+    "Priority": "High",
+    "Landmass": "Temple Hallway / Temple, Stairwell",
+    "Region": "Timelord",
+    "Area": "Forest Trail"
   },
   {
     "Number": 516,
@@ -2371,13 +2422,19 @@
     "Number": 520,
     "Name": "ankylosaur",
     "Relationship": "Neutral",
-    "Priority": "Normal"
+    "Priority": "Normal",
+    "Landmass": "Temple Hallway / Temple, Stairwell",
+    "Region": "Timelord",
+    "Area": "Forest Trail"
   },
   {
     "Number": 521,
     "Name": "stegosaur",
     "Relationship": "Neutral",
-    "Priority": "Normal"
+    "Priority": "Normal",
+    "Landmass": "Temple Hallway / Temple, Stairwell",
+    "Region": "Timelord",
+    "Area": "Forest Trail"
   },
   {
     "Number": 522,
@@ -2746,13 +2803,19 @@
     "Number": 595,
     "Name": "dying pharaoh",
     "Relationship": "Friend",
-    "Priority": "High"
+    "Priority": "High",
+    "Landmass": "Mainland",
+    "Region": "Scorching Desert",
+    "Area": "Great Pyramid"
   },
   {
     "Number": 596,
     "Name": "grey portal",
     "Relationship": "Friend",
-    "Priority": "High"
+    "Priority": "High",
+    "Landmass": "Mainland",
+    "Region": "Scorching Desert",
+    "Area": "Great Pyramid"
   },
   {
     "Number": 597,
@@ -2804,7 +2867,7 @@
     "Name": "hardened practice dummy",
     "Relationship": "Friend",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Kingsport",
     "Area": "Kingsport"
   },
@@ -3371,7 +3434,7 @@
     "Name": "master assassin",
     "Relationship": "Enemy",
     "Priority": "High",
-    "Landmass": "Pocket: Darkened Tunnels (in Black Fort)",
+    "Landmass": "Darkened Tunnels (in Black Fort)",
     "Region": "Black Fort",
     "Area": "Darkened Tunnels"
   },
@@ -3385,7 +3448,10 @@
     "Number": 745,
     "Name": "dying master assassin",
     "Relationship": "Friend",
-    "Priority": "Normal"
+    "Priority": "Normal",
+    "Landmass": "Darkened Tunnels (in Black Fort)",
+    "Region": "Black Fort",
+    "Area": "Darkened Tunnels"
   },
   {
     "Number": 746,
@@ -3401,7 +3467,7 @@
     "Name": "massive white dragon",
     "Relationship": "Enemy",
     "Priority": "High",
-    "Landmass": "Pocket: Black Ice Cavern (in Rocky Trail)",
+    "Landmass": "Black Ice Cavern (in Rocky Trail)",
     "Region": "Rocky Trail",
     "Area": "Black Ice Cavern"
   },
@@ -3445,7 +3511,10 @@
     "Number": 756,
     "Name": "frost giant",
     "Relationship": "Enemy",
-    "Priority": "High"
+    "Priority": "High",
+    "Landmass": "Mainland",
+    "Region": "Ancient Ruin",
+    "Area": "Ancient Ruin"
   },
   {
     "Number": 757,
@@ -3568,7 +3637,10 @@
     "Number": 787,
     "Name": "mercenary healer",
     "Relationship": "Friend",
-    "Priority": "Normal"
+    "Priority": "Normal",
+    "Landmass": "Mainland",
+    "Region": "Slums",
+    "Area": "Gang Houses (Slums)"
   },
   {
     "Number": 788,
@@ -3700,7 +3772,10 @@
     "Number": 809,
     "Name": "Death Shrieker",
     "Relationship": "Enemy",
-    "Priority": "High"
+    "Priority": "High",
+    "Landmass": "Mainland",
+    "Region": "Blackwood Forest",
+    "Area": "Graveyard (Blackwood Forest)"
   },
   {
     "Number": 810,
@@ -3769,7 +3844,10 @@
     "Number": 824,
     "Name": "vampiric mist",
     "Relationship": "Enemy",
-    "Priority": "Low"
+    "Priority": "Low",
+    "Landmass": "Mainland",
+    "Region": "Blackwood Forest",
+    "Area": "Mausoleum"
   },
   {
     "Number": 828,
@@ -4035,7 +4113,7 @@
     "Name": "Dread Captain",
     "Relationship": "Enemy",
     "Priority": "High",
-    "Landmass": "Pocket: Ancient Galleon (in Arlysia)",
+    "Landmass": "Ancient Galleon (in Arlysia)",
     "Region": "Arlysia",
     "Area": "Ancient Galleon"
   },
@@ -4061,7 +4139,10 @@
     "Number": 881,
     "Name": "severed waist",
     "Relationship": "Enemy",
-    "Priority": "Low"
+    "Priority": "Low",
+    "Landmass": "Mainland",
+    "Region": "Blackwood Forest",
+    "Area": "Forest Trail"
   },
   {
     "Number": 882,
@@ -4094,7 +4175,10 @@
     "Number": 888,
     "Name": "severed torso",
     "Relationship": "Enemy",
-    "Priority": "Low"
+    "Priority": "Low",
+    "Landmass": "Mainland",
+    "Region": "Blackwood Forest",
+    "Area": "Forest Trail"
   },
   {
     "Number": 894,
@@ -4109,7 +4193,10 @@
     "Number": 898,
     "Name": "arachnigoth",
     "Relationship": "Enemy",
-    "Priority": "High"
+    "Priority": "High",
+    "Landmass": "Mainland",
+    "Region": "Arlysia",
+    "Area": "Arlysia"
   },
   {
     "Number": 901,
@@ -4217,7 +4304,10 @@
     "Number": 921,
     "Name": "Enigma Lord",
     "Relationship": "Enemy",
-    "Priority": "High"
+    "Priority": "High",
+    "Landmass": "Mainland",
+    "Region": "Blackwood Forest",
+    "Area": "Blackwood Forest"
   },
   {
     "Number": 922,
@@ -4313,13 +4403,19 @@
     "Number": 944,
     "Name": "triceratops",
     "Relationship": "Neutral",
-    "Priority": "Normal"
+    "Priority": "Normal",
+    "Landmass": "Temple Hallway / Temple, Stairwell",
+    "Region": "Timelord",
+    "Area": "Forest Trail"
   },
   {
     "Number": 945,
     "Name": "mirror portal",
     "Relationship": "Neutral",
-    "Priority": "Normal"
+    "Priority": "Normal",
+    "Landmass": "Mainland",
+    "Region": "Arlysia",
+    "Area": "Island of Bones"
   },
   {
     "Number": 948,
@@ -4389,7 +4485,7 @@
     "Name": "baby white dragon",
     "Relationship": "Enemy",
     "Priority": "Low",
-    "Landmass": "Pocket: Black Ice Cavern (in Rocky Trail)",
+    "Landmass": "Black Ice Cavern (in Rocky Trail)",
     "Region": "Rocky Trail",
     "Area": "Black Ice Cavern"
   },
@@ -4398,7 +4494,7 @@
     "Name": "white dragon hatchling",
     "Relationship": "Enemy",
     "Priority": "Low",
-    "Landmass": "Pocket: Black Ice Cavern (in Rocky Trail)",
+    "Landmass": "Black Ice Cavern (in Rocky Trail)",
     "Region": "Rocky Trail",
     "Area": "Black Ice Cavern"
   },
@@ -4538,7 +4634,10 @@
     "Number": 1003,
     "Name": "shredded tapestry",
     "Relationship": "Neutral",
-    "Priority": "Normal"
+    "Priority": "Normal",
+    "Landmass": "Mainland",
+    "Region": "Arlysia",
+    "Area": "Bone Strewn Cavern"
   },
   {
     "Number": 1004,
@@ -4571,7 +4670,10 @@
     "Number": 1009,
     "Name": "Nahr",
     "Relationship": "Enemy",
-    "Priority": "High"
+    "Priority": "High",
+    "Landmass": "Mainland",
+    "Region": "Ancient Fortress",
+    "Area": "Blackstone Cavern"
   },
   {
     "Number": 1010,
@@ -4595,7 +4697,10 @@
     "Number": 1012,
     "Name": "Angelic Hunter",
     "Relationship": "Enemy",
-    "Priority": "High"
+    "Priority": "High",
+    "Landmass": "Mainland",
+    "Region": "Ancient Fortress",
+    "Area": "Ancient Fortress"
   },
   {
     "Number": 1013,
@@ -4700,19 +4805,28 @@
     "Number": 1036,
     "Name": "aged earth dragon",
     "Relationship": "Enemy",
-    "Priority": "High"
+    "Priority": "High",
+    "Landmass": "Mainland",
+    "Region": "Ancient Fortress",
+    "Area": "Ancient Fortress"
   },
   {
     "Number": 1039,
     "Name": "giant roc",
     "Relationship": "Neutral",
-    "Priority": "Normal"
+    "Priority": "Normal",
+    "Landmass": "Mainland",
+    "Region": "Ancient Fortress",
+    "Area": "Hedge Maze"
   },
   {
     "Number": 1041,
     "Name": "Lord of the Hunt",
     "Relationship": "Enemy",
-    "Priority": "High"
+    "Priority": "High",
+    "Landmass": "Mainland",
+    "Region": "Ancient Fortress",
+    "Area": "Hedge Maze"
   },
   {
     "Number": 1052,
@@ -4826,7 +4940,10 @@
     "Number": 1084,
     "Name": "Nahr",
     "Relationship": "Enemy",
-    "Priority": "High"
+    "Priority": "High",
+    "Landmass": "Mainland",
+    "Region": "Ancient Fortress",
+    "Area": "Grand Hallway"
   },
   {
     "Number": 1086,
@@ -4859,13 +4976,19 @@
     "Number": 1089,
     "Name": "constrictor",
     "Relationship": "Enemy",
-    "Priority": "High"
+    "Priority": "High",
+    "Landmass": "Mainland",
+    "Region": "Jungle",
+    "Area": "Shallow Jungle"
   },
   {
     "Number": 1091,
     "Name": "jeweled viper",
     "Relationship": "Enemy",
-    "Priority": "Last"
+    "Priority": "Last",
+    "Landmass": "Mainland",
+    "Region": "Jungle",
+    "Area": "Shallow Jungle"
   },
   {
     "Number": 1093,
@@ -4944,7 +5067,10 @@
     "Name": "large cocoon",
     "Relationship": "Enemy",
     "Priority": "Normal",
-    "NotHostile": true
+    "NotHostile": true,
+    "Landmass": "Mainland",
+    "Region": "Old Mines",
+    "Area": "Webbed Mine Tunnel"
   },
   {
     "Number": 1132,
@@ -4991,7 +5117,7 @@
     "Name": "phoren",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Thieves Town",
     "Area": "Thieves Town"
   },
@@ -5000,7 +5126,7 @@
     "Name": "melna",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Thieves Town",
     "Area": "Thieves Town"
   },
@@ -5009,7 +5135,7 @@
     "Name": "luginio",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Thieves Town",
     "Area": "Thieves Town"
   },
@@ -5018,7 +5144,7 @@
     "Name": "bar patron",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Thieves Town",
     "Area": "Thieves Town"
   },
@@ -5027,7 +5153,7 @@
     "Name": "viresse",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Thieves Town",
     "Area": "Thieves Town"
   },
@@ -5036,7 +5162,7 @@
     "Name": "lady phoebia",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Thieves Town",
     "Area": "Thieves Town"
   },
@@ -5045,7 +5171,7 @@
     "Name": "sheila",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Thieves Town",
     "Area": "Thieves Town"
   },
@@ -5054,7 +5180,7 @@
     "Name": "rayan",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shadowmere",
     "Area": "Shadowmere"
   },
@@ -5063,7 +5189,7 @@
     "Name": "gruphor",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Thieves Town",
     "Area": "Thieves Town"
   },
@@ -5071,14 +5197,17 @@
     "Number": 1148,
     "Name": "amar",
     "Relationship": "Neutral",
-    "Priority": "Normal"
+    "Priority": "Normal",
+    "Landmass": "Shadowmere",
+    "Region": "Shad-Thieves Town",
+    "Area": "Thieves Town"
   },
   {
     "Number": 1149,
     "Name": "columna",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Thieves Town",
     "Area": "The Midnight Ruse"
   },
@@ -5087,7 +5216,7 @@
     "Name": "orc'thur",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Thieves Town",
     "Area": "Thieves Town"
   },
@@ -5096,7 +5225,7 @@
     "Name": "luursa",
     "Relationship": "Enemy",
     "Priority": "High",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Outlands",
     "Area": "Crystal Forest"
   },
@@ -5111,7 +5240,7 @@
     "Name": "councilor serina",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shadowmere",
     "Area": "Prison Yard"
   },
@@ -5120,7 +5249,7 @@
     "Name": "prisoner",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shadowmere",
     "Area": "Prison"
   },
@@ -5129,7 +5258,7 @@
     "Name": "gaalt",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shadowmere",
     "Area": "Prison"
   },
@@ -5138,7 +5267,7 @@
     "Name": "foilin",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shadowmere",
     "Area": "Shadowmere"
   },
@@ -5147,7 +5276,7 @@
     "Name": "arkin",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shadowmere",
     "Area": "Shadowmere"
   },
@@ -5156,7 +5285,7 @@
     "Name": "mariana",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shadowmere",
     "Area": "Shadowmere"
   },
@@ -5165,7 +5294,7 @@
     "Name": "leryn",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shadowmere",
     "Area": "Shadowmere"
   },
@@ -5174,7 +5303,7 @@
     "Name": "cyril",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shadowmere",
     "Area": "Shadowmere"
   },
@@ -5183,7 +5312,7 @@
     "Name": "tortured courtesan",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Thieves Town",
     "Area": "Den of Aderem"
   },
@@ -5192,7 +5321,7 @@
     "Name": "courtesan",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Thieves Town",
     "Area": "The Midnight Ruse"
   },
@@ -5201,7 +5330,7 @@
     "Name": "daymia",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Thieves Town",
     "Area": "Thieves Town"
   },
@@ -5210,7 +5339,7 @@
     "Name": "head chef",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Thieves Town",
     "Area": "The Midnight Ruse"
   },
@@ -5243,7 +5372,7 @@
     "Name": "bath attendendant",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Thieves Town",
     "Area": "The Midnight Ruse"
   },
@@ -5252,7 +5381,7 @@
     "Name": "musician",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Thieves Town",
     "Area": "The Midnight Ruse"
   },
@@ -5261,7 +5390,7 @@
     "Name": "peacock",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Thieves Town",
     "Area": "The Midnight Ruse"
   },
@@ -5270,7 +5399,7 @@
     "Name": "maid",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Thieves Town",
     "Area": "The Midnight Ruse"
   },
@@ -5312,7 +5441,7 @@
     "Name": "Lord Lachlan",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Tagesh Highlands",
     "Area": "Alba Keep"
   },
@@ -5321,7 +5450,7 @@
     "Name": "Lady Astor",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Lorthan Lowlands",
     "Area": "Blackstone Keep"
   },
@@ -5330,7 +5459,7 @@
     "Name": "Lord Durand",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Vale of Durand",
     "Area": "Fenwyn Keep"
   },
@@ -5454,7 +5583,7 @@
     "Name": "Captain Trendel",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Crownlands",
     "Area": "Encampment"
   },
@@ -5463,7 +5592,7 @@
     "Name": "dockhand",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Crownlands",
     "Area": "Northwick Village"
   },
@@ -5472,7 +5601,7 @@
     "Name": "old recluse",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Crownlands",
     "Area": "Coldspring Lake"
   },
@@ -5481,7 +5610,7 @@
     "Name": "miller",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Crownlands",
     "Area": "Northwick Village"
   },
@@ -5490,7 +5619,7 @@
     "Name": "aging woodcutter",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Bristlewood Forest",
     "Area": "Lower Bristlewood"
   },
@@ -5508,7 +5637,7 @@
     "Name": "Vectus",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Bristlewood Forest",
     "Area": "Wooden Shack"
   },
@@ -5517,7 +5646,7 @@
     "Name": "Aquilas",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Tagesh Highlands",
     "Area": "Bone-strewn Aerie"
   },
@@ -5535,7 +5664,7 @@
     "Name": "spiked overlord",
     "Relationship": "Enemy",
     "Priority": "High",
-    "Landmass": "Pocket: Burning Plains (in Ancient Fortress)",
+    "Landmass": "Burning Plains (in Ancient Fortress)",
     "Region": "Ancient Fortress",
     "Area": "Burning Plains"
   },
@@ -5553,7 +5682,7 @@
     "Name": "Rattleskull",
     "Relationship": "Enemy",
     "Priority": "High",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Baenglen",
     "Area": "Baenglen"
   },
@@ -5598,7 +5727,7 @@
     "Name": "Aghatan",
     "Relationship": "Enemy",
     "Priority": "High",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Baenglen",
     "Area": "Baenglen"
   },
@@ -5615,14 +5744,17 @@
     "Number": 1293,
     "Name": "hooded figure",
     "Relationship": "Neutral",
-    "Priority": "Normal"
+    "Priority": "Normal",
+    "Landmass": "Mainland",
+    "Region": "Rhudaur",
+    "Area": "Ruined Bedroom"
   },
   {
     "Number": 1295,
     "Name": "Farmer Lanford",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Baenglen",
     "Area": "Lanford Stead"
   },
@@ -5631,7 +5763,7 @@
     "Name": "Flesh Shaper",
     "Relationship": "Enemy",
     "Priority": "High",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Baenglen",
     "Area": "Baenglen"
   },
@@ -5640,7 +5772,7 @@
     "Name": "Lord Chisholm",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Baenglen",
     "Area": "Muddy Wagon Path"
   },
@@ -5648,14 +5780,17 @@
     "Number": 1298,
     "Name": "malformation",
     "Relationship": "Enemy",
-    "Priority": "High"
+    "Priority": "High",
+    "Landmass": "Albion",
+    "Region": "Baenglen",
+    "Area": "Muddy Wagon Path"
   },
   {
     "Number": 1299,
     "Name": "shadowborn prophet",
     "Relationship": "Enemy",
     "Priority": "High",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Baenglen",
     "Area": "Defiled Chapel"
   },
@@ -5664,7 +5799,7 @@
     "Name": "Lady Malyse",
     "Relationship": "Enemy",
     "Priority": "High",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Baenglen",
     "Area": "Mountain of Corpses"
   },
@@ -5673,7 +5808,7 @@
     "Name": "Mayor Delanon",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shadowmere",
     "Area": "Shadowmere"
   },
@@ -5690,7 +5825,10 @@
     "Number": 2101,
     "Name": "dark dryad",
     "Relationship": "Enemy",
-    "Priority": "High"
+    "Priority": "High",
+    "Landmass": "Mainland",
+    "Region": "Blackwood Forest",
+    "Area": "Blackwood Forest"
   },
   {
     "Number": 2114,
@@ -5723,7 +5861,10 @@
     "Number": 2129,
     "Name": "Dark Naga",
     "Relationship": "Enemy",
-    "Priority": "High"
+    "Priority": "High",
+    "Landmass": "Mainland",
+    "Region": "Swamp of Tharollok",
+    "Area": "Swamp of Tharollok"
   },
   {
     "Number": 2130,
@@ -5783,92 +5924,134 @@
     "Number": 2161,
     "Name": "ruby spellbreaker",
     "Relationship": "Friend",
-    "Priority": "Normal"
+    "Priority": "Normal",
+    "Landmass": "Mainland",
+    "Region": "Slums",
+    "Area": "Gang Houses (Slums)"
   },
   {
     "Number": 2162,
     "Name": "iron spellbreaker",
     "Relationship": "Friend",
-    "Priority": "Normal"
+    "Priority": "Normal",
+    "Landmass": "Mainland",
+    "Region": "Gnome Village",
+    "Area": "Iron House"
   },
   {
     "Number": 2163,
     "Name": "topaz spellbreaker",
     "Relationship": "Friend",
-    "Priority": "Normal"
+    "Priority": "Normal",
+    "Landmass": "Mainland",
+    "Region": "Slums",
+    "Area": "Gang Houses (Slums)"
   },
   {
     "Number": 2164,
     "Name": "copper spellbreaker",
     "Relationship": "Friend",
-    "Priority": "Normal"
+    "Priority": "Normal",
+    "Landmass": "Mainland",
+    "Region": "Gnome Village",
+    "Area": "Copper House"
   },
   {
     "Number": 2165,
     "Name": "amber spellbreaker",
     "Relationship": "Friend",
-    "Priority": "Normal"
+    "Priority": "Normal",
+    "Landmass": "Mainland",
+    "Region": "Fungus Forest",
+    "Area": "Fungus Forest"
   },
   {
     "Number": 2166,
     "Name": "brass spellbreaker",
     "Relationship": "Friend",
-    "Priority": "Normal"
+    "Priority": "Normal",
+    "Landmass": "Mainland",
+    "Region": "Khazarad",
+    "Area": "Brass House"
   },
   {
     "Number": 2167,
     "Name": "emerald spellbreaker",
     "Relationship": "Friend",
-    "Priority": "Normal"
+    "Priority": "Normal",
+    "Landmass": "Mainland",
+    "Region": "Darkwood Forest",
+    "Area": "Gang Houses"
   },
   {
     "Number": 2168,
     "Name": "bronze spellbreaker",
     "Relationship": "Friend",
-    "Priority": "Normal"
+    "Priority": "Normal",
+    "Landmass": "Mainland",
+    "Region": "Khazarad",
+    "Area": "Bronze House"
   },
   {
     "Number": 2169,
     "Name": "sapphire spellbreaker",
     "Relationship": "Friend",
-    "Priority": "Normal"
+    "Priority": "Normal",
+    "Landmass": "Mainland",
+    "Region": "Island",
+    "Area": "Blue House"
   },
   {
     "Number": 2170,
     "Name": "elite amethyst guardian",
     "Relationship": "Friend",
-    "Priority": "Normal"
+    "Priority": "Normal",
+    "Landmass": "Mainland",
+    "Region": "Darkwood Forest",
+    "Area": "Gang Houses"
   },
   {
     "Number": 2171,
     "Name": "onyx spellbreaker",
     "Relationship": "Friend",
-    "Priority": "Normal"
+    "Priority": "Normal",
+    "Landmass": "Mainland",
+    "Region": "Black Fort",
+    "Area": "Dreary Village"
   },
   {
     "Number": 2172,
     "Name": "silver spellbreaker",
     "Relationship": "Friend",
-    "Priority": "Normal"
+    "Priority": "Normal",
+    "Landmass": "Mainland",
+    "Region": "Darkwood Forest",
+    "Area": "Gang Houses"
   },
   {
     "Number": 2173,
     "Name": "gold spellbreaker",
     "Relationship": "Friend",
-    "Priority": "Normal"
+    "Priority": "Normal",
+    "Landmass": "Mainland",
+    "Region": "Silvermere",
+    "Area": "Gold House"
   },
   {
     "Number": 2174,
     "Name": "diamond spellbreaker",
     "Relationship": "Friend",
-    "Priority": "Normal"
+    "Priority": "Normal",
+    "Landmass": "Mainland",
+    "Region": "Slums",
+    "Area": "Gang Houses (Slums)"
   },
   {
     "Number": 2183,
     "Name": "ogre-mage",
     "Relationship": "Enemy",
     "Priority": "High",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Thieves Town",
     "Area": "Warehouse"
   },
@@ -5883,7 +6066,7 @@
     "Name": "shadowborn loremaster",
     "Relationship": "Enemy",
     "Priority": "High",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Thieves Town",
     "Area": "Temple (Shad-Thieves Town)"
   },
@@ -5892,7 +6075,7 @@
     "Name": "gnoll warleader",
     "Relationship": "Enemy",
     "Priority": "High",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Dragonfang's",
     "Area": "Gnoll Encampment"
   },
@@ -5901,7 +6084,7 @@
     "Name": "shadowborn priest",
     "Relationship": "Enemy",
     "Priority": "High",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Darkened Cavern",
     "Area": "Darkened Cavern"
   },
@@ -5910,7 +6093,7 @@
     "Name": "massive bore worm",
     "Relationship": "Enemy",
     "Priority": "High",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Darkened Cavern",
     "Area": "Smooth Stone Tunnel"
   },
@@ -5919,7 +6102,7 @@
     "Name": "froghemoth",
     "Relationship": "Enemy",
     "Priority": "High",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad - Fungal Forest",
     "Area": "Murky Swamp"
   },
@@ -5928,7 +6111,7 @@
     "Name": "sunwyrm",
     "Relationship": "Enemy",
     "Priority": "High",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad - Fungal Forest",
     "Area": "Shattered Plain"
   },
@@ -5937,7 +6120,7 @@
     "Name": "ancient fire drake",
     "Relationship": "Enemy",
     "Priority": "High",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad - Fungal Forest",
     "Area": "Smoldering Tunnels"
   },
@@ -5946,7 +6129,7 @@
     "Name": "fire giant chieftan",
     "Relationship": "Enemy",
     "Priority": "High",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad - Fungal Forest",
     "Area": "Smoldering Cavern"
   },
@@ -5954,7 +6137,10 @@
     "Number": 2262,
     "Name": "Lord Stryfe",
     "Relationship": "Enemy",
-    "Priority": "High"
+    "Priority": "High",
+    "Landmass": "Albion",
+    "Region": "Talgarn",
+    "Area": "Talgarn"
   },
   {
     "Number": 2266,
@@ -6035,7 +6221,10 @@
     "Number": 2327,
     "Name": "guardsman",
     "Relationship": "Friend",
-    "Priority": "Normal"
+    "Priority": "Normal",
+    "Landmass": "Mainland",
+    "Region": "Port Blackwater",
+    "Area": "Barley Fields"
   },
   {
     "Number": 2328,
@@ -6240,7 +6429,7 @@
     "Name": "old sea captain",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Kingsport",
     "Area": "Kingsport Harbor"
   },
@@ -6249,7 +6438,7 @@
     "Name": "Grand Master",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Tagesh Highlands",
     "Area": "Loch Lorian"
   },
@@ -6258,7 +6447,7 @@
     "Name": "dockworker",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Kingsport",
     "Area": "Kingsport Harbor"
   },
@@ -6267,7 +6456,7 @@
     "Name": "sailor",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Kingsport",
     "Area": "Kingsport Harbor"
   },
@@ -6276,7 +6465,7 @@
     "Name": "fisherman",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Kingsport",
     "Area": "Kingsport Harbor"
   },
@@ -6285,7 +6474,7 @@
     "Name": "shipwright",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Kingsport",
     "Area": "Kingsport Harbor"
   },
@@ -6294,7 +6483,7 @@
     "Name": "merchant captain",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Kingsport",
     "Area": "Kingsport Harbor"
   },
@@ -6303,7 +6492,7 @@
     "Name": "city guard",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Kingsport",
     "Area": "Kingsport"
   },
@@ -6312,7 +6501,7 @@
     "Name": "watch captain",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Kingsport",
     "Area": "Kingsport"
   },
@@ -6320,14 +6509,17 @@
     "Number": 2361,
     "Name": "city guard",
     "Relationship": "Neutral",
-    "Priority": "Normal"
+    "Priority": "Normal",
+    "Landmass": "Albion",
+    "Region": "Kingsport",
+    "Area": "Kingsport"
   },
   {
     "Number": 2362,
     "Name": "citizen",
     "Relationship": "Friend",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Kingsport",
     "Area": "Kingsport Harbor"
   },
@@ -6336,7 +6528,7 @@
     "Name": "citizen",
     "Relationship": "Friend",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Kingsport",
     "Area": "Kingsport Harbor"
   },
@@ -6345,7 +6537,7 @@
     "Name": "royal marine",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Kingsport",
     "Area": "City Barracks"
   },
@@ -6354,7 +6546,7 @@
     "Name": "royal footman",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Kingsport",
     "Area": "City Barracks"
   },
@@ -6363,7 +6555,7 @@
     "Name": "royal archer",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Kingsport",
     "Area": "Kingsport"
   },
@@ -6372,7 +6564,7 @@
     "Name": "royal captain",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Kingsport",
     "Area": "Kingsport"
   },
@@ -6381,7 +6573,7 @@
     "Name": "King Andrus",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Kingsport",
     "Area": "Kingsport"
   },
@@ -6389,14 +6581,17 @@
     "Number": 2369,
     "Name": "royal bodyguard",
     "Relationship": "Neutral",
-    "Priority": "Normal"
+    "Priority": "Normal",
+    "Landmass": "Albion",
+    "Region": "Kingsport",
+    "Area": "Kingsport"
   },
   {
     "Number": 2370,
     "Name": "Justicar Halford",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Kingsport",
     "Area": "Castle"
   },
@@ -6405,7 +6600,7 @@
     "Name": "mottled courser",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Kingsport",
     "Area": "Castle"
   },
@@ -6414,7 +6609,7 @@
     "Name": "stablehand",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Kingsport",
     "Area": "Castle"
   },
@@ -6423,7 +6618,7 @@
     "Name": "minstrel",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Kingsport",
     "Area": "Troubadour's Guild"
   },
@@ -6432,7 +6627,7 @@
     "Name": "chanteur",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Kingsport",
     "Area": "Troubadour's Guild"
   },
@@ -6441,7 +6636,7 @@
     "Name": "shady vagrant",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Kingsport",
     "Area": "Black Market"
   },
@@ -6450,7 +6645,7 @@
     "Name": "barmaid",
     "Relationship": "Friend",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Kingsport",
     "Area": "Kingsport"
   },
@@ -6459,7 +6654,7 @@
     "Name": "merry drunk",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Kingsport",
     "Area": "Kingsport"
   },
@@ -6468,7 +6663,7 @@
     "Name": "citizen",
     "Relationship": "Friend",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Kingsport",
     "Area": "Kingsport"
   },
@@ -6477,7 +6672,7 @@
     "Name": "citizen",
     "Relationship": "Friend",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Kingsport",
     "Area": "Kingsport"
   },
@@ -6486,7 +6681,7 @@
     "Name": "peasant",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Kingsport",
     "Area": "Kingsport"
   },
@@ -6495,7 +6690,7 @@
     "Name": "peasant",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Kingsport",
     "Area": "Kingsport"
   },
@@ -6505,7 +6700,7 @@
     "Relationship": "Neutral",
     "Priority": "Normal",
     "NotHostile": true,
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Kingsport",
     "Area": "Kingsport"
   },
@@ -6514,7 +6709,7 @@
     "Name": "refugee",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Kingsport",
     "Area": "Kingsport"
   },
@@ -6523,7 +6718,7 @@
     "Name": "refugee",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Kingsport",
     "Area": "Kingsport"
   },
@@ -6532,7 +6727,7 @@
     "Name": "refugee",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Kingsport",
     "Area": "Kingsport"
   },
@@ -6541,7 +6736,7 @@
     "Name": "stray hound",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Kingsport",
     "Area": "Kingsport"
   },
@@ -6550,7 +6745,7 @@
     "Name": "Hraldin",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Kingsport",
     "Area": "Kingsport"
   },
@@ -6559,7 +6754,7 @@
     "Name": "Gwyned",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Kingsport",
     "Area": "Kingsport"
   },
@@ -6568,7 +6763,7 @@
     "Name": "Fwyren",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Kingsport",
     "Area": "Kingsport"
   },
@@ -6577,7 +6772,7 @@
     "Name": "greedy healer",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Kingsport",
     "Area": "Lichyard"
   },
@@ -6621,14 +6816,17 @@
     "Number": 2413,
     "Name": "First Mate Garn",
     "Relationship": "Enemy",
-    "Priority": "High"
+    "Priority": "High",
+    "Landmass": "Pirate Galleon (in Terra Fuego)",
+    "Region": "Terra Fuego",
+    "Area": "Pirate Galleon"
   },
   {
     "Number": 2414,
     "Name": "Captain Flintlock",
     "Relationship": "Enemy",
     "Priority": "High",
-    "Landmass": "Pocket: Pirate Galleon (in Terra Fuego)",
+    "Landmass": "Pirate Galleon (in Terra Fuego)",
     "Region": "Terra Fuego",
     "Area": "Pirate Galleon"
   },
@@ -6727,7 +6925,7 @@
     "Name": "royal footman",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Crownlands",
     "Area": "Encampment"
   },
@@ -6736,7 +6934,7 @@
     "Name": "royal pathfinder",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Crownlands",
     "Area": "Encampment"
   },
@@ -6745,7 +6943,7 @@
     "Name": "royal lancer",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Crownlands",
     "Area": "Encampment"
   },
@@ -6772,7 +6970,7 @@
     "Name": "millhand",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Tagesh Highlands",
     "Area": "Stonemill Village"
   },
@@ -6781,7 +6979,7 @@
     "Name": "villager",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Crownlands",
     "Area": "Northwick Village"
   },
@@ -6790,7 +6988,7 @@
     "Name": "villager",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Crownlands",
     "Area": "Northwick Village"
   },
@@ -6799,7 +6997,7 @@
     "Name": "aurochs",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Kingsport",
     "Area": "Corn Field"
   },
@@ -6808,7 +7006,7 @@
     "Name": "pig",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Kingsport",
     "Area": "Corn Field"
   },
@@ -6817,7 +7015,7 @@
     "Name": "chicken",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Kingsport",
     "Area": "Corn Field"
   },
@@ -6826,7 +7024,7 @@
     "Name": "courser foal",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Crownlands",
     "Area": "Southwick Village"
   },
@@ -6835,7 +7033,7 @@
     "Name": "destrier foal",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Crownlands",
     "Area": "Southwick Village"
   },
@@ -6844,7 +7042,7 @@
     "Name": "mule",
     "Relationship": "Friend",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Crownlands",
     "Area": "Hay Field"
   },
@@ -6853,7 +7051,7 @@
     "Name": "fieldhand",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Crownlands",
     "Area": "Grain Field"
   },
@@ -6862,7 +7060,7 @@
     "Name": "fieldhand",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Crownlands",
     "Area": "Grain Field"
   },
@@ -6871,7 +7069,7 @@
     "Name": "satyr",
     "Relationship": "Enemy",
     "Priority": "High",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Bristlewood Forest",
     "Area": "Bristlewood Forest"
   },
@@ -6880,7 +7078,7 @@
     "Name": "steelhead",
     "Relationship": "Enemy",
     "Priority": "High",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Tagesh Highlands",
     "Area": "Loch Lorian"
   },
@@ -6889,7 +7087,7 @@
     "Name": "living water",
     "Relationship": "Enemy",
     "Priority": "High",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Tagesh Highlands",
     "Area": "Lake Alba"
   },
@@ -6898,7 +7096,7 @@
     "Name": "villager",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Bristlewood Forest",
     "Area": "Ghille Village"
   },
@@ -6907,7 +7105,7 @@
     "Name": "villager",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Bristlewood Forest",
     "Area": "Ghille Village"
   },
@@ -6916,7 +7114,7 @@
     "Name": "Lachlan guard",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Bristlewood Forest",
     "Area": "Ghille Village"
   },
@@ -6925,7 +7123,7 @@
     "Name": "Vynne loyalist",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Bristlewood Forest",
     "Area": "Wooden Shack"
   },
@@ -6935,7 +7133,7 @@
     "Relationship": "Enemy",
     "Priority": "Normal",
     "NotHostile": true,
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Albion River System",
     "Area": "The River Lorian"
   },
@@ -6944,7 +7142,7 @@
     "Name": "living plague",
     "Relationship": "Enemy",
     "Priority": "High",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Vale of Durand",
     "Area": "Farnholme"
   },
@@ -6952,14 +7150,17 @@
     "Number": 2661,
     "Name": "Fallen King",
     "Relationship": "Enemy",
-    "Priority": "High"
+    "Priority": "High",
+    "Landmass": "Terra Ista",
+    "Region": "Terra Ista",
+    "Area": "Carved Ice Catacombs"
   },
   {
     "Number": 2666,
     "Name": "lumbering geist",
     "Relationship": "Enemy",
     "Priority": "High",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Brynhall",
     "Area": "Upper Hallway"
   },
@@ -6976,14 +7177,17 @@
     "Number": 2679,
     "Name": "Setra",
     "Relationship": "Enemy",
-    "Priority": "High"
+    "Priority": "High",
+    "Landmass": "Tal'kiran",
+    "Region": "Tal'kiran Ruins",
+    "Area": "Opulent Villa"
   },
   {
     "Number": 2680,
     "Name": "Darem Tidegrasp",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Tagesh Highlands",
     "Area": "Lake Alba"
   },
@@ -6992,7 +7196,7 @@
     "Name": "miller",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Tagesh Highlands",
     "Area": "Stonemill Village"
   },
@@ -7001,7 +7205,7 @@
     "Name": "villager",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Tagesh Highlands",
     "Area": "Stonemill Village"
   },
@@ -7010,7 +7214,7 @@
     "Name": "villager",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Tagesh Highlands",
     "Area": "Stonemill Village"
   },
@@ -7019,7 +7223,7 @@
     "Name": "Lachlan guard",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Tagesh Highlands",
     "Area": "Upper Highlands (Tagesh Highlands)"
   },
@@ -7028,7 +7232,7 @@
     "Name": "Lachlan guard",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Tagesh Highlands",
     "Area": "Alba Keep"
   },
@@ -7037,7 +7241,7 @@
     "Name": "Forgrim",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Tagesh Highlands",
     "Area": "Alba Keep"
   },
@@ -7046,7 +7250,7 @@
     "Name": "Farmer Lledwyn",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Vale of Durand",
     "Area": "Lledwyn Stead"
   },
@@ -7055,7 +7259,7 @@
     "Name": "Durand guard",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Vale of Durand",
     "Area": "Caer Fenwyn"
   },
@@ -7064,7 +7268,7 @@
     "Name": "Durand knight",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Vale of Durand",
     "Area": "Western Vale"
   },
@@ -7073,7 +7277,7 @@
     "Name": "Gelm",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Vale of Durand",
     "Area": "Caer Fenwyn"
   },
@@ -7082,7 +7286,7 @@
     "Name": "Horatio",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Vale of Durand",
     "Area": "Western Vale"
   },
@@ -7091,7 +7295,7 @@
     "Name": "Kayd",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Vale of Durand",
     "Area": "Farnholme"
   },
@@ -7100,7 +7304,7 @@
     "Name": "haggard witch",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Vale of Durand",
     "Area": "Cypress Swamp"
   },
@@ -7109,7 +7313,7 @@
     "Name": "Astor guard",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Lorthan Lowlands",
     "Area": "Blackstone Keep"
   },
@@ -7118,7 +7322,7 @@
     "Name": "Astor marksman",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Lorthan Lowlands",
     "Area": "Blackstone Keep"
   },
@@ -7145,7 +7349,7 @@
     "Name": "messenger",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Kingsport",
     "Area": "Kingsport"
   },
@@ -7154,7 +7358,7 @@
     "Name": "Magister Melnor",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Kingsport",
     "Area": "Castle"
   },
@@ -7163,7 +7367,7 @@
     "Name": "royal guard",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Kingsport",
     "Area": "Castle"
   },
@@ -7172,7 +7376,7 @@
     "Name": "Luca Prodigio",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Kingsport",
     "Area": "Troubadour's Guild"
   },
@@ -7217,7 +7421,7 @@
     "Name": "Rodolfo",
     "Relationship": "Neutral",
     "Priority": "Normal",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Vale of Durand",
     "Area": "Western Vale"
   },
@@ -7235,7 +7439,7 @@
     "Name": "Volodar",
     "Relationship": "Enemy",
     "Priority": "High",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Outlands",
     "Area": "Crystalline Thicket"
   },
@@ -7252,67 +7456,100 @@
     "Number": 2510,
     "Name": "elite ruby guardian",
     "Relationship": "Friend",
-    "Priority": "Normal"
+    "Priority": "Normal",
+    "Landmass": "Mainland",
+    "Region": "Slums",
+    "Area": "Gang Houses (Slums)"
   },
   {
     "Number": 2512,
     "Name": "elite iron guardian",
     "Relationship": "Friend",
-    "Priority": "Normal"
+    "Priority": "Normal",
+    "Landmass": "Mainland",
+    "Region": "Gnome Village",
+    "Area": "Iron House"
   },
   {
     "Number": 2513,
     "Name": "elite topaz guardian",
     "Relationship": "Friend",
-    "Priority": "Normal"
+    "Priority": "Normal",
+    "Landmass": "Mainland",
+    "Region": "Slums",
+    "Area": "Gang Houses (Slums)"
   },
   {
     "Number": 2515,
     "Name": "elite copper guardian",
     "Relationship": "Friend",
-    "Priority": "Normal"
+    "Priority": "Normal",
+    "Landmass": "Mainland",
+    "Region": "Gnome Village",
+    "Area": "Copper House"
   },
   {
     "Number": 2516,
     "Name": "elite amber guardian",
     "Relationship": "Friend",
-    "Priority": "Normal"
+    "Priority": "Normal",
+    "Landmass": "Mainland",
+    "Region": "Fungus Forest",
+    "Area": "Fungus Forest"
   },
   {
     "Number": 2518,
     "Name": "elite brass guardian",
     "Relationship": "Friend",
-    "Priority": "Normal"
+    "Priority": "Normal",
+    "Landmass": "Mainland",
+    "Region": "Khazarad",
+    "Area": "Brass House"
   },
   {
     "Number": 2519,
     "Name": "elite emerald guardian",
     "Relationship": "Friend",
-    "Priority": "Normal"
+    "Priority": "Normal",
+    "Landmass": "Mainland",
+    "Region": "Darkwood Forest",
+    "Area": "Gang Houses"
   },
   {
     "Number": 2521,
     "Name": "elite bronze guardian",
     "Relationship": "Friend",
-    "Priority": "Normal"
+    "Priority": "Normal",
+    "Landmass": "Mainland",
+    "Region": "Khazarad",
+    "Area": "Bronze House"
   },
   {
     "Number": 2522,
     "Name": "elite sapphire guardian",
     "Relationship": "Friend",
-    "Priority": "Normal"
+    "Priority": "Normal",
+    "Landmass": "Mainland",
+    "Region": "Island",
+    "Area": "Blue House"
   },
   {
     "Number": 2525,
     "Name": "elite amethyst guardian",
     "Relationship": "Friend",
-    "Priority": "Normal"
+    "Priority": "Normal",
+    "Landmass": "Mainland",
+    "Region": "Darkwood Forest",
+    "Area": "Gang Houses"
   },
   {
     "Number": 2528,
     "Name": "elite onyx guardian",
     "Relationship": "Friend",
-    "Priority": "Normal"
+    "Priority": "Normal",
+    "Landmass": "Mainland",
+    "Region": "Black Fort",
+    "Area": "Dreary Village"
   },
   {
     "Number": 2531,
@@ -7324,13 +7561,19 @@
     "Number": 2534,
     "Name": "elite gold guardian",
     "Relationship": "Friend",
-    "Priority": "Normal"
+    "Priority": "Normal",
+    "Landmass": "Mainland",
+    "Region": "Silvermere",
+    "Area": "Gold House"
   },
   {
     "Number": 2537,
     "Name": "elite diamond guardian",
     "Relationship": "Friend",
-    "Priority": "Normal"
+    "Priority": "Normal",
+    "Landmass": "Mainland",
+    "Region": "Slums",
+    "Area": "Gang Houses (Slums)"
   },
   {
     "Number": 1,
@@ -9155,7 +9398,7 @@
   {
     "Number": 608,
     "Name": "Sharh'Kur",
-    "Landmass": "Pocket: Black Ice Cavern (in Rocky Trail)",
+    "Landmass": "Black Ice Cavern (in Rocky Trail)",
     "Region": "Rocky Trail",
     "Area": "Black Ice Cavern"
   },
@@ -9575,42 +9818,42 @@
   {
     "Number": 737,
     "Name": "dark assassin",
-    "Landmass": "Pocket: Darkened Tunnels (in Black Fort)",
+    "Landmass": "Darkened Tunnels (in Black Fort)",
     "Region": "Black Fort",
     "Area": "Darkened Tunnels"
   },
   {
     "Number": 738,
     "Name": "dark stalker",
-    "Landmass": "Pocket: Darkened Tunnels (in Black Fort)",
+    "Landmass": "Darkened Tunnels (in Black Fort)",
     "Region": "Black Fort",
     "Area": "Darkened Tunnels"
   },
   {
     "Number": 739,
     "Name": "dark nightblade",
-    "Landmass": "Pocket: Darkened Tunnels (in Black Fort)",
+    "Landmass": "Darkened Tunnels (in Black Fort)",
     "Region": "Black Fort",
     "Area": "Darkened Tunnels"
   },
   {
     "Number": 741,
     "Name": "yeti",
-    "Landmass": "Pocket: Black Ice Cavern (in Rocky Trail)",
+    "Landmass": "Black Ice Cavern (in Rocky Trail)",
     "Region": "Rocky Trail",
     "Area": "Black Ice Cavern"
   },
   {
     "Number": 742,
     "Name": "ice golem",
-    "Landmass": "Pocket: Black Ice Cavern (in Rocky Trail)",
+    "Landmass": "Black Ice Cavern (in Rocky Trail)",
     "Region": "Rocky Trail",
     "Area": "Black Ice Cavern"
   },
   {
     "Number": 743,
     "Name": "ice wraith",
-    "Landmass": "Pocket: Black Ice Cavern (in Rocky Trail)",
+    "Landmass": "Black Ice Cavern (in Rocky Trail)",
     "Region": "Rocky Trail",
     "Area": "Black Ice Cavern"
   },
@@ -9792,7 +10035,7 @@
   {
     "Number": 814,
     "Name": "skeletal steed",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Baenglen",
     "Area": "Manor Stables"
   },
@@ -10268,14 +10511,14 @@
   {
     "Number": 978,
     "Name": "young white dragon",
-    "Landmass": "Pocket: Black Ice Cavern (in Rocky Trail)",
+    "Landmass": "Black Ice Cavern (in Rocky Trail)",
     "Region": "Rocky Trail",
     "Area": "Black Ice Cavern"
   },
   {
     "Number": 979,
     "Name": "adolescent white dragon",
-    "Landmass": "Pocket: Black Ice Cavern (in Rocky Trail)",
+    "Landmass": "Black Ice Cavern (in Rocky Trail)",
     "Region": "Rocky Trail",
     "Area": "Black Ice Cavern"
   },
@@ -10331,7 +10574,7 @@
   {
     "Number": 1023,
     "Name": "Aderem",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Thieves Town",
     "Area": "Den of Aderem"
   },
@@ -10492,77 +10735,77 @@
   {
     "Number": 1141,
     "Name": "shadowmere guard",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shadowmere",
     "Area": "Shadowmere"
   },
   {
     "Number": 1152,
     "Name": "crystal spider",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Outlands",
     "Area": "Crystal Forest"
   },
   {
     "Number": 1153,
     "Name": "crystal butterfly",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Outlands",
     "Area": "Crystal Forest"
   },
   {
     "Number": 1154,
     "Name": "darken beast",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Outlands",
     "Area": "Crystal Forest"
   },
   {
     "Number": 1155,
     "Name": "canimera",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Outlands",
     "Area": "Crystal Forest"
   },
   {
     "Number": 1156,
     "Name": "shadowcat",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Outlands",
     "Area": "Crystal Forest"
   },
   {
     "Number": 1158,
     "Name": "crystal golem",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Outlands",
     "Area": "Crystal Forest"
   },
   {
     "Number": 1159,
     "Name": "stomach lining",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Outlands",
     "Area": "Crystal Forest"
   },
   {
     "Number": 1161,
     "Name": "prison sergeant",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shadowmere",
     "Area": "Prison Yard"
   },
   {
     "Number": 1162,
     "Name": "prison guard",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shadowmere",
     "Area": "Prison Yard"
   },
   {
     "Number": 1166,
     "Name": "warden",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shadowmere",
     "Area": "Prison"
   },
@@ -10800,14 +11043,14 @@
   {
     "Number": 1243,
     "Name": "spiked juggernaut",
-    "Landmass": "Pocket: Burning Plains (in Ancient Fortress)",
+    "Landmass": "Burning Plains (in Ancient Fortress)",
     "Region": "Ancient Fortress",
     "Area": "Burning Plains"
   },
   {
     "Number": 1244,
     "Name": "fanged demon",
-    "Landmass": "Pocket: Burning Plains (in Ancient Fortress)",
+    "Landmass": "Burning Plains (in Ancient Fortress)",
     "Region": "Ancient Fortress",
     "Area": "Burning Plains"
   },
@@ -10926,7 +11169,7 @@
   {
     "Number": 1262,
     "Name": "wrackspawn",
-    "Landmass": "Pocket: Chaotic Isle (in Shattered Expanse)",
+    "Landmass": "Chaotic Isle (in Shattered Expanse)",
     "Region": "Shattered Expanse",
     "Area": "Chaotic Isle"
   },
@@ -10968,14 +11211,14 @@
   {
     "Number": 1280,
     "Name": "fachan tyrant",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Tagesh Highlands",
     "Area": "Slipshod Colony"
   },
   {
     "Number": 1281,
     "Name": "Bloodwing",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Tagesh Highlands",
     "Area": "Lofty Cliff"
   },
@@ -11262,490 +11505,490 @@
   {
     "Number": 2175,
     "Name": "elite shadowmere guard",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shadowmere",
     "Area": "Shadowmere"
   },
   {
     "Number": 2176,
     "Name": "shadowmere templar",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shadowmere",
     "Area": "Shadowmere"
   },
   {
     "Number": 2177,
     "Name": "eladrin",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Outlands",
     "Area": "Gigas Forest"
   },
   {
     "Number": 2178,
     "Name": "eladrin shaman",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Outlands",
     "Area": "Gigas Forest"
   },
   {
     "Number": 2179,
     "Name": "eladrin wardancer",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Outlands",
     "Area": "Gigas Forest"
   },
   {
     "Number": 2180,
     "Name": "eladrin mage",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Outlands",
     "Area": "Gigas Forest"
   },
   {
     "Number": 2181,
     "Name": "eladrin warlock",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Outlands",
     "Area": "Gigas Forest"
   },
   {
     "Number": 2182,
     "Name": "ogre guard",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Thieves Town",
     "Area": "Warehouse"
   },
   {
     "Number": 2184,
     "Name": "mercenary captain",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Thieves Town",
     "Area": "Warehouse"
   },
   {
     "Number": 2185,
     "Name": "warlock mercenary",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Thieves Town",
     "Area": "Warehouse"
   },
   {
     "Number": 2186,
     "Name": "warehouse supervisor",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Thieves Town",
     "Area": "Warehouse"
   },
   {
     "Number": 2187,
     "Name": "thief",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Thieves Town",
     "Area": "Thieves Town"
   },
   {
     "Number": 2188,
     "Name": "bounty hunter",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Thieves Town",
     "Area": "Thieves Guild"
   },
   {
     "Number": 2189,
     "Name": "master thief",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Thieves Town",
     "Area": "Thieves Town"
   },
   {
     "Number": 2190,
     "Name": "goblin accountant",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Thieves Town",
     "Area": "Thieves Guild"
   },
   {
     "Number": 2191,
     "Name": "half-ogre grunt",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Thieves Town",
     "Area": "Warehouse"
   },
   {
     "Number": 2197,
     "Name": "shadowborn relicmaster",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Thieves Town",
     "Area": "Temple (Shad-Thieves Town)"
   },
   {
     "Number": 2199,
     "Name": "half-orc sentry",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Dragonfang's",
     "Area": "Dragon's Fang Hills"
   },
   {
     "Number": 2200,
     "Name": "orc warrior",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Dragonfang's",
     "Area": "Dragon's Fang Hills"
   },
   {
     "Number": 2201,
     "Name": "orc shaman",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Dragonfang's",
     "Area": "Torchlit Tunnels (Shad-Dragonfang's)"
   },
   {
     "Number": 2204,
     "Name": "gnoll scout",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Dragonfang's",
     "Area": "Dragon's Fang Hills"
   },
   {
     "Number": 2205,
     "Name": "gnoll marauder",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Dragonfang's",
     "Area": "Dragon's Fang Hills"
   },
   {
     "Number": 2207,
     "Name": "shadowborn cultist",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Darkened Cavern",
     "Area": "Darkened Cavern"
   },
   {
     "Number": 2208,
     "Name": "shadowborn cleric",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Darkened Cavern",
     "Area": "Darkened Cavern"
   },
   {
     "Number": 2210,
     "Name": "tentacled monstrosity",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Darkened Cavern",
     "Area": "Darkened Cavern"
   },
   {
     "Number": 2211,
     "Name": "bore worm",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Darkened Cavern",
     "Area": "Smooth Stone Tunnel"
   },
   {
     "Number": 2213,
     "Name": "hellbeast",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Darkened Cavern",
     "Area": "Darkened Stone Tunnel"
   },
   {
     "Number": 2214,
     "Name": "shadowborn warrior",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Darkened Cavern",
     "Area": "Darkened Cavern"
   },
   {
     "Number": 2215,
     "Name": "spore beast",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad - Fungal Forest",
     "Area": "Fungal Forest"
   },
   {
     "Number": 2216,
     "Name": "widowmaker spider",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad - Fungal Forest",
     "Area": "Fungal Forest"
   },
   {
     "Number": 2217,
     "Name": "shambler",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad - Fungal Forest",
     "Area": "Fungal Forest"
   },
   {
     "Number": 2218,
     "Name": "fungoid",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad - Fungal Forest",
     "Area": "Fungal Forest"
   },
   {
     "Number": 2219,
     "Name": "gelatinous cube",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shadowmere",
     "Area": "Sewers"
   },
   {
     "Number": 2220,
     "Name": "carrion crawler",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shadowmere",
     "Area": "Sewers"
   },
   {
     "Number": 2222,
     "Name": "shadow slime",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shadowmere",
     "Area": "Sewers"
   },
   {
     "Number": 2223,
     "Name": "slime mold",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shadowmere",
     "Area": "Sewers"
   },
   {
     "Number": 2224,
     "Name": "swamp strider",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad - Fungal Forest",
     "Area": "Murky Swamp"
   },
   {
     "Number": 2225,
     "Name": "grey fungus tree",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad - Fungal Forest",
     "Area": "Fungal Forest"
   },
   {
     "Number": 2226,
     "Name": "bloodthorn",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad - Fungal Forest",
     "Area": "Fungal Forest"
   },
   {
     "Number": 2227,
     "Name": "siren tree",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad - Fungal Forest",
     "Area": "Fungal Forest"
   },
   {
     "Number": 2228,
     "Name": "swamp troll",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad - Fungal Forest",
     "Area": "Murky Swamp"
   },
   {
     "Number": 2229,
     "Name": "giant dragonfly",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad - Fungal Forest",
     "Area": "Fungal Forest"
   },
   {
     "Number": 2230,
     "Name": "dire crocodile",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad - Fungal Forest",
     "Area": "Murky Swamp"
   },
   {
     "Number": 2231,
     "Name": "retch hound",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad - Fungal Forest",
     "Area": "Murky Swamp"
   },
   {
     "Number": 2232,
     "Name": "mire brute",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad - Fungal Forest",
     "Area": "Murky Swamp"
   },
   {
     "Number": 2233,
     "Name": "muck dweller",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad - Fungal Forest",
     "Area": "Murky Swamp"
   },
   {
     "Number": 2234,
     "Name": "giant fire beetle",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad - Fungal Forest",
     "Area": "Shattered Plain"
   },
   {
     "Number": 2235,
     "Name": "foulwing",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad - Fungal Forest",
     "Area": "Shattered Plain"
   },
   {
     "Number": 2236,
     "Name": "giant ant lion",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad - Fungal Forest",
     "Area": "Shattered Plain"
   },
   {
     "Number": 2237,
     "Name": "giant lizard",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad - Fungal Forest",
     "Area": "Shattered Plain"
   },
   {
     "Number": 2239,
     "Name": "afreet",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad - Fungal Forest",
     "Area": "Magma Fields"
   },
   {
     "Number": 2240,
     "Name": "fire snake",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad - Fungal Forest",
     "Area": "Magma Fields"
   },
   {
     "Number": 2241,
     "Name": "fire newt warrior",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad - Fungal Forest",
     "Area": "Magma Fields"
   },
   {
     "Number": 2242,
     "Name": "fire newt warlock",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad - Fungal Forest",
     "Area": "Magma Fields"
   },
   {
     "Number": 2243,
     "Name": "fire drake",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad - Fungal Forest",
     "Area": "Smoldering Tunnels"
   },
   {
     "Number": 2244,
     "Name": "young fire drake",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad - Fungal Forest",
     "Area": "Smoldering Tunnels"
   },
   {
     "Number": 2245,
     "Name": "baby fire drake",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad - Fungal Forest",
     "Area": "Smoldering Tunnels"
   },
   {
     "Number": 2246,
     "Name": "fire giant",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad - Fungal Forest",
     "Area": "Smoldering Cavern"
   },
   {
     "Number": 2247,
     "Name": "fire giant shaman",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad - Fungal Forest",
     "Area": "Smoldering Cavern"
   },
   {
     "Number": 2251,
     "Name": "brass dragon",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Dragonfang's",
     "Area": "Dragon's Fang Hills"
   },
   {
     "Number": 2252,
     "Name": "brass wyrmling",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Dragonfang's",
     "Area": "Dragon's Fang Hills"
   },
   {
     "Number": 2253,
     "Name": "copper wyrmling",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Dragonfang's",
     "Area": "Dragon's Fang Hills"
   },
   {
     "Number": 2254,
     "Name": "copper dragon",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Dragonfang's",
     "Area": "Dragon's Fang Hills"
   },
   {
     "Number": 2255,
     "Name": "crystal falcon",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Outlands",
     "Area": "Crystal Forest"
   },
   {
     "Number": 2256,
     "Name": "crystalline ooze",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Outlands",
     "Area": "Crystal Forest"
   },
   {
     "Number": 2257,
     "Name": "caterprism",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Outlands",
     "Area": "Crystal Forest"
   },
   {
     "Number": 2258,
     "Name": "crystalline horror",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Outlands",
     "Area": "Crystal Forest"
   },
   {
     "Number": 2259,
     "Name": "corrupted canimera",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Outlands",
     "Area": "Crystal Forest"
   },
   {
     "Number": 2260,
     "Name": "corrupted darken beast",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Outlands",
     "Area": "Crystal Forest"
   },
   {
     "Number": 2265,
     "Name": "brass gorgon",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Dragonfang's",
     "Area": "Dragon's Fang Hills"
   },
@@ -11913,28 +12156,28 @@
   {
     "Number": 2372,
     "Name": "destrier stallion",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Kingsport",
     "Area": "Castle"
   },
   {
     "Number": 2376,
     "Name": "fugitive",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Kingsport",
     "Area": "City Sewers"
   },
   {
     "Number": 2377,
     "Name": "bloodworm",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Kingsport",
     "Area": "City Sewers"
   },
   {
     "Number": 2378,
     "Name": "sewer eel",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Kingsport",
     "Area": "City Sewers"
   },
@@ -12025,7 +12268,7 @@
   {
     "Number": 2412,
     "Name": "buccaneer",
-    "Landmass": "Pocket: Pirate Galleon (in Terra Fuego)",
+    "Landmass": "Pirate Galleon (in Terra Fuego)",
     "Region": "Terra Fuego",
     "Area": "Pirate Galleon"
   },
@@ -12144,126 +12387,126 @@
   {
     "Number": 2555,
     "Name": "giant pike",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Albion River System",
     "Area": "Lower Albion River"
   },
   {
     "Number": 2556,
     "Name": "river eel",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Albion River System",
     "Area": "Lower Albion River"
   },
   {
     "Number": 2557,
     "Name": "flowing elemental",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Albion River System",
     "Area": "Lower Albion River"
   },
   {
     "Number": 2558,
     "Name": "flotsam ooze",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Albion River System",
     "Area": "Lower Albion River"
   },
   {
     "Number": 2559,
     "Name": "water pixie",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Crownlands",
     "Area": "Coldspring Lake"
   },
   {
     "Number": 2560,
     "Name": "flowing elemental",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Crownlands",
     "Area": "Coldspring Lake"
   },
   {
     "Number": 2574,
     "Name": "chimera",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Tagesh Highlands",
     "Area": "Highland Wilds"
   },
   {
     "Number": 2575,
     "Name": "gryphon",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Tagesh Highlands",
     "Area": "Highland Wilds"
   },
   {
     "Number": 2576,
     "Name": "fachan",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Tagesh Highlands",
     "Area": "Highland Wilds"
   },
   {
     "Number": 2577,
     "Name": "crag grizzly",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Tagesh Highlands",
     "Area": "Highland Wilds"
   },
   {
     "Number": 2578,
     "Name": "crowned eagle",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Tagesh Highlands",
     "Area": "Highland Wilds"
   },
   {
     "Number": 2579,
     "Name": "redcap",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Tagesh Highlands",
     "Area": "Tagesh Highlands"
   },
   {
     "Number": 2580,
     "Name": "elder redcap",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Tagesh Highlands",
     "Area": "Tagesh Highlands"
   },
   {
     "Number": 2581,
     "Name": "dark sprite",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Bristlewood Forest",
     "Area": "Lower Bristlewood"
   },
   {
     "Number": 2582,
     "Name": "cloaked marauder",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Bristlewood Forest",
     "Area": "Bristlewood Forest"
   },
   {
     "Number": 2583,
     "Name": "infiltrator",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Bristlewood Forest",
     "Area": "Bristlewood Forest"
   },
   {
     "Number": 2584,
     "Name": "granite hulk",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Bristlewood Forest",
     "Area": "Bristlewood Forest"
   },
   {
     "Number": 2585,
     "Name": "highland spinner",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Bristlewood Forest",
     "Area": "Bristlewood Forest"
   },
@@ -12284,91 +12527,91 @@
   {
     "Number": 2589,
     "Name": "dark sprite",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Bristlewood Forest",
     "Area": "Bristlewood Forest"
   },
   {
     "Number": 2590,
     "Name": "redcap",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Bristlewood Forest",
     "Area": "Bristlewood Forest"
   },
   {
     "Number": 2591,
     "Name": "elder leprechaun",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Bristlewood Forest",
     "Area": "Bristlewood Forest"
   },
   {
     "Number": 2592,
     "Name": "great huorn",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Bristlewood Forest",
     "Area": "Bristlewood Forest"
   },
   {
     "Number": 2593,
     "Name": "moss giant",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Bristlewood Forest",
     "Area": "Bristlewood Forest"
   },
   {
     "Number": 2594,
     "Name": "thorned hulk",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Bristlewood Forest",
     "Area": "Bristlewood Forest"
   },
   {
     "Number": 2596,
     "Name": "daggerfish",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Tagesh Highlands",
     "Area": "Loch Lorian"
   },
   {
     "Number": 2597,
     "Name": "leech swarm",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Tagesh Highlands",
     "Area": "Loch Lorian"
   },
   {
     "Number": 2599,
     "Name": "highland eel",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Tagesh Highlands",
     "Area": "Lake Alba"
   },
   {
     "Number": 2603,
     "Name": "twisted treant",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Bristlewood Forest",
     "Area": "The Bristledeep"
   },
   {
     "Number": 2604,
     "Name": "thornflayer",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Tagesh Highlands",
     "Area": "Bristledeep"
   },
   {
     "Number": 2606,
     "Name": "giant dragonfly",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Tagesh Highlands",
     "Area": "Lake Alba"
   },
   {
     "Number": 2607,
     "Name": "giant leech",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Tagesh Highlands",
     "Area": "Lake Alba"
   },
@@ -12389,210 +12632,210 @@
   {
     "Number": 2610,
     "Name": "living gneiss",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Tagesh Highlands",
     "Area": "Stone-strewn Slope"
   },
   {
     "Number": 2611,
     "Name": "fachan",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Tagesh Highlands",
     "Area": "Slipshod Colony"
   },
   {
     "Number": 2612,
     "Name": "fachan brute",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Tagesh Highlands",
     "Area": "Slipshod Colony"
   },
   {
     "Number": 2613,
     "Name": "crowned eagle",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Tagesh Highlands",
     "Area": "Bone-strewn Aerie"
   },
   {
     "Number": 2614,
     "Name": "crysaetos",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Tagesh Highlands",
     "Area": "Bone-strewn Aerie"
   },
   {
     "Number": 2615,
     "Name": "gryphon",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Tagesh Highlands",
     "Area": "Jagged Cliff"
   },
   {
     "Number": 2616,
     "Name": "elder gryphon",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Tagesh Highlands",
     "Area": "Lofty Cliff"
   },
   {
     "Number": 2617,
     "Name": "chimera",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Tagesh Highlands",
     "Area": "Upland Hills"
   },
   {
     "Number": 2618,
     "Name": "chimera",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Tagesh Highlands",
     "Area": "Upland Hills"
   },
   {
     "Number": 2619,
     "Name": "water moccasin",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Albion River System",
     "Area": "The River Lorian"
   },
   {
     "Number": 2620,
     "Name": "acidic ooze",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Albion River System",
     "Area": "The River Lorian"
   },
   {
     "Number": 2622,
     "Name": "spineshell",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Albion River System",
     "Area": "The River Lorian"
   },
   {
     "Number": 2623,
     "Name": "muckworm",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Brynhall",
     "Area": "Llyn Glas"
   },
   {
     "Number": 2624,
     "Name": "drowned dead",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Brynhall",
     "Area": "Llyn Glas"
   },
   {
     "Number": 2625,
     "Name": "drowned dead",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Brynhall",
     "Area": "Llyn Glas"
   },
   {
     "Number": 2626,
     "Name": "risen spearman",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Brynhall",
     "Area": "Brynhall"
   },
   {
     "Number": 2627,
     "Name": "risen archer",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Brynhall",
     "Area": "Brynhall"
   },
   {
     "Number": 2628,
     "Name": "ghastly retainer",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Brynhall",
     "Area": "Brynhall"
   },
   {
     "Number": 2629,
     "Name": "skeletal servant",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Brynhall",
     "Area": "Dark Basement"
   },
   {
     "Number": 2630,
     "Name": "skeletal chef",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Brynhall",
     "Area": "Dark Basement"
   },
   {
     "Number": 2631,
     "Name": "vengeful spirit",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Brynhall",
     "Area": "Upper Hallway"
   },
   {
     "Number": 2632,
     "Name": "bone chimera",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Tagesh Highlands",
     "Area": "Tagesh Plateau"
   },
   {
     "Number": 2633,
     "Name": "skyterror",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Tagesh Highlands",
     "Area": "Tagesh Plateau"
   },
   {
     "Number": 2634,
     "Name": "rotting fachan",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Tagesh Highlands",
     "Area": "Tagesh Plateau"
   },
   {
     "Number": 2636,
     "Name": "ursus",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Tagesh Highlands",
     "Area": "Tagesh Plateau"
   },
   {
     "Number": 2637,
     "Name": "deadcap",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Tagesh Highlands",
     "Area": "Tagesh Plateau"
   },
   {
     "Number": 2638,
     "Name": "tormented spirit",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Tagesh Highlands",
     "Area": "Tagesh Plateau"
   },
   {
     "Number": 2639,
     "Name": "wandering zombie",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Tagesh Highlands",
     "Area": "Tagesh Plateau"
   },
   {
     "Number": 2640,
     "Name": "winged fiend",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Tagesh Highlands",
     "Area": "Tagesh Plateau"
   },
   {
     "Number": 2641,
     "Name": "fog elemental",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Albion River System",
     "Area": "Alba River Bottoms"
   },
@@ -12606,112 +12849,112 @@
   {
     "Number": 2643,
     "Name": "rotting abomination",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Baenglen",
     "Area": "Baenglen"
   },
   {
     "Number": 2644,
     "Name": "phantasm",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Baenglen",
     "Area": "Baenglen"
   },
   {
     "Number": 2645,
     "Name": "stitched abomination",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Baenglen",
     "Area": "Ravaged Farm"
   },
   {
     "Number": 2646,
     "Name": "skeletal guard",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Baenglen",
     "Area": "Ravaged Farm"
   },
   {
     "Number": 2647,
     "Name": "blood pudding",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Baenglen",
     "Area": "Ravaged Farm"
   },
   {
     "Number": 2648,
     "Name": "bone juggernaut",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Baenglen",
     "Area": "Baenglen"
   },
   {
     "Number": 2649,
     "Name": "skeletal bovid",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Baenglen",
     "Area": "Disused Barn"
   },
   {
     "Number": 2650,
     "Name": "doom chicken",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Baenglen",
     "Area": "Infested Fields"
   },
   {
     "Number": 2651,
     "Name": "flaming abomination",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Baenglen",
     "Area": "Burning House (Baenglen)"
   },
   {
     "Number": 2652,
     "Name": "plagued swarm",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Baenglen",
     "Area": "Infested Fields"
   },
   {
     "Number": 2653,
     "Name": "rotpede",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Baenglen",
     "Area": "Infested Fields"
   },
   {
     "Number": 2654,
     "Name": "skeletal bovid",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Baenglen",
     "Area": "Disused Barn"
   },
   {
     "Number": 2655,
     "Name": "bone champion",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Baenglen",
     "Area": "Baenglen"
   },
   {
     "Number": 2656,
     "Name": "shadowborn erudite",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Thieves Town",
     "Area": "Temple (Shad-Thieves Town)"
   },
   {
     "Number": 2657,
     "Name": "shadowborn acolyte",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Thieves Town",
     "Area": "Temple (Shad-Thieves Town)"
   },
   {
     "Number": 2658,
     "Name": "spectral assassin",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Baenglen",
     "Area": "Baenglen"
   },
@@ -12760,7 +13003,7 @@
   {
     "Number": 2667,
     "Name": "vault keeper",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Brynhall",
     "Area": "Brynhall"
   },
@@ -12837,42 +13080,42 @@
   {
     "Number": 2682,
     "Name": "gorgimera",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Tagesh Highlands",
     "Area": "Carnaugh Plain"
   },
   {
     "Number": 2683,
     "Name": "fleshstalker",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Tagesh Highlands",
     "Area": "Carnaugh Plain"
   },
   {
     "Number": 2684,
     "Name": "stonecap",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Tagesh Highlands",
     "Area": "Bristlewood Grove"
   },
   {
     "Number": 2685,
     "Name": "granite hulk",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Tagesh Highlands",
     "Area": "Upper Highlands (Tagesh Highlands)"
   },
   {
     "Number": 2686,
     "Name": "zephyr",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Tagesh Highlands",
     "Area": "Windswept Slope"
   },
   {
     "Number": 2687,
     "Name": "crag wyrm",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Bannock Deeps",
     "Area": "Druim Nathair"
   },
@@ -12886,504 +13129,504 @@
   {
     "Number": 2689,
     "Name": "elder stonecap",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Tagesh Highlands",
     "Area": "Upper Highlands (Tagesh Highlands)"
   },
   {
     "Number": 2694,
     "Name": "granite colossus",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Bannock Deeps",
     "Area": "Bannock Quarry"
   },
   {
     "Number": 2695,
     "Name": "gem eater",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Bannock Deeps",
     "Area": "Central Mine Tunnel"
   },
   {
     "Number": 2696,
     "Name": "lesser roper",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Bannock Deeps",
     "Area": "Central Mine Tunnel"
   },
   {
     "Number": 2697,
     "Name": "stoneborer",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Bannock Deeps",
     "Area": "Central Mine Tunnel"
   },
   {
     "Number": 2698,
     "Name": "dark element",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Bannock Deeps",
     "Area": "Lower Mine Tunnel"
   },
   {
     "Number": 2699,
     "Name": "massive stone worm",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Bannock Deeps",
     "Area": "Lower Mine Tunnel"
   },
   {
     "Number": 2702,
     "Name": "fey dragonling",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Vale of Durand",
     "Area": "Meadowlands"
   },
   {
     "Number": 2703,
     "Name": "goldcap",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Vale of Durand",
     "Area": "Meadowlands"
   },
   {
     "Number": 2704,
     "Name": "axebeak",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Vale of Durand",
     "Area": "Meadowlands"
   },
   {
     "Number": 2705,
     "Name": "feral courser",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Vale of Durand",
     "Area": "Meadowlands"
   },
   {
     "Number": 2706,
     "Name": "iron gorgon",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Vale of Durand",
     "Area": "Meadowlands"
   },
   {
     "Number": 2707,
     "Name": "vale falcon",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Vale of Durand",
     "Area": "Meadowlands"
   },
   {
     "Number": 2708,
     "Name": "hooded rogue",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Vale of Durand",
     "Area": "Meadowlands"
   },
   {
     "Number": 2710,
     "Name": "plagueling",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Vale of Durand",
     "Area": "Meadowlands"
   },
   {
     "Number": 2711,
     "Name": "bonecleaver",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Vale of Durand",
     "Area": "Meadowlands"
   },
   {
     "Number": 2712,
     "Name": "rotcap",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Vale of Durand",
     "Area": "Meadowlands"
   },
   {
     "Number": 2713,
     "Name": "nightmare",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Vale of Durand",
     "Area": "Meadowlands"
   },
   {
     "Number": 2714,
     "Name": "gorehoof",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Vale of Durand",
     "Area": "Meadowlands"
   },
   {
     "Number": 2715,
     "Name": "aderyn",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Vale of Durand",
     "Area": "Meadowlands"
   },
   {
     "Number": 2721,
     "Name": "wandering cadaver",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Vale of Durand",
     "Area": "Farnholme"
   },
   {
     "Number": 2722,
     "Name": "anguished spirit",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Vale of Durand",
     "Area": "Farnholme"
   },
   {
     "Number": 2723,
     "Name": "shadow",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Vale of Durand",
     "Area": "Farnholme"
   },
   {
     "Number": 2724,
     "Name": "corpulent mass",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Vale of Durand",
     "Area": "Corpse-ridden Field"
   },
   {
     "Number": 2725,
     "Name": "reanimated guard",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Vale of Durand",
     "Area": "Farnholme"
   },
   {
     "Number": 2726,
     "Name": "flesheater",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Vale of Durand",
     "Area": "Corpse-ridden Field"
   },
   {
     "Number": 2727,
     "Name": "grim knight",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Vale of Durand",
     "Area": "Farnholme"
   },
   {
     "Number": 2728,
     "Name": "spectral revenant",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Vale of Durand",
     "Area": "Farnholme"
   },
   {
     "Number": 2729,
     "Name": "flaming cadaver",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Vale of Durand",
     "Area": "Farnholme"
   },
   {
     "Number": 2730,
     "Name": "Shadow Lord",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Vale of Durand",
     "Area": "Farnholme"
   },
   {
     "Number": 2731,
     "Name": "Kraun the Unholy",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Vale of Durand",
     "Area": "Farnholme"
   },
   {
     "Number": 2732,
     "Name": "Gorlok",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Baenglen",
     "Area": "Baenglen"
   },
   {
     "Number": 2733,
     "Name": "Deadeye",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Albion River System",
     "Area": "Talgarn Docks"
   },
   {
     "Number": 2734,
     "Name": "Xoth",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Vale of Durand",
     "Area": "Farnholme"
   },
   {
     "Number": 2737,
     "Name": "miscreation",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Vale of Durand",
     "Area": "Farnholme"
   },
   {
     "Number": 2738,
     "Name": "Lord Skorne",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Vale of Durand",
     "Area": "Farnholme"
   },
   {
     "Number": 2739,
     "Name": "brute zombie",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Vale of Durand",
     "Area": "Smoldering Fields"
   },
   {
     "Number": 2740,
     "Name": "proatheris",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Vale of Durand",
     "Area": "Cypress Swamp"
   },
   {
     "Number": 2741,
     "Name": "gigafrog",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Vale of Durand",
     "Area": "Cypress Swamp"
   },
   {
     "Number": 2743,
     "Name": "lycanthrope",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Lorthan Lowlands",
     "Area": "The Quagmire"
   },
   {
     "Number": 2744,
     "Name": "bog ray",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Lorthan Lowlands",
     "Area": "The Quagmire"
   },
   {
     "Number": 2745,
     "Name": "horned basilisk",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Lorthan Lowlands",
     "Area": "The Quagmire"
   },
   {
     "Number": 2746,
     "Name": "madcap",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Lorthan Lowlands",
     "Area": "Noxious Fen"
   },
   {
     "Number": 2747,
     "Name": "bog shambler",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Lorthan Lowlands",
     "Area": "Noxious Fen"
   },
   {
     "Number": 2748,
     "Name": "muck elemental",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Lorthan Lowlands",
     "Area": "Noxious Fen"
   },
   {
     "Number": 2749,
     "Name": "dark adherent",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Lorthan Lowlands",
     "Area": "Brackenfen"
   },
   {
     "Number": 2750,
     "Name": "mire fiend",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Lorthan Lowlands",
     "Area": "Brackenfen"
   },
   {
     "Number": 2751,
     "Name": "muck crab",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Albion River System",
     "Area": "The River Lorian"
   },
   {
     "Number": 2752,
     "Name": "river shambler",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Albion River System",
     "Area": "The River Lorian"
   },
   {
     "Number": 2753,
     "Name": "spearhead",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Albion River System",
     "Area": "The River Lorian"
   },
   {
     "Number": 2754,
     "Name": "vodyanoi",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Albion River System",
     "Area": "The River Lorian"
   },
   {
     "Number": 2755,
     "Name": "dark warden",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Lorthan Lowlands",
     "Area": "Brackenfen"
   },
   {
     "Number": 2756,
     "Name": "Jareth",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Lorthan Lowlands",
     "Area": "Bracken Tower"
   },
   {
     "Number": 2759,
     "Name": "mindless dead",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Talgarn",
     "Area": "Talgarn"
   },
   {
     "Number": 2760,
     "Name": "lost soul",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Albion River System",
     "Area": "Talgarn Docks"
   },
   {
     "Number": 2761,
     "Name": "greater wraith",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Albion River System",
     "Area": "Talgarn Docks"
   },
   {
     "Number": 2762,
     "Name": "flaming dead",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Talgarn",
     "Area": "Talgarn"
   },
   {
     "Number": 2763,
     "Name": "skeletal shipwright",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Talgarn",
     "Area": "Talgarn"
   },
   {
     "Number": 2764,
     "Name": "dead sailor",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Talgarn",
     "Area": "Talgarn"
   },
   {
     "Number": 2765,
     "Name": "jagged monstrosity",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Albion River System",
     "Area": "Talgarn Docks"
   },
   {
     "Number": 2766,
     "Name": "bone guard",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Talgarn",
     "Area": "Talgarn"
   },
   {
     "Number": 2767,
     "Name": "bone marksman",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Talgarn",
     "Area": "Talgarn"
   },
   {
     "Number": 2768,
     "Name": "bone ravager",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Albion River System",
     "Area": "Talgarn Docks"
   },
   {
     "Number": 2769,
     "Name": "Lord Stryfe",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Talgarn",
     "Area": "Talgarn"
   },
   {
     "Number": 2770,
     "Name": "putrescent hulk",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Talgarn",
     "Area": "Sacked Villa"
   },
   {
     "Number": 2771,
     "Name": "ancient preserver",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Lorthan Lowlands",
     "Area": "Temple Corridor"
   },
   {
     "Number": 2772,
     "Name": "dark templar",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Lorthan Lowlands",
     "Area": "Temple Corridor"
   },
   {
     "Number": 2773,
     "Name": "dark fanatic",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Lorthan Lowlands",
     "Area": "Temple Corridor"
   },
   {
     "Number": 2774,
     "Name": "depth dweller",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Lorthan Lowlands",
     "Area": "Flooded Passage"
   },
   {
     "Number": 2776,
     "Name": "dark engineer",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Lorthan Lowlands",
     "Area": "Temple Corridor"
   },
   {
     "Number": 2779,
     "Name": "Ancient Guardian",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Lorthan Lowlands",
     "Area": "Temple Sanctum"
   },
   {
     "Number": 2781,
     "Name": "Deathgaze",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Kingsport",
     "Area": "Castle"
   },
@@ -13467,7 +13710,7 @@
   {
     "Number": 2806,
     "Name": "dread rook",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Outlands",
     "Area": "Crystalline Thicket"
   },
@@ -13509,35 +13752,35 @@
   {
     "Number": 2815,
     "Name": "half-orc pillager",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Outlands",
     "Area": "Outlands"
   },
   {
     "Number": 2816,
     "Name": "crazed villain",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Outlands",
     "Area": "Outlands"
   },
   {
     "Number": 2817,
     "Name": "shadowhound",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Outlands",
     "Area": "Outlands"
   },
   {
     "Number": 2818,
     "Name": "giant spinefish",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Dragonfang's",
     "Area": "The Shadow River"
   },
   {
     "Number": 2819,
     "Name": "Templar Grukthog",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Thieves Town",
     "Area": "Temple (Shad-Thieves Town)"
   },
@@ -13593,7 +13836,7 @@
   {
     "Number": 2830,
     "Name": "dark smuggler",
-    "Landmass": "Albion landmass",
+    "Landmass": "Albion",
     "Region": "Lorthan Lowlands",
     "Area": "Brackenfen"
   },
@@ -13621,49 +13864,49 @@
   {
     "Number": 2834,
     "Name": "cave fisher",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Dragonfang's",
     "Area": "Dank Tunnel"
   },
   {
     "Number": 2835,
     "Name": "grey ooze",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Dragonfang's",
     "Area": "Dank Tunnel"
   },
   {
     "Number": 2836,
     "Name": "fanglider",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Dragonfang's",
     "Area": "Dank Tunnel"
   },
   {
     "Number": 2837,
     "Name": "young fanglider",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Dragonfang's",
     "Area": "Acrid Hollow"
   },
   {
     "Number": 2838,
     "Name": "vine zombie",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Dragonfang's",
     "Area": "Overgrown Ruin"
   },
   {
     "Number": 2839,
     "Name": "rotting huorn",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Dragonfang's",
     "Area": "Decaying Grove"
   },
   {
     "Number": 2840,
     "Name": "vile willow",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Dragonfang's",
     "Area": "Decaying Grove"
   },
@@ -13698,7 +13941,7 @@
   {
     "Number": 2848,
     "Name": "wrackspawn",
-    "Landmass": "Pocket: Chaotic Isle (in Shattered Expanse)",
+    "Landmass": "Chaotic Isle (in Shattered Expanse)",
     "Region": "Shattered Expanse",
     "Area": "Chaotic Isle"
   },
@@ -13775,29 +14018,715 @@
   {
     "Number": 2861,
     "Name": "Yekrath the Blind",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad - Fungal Forest",
     "Area": "Fungal Forest"
   },
   {
     "Number": 2862,
     "Name": "Skyth Rahzkis",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Outlands",
     "Area": "Outlands"
   },
   {
     "Number": 2863,
     "Name": "Grakh Bonegrinder",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Dragonfang's",
     "Area": "Eastern Road (Shad-Dragonfang's)"
   },
   {
     "Number": 2864,
     "Name": "landshark",
-    "Landmass": "Shadowmere landmass",
+    "Landmass": "Shadowmere",
     "Region": "Shad-Dragonfang's",
     "Area": "Dragon's Fang Hills"
+  },
+  {
+    "Number": 279,
+    "Name": "huorn",
+    "Landmass": "Mainland",
+    "Region": "Northern Forests",
+    "Area": "Dying Grove"
+  },
+  {
+    "Number": 305,
+    "Name": "small gibbering horror",
+    "Landmass": "Mainland",
+    "Region": "Ancient Ruin",
+    "Area": "Ancient Ruin"
+  },
+  {
+    "Number": 448,
+    "Name": "Kai Master",
+    "Landmass": "Mainland",
+    "Region": "Khazarad",
+    "Area": "Mountain Ledge"
+  },
+  {
+    "Number": 460,
+    "Name": "shapeshifter",
+    "Landmass": "Mainland",
+    "Region": "Dwarven Mines",
+    "Area": "Mithril Mine"
+  },
+  {
+    "Number": 508,
+    "Name": "young tyrannosaur",
+    "Landmass": "Temple Hallway / Temple, Stairwell",
+    "Region": "Timelord",
+    "Area": "Forest Trail"
+  },
+  {
+    "Number": 509,
+    "Name": "tetraraptor",
+    "Landmass": "Temple Hallway / Temple, Stairwell",
+    "Region": "Timelord",
+    "Area": "Forest Trail"
+  },
+  {
+    "Number": 511,
+    "Name": "zapsalis",
+    "Landmass": "Temple Hallway / Temple, Stairwell",
+    "Region": "Timelord",
+    "Area": "Forest Trail"
+  },
+  {
+    "Number": 512,
+    "Name": "pteranodon",
+    "Landmass": "Temple Hallway / Temple, Stairwell",
+    "Region": "Timelord",
+    "Area": "Forest Trail"
+  },
+  {
+    "Number": 515,
+    "Name": "deinodon",
+    "Landmass": "Temple Hallway / Temple, Stairwell",
+    "Region": "Timelord",
+    "Area": "Forest Trail"
+  },
+  {
+    "Number": 523,
+    "Name": "deinonychus",
+    "Landmass": "Temple Hallway / Temple, Stairwell",
+    "Region": "Timelord",
+    "Area": "Forest Trail"
+  },
+  {
+    "Number": 535,
+    "Name": "flaming waist",
+    "Landmass": "Mainland",
+    "Region": "Lava Fields",
+    "Area": "Crimson Tunnel"
+  },
+  {
+    "Number": 536,
+    "Name": "flaming torso",
+    "Landmass": "Mainland",
+    "Region": "Lava Fields",
+    "Area": "Crimson Tunnel"
+  },
+  {
+    "Number": 541,
+    "Name": "Vasili",
+    "Landmass": "Mainland",
+    "Region": "Volcano",
+    "Area": "Volcano"
+  },
+  {
+    "Number": 544,
+    "Name": "platinum knight",
+    "Landmass": "Mainland",
+    "Region": "Blackwood Forest",
+    "Area": "Graveyard (Blackwood Forest)"
+  },
+  {
+    "Number": 590,
+    "Name": "hydra head",
+    "Landmass": "Mainland",
+    "Region": "Scorching Desert",
+    "Area": "Limestone Caverns"
+  },
+  {
+    "Number": 601,
+    "Name": "saracen raider",
+    "Landmass": "Mainland",
+    "Region": "Scorching Desert",
+    "Area": "Scorching Desert"
+  },
+  {
+    "Number": 609,
+    "Name": "Argak the Grey",
+    "Landmass": "Mainland",
+    "Region": "Scorching Desert",
+    "Area": "Limestone Caverns"
+  },
+  {
+    "Number": 610,
+    "Name": "Choira Pyromancer",
+    "Landmass": "Mainland",
+    "Region": "Lava Fields",
+    "Area": "Lava Tube"
+  },
+  {
+    "Number": 611,
+    "Name": "Lallim Whitemane",
+    "Landmass": "Mainland",
+    "Region": "Barren Hills",
+    "Area": "Storm Mountain"
+  },
+  {
+    "Number": 612,
+    "Name": "Sharh'Kur",
+    "Landmass": "Black Ice Cavern (in Rocky Trail)",
+    "Region": "Rocky Trail",
+    "Area": "Black Ice Cavern"
+  },
+  {
+    "Number": 837,
+    "Name": "Death Mist of Ozrinom",
+    "Landmass": "Mainland",
+    "Region": "Blackwood Forest",
+    "Area": "Mausoleum"
+  },
+  {
+    "Number": 843,
+    "Name": "death chicken",
+    "Landmass": "Mainland",
+    "Region": "Blackwood Forest",
+    "Area": "Farmstead"
+  },
+  {
+    "Number": 875,
+    "Name": "first mate",
+    "Landmass": "Ancient Galleon (in Arlysia)",
+    "Region": "Arlysia",
+    "Area": "Ancient Galleon"
+  },
+  {
+    "Number": 878,
+    "Name": "animated sword",
+    "Landmass": "Mainland",
+    "Region": "Arlysia",
+    "Area": "Library"
+  },
+  {
+    "Number": 889,
+    "Name": "severed leg",
+    "Landmass": "Mainland",
+    "Region": "Blackwood Forest",
+    "Area": "Forest Trail"
+  },
+  {
+    "Number": 890,
+    "Name": "severed arm",
+    "Landmass": "Mainland",
+    "Region": "Blackwood Forest",
+    "Area": "Forest Trail"
+  },
+  {
+    "Number": 891,
+    "Name": "severed head",
+    "Landmass": "Mainland",
+    "Region": "Blackwood Forest",
+    "Area": "Forest Trail"
+  },
+  {
+    "Number": 892,
+    "Name": "giant locust",
+    "Landmass": "Mainland",
+    "Region": "Blackwood Forest",
+    "Area": "Farmstead"
+  },
+  {
+    "Number": 893,
+    "Name": "Warmonger of Blood",
+    "Landmass": "Mainland",
+    "Region": "Blackwood Forest",
+    "Area": "Blackwood Forest"
+  },
+  {
+    "Number": 896,
+    "Name": "skeletal parrot",
+    "Landmass": "Ancient Galleon (in Arlysia)",
+    "Region": "Arlysia",
+    "Area": "Ancient Galleon"
+  },
+  {
+    "Number": 934,
+    "Name": "Lord Feyr",
+    "Landmass": "Mainland",
+    "Region": "Blackwood Forest",
+    "Area": "Dying Fields"
+  },
+  {
+    "Number": 950,
+    "Name": "green demonling",
+    "Landmass": "Mainland",
+    "Region": "Old Mines",
+    "Area": "Old Mine Tunnel"
+  },
+  {
+    "Number": 1002,
+    "Name": "ancient tapestry",
+    "Landmass": "Mainland",
+    "Region": "Arlysia",
+    "Area": "Bone Strewn Cavern"
+  },
+  {
+    "Number": 1016,
+    "Name": "Great Hydra",
+    "Landmass": "Mainland",
+    "Region": "Ancient Fortress",
+    "Area": "Ancient Fortress"
+  },
+  {
+    "Number": 1029,
+    "Name": "massive hydra head",
+    "Landmass": "Mainland",
+    "Region": "Ancient Fortress",
+    "Area": "Ancient Fortress"
+  },
+  {
+    "Number": 1030,
+    "Name": "Azrandimon",
+    "Landmass": "Mainland",
+    "Region": "Ancient Fortress",
+    "Area": "Hedge Maze"
+  },
+  {
+    "Number": 1031,
+    "Name": "darken beast",
+    "Landmass": "Mainland",
+    "Region": "Bloodwood Weald",
+    "Area": "Bloodwood Weald"
+  },
+  {
+    "Number": 1032,
+    "Name": "Lorzina",
+    "Landmass": "Mainland",
+    "Region": "Ancient Fortress",
+    "Area": "Hedge Maze"
+  },
+  {
+    "Number": 1034,
+    "Name": "ancient sand dragon",
+    "Landmass": "Mainland",
+    "Region": "Ancient Fortress",
+    "Area": "Ancient Fortress"
+  },
+  {
+    "Number": 1035,
+    "Name": "fallen angel",
+    "Landmass": "Mainland",
+    "Region": "Ancient Fortress",
+    "Area": "Ancient Fortress"
+  },
+  {
+    "Number": 1037,
+    "Name": "Dao Lord",
+    "Landmass": "Mainland",
+    "Region": "Ancient Fortress",
+    "Area": "Ancient Fortress"
+  },
+  {
+    "Number": 1038,
+    "Name": "great green dragon",
+    "Landmass": "Mainland",
+    "Region": "Ancient Fortress",
+    "Area": "Hedge Maze"
+  },
+  {
+    "Number": 1040,
+    "Name": "Darken Beast Lord",
+    "Landmass": "Mainland",
+    "Region": "Ancient Fortress",
+    "Area": "Hedge Maze"
+  },
+  {
+    "Number": 1044,
+    "Name": "silver warrior",
+    "Landmass": "Mainland",
+    "Region": "Ancient Fortress",
+    "Area": "Heavenly Sky"
+  },
+  {
+    "Number": 1045,
+    "Name": "marble archer",
+    "Landmass": "Mainland",
+    "Region": "Ancient Fortress",
+    "Area": "Heavenly Sky"
+  },
+  {
+    "Number": 1046,
+    "Name": "golden mist",
+    "Landmass": "Mainland",
+    "Region": "Ancient Fortress",
+    "Area": "Heavenly Sky"
+  },
+  {
+    "Number": 1048,
+    "Name": "spiked juggernaut",
+    "Landmass": "Mainland",
+    "Region": "Ancient Fortress",
+    "Area": "Burning Valley"
+  },
+  {
+    "Number": 1049,
+    "Name": "Devil Fiend",
+    "Landmass": "Mainland",
+    "Region": "Ancient Fortress",
+    "Area": "Burning Valley"
+  },
+  {
+    "Number": 1050,
+    "Name": "Demoness",
+    "Landmass": "Mainland",
+    "Region": "Ancient Fortress",
+    "Area": "Burning Valley"
+  },
+  {
+    "Number": 1051,
+    "Name": "fanged demon",
+    "Landmass": "Mainland",
+    "Region": "Ancient Fortress",
+    "Area": "Burning Valley"
+  },
+  {
+    "Number": 1059,
+    "Name": "cloaked figure",
+    "Landmass": "Mainland",
+    "Region": "Ancient Fortress",
+    "Area": "Grand Hallway"
+  },
+  {
+    "Number": 1060,
+    "Name": "cloaked figure",
+    "Landmass": "Mainland",
+    "Region": "Ancient Fortress",
+    "Area": "Grand Hallway"
+  },
+  {
+    "Number": 1061,
+    "Name": "cloaked figure",
+    "Landmass": "Mainland",
+    "Region": "Ancient Fortress",
+    "Area": "Grand Hallway"
+  },
+  {
+    "Number": 1062,
+    "Name": "cloaked figure",
+    "Landmass": "Mainland",
+    "Region": "Ancient Fortress",
+    "Area": "Grand Hallway"
+  },
+  {
+    "Number": 1077,
+    "Name": "disenchanter",
+    "Landmass": "Mainland",
+    "Region": "Ancient Fortress",
+    "Area": "Amber Fortress"
+  },
+  {
+    "Number": 1078,
+    "Name": "eradicator",
+    "Landmass": "Mainland",
+    "Region": "Ancient Fortress",
+    "Area": "Amber Fortress"
+  },
+  {
+    "Number": 1079,
+    "Name": "demonhunter",
+    "Landmass": "Mainland",
+    "Region": "Ancient Fortress",
+    "Area": "Amber Fortress"
+  },
+  {
+    "Number": 1080,
+    "Name": "red sphere",
+    "Landmass": "Mainland",
+    "Region": "Ancient Fortress",
+    "Area": "Grand Hallway"
+  },
+  {
+    "Number": 1081,
+    "Name": "blue sphere",
+    "Landmass": "Mainland",
+    "Region": "Ancient Fortress",
+    "Area": "Grand Hallway"
+  },
+  {
+    "Number": 1082,
+    "Name": "green sphere",
+    "Landmass": "Mainland",
+    "Region": "Ancient Fortress",
+    "Area": "Grand Hallway"
+  },
+  {
+    "Number": 1083,
+    "Name": "yellow sphere",
+    "Landmass": "Mainland",
+    "Region": "Ancient Fortress",
+    "Area": "Grand Hallway"
+  },
+  {
+    "Number": 1090,
+    "Name": "dae asp",
+    "Landmass": "Mainland",
+    "Region": "Jungle",
+    "Area": "Shallow Jungle"
+  },
+  {
+    "Number": 1092,
+    "Name": "silver cobra",
+    "Landmass": "Mainland",
+    "Region": "Jungle",
+    "Area": "Shallow Jungle"
+  },
+  {
+    "Number": 1157,
+    "Name": "giant toad-beast",
+    "Landmass": "Shadowmere",
+    "Region": "Shad-Outlands",
+    "Area": "Crystal Forest"
+  },
+  {
+    "Number": 1206,
+    "Name": "huge sandstone sphinx",
+    "Landmass": "Mainland",
+    "Region": "Scorching Desert",
+    "Area": "Temple Colonnade"
+  },
+  {
+    "Number": 1207,
+    "Name": "mammoth stone scorpion",
+    "Landmass": "Mainland",
+    "Region": "Scorching Desert",
+    "Area": "Temple Colonnade"
+  },
+  {
+    "Number": 1217,
+    "Name": "floating claymore",
+    "Landmass": "Mainland",
+    "Region": "Arlysia",
+    "Area": "Library"
+  },
+  {
+    "Number": 1294,
+    "Name": "Margrave",
+    "Landmass": "Mainland",
+    "Region": "Rhudaur",
+    "Area": "Ruined Bedroom"
+  },
+  {
+    "Number": 2125,
+    "Name": "drowner",
+    "Landmass": "Mainland",
+    "Region": "Swamp of Tharollok",
+    "Area": "Swamp of Tharollok"
+  },
+  {
+    "Number": 2156,
+    "Name": "tentacle",
+    "Landmass": "Mainland",
+    "Region": "Ocean",
+    "Area": "Deep Waters"
+  },
+  {
+    "Number": 2193,
+    "Name": "luursa",
+    "Landmass": "Shadowmere",
+    "Region": "Shad-Outlands",
+    "Area": "Crystal Forest"
+  },
+  {
+    "Number": 2194,
+    "Name": "luursa",
+    "Landmass": "Shadowmere",
+    "Region": "Shad-Outlands",
+    "Area": "Crystal Forest"
+  },
+  {
+    "Number": 2195,
+    "Name": "luursa",
+    "Landmass": "Shadowmere",
+    "Region": "Shad-Outlands",
+    "Area": "Crystal Forest"
+  },
+  {
+    "Number": 2196,
+    "Name": "luursa",
+    "Landmass": "Shadowmere",
+    "Region": "Shad-Outlands",
+    "Area": "Crystal Forest"
+  },
+  {
+    "Number": 2203,
+    "Name": "dark phoenix",
+    "Landmass": "Mainland",
+    "Region": "Volcano",
+    "Area": "Volcano"
+  },
+  {
+    "Number": 2261,
+    "Name": "Pharaoh Rastep",
+    "Landmass": "Mainland",
+    "Region": "Scorching Desert",
+    "Area": "Great Pyramid"
+  },
+  {
+    "Number": 2263,
+    "Name": "Lord Skorne",
+    "Landmass": "Albion",
+    "Region": "Vale of Durand",
+    "Area": "Farnholme"
+  },
+  {
+    "Number": 2264,
+    "Name": "Lady Malyse",
+    "Landmass": "Albion",
+    "Region": "Baenglen",
+    "Area": "Baenglen"
+  },
+  {
+    "Number": 2419,
+    "Name": "ley wraith",
+    "Landmass": "Mainland",
+    "Region": "Arlysia",
+    "Area": "Hidden Study"
+  },
+  {
+    "Number": 2553,
+    "Name": "mottled courser",
+    "Landmass": "Albion",
+    "Region": "Crownlands",
+    "Area": "Encampment"
+  },
+  {
+    "Number": 2554,
+    "Name": "destrier stallion",
+    "Landmass": "Albion",
+    "Region": "Crownlands",
+    "Area": "Encampment"
+  },
+  {
+    "Number": 2681,
+    "Name": "Darem Tidegrasp",
+    "Landmass": "Albion",
+    "Region": "Tagesh Highlands",
+    "Area": "Lake Alba"
+  },
+  {
+    "Number": 2735,
+    "Name": "lifeless husk",
+    "Landmass": "Albion",
+    "Region": "Vale of Durand",
+    "Area": "Farnholme"
+  },
+  {
+    "Number": 2736,
+    "Name": "dead hero",
+    "Landmass": "Albion",
+    "Region": "Vale of Durand",
+    "Area": "Farnholme"
+  },
+  {
+    "Number": 2775,
+    "Name": "modified preserver",
+    "Landmass": "Albion",
+    "Region": "Lorthan Lowlands",
+    "Area": "Temple Corridor"
+  },
+  {
+    "Number": 2780,
+    "Name": "Lady Astor",
+    "Landmass": "Albion",
+    "Region": "Lorthan Lowlands",
+    "Area": "Blackstone Keep"
+  },
+  {
+    "Number": 2783,
+    "Name": "Torgh Blackheart",
+    "Landmass": "Albion",
+    "Region": "Tagesh Highlands",
+    "Area": "Upper Highlands (Tagesh Highlands)"
+  },
+  {
+    "Number": 2784,
+    "Name": "Jura Szerak",
+    "Landmass": "Albion",
+    "Region": "Lorthan Lowlands",
+    "Area": "Noxious Fen"
+  },
+  {
+    "Number": 2788,
+    "Name": "Gedric",
+    "Landmass": "Albion",
+    "Region": "Albion River System",
+    "Area": "Talgarn Docks"
+  },
+  {
+    "Number": 2808,
+    "Name": "Volodar the Mad",
+    "Landmass": "Shadowmere",
+    "Region": "Shad-Outlands",
+    "Area": "Crystalline Thicket"
+  },
+  {
+    "Number": 2825,
+    "Name": "sahuagin warrior",
+    "Landmass": "Mainland",
+    "Region": "Ocean",
+    "Area": "Ocean Surface"
+  },
+  {
+    "Number": 2826,
+    "Name": "sahuagin shaman",
+    "Landmass": "Mainland",
+    "Region": "Ocean",
+    "Area": "Ocean Surface"
+  },
+  {
+    "Number": 2829,
+    "Name": "vampiric mist",
+    "Landmass": "Mainland",
+    "Region": "Blackwood Forest",
+    "Area": "Mausoleum"
+  },
+  {
+    "Number": 2845,
+    "Name": "Dark Archon",
+    "Landmass": "Shattered Expanse",
+    "Region": "Shattered Expanse",
+    "Area": "Floating Temple"
+  },
+  {
+    "Number": 2846,
+    "Name": "Devouring Haze",
+    "Landmass": "Shattered Expanse",
+    "Region": "Shattered Expanse",
+    "Area": "Floating Temple"
+  },
+  {
+    "Number": 2847,
+    "Name": "Abyssal Drake",
+    "Landmass": "Shattered Expanse",
+    "Region": "Shattered Expanse",
+    "Area": "Floating Temple"
+  },
+  {
+    "Number": 2853,
+    "Name": "clockwork sentry",
+    "Landmass": "Mainland",
+    "Region": "Ancient Fortress",
+    "Area": "Clock Tower"
+  },
+  {
+    "Number": 2860,
+    "Name": "jeweled monstrosity",
+    "Landmass": "Mainland",
+    "Region": "Ancient Fortress",
+    "Area": "Ancient Treasury"
   }
 ]
