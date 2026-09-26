@@ -1,8 +1,9 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.107.6**
-> - A follower re-sends `@wait` when it drops below a rest floor again or is walked on while still recovering, so a leader whose wait window ran out stops again instead of dragging it along mid-rest
+> **Version 3.108.0**
+> - Monsters table gains Landmass / Region / Area columns, filled for every Paradigm monster that has a spawn room
+> - A monster's record has Landmass / Region / Area type-ahead boxes for anything the shipped data leaves unset, saved to the tier you pick
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

@@ -6,8 +6,8 @@ namespace MudPlay.Services;
 
 // In-memory cache of the active game-data set's MonsterOverlay seed — the
 // Defaults-tier baseline for per-monster automation behavior (relationship /
-// priority / DontBackstab) before any user Global / BBS /
-// Character override is applied.
+// priority / DontBackstab) and location labels (Landmass / Region / Area)
+// before any user Global / BBS / Character override is applied.
 //
 // Seeds are realm-flavored. Each realm family (stock MajorMUD, Paradigm, …)
 // ships its own decoded-from-Monsters.md seed file under
@@ -41,6 +41,11 @@ public sealed class MonsterOverlaySeedStore
 
     public int Count => _byNumber.Count;
 
+    // Distinct, sorted location labels the seed carries — the typeahead lists for the
+    // monster record's Landmass / Region / Area boxes, so a new monster is filed under
+    // an existing name rather than a near-miss spelling.
+    public MonsterLocationSuggestions LocationSuggestions { get; private set; } = MonsterLocationSuggestions.Empty;
+
     public MonsterOverlaySeedStore() { }
 
     public MonsterOverlaySeedStore(LogService log)
@@ -57,6 +62,7 @@ public sealed class MonsterOverlaySeedStore
     public void Load(string? setName)
     {
         _byNumber.Clear();
+        LocationSuggestions = MonsterLocationSuggestions.Empty;
         ActiveSet = setName;
         ActiveRealm = null;
         if (string.IsNullOrWhiteSpace(setName)) return;
@@ -93,18 +99,35 @@ public sealed class MonsterOverlaySeedStore
                     Relationship = rec.Relationship,
                     Priority     = rec.Priority,
                     DontBackstab = rec.DontBackstab,
+                    Landmass     = NullIfBlank(rec.Landmass),
+                    Region       = NullIfBlank(rec.Region),
+                    Area         = NullIfBlank(rec.Area),
                 };
             }
+            LocationSuggestions = new MonsterLocationSuggestions(
+                DistinctSorted(_byNumber.Values.Select(o => o.Landmass)),
+                DistinctSorted(_byNumber.Values.Select(o => o.Region)),
+                DistinctSorted(_byNumber.Values.Select(o => o.Area)));
             _log?.Log(LogSeverity.Info, "MonsterOverlaySeed",
-                $"Loaded {_byNumber.Count} records from '{path}' (realm '{realm}').");
+                $"Loaded {_byNumber.Count} records from '{path}' (realm '{realm}'); " +
+                $"{_byNumber.Values.Count(o => o.Region is not null)} with a location.");
         }
         catch (Exception ex)
         {
             _log?.Log(LogSeverity.Warn, "MonsterOverlaySeed",
                 $"Failed to load '{path}': {ex.Message}");
             _byNumber.Clear();
+            LocationSuggestions = MonsterLocationSuggestions.Empty;
         }
     }
+
+    private static string? NullIfBlank(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+
+    private static IReadOnlyList<string> DistinctSorted(IEnumerable<string?> values) =>
+        values.Where(v => v is not null).Select(v => v!)
+              .Distinct(StringComparer.OrdinalIgnoreCase)
+              .Order(StringComparer.OrdinalIgnoreCase)
+              .ToArray();
 
     // Defaults-tier overlay for monsterNumber. Returns a blank MonsterOverlay
     // when the seed has no record for that monster (i.e. the monster's stock
@@ -159,5 +182,8 @@ public sealed class MonsterOverlaySeedStore
         public MonsterRelationship?   Relationship { get; init; }
         public MonsterAttackPriority? Priority     { get; init; }
         public bool?                  DontBackstab { get; init; }
+        public string?                Landmass     { get; init; }
+        public string?                Region       { get; init; }
+        public string?                Area         { get; init; }
     }
 }

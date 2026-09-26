@@ -281,4 +281,102 @@ public sealed class MonsterEditDialogViewModelTests
         Assert.Null(o.OverrideAttackMinMana);
         Assert.Null(o.OverrideAltAttackMinMana);
     }
+
+    // ----- Location boxes (Landmass / Region / Area) ----
+
+    private static readonly MonsterOverlay SeededLocation = new()
+    {
+        Landmass = "Mainland", Region = "Volcano", Area = "Infernal Cavern",
+    };
+
+    [Fact]
+    public void Location_LoadsFromExistingOverlay_BlankWhenUnset()
+    {
+        MonsterEditDialogViewModel set = MakeVm(existing: SeededLocation, installedDefaults: SeededLocation);
+        Assert.Equal("Mainland", set.Landmass);
+        Assert.Equal("Volcano", set.Region);
+        Assert.Equal("Infernal Cavern", set.Area);
+
+        MonsterEditDialogViewModel unset = MakeVm(existing: new MonsterOverlay(), installedDefaults: new MonsterOverlay());
+        Assert.Equal(string.Empty, unset.Landmass);
+        Assert.Equal(string.Empty, unset.Region);
+        Assert.Equal(string.Empty, unset.Area);
+    }
+
+    [Fact]
+    public void Location_FilledFromBlank_SavesTrimmedOverride()
+    {
+        // The unset case the boxes exist for: nothing in the seed, user types a place.
+        MonsterEditDialogViewModel vm = MakeVm(existing: new MonsterOverlay(), installedDefaults: new MonsterOverlay());
+        vm.Landmass = "  Mainland ";
+        vm.Region = "Hidden Vale";
+        vm.Area = "Old Well";
+
+        MonsterEditResult r = Save(vm);
+        Assert.Equal("Mainland", r.Overlay.Landmass);
+        Assert.Equal("Hidden Vale", r.Overlay.Region);
+        Assert.Equal("Old Well", r.Overlay.Area);
+        Assert.False(r.EqualsInstalledDefaults);
+    }
+
+    [Fact]
+    public void Location_LeftAsSeed_StoresNothing_AndEqualsInstalledDefaults()
+    {
+        // A box still showing the seed's label must not copy it into the tier, or a
+        // corrected seed in a later update would never reach this monster.
+        MonsterEditDialogViewModel vm = MakeVm(existing: SeededLocation, installedDefaults: SeededLocation);
+
+        MonsterEditResult r = Save(vm);
+        Assert.Null(r.Overlay.Landmass);
+        Assert.Null(r.Overlay.Region);
+        Assert.Null(r.Overlay.Area);
+        Assert.True(r.EqualsInstalledDefaults);
+    }
+
+    [Fact]
+    public void Location_ChangedFromSeed_SavesOnlyTheChangedLabel()
+    {
+        MonsterEditDialogViewModel vm = MakeVm(existing: SeededLocation, installedDefaults: SeededLocation);
+        vm.Area = "Lava Pit";
+
+        MonsterEditResult r = Save(vm);
+        Assert.Null(r.Overlay.Landmass);
+        Assert.Null(r.Overlay.Region);
+        Assert.Equal("Lava Pit", r.Overlay.Area);
+        Assert.False(r.EqualsInstalledDefaults);
+    }
+
+    [Fact]
+    public void Location_SeedLabelMatchIsCaseInsensitive()
+    {
+        MonsterEditDialogViewModel vm = MakeVm(existing: SeededLocation, installedDefaults: SeededLocation);
+        vm.Region = "volcano";
+
+        Assert.Null(Save(vm).Overlay.Region);
+    }
+
+    [Fact]
+    public void Location_EditedBackToSeed_IsEqualToInstalledDefaultsAgain()
+    {
+        MonsterOverlay existing = new() { Landmass = "Mainland", Region = "Volcano", Area = "Lava Pit" };
+        MonsterEditDialogViewModel vm = MakeVm(existing: existing, installedDefaults: SeededLocation);
+        Assert.Equal("Lava Pit", vm.Area);   // shows the override
+
+        vm.Area = "Infernal Cavern";
+        Assert.True(Save(vm).EqualsInstalledDefaults);
+    }
+
+    [Fact]
+    public void Location_Suggestions_DefaultEmpty_AndPassThrough()
+    {
+        Assert.Empty(MakeVm(null, null).LocationSuggestions.Regions);
+
+        MonsterLocationSuggestions s = new(["Mainland"], ["Volcano"], ["Lava Pit"]);
+        MonsterEditDialogViewModel vm = new(
+            wccNoStr: "1", mdbName: "rat", existing: null,
+            currentTier: SettingsTier.Character, mdbInfo: Array.Empty<MdbInfoRow>(),
+            writableTiers: [SettingsTier.Character],
+            locationSuggestions: s);
+        Assert.Same(s, vm.LocationSuggestions);
+    }
 }

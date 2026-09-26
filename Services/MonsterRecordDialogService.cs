@@ -79,7 +79,8 @@ public sealed class MonsterRecordDialogService
             resolveSpellNumber: _spellShort.ShortByNumber,
             spellSuggestions:   AppServices.Current.Spellbook.AvailablePicks,
             manaModePercentage: AppServices.Current.CombatSpellManaModeIsPercentage,
-            liveMaxMa:          AppServices.Current.PlayerState.MaxMa);
+            liveMaxMa:          AppServices.Current.PlayerState.MaxMa,
+            locationSuggestions: _overlaySeed.LocationSuggestions);
 
         MonsterEditDialogViewModel? previous = _openVm;
         _openVm = vm;

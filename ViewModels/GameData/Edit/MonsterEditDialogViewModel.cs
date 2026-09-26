@@ -11,8 +11,8 @@ using MudPlay.Services;
 namespace MudPlay.ViewModels.GameData.Edit;
 
 // View-model for the Game Data Browser → Monsters tab's per-record edit dialog.
-// Surfaces the editable overlay fields (Use-tier, Name, Relationship, Priority, override
-// spell slots, DontBackstab, KillOnSight).
+// Surfaces the editable overlay fields (Use-tier, Name, Landmass / Region / Area,
+// Relationship, Priority, override spell slots, DontBackstab, KillOnSight).
 //
 // This dialog no longer edits any per-monster combat-message data: hit / miss / dodge /
 // death are recognized generically (Game.Combat.CombatLineClassifier + MonsterDeathWatcher),
@@ -27,6 +27,14 @@ public sealed partial class MonsterEditDialogViewModel : ObservableObject, IDial
 
     [ObservableProperty] private string _name = string.Empty;
     [ObservableProperty] private SettingsTier _useTier = SettingsTier.Character;
+
+    // Where the monster lives. Blank = not set. Free text with typeahead over the labels
+    // already in use, so filing a new monster reuses a name instead of a near-miss spelling.
+    [ObservableProperty] private string _landmass = string.Empty;
+    [ObservableProperty] private string _region = string.Empty;
+    [ObservableProperty] private string _area = string.Empty;
+
+    public MonsterLocationSuggestions LocationSuggestions { get; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowKillOnSight))]
@@ -152,6 +160,11 @@ public sealed partial class MonsterEditDialogViewModel : ObservableObject, IDial
     // resets the record). Captured in the ctor from installedDefaults.
     private readonly MonsterOverlay _defaultsBaseline;
 
+    // The installed-defaults location labels. A box that still shows the seed's label is
+    // stored as null (no override), so a later corrected seed reaches every monster the
+    // user hasn't deliberately re-filed; only a label the user changed is written.
+    private readonly (string? Landmass, string? Region, string? Area) _installedLocation;
+
     public MonsterEditDialogViewModel(
         string wccNoStr,
         string mdbName,
@@ -164,8 +177,10 @@ public sealed partial class MonsterEditDialogViewModel : ObservableObject, IDial
         Func<int, string?>? resolveSpellNumber = null,
         IReadOnlyList<SpellPick>? spellSuggestions = null,
         bool manaModePercentage = true,
-        int liveMaxMa = 0)
+        int liveMaxMa = 0,
+        MonsterLocationSuggestions? locationSuggestions = null)
     {
+        LocationSuggestions = locationSuggestions ?? MonsterLocationSuggestions.Empty;
         _resolveSpellShort = resolveSpellShort;
         _resolveSpellNumber = resolveSpellNumber;
         SpellSuggestions = spellSuggestions ?? Array.Empty<SpellPick>();
@@ -185,6 +200,10 @@ public sealed partial class MonsterEditDialogViewModel : ObservableObject, IDial
         AvailableTiers = writable.Append(SettingsTier.Defaults).ToArray();
         UseTier        = writable.Contains(currentTier) ? currentTier : writable[0];
         MdbInfo       = mdbInfo;
+
+        Landmass = existing?.Landmass ?? string.Empty;
+        Region   = existing?.Region   ?? string.Empty;
+        Area     = existing?.Area     ?? string.Empty;
 
         Relationship = existing?.Relationship ?? MonsterRelationship.Enemy;
         Priority     = existing?.Priority     ?? MonsterAttackPriority.Normal;
@@ -214,6 +233,8 @@ public sealed partial class MonsterEditDialogViewModel : ObservableObject, IDial
         DontBackstab = existing?.DontBackstab ?? false;
         KillOnSight  = existing?.KillOnSight  ?? false;
 
+        _installedLocation = (installedDefaults?.Landmass, installedDefaults?.Region, installedDefaults?.Area);
+
         // What Compose would produce from the installed-defaults values, derived with
         // the SAME SpellBox round-trip the field init above uses — so an unedited (or
         // edited-back) record compares equal to it.
@@ -232,14 +253,17 @@ public sealed partial class MonsterEditDialogViewModel : ObservableObject, IDial
             installedDefaults?.OverrideAltAttackMinMana ?? 0,
             installedDefaults?.OverridePhysicalCommand ?? string.Empty,
             installedDefaults?.DontBackstab ?? false,
-            installedDefaults?.KillOnSight ?? false),
-            _resolveSpellShort);
+            installedDefaults?.KillOnSight ?? false,
+            installedDefaults?.Landmass ?? string.Empty,
+            installedDefaults?.Region ?? string.Empty,
+            installedDefaults?.Area ?? string.Empty),
+            _resolveSpellShort, _installedLocation);
     }
 
     [RelayCommand]
     private void Save()
     {
-        MonsterOverlay overlay = Compose(LiveFields(), _resolveSpellShort);
+        MonsterOverlay overlay = Compose(LiveFields(), _resolveSpellShort, _installedLocation);
 
         // A record (value-equal) comparison against the defaults baseline: true means
         // the user dragged everything back to the seed, so the caller clears the tier's
@@ -253,18 +277,24 @@ public sealed partial class MonsterEditDialogViewModel : ObservableObject, IDial
         PreAttackSpellId, PreAttackCount, PreAttackMinMana,
         NormalSpellId, NormalCount, NormalMinMana,
         AltSpellId, AltCount, AltMinMana,
-        PhysicalCommand, DontBackstab, KillOnSight);
+        PhysicalCommand, DontBackstab, KillOnSight,
+        Landmass, Region, Area);
 
     // Single overlay construction, shared by Save (live fields) and the ctor's
     // defaults-baseline capture, so the two are guaranteed to compare apples-to-apples.
     // The three spell boxes are spell-only (ResolveSpellOverride → Spell.Number); the
     // physical box is a raw command trimmed to null when blank.
-    private static MonsterOverlay Compose(OverlayFields f, Func<string, int?>? resolveSpellShort)
+    private static MonsterOverlay Compose(
+        OverlayFields f, Func<string, int?>? resolveSpellShort,
+        (string? Landmass, string? Region, string? Area) installedLocation)
     {
         string? physical = string.IsNullOrWhiteSpace(f.PhysicalCommand) ? null : f.PhysicalCommand.Trim();
         return new MonsterOverlay
         {
             Name                     = string.IsNullOrWhiteSpace(f.Name) ? null : f.Name,
+            Landmass                 = LocationOverride(f.Landmass, installedLocation.Landmass),
+            Region                   = LocationOverride(f.Region, installedLocation.Region),
+            Area                     = LocationOverride(f.Area, installedLocation.Area),
             Relationship             = f.Relationship,
             Priority                 = f.Priority,
             OverridePreAttackSpellId = ResolveSpellOverride(f.PreAttackSpellId, resolveSpellShort),
@@ -284,6 +314,16 @@ public sealed partial class MonsterEditDialogViewModel : ObservableObject, IDial
 
     [RelayCommand]
     private void Cancel() => CloseRequested?.Invoke(null);
+
+    // A blank box, or one that still shows the installed label, stores nothing (null) so the
+    // tier never carries an empty string or a copy of the seed that would mask a lower
+    // tier; only a label the user typed differently becomes an override.
+    private static string? LocationOverride(string? box, string? installed)
+    {
+        if (string.IsNullOrWhiteSpace(box)) return null;
+        string trimmed = box.Trim();
+        return string.Equals(trimmed, installed, StringComparison.OrdinalIgnoreCase) ? null : trimmed;
+    }
 
     // Resolve a spell box's text to a Spell.Number, or null when blank / not a spell.
     // A positive integer is a Spell.Number directly; other text is looked up as a
@@ -307,7 +347,8 @@ public sealed partial class MonsterEditDialogViewModel : ObservableObject, IDial
         string PreAttackSpellId, int? PreAttackCount, int PreAttackMinMana,
         string NormalSpellId, int? NormalCount, int NormalMinMana,
         string AltSpellId, int? AltCount, int AltMinMana,
-        string PhysicalCommand, bool DontBackstab, bool KillOnSight);
+        string PhysicalCommand, bool DontBackstab, bool KillOnSight,
+        string Landmass, string Region, string Area);
 }
 
 // Returned by MonsterEditDialogViewModel on Save. WccNoStr is the monster's WCC No as a

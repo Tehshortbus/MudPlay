@@ -1258,7 +1258,8 @@ The **Items** and **Players** tables carry a **Toggles** column that lists, per 
 
 The **Monsters** table carries a full column set for browsing and filtering monster stats:
 
-- **Relationship** (right after the name) — how *your* overlay tells the engine to treat this monster: **Enemy** / **Neutral** / **Friend** / **Flee** / **Hangup**, resolved across all four tiers just like the combat engine reads it, so an un-tagged monster shows **Enemy** and any relationship you or a shipped default set shows through here without opening the record.
+- **Landmass**, **Region**, **Area** (right after the name) — where the monster lives, as the hierarchy Landmass → Region → Area (for example *Mainland → Volcano → Infernal Cavern*). The Paradigm set ships them filled in for every monster that has a spawn room; the monster's most common place wins when it appears in several. They are labels only — nothing in combat or navigation reads them — and they are searchable in the Filter… box. A monster with nothing set reads blank; fill it in from its record (below).
+- **Relationship** — how *your* overlay tells the engine to treat this monster: **Enemy** / **Neutral** / **Friend** / **Flee** / **Hangup**, resolved across all four tiers just like the combat engine reads it, so an un-tagged monster shows **Enemy** and any relationship you or a shipped default set shows through here without opening the record.
 - **Priority** — your attack-priority for this species (**First / High / Normal / Low / Last**), resolved across all four tiers like Relationship; **Kill-on-sight** and **No Backstab** — each reads **✓** when you've set that per-monster flag, blank otherwise.
 - **Respawn** (respawn timer), **Exp** (experience per kill — base × multiplier), **HP**, **AC/DR**, **Dodge**, **Magic Res**.
 - **Acc (typ/max)** (typical/highest attack accuracy), **Damage**, **Exp Eff** (an exp-per-effort efficiency score).
@@ -1339,7 +1340,7 @@ The item's right-hand info pane is also interactive:
 - **Dropped by** lists the monsters that drop it as links to their records;
 - **Placed in** lists the rooms whose floor holds it, each a link to the room record with its own **Queue Walking here →** (so a room-only item like a quest box shows exactly where to find it).
 
-**For a monster** you can set its **Relationship** and **Priority** and pin its whole **single-target combat chain** for that species, rung-for-rung with the Settings → Combat spell grid:
+**For a monster** you can set its **Landmass**, **Region** and **Area** (three type-ahead boxes over the labels already in use — pick one or type a new name; blank means *not set*), its **Relationship** and **Priority**, and pin its whole **single-target combat chain** for that species, rung-for-rung with the Settings → Combat spell grid. Like every other field, the location is saved to the tier you pick in **Use**; a box that still shows the shipped label saves nothing, so an updated shipped label still reaches every monster you haven't re-filed yourself (and clearing a box goes back to the shipped label rather than blanking it):
 
 - **Debuff (single target)**, **Normal attack spell**, and **Alternate attack spell** — each a spell **picker** (type-ahead over your castable spells, same as the Combat slots; commits the cast-code) with a per-room **Max** cast cap and a **Mana** floor.
 - **Physical attack** — a command box (the spell boxes are spell-only; a raw attack verb goes here).
