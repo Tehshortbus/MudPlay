@@ -1,5 +1,10 @@
 # Version history
 
+## 3.172.2
+
+- Simulator area ranking: **Save as loop** turns a ranked area's tour into a saved loop you can run, with how it was tested in the loop's notes
+- A picked ranking now shows its route (the rooms walked, in order) and what it was tested at (level, runs × hours, walk pace, start room)
+
 ## 3.172.0
 
 - Leading a party at a toll: every member's purse is asked (`@wealth`) before stepping through; no answer counts as can't pay

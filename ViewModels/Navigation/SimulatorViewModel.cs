@@ -411,15 +411,23 @@ public sealed partial class SimulatorViewModel : ObservableObject
     // 0 = the character's current level.
     [ObservableProperty] private int _rankLevel;
     [ObservableProperty] private string _rankStatus = "";
-    [ObservableProperty] private AreaRank? _selectedRanking;
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(SaveRankingAsLoopCommand))]
+    private AreaRank? _selectedRanking;
     [ObservableProperty] private string _rankHeadline = "";
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(CancelRankingCommand))]
+    [NotifyCanExecuteChangedFor(nameof(SaveRankingAsLoopCommand))]
     private bool _isRanking;
     public ObservableCollection<AreaRank> Rankings { get; } = new();
     public ObservableCollection<SimStat> RankStats { get; } = new();
     public bool HasRankings => Rankings.Count > 0;
     public bool HasRankDetail => RankStats.Count > 0;
+    // The settings the shown ranking ran with — its detail and a loop saved from it
+    // quote these, not settings the user has changed since.
+    private RankRun? _rankRun;
+
+    private sealed record RankRun(double Step, double Hours, int Runs, RoomKey From, string Realm);
 
     // Every hunting area's lair tour (AreaTours, grouped by the Monsters' Region /
     // Area labels) played by the character at RankLevel, safe areas first by
@@ -453,6 +461,7 @@ public sealed partial class SimulatorViewModel : ObservableObject
         Rankings.Clear();
         OnPropertyChanged(nameof(HasRankings));
         ClearRankDetail();
+        _rankRun = null;
         try
         {
             // Only what the character could reach from here at that level: level gates
@@ -536,6 +545,7 @@ public sealed partial class SimulatorViewModel : ObservableObject
                 })
                 .ToList(), cancel));
 
+            _rankRun = new RankRun(step, hours, runs, here, RealmLabel);
             foreach (AreaRank r in ranked) Rankings.Add(r);
             OnPropertyChanged(nameof(HasRankings));
             int safe = ranked.Count(r => r.Safe);
@@ -543,7 +553,7 @@ public sealed partial class SimulatorViewModel : ObservableObject
                 + (skippedLoops > 0 ? $"; {skippedLoops} of your loops skipped (no walkable lap)" : "");
             RankStatus = $"L{level} from {here.Map}/{here.Room}: {safe} safe option(s) (areas and your loops), best first; {ranked.Count - safe} where you died listed last"
                 + (gatedAreas > 0 ? $"; {gatedAreas} area(s) you can't reach at L{level} left out" : "") + skipped
-                + ". Pick one to see its details and show it on the map.";
+                + ". Pick one to see its route and details, show it on the map, and save it as a loop to run.";
             _log?.Info("Simulator", $"ranked {ranked.Count} options at L{level} ({gatedAreas} areas unreachable, " +
                 $"{skippedAreas} areas and {skippedLoops} loops skipped): " +
                 string.Join(" | ", ranked.Take(10).Select(r => r.Label)));
@@ -613,9 +623,15 @@ public sealed partial class SimulatorViewModel : ObservableObject
     // (at the character's current level and today's gates, not the ranked ones).
     partial void OnSelectedRankingChanged(AreaRank? value)
     {
+        OnPropertyChanged(nameof(RankIsArea));
         if (value is null) { ClearRankDetail(); return; }
         RankHeadline = $"{value.Area} at L{value.Level} — {Headline(value.Result)}";
-        Fill(RankStats, value.Result, SimWalkSeconds);
+        double step = _rankRun?.Step ?? SimWalkSeconds;
+        Fill(RankStats, value.Result, step);
+        if (_rankRun is { } run)
+            RankStats.Insert(0, new SimStat("Tested", $"L{value.Level} · {run.Runs} × {run.Hours:0.#} h · " +
+                                                     $"{run.Step:0.00} s a room · {run.Realm} · from {run.From.Map}/{run.From.Room}"));
+        RankStats.Insert(0, new SimStat("Route", RouteLine(value)));
         OnPropertyChanged(nameof(HasRankDetail));
         if (_showOnMap(value.Tour, value.Area) is { } why)
         {
@@ -624,6 +640,77 @@ public sealed partial class SimulatorViewModel : ObservableObject
         }
         RefreshRoutes();
         if (Routes.Contains(_sketchOption)) SelectedRoute = _sketchOption;
+    }
+
+    // The rooms the run walked between, in order — the waypoints a saved loop gets.
+    private static string RouteLine(AreaRank r) =>
+        $"{(r.IsLoop ? $"{r.Tour.Count} waypoints" : $"{r.Tour.Count} lairs")}, {r.LapRooms} rooms a lap: " +
+        string.Join(" → ", r.Tour.Select(k => $"{k.Map}/{k.Room}"));
+
+    // Save the picked area's tour as a loop the user can run: the same rooms, in the
+    // same order, the simulation walked between (the runner re-routes the legs with
+    // the gates as they are when it starts), with how it was tested in its notes.
+    [RelayCommand(CanExecute = nameof(CanSaveRankingAsLoop))]
+    private void SaveRankingAsLoop()
+    {
+        if (SelectedRanking is not { IsLoop: false } rank) return;
+        if (_loops.SetName is null)
+        {
+            RankStatus = "No game-data set is active, so there's nowhere to save a loop.";
+            return;
+        }
+        string name = FreeLoopName($"{rank.Area.Replace('/', '-')} (L{rank.Level} sim)");
+        var loop = new Loop(name, rank.Tour) { Notes = LoopNotes(rank, _rankRun) };
+        try
+        {
+            _loops.Save(loop);
+        }
+        catch (Exception ex)
+        {
+            _log?.Warn("Simulator", $"saving ranked tour '{rank.Area}' as loop '{name}' failed: {ex.GetType().Name}: {ex.Message}");
+            RankStatus = $"Couldn't save the loop: {ex.Message}";
+            return;
+        }
+        _log?.Info("Simulator", $"saved ranked tour '{rank.Area}' (L{rank.Level}, {rank.Tour.Count} waypoints, " +
+                                $"{rank.LapRooms} rooms a lap, {rank.Result.ExpPerHour:N0} exp/hr) as loop '{name}'");
+        RefreshRoutes();
+        if (Routes.FirstOrDefault(o => o.Loop is { } l && string.Equals(l.Name, name, StringComparison.OrdinalIgnoreCase)) is { } saved)
+            SelectedRoute = saved;
+        RankStatus = $"Saved as loop \"{name}\" — it's in the Navigation window's Loops list to run, and picked as the Route above. " +
+                     "Its notes say how it was tested.";
+    }
+
+    // A ★ row is already saved, so only an area row offers Save as loop.
+    public bool RankIsArea => SelectedRanking is { IsLoop: false };
+
+    private bool CanSaveRankingAsLoop() => SelectedRanking is { IsLoop: false } && !IsRanking;
+
+    // Saving under a taken name would overwrite that loop, so a second save of the
+    // same area gets a number.
+    private string FreeLoopName(string baseName)
+    {
+        string name = baseName;
+        for (int n = 2; _loops.Get(name) is not null; n++) name = $"{baseName} {n}";
+        return name;
+    }
+
+    private static string LoopNotes(AreaRank r, RankRun? run)
+    {
+        LoopSimSummary s = r.Result;
+        string deaths = s.Deaths + s.HangUps == 0 ? "no deaths"
+            : $"died or hung up in {s.Deaths + s.HangUps} of {s.Runs.Count} runs";
+        var lines = new List<string>
+        {
+            $"Saved from the Simulator's area ranking on {DateTime.Now:yyyy-MM-dd}.",
+            $"Simulated at L{r.Level}{(run is null ? "" : $" on {run.Realm}")}: {s.ExpPerHour:N0} exp/hr " +
+            $"({s.MinExpPerHour:N0} – {s.MaxExpPerHour:N0} over {s.Runs.Count} runs{(run is null ? "" : $" × {run.Hours:0.#} h")}), " +
+            $"{s.KillsPerHour:0} kills/hr, lowest HP {s.LowestHpPercent}%, {deaths}.",
+        };
+        if (run is not null)
+            lines.Add($"Walk pace {run.Step:0.00} s a room; ranked from {run.From.Map}/{run.From.Room}.");
+        lines.Add($"Route: {RouteLine(r)}.");
+        lines.Add($"The simulation judged level gates at L{r.Level}; run it there, since the loop walks the gates as they are when it starts.");
+        return string.Join("\n", lines);
     }
 
     private void ClearRankDetail()
@@ -678,6 +765,8 @@ public sealed partial class SimulatorViewModel : ObservableObject
             // The status alone still reports a ranking that was cancelled, failed or found nothing.
             Rankings.Count == 0 && string.IsNullOrEmpty(RankStatus) ? null
                 : Rankings.Take(15).Select(r => r.Label).Prepend(RankStatus)
+                    .Concat(RankStats.Count == 0 ? Array.Empty<string>()
+                        : RankStats.Select(s => "  " + Line(s)).Prepend($"Picked: {RankHeadline}"))
                     .Where(l => !string.IsNullOrEmpty(l)).ToList(),
             SimResult is null ? null : _simRouteName);
     }

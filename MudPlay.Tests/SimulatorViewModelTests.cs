@@ -18,10 +18,17 @@ public sealed class SimulatorViewModelTests : IDisposable
 {
     private readonly string _root =
         Path.Combine(Path.GetTempPath(), "mudplay-simulator-" + Path.GetRandomFileName());
+    private readonly string _loopSet = "test-set-" + Guid.NewGuid().ToString("N")[..12];
 
     public void Dispose()
     {
         try { Directory.Delete(_root, recursive: true); }
+        catch { /* best-effort temp cleanup */ }
+        try
+        {
+            string loops = Path.Combine(AppPaths.GameDataRoot, _loopSet);
+            if (Directory.Exists(loops)) Directory.Delete(loops, recursive: true);
+        }
         catch { /* best-effort temp cleanup */ }
     }
 
@@ -42,6 +49,7 @@ public sealed class SimulatorViewModelTests : IDisposable
         public required RouteExpResolver Resolver { get; init; }
         public required ExpEstimatorSessionViewModel Session { get; init; }
         public required SimulatorViewModel Simulator { get; init; }
+        public required LoopManager Loops { get; init; }
         public void Dispose()
         {
             Resolver.Dispose();
@@ -49,7 +57,7 @@ public sealed class SimulatorViewModelTests : IDisposable
         }
     }
 
-    private Harness Build()
+    private Harness Build(bool saveLoops = false)
     {
         Directory.CreateDirectory(Path.Combine(_root, "alpha"));
         File.WriteAllText(Path.Combine(_root, "alpha", "Rooms.json"), Json);
@@ -60,6 +68,7 @@ public sealed class SimulatorViewModelTests : IDisposable
         var timers = new LairTimerStore(cache, graph, new RoomTracker(graph));
         var resolver = new RouteExpResolver(graph, new BfsMapper(graph), timers, cache);
         var loops = new LoopManager(new BfsMapper(graph), graph);
+        if (saveLoops) loops.LoadAll(_loopSet);
         var simulation = new SimulationSource(
             _ => null, () => null, () => 30, _ => 1.0, () => new RoomKey(1, 1), _root);
         var session = new ExpEstimatorSessionViewModel(resolver, loops, graph, cache);
@@ -67,7 +76,7 @@ public sealed class SimulatorViewModelTests : IDisposable
         sim = new SimulatorViewModel(resolver, loops, cache, null, simulation, null, () => session,
             (rooms, name) => { session.LoadRoute(rooms, name); return null; });
         session.RouteChanged += sim.SketchChanged;
-        return new Harness { Timers = timers, Resolver = resolver, Session = session, Simulator = sim };
+        return new Harness { Timers = timers, Resolver = resolver, Session = session, Simulator = sim, Loops = loops };
     }
 
     [Fact]
@@ -103,5 +112,34 @@ public sealed class SimulatorViewModelTests : IDisposable
         Assert.True(h.Simulator.HasRankDetail);
         Assert.Contains("L40", h.Simulator.RankHeadline);
         Assert.True(h.Simulator.SimulateCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public void SavingARankedAreaMakesARunnableLoopOfItsTourWithoutOverwritingOne()
+    {
+        using Harness h = Build(saveLoops: true);
+        RoomKey[] tour = { new(1, 2), new(1, 1) };
+        h.Loops.Save(new Loop("Hills / Caves (L40 sim)".Replace('/', '-'), tour));
+        h.Simulator.SelectedRanking = new AreaRank("Hills / Caves", 40, tour, 2, new LoopSimSummary(new[] { Run }));
+        Assert.True(h.Simulator.RankIsArea);
+
+        h.Simulator.SaveRankingAsLoopCommand.Execute(null);
+
+        Loop saved = Assert.IsType<Loop>(h.Loops.Get("Hills - Caves (L40 sim) 2"));
+        Assert.Equal(tour, saved.Waypoints.Select(w => w.Key));
+        Assert.Contains("L40", saved.Notes);
+        Assert.Contains("1/2 → 1/1", saved.Notes);
+        Assert.Equal("Hills - Caves (L40 sim) 2", h.Simulator.SelectedRoute?.Loop?.Name);
+    }
+
+    [Fact]
+    public void ASavedLoopRowOffersNoSave()
+    {
+        using Harness h = Build();
+        h.Simulator.SelectedRanking = new AreaRank("Mine", 40, new[] { new RoomKey(1, 1), new RoomKey(1, 2) }, 2,
+            new LoopSimSummary(new[] { Run }), IsLoop: true);
+
+        Assert.False(h.Simulator.RankIsArea);
+        Assert.False(h.Simulator.SaveRankingAsLoopCommand.CanExecute(null));
     }
 }

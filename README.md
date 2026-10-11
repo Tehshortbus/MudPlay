@@ -1,11 +1,9 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.172.0**
-> - Leading a party at a toll: every member's purse is asked (`@wealth`) before stepping through; no answer counts as can't pay
-> - Members who are short are handed exactly what they lack when you can spare it and your coins make the amount; the step waits for the game to confirm it
-> - Otherwise the route goes round the toll, or the walk or loop ends naming the toll and who can't pay
-> - A member paid for at a toll that still turned them away is not paid for twice there
+> **Version 3.172.2**
+> - Simulator area ranking: **Save as loop** turns a ranked area's tour into a saved loop you can run, with how it was tested in the loop's notes
+> - A picked ranking now shows its route (the rooms walked, in order) and what it was tested at (level, runs × hours, walk pace, start room)
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

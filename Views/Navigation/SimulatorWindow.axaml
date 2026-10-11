@@ -213,7 +213,14 @@
                     </DataGrid>
                     <Border Grid.Row="3" Classes="Group" IsVisible="{Binding HasRankDetail}" BorderBrush="#B98BE0">
                         <StackPanel Spacing="6">
-                            <TextBlock Classes="Group" TextWrapping="Wrap" Text="{Binding RankHeadline}"/>
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                                <TextBlock Grid.Column="0" Classes="Group" TextWrapping="Wrap"
+                                           VerticalAlignment="Center" Text="{Binding RankHeadline}"/>
+                                <Button Grid.Column="1" Content="Save as loop"
+                                        IsVisible="{Binding RankIsArea}"
+                                        Command="{Binding SaveRankingAsLoopCommand}"
+                                        ToolTip.Tip="Save this area's tour as one of your loops: the same rooms, in the same order, the simulation walked, with how it was tested (level, runs, pace, the result) in the loop's notes. Run it from the Navigation window's Loops list."/>
+                            </Grid>
                             <ItemsControl ItemsSource="{Binding RankStats}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="vm:SimStat">
