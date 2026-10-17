@@ -1,7 +1,6 @@
 using System.Collections.Specialized;
 using System.Text;
 using System.Text.RegularExpressions;
-using Avalonia.Threading;
 using MudPlay.Game.Combat;
 using MudPlay.Models.Profile;
 using MudPlay.Services;
@@ -46,8 +45,11 @@ public sealed partial class PartyPoller : IDisposable
     private readonly PartyState _state;
     private readonly PartyManager _manager;
     private readonly LogService? _log;
-    private readonly DispatcherTimer? _timer;
-    private DispatcherTimer? _healthNagTimer;
+    // Arms one tick after the delay; disposing what it returns cancels it. The par
+    // cadence and the @health nag each keep their own tick on it.
+    private readonly Func<TimeSpan, Action, IDisposable> _schedule;
+    private IDisposable? _parTick;
+    private IDisposable? _healthNagTick;
     private Action<byte[]>? _wireSender;
     // Suspended between a disconnect and the first in-game prompt after we're back
     // in the realm. `par` and the @health round-trip are wall-clock timers that
@@ -116,8 +118,7 @@ public sealed partial class PartyPoller : IDisposable
     // Mirrors PartySettings.SendHealthToMembers.
     public bool HealthNagEnabled { get; set; } = true;
 
-    // Test seam — overrides DateTime.UtcNow for the nag tick clock.
-    public Func<DateTime> NowProvider { get; set; } = () => DateTime.UtcNow;
+    private readonly Func<DateTime> _now;
 
     // Per-given-name nag state. Created on the initial @health send; cleared on
     // baseline arrival / member-leave / cap.
@@ -154,13 +155,12 @@ public sealed partial class PartyPoller : IDisposable
         RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
     private static partial Regex HealthReply();
 
-    // Default constructor — wires the in-process DispatcherTimer. Use the
-    // test-seam ctor (no timer) for unit tests.
-    public PartyPoller(ChatRouter chat, PartyState state, PartyManager manager, LogService? log = null)
-        : this(chat, state, manager, useTimer: true, log) { }
-
-    internal PartyPoller(ChatRouter chat, PartyState state, PartyManager manager, bool useTimer, LogService? log = null)
+    // schedule stands in for the dispatcher's timers.
+    public PartyPoller(ChatRouter chat, PartyState state, PartyManager manager, LogService? log = null,
+        Func<TimeSpan, Action, IDisposable>? schedule = null,
+        Func<DateTime>? now = null)
     {
+        _now = now ?? (() => DateTime.UtcNow);
         ArgumentNullException.ThrowIfNull(chat);
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(manager);
@@ -168,19 +168,11 @@ public sealed partial class PartyPoller : IDisposable
         _state   = state;
         _manager = manager;
         _log     = log;
+        _schedule = schedule ?? DispatcherTicks.Once;
 
         _state.Members.CollectionChanged += OnMembersChanged;
         _chat.EntryClassified += OnChatEntry;
-
-        if (useTimer)
-        {
-            _timer = new DispatcherTimer(DispatcherPriority.Background)
-            {
-                Interval = ParCadence,
-            };
-            _timer.Tick += (_, _) => OnParTimer();
-            _timer.Start();
-        }
+        StartParTick();
     }
 
     // Bind the wire-sender. Same shape as other managers — main-window VM
@@ -204,7 +196,7 @@ public sealed partial class PartyPoller : IDisposable
         if (cadence != ParCadence)
         {
             ParCadence = cadence;
-            if (_timer is not null) _timer.Interval = cadence;
+            if (_parTick is not null) StartParTick();
         }
         ParOnTimer              = settings.ParPollOnTimer;
         ParAfterCombatRound     = settings.ParPollAfterCombatRound;
@@ -230,25 +222,13 @@ public sealed partial class PartyPoller : IDisposable
         }
     }
 
-    // Test seam — drives one timer tick without a real timer.
-    internal void DoParPollForTests() => OnParTimer();
-
-    // Test seam — drives the @health round-trip request side without a
-    // CollectionChanged event.
-    internal void SendHealthRequestForTests(string memberName)
-    {
-        if (_wireSender is null) return;
-        byte[] bytes = Encoding.Latin1.GetBytes($"/{GivenName(memberName)} @health\r");
-        _wireSender(bytes);
-    }
-
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
         _state.Members.CollectionChanged -= OnMembersChanged;
         _chat.EntryClassified -= OnChatEntry;
-        _timer?.Stop();
+        StopParTick();
         StopHealthNagTimer();
     }
 
@@ -332,7 +312,7 @@ public sealed partial class PartyPoller : IDisposable
         string given = GivenName(m.Name);
         SendHealthRequest(given);
         if (m.BaselineHp > 0) return;
-        DateTime now = NowProvider();
+        DateTime now = _now();
         _activeNags[given] = new HealthNagState
         {
             Given       = given,
@@ -385,18 +365,23 @@ public sealed partial class PartyPoller : IDisposable
 
     private void EnsureHealthNagTimerRunning()
     {
-        if (_healthNagTimer is not null) return;
-        _healthNagTimer = new DispatcherTimer(
-            interval: TimeSpan.FromMilliseconds(500),
-            priority: DispatcherPriority.Background,
-            callback: (_, _) => TickHealthNags());
-        _healthNagTimer.Start();
+        _healthNagTick ??= _schedule(HealthNagTick, OnHealthNagTick);
+    }
+
+    // The @health nag loop's cadence.
+    public static readonly TimeSpan HealthNagTick = TimeSpan.FromMilliseconds(500);
+
+    // One nag tick: the next is armed before this one runs.
+    private void OnHealthNagTick()
+    {
+        _healthNagTick = _schedule(HealthNagTick, OnHealthNagTick);
+        TickHealthNags();
     }
 
     private void StopHealthNagTimer()
     {
-        _healthNagTimer?.Stop();
-        _healthNagTimer = null;
+        _healthNagTick?.Dispose();
+        _healthNagTick = null;
     }
 
     private void CancelHealthNag(string given)
@@ -405,9 +390,6 @@ public sealed partial class PartyPoller : IDisposable
         if (!_activeNags.Remove(given)) return;
         if (_activeNags.Count == 0) StopHealthNagTimer();
     }
-
-    // Test seam — runs one pass of the @health nag loop without a real timer.
-    internal void TickHealthNagsForTests() => TickHealthNags();
 
     private void TickHealthNags()
     {
@@ -418,7 +400,7 @@ public sealed partial class PartyPoller : IDisposable
         // Held the same way with the master switch off: the nags wait and are
         // resent or given up on the first tick after it is back on.
         if (MasterSwitchOff?.Invoke() == true) return;
-        DateTime now = NowProvider();
+        DateTime now = _now();
 
         foreach (string given in _activeNags.Keys.ToArray())
         {
@@ -477,7 +459,7 @@ public sealed partial class PartyPoller : IDisposable
     public void NotifyDisconnected()
     {
         _suspended = true;
-        _timer?.Stop();
+        StopParTick();
         StopHealthNagTimer();
         _activeNags.Clear();
     }
@@ -498,9 +480,27 @@ public sealed partial class PartyPoller : IDisposable
     // a running timer is a no-op, so this never restarts a countdown in flight.
     private void SyncTimer()
     {
-        if (_timer is null) return;
-        if (ParOnTimer && !_suspended) _timer.Start();
-        else _timer.Stop();
+        if (ParOnTimer && !_suspended) _parTick ??= _schedule(ParCadence, OnParTick);
+        else StopParTick();
+    }
+
+    private void StartParTick()
+    {
+        _parTick?.Dispose();
+        _parTick = _schedule(ParCadence, OnParTick);
+    }
+
+    private void StopParTick()
+    {
+        _parTick?.Dispose();
+        _parTick = null;
+    }
+
+    // One par tick: the next is armed before this one runs.
+    private void OnParTick()
+    {
+        _parTick = _schedule(ParCadence, OnParTick);
+        OnParTimer();
     }
 
     private void OnParTimer()
@@ -547,9 +547,8 @@ public sealed partial class PartyPoller : IDisposable
     // than the cadence it stays quiet.
     private void RestartTimerCountdown()
     {
-        if (_timer is not { IsEnabled: true }) return;
-        _timer.Stop();
-        _timer.Start();
+        if (_parTick is null) return;
+        StartParTick();
     }
 
     private bool SendPar(bool healthRead)

@@ -29,12 +29,12 @@ public sealed partial class BuffSlotRowViewModel : ObservableObject
     private readonly Action _persist;
     // Fires only when Self transitions OFF → ON (never on → off), so the panel can
     // deactivate a conflicting row's Self box without looping back on itself. Null
-    // in tests that don't exercise the cross-row exclusion.
-    private readonly Action<BuffSlotRowViewModel>? _onSelfActivated;
-    // Whether the character has actually learned this row's spell. Null in tests
-    // that don't care — IsLearned then defaults true (every listed row is normally
+    // when no panel wires the cross-row exclusion.
+    private readonly Action<BuffSlotRowViewModel> _onSelfActivated;
+    // Whether the character has actually learned this row's spell. Null →
+    // IsLearned defaults true (every listed row is normally
     // something the player has).
-    private readonly Func<string?, bool>? _resolveLearned;
+    private readonly Func<string?, bool> _resolveLearned;
     private bool _suppress;
 
     // Manual-reorder ▲/▼ button enable flags — set by BuffPanelViewModel.Renumber
@@ -205,13 +205,13 @@ public sealed partial class BuffSlotRowViewModel : ObservableObject
     // Add all blesses only ever offer learned spells, so this normally stays true;
     // it still catches a slotted spell that later reads unlearned (a data-set
     // renumber, a hand-typed unknown code).
-    public bool IsLearned => _resolveLearned?.Invoke(Spell) ?? true;
+    public bool IsLearned => _resolveLearned(Spell);
 
     public BuffSlotRowViewModel(
         BuffSlot dto, Func<string?, BuffSlotScope> resolveScope,
         Func<string?, string> resolveName, Func<BuffSlot, (string? RemovedBy, string? Removes)> resolveOverwrite,
-        Action persist, Action<BuffSlotRowViewModel>? onSelfActivated = null,
-        Func<string?, bool>? resolveLearned = null)
+        Action persist, Action<BuffSlotRowViewModel> onSelfActivated,
+        Func<string?, bool> resolveLearned)
     {
         _dto = dto;
         _resolveScope = resolveScope;
@@ -263,7 +263,7 @@ public sealed partial class BuffSlotRowViewModel : ObservableObject
         if (_suppress) return;
         _dto.CastOnSelf = value;
         _persist();
-        if (value) _onSelfActivated?.Invoke(this);
+        if (value) _onSelfActivated(this);
     }
 
     partial void OnWholePartyOnChanged(bool value)

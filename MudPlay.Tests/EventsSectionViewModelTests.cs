@@ -9,25 +9,18 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Coverage for the bespoke Events Settings tab — the VM-level CRUD,
-/// the master-switch persistence + gate, the row badge from
-/// auto-disabled events, and the CollectionChanged refresh path.
-/// View-side bindings (XAML) smoke-tested via <c>dotnet run</c>.
-/// </summary>
+// Coverage for the bespoke Events Settings tab — the VM-level CRUD,
+// the master-switch persistence + gate, the row badge from
+// auto-disabled events, and the CollectionChanged refresh path.
+// View-side bindings (XAML) smoke-tested via dotnet run.
 public sealed class EventsSectionViewModelTests
 {
     private static (EventManager events, ProfileService profile,
                     EventsSectionViewModel vm, List<byte[]> sent) Build()
     {
-        ProfileService profile = new();
-        profile.LoadBlank();
-        EventManager events = new();
-        // Re-create with profile binding via the ctor that takes it —
-        // simpler than poking the private field. EventManager's
-        // parameterless ctor doesn't subscribe to the profile, so we
-        // wire just what the VM needs (Add / Remove fires through the
-        // observable collection regardless of profile binding).
+        ProfileService profile = TestProfiles.Service();
+        profile.LoadDefaultProfile();
+        EventManager events = EventEngineHarness.ManagerWithoutGameData();
         EventsSectionViewModel vm = new(events, profile);
         List<byte[]> sent = new();
         events.SetWireSender(sent.Add);
@@ -177,33 +170,11 @@ public sealed class EventsSectionViewModelTests
         Assert.False(vm.IsGloballyDisabled);
         vm.IsGloballyDisabled = true;
         Assert.True(profile.Current!.EventsGloballyDisabled);
+        // A fresh VM bound to the same profile reads the persisted state back.
+        Assert.True(new EventsSectionViewModel(EventEngineHarness.ManagerWithoutGameData(), profile).IsGloballyDisabled);
 
         vm.IsGloballyDisabled = false;
         Assert.False(profile.Current.EventsGloballyDisabled);
-    }
-
-    // EventsGloballyDisabled gate tested by directly toggling
-    // ScheduledEvent.Disabled here — the master switch's effect on
-    // Fire() is observable via the same wire-empty assertion. End-to-
-    // end smoke test (real EventManager with profile + master switch
-    // toggle blocking Fire) lives in the manual run-through; the
-    // production gate code is one boolean check so a higher-cost test
-    // fixture isn't worth it.
-
-    [Fact]
-    public void MasterSwitch_TogglingPersistsToProfile_Reentry()
-    {
-        var (_, profile, vm, _) = Build();
-
-        // Persist a toggled state.
-        vm.IsGloballyDisabled = true;
-        Assert.True(profile.Current!.EventsGloballyDisabled);
-
-        // A fresh VM bound to the same profile reads the persisted
-        // state back through the binding.
-        EventManager events2 = new();
-        EventsSectionViewModel vm2 = new(events2, profile);
-        Assert.True(vm2.IsGloballyDisabled);
     }
 
     // ----- Queue limits ----------------------------------------------

@@ -19,10 +19,9 @@ namespace MudPlay.Tests;
 // The reply only arrives because the sender granted us "Query Roomba", so having
 // asked is the whole gate — a line outside the window is ignored. Because every
 // line stands alone (no reassembly), a line the game drops costs only its rooms —
-// the rest still merge. Ingest is exercised directly (an internal test seam, same
-// idea as RemoteCommandManager.DispatchForTests) except for the Dispose test,
-// which needs the real MessageRouter → ChatRouter → EntryClassified path to prove
-// unsubscription.
+// the rest still merge. Ingest, the receiver's ChatRouter handler, is called
+// directly except for the Dispose test, which needs the real MessageRouter →
+// ChatRouter → EntryClassified path to prove unsubscription.
 public sealed class RoombaSyncReceiverTests : IDisposable
 {
     private static readonly DateTime Now = new(2026, 6, 20, 0, 0, 0, DateTimeKind.Utc);
@@ -57,8 +56,8 @@ public sealed class RoombaSyncReceiverTests : IDisposable
         DefaultPatterns.Seed(router);
         ChatRouter chat = new(router);
 
-        ProfileService profile = new();
-        profile.LoadBlank();
+        ProfileService profile = TestProfiles.Service();
+        profile.LoadDefaultProfile();
         GhRoomLabelStore labels = new(profile);
         labels.OnRealmChanged(AppPaths.BbsFolder(_scratchBbs));
 
@@ -68,8 +67,14 @@ public sealed class RoombaSyncReceiverTests : IDisposable
         return (router, chat, locations, labels);
     }
 
-    private static ChatLogEntry Gangpath(string sender, string msg) =>
-        new(Now, ChatChannel.Gangpath, sender, msg, $"{sender} gangpaths: {msg}");
+    private static ChatLine Gangpath(string sender, string msg) => new(ChatChannel.Gangpath, sender, msg);
+
+    // A line on a channel as the game shows it; on telepath-out, our own telepath to them.
+    private static void Heard(MessageRouter router, ChatRouter chat, ChatChannel channel, string sender, string msg)
+    {
+        if (channel == ChatChannel.TelepathOutgoing) ChatLines.Telepath(router, chat, sender, msg);
+        else ChatLines.Hear(router, channel, sender, msg);
+    }
 
     private static string SyncLine(string blob) =>
         $"{{{RoombaQueryHandler.SyncResponseToken} {blob}}}";
@@ -90,11 +95,11 @@ public sealed class RoombaSyncReceiverTests : IDisposable
     [Fact]
     public void Ingest_SingleLine_MergesIntoLocations()
     {
-        var (_, chat, locations, labels) = Setup();
+        var (router, chat, locations, labels) = Setup();
         RoombaSyncReceiver receiver = new(chat, locations, labels);
         receiver.NoteSyncRequested();   // we asked → replies are adopted
 
-        receiver.Ingest(Gangpath("Buddy", SyncLine(OneLine())));
+        ChatLines.Hear(router, Gangpath("Buddy", SyncLine(OneLine())));
 
         GhItemSighting sighting = Assert.Single(locations.FindSightings("torch"));
         Assert.Equal(100, sighting.Room);
@@ -107,11 +112,11 @@ public sealed class RoombaSyncReceiverTests : IDisposable
     [InlineData(ChatChannel.Gangpath)]
     public void Ingest_ByTelepathOrGangpath_Merges(ChatChannel channel)
     {
-        var (_, chat, locations, labels) = Setup();
+        var (router, chat, locations, labels) = Setup();
         RoombaSyncReceiver receiver = new(chat, locations, labels);
         receiver.NoteSyncRequested();
 
-        receiver.Ingest(new ChatLogEntry(Now, channel, "Buddy", SyncLine(OneLine()), "raw"));
+        Heard(router, chat, channel, "Buddy", SyncLine(OneLine()));
 
         Assert.Single(locations.FindSightings("torch"));
     }
@@ -126,11 +131,11 @@ public sealed class RoombaSyncReceiverTests : IDisposable
     [InlineData(ChatChannel.TelepathOutgoing)]
     public void Ingest_OnAnyOtherChannel_IsPassedOver(ChatChannel channel)
     {
-        var (_, chat, locations, labels) = Setup();
+        var (router, chat, locations, labels) = Setup();
         RoombaSyncReceiver receiver = new(chat, locations, labels);
         receiver.NoteSyncRequested();
 
-        receiver.Ingest(new ChatLogEntry(Now, channel, "Buddy", SyncLine(OneLine()), "raw"));
+        Heard(router, chat, channel, "Buddy", SyncLine(OneLine()));
 
         Assert.Empty(locations.FindSightings("torch"));
     }
@@ -138,31 +143,31 @@ public sealed class RoombaSyncReceiverTests : IDisposable
     [Fact]
     public void Ingest_EachLineMergesIndependently_NoWaiting()
     {
-        var (_, chat, locations, labels) = Setup();
+        var (router, chat, locations, labels) = Setup();
         RoombaSyncReceiver receiver = new(chat, locations, labels);
         receiver.NoteSyncRequested();   // we asked → replies are adopted
         IReadOnlyList<string> lines = TwoRoomLines();
         Assert.True(lines.Count >= 2);
 
-        receiver.Ingest(Gangpath("Buddy", SyncLine(lines[0])));
+        ChatLines.Hear(router, Gangpath("Buddy", SyncLine(lines[0])));
         Assert.Single(locations.FindSightings("torch"));      // first line merged on its own — no waiting
 
         foreach (string line in lines.Skip(1))
-            receiver.Ingest(Gangpath("Buddy", SyncLine(line)));
+            ChatLines.Hear(router, Gangpath("Buddy", SyncLine(line)));
         Assert.Equal(2, locations.FindSightings("torch").Count);
     }
 
     [Fact]
     public void Ingest_DroppedLine_SurvivingLineStillMerges()
     {
-        var (_, chat, locations, labels) = Setup();
+        var (router, chat, locations, labels) = Setup();
         RoombaSyncReceiver receiver = new(chat, locations, labels);
         receiver.NoteSyncRequested();   // we asked → replies are adopted
         IReadOnlyList<string> lines = TwoRoomLines();
         Assert.True(lines.Count >= 2);
 
         // Simulate the game's flood-control dropping every line but the last.
-        receiver.Ingest(Gangpath("Buddy", SyncLine(lines[^1])));
+        ChatLines.Hear(router, Gangpath("Buddy", SyncLine(lines[^1])));
 
         // The surviving line still merged its room, rather than being discarded
         // for want of the dropped ones.
@@ -172,12 +177,12 @@ public sealed class RoombaSyncReceiverTests : IDisposable
     [Fact]
     public void Ingest_NotRequested_NeverMerges()
     {
-        var (_, chat, locations, labels) = Setup();
+        var (router, chat, locations, labels) = Setup();
         // We never sent `@roomba sync` (no NoteSyncRequested), so a stray
         // @roombadata line — even a well-formed one — must not be adopted.
         RoombaSyncReceiver receiver = new(chat, locations, labels);
 
-        receiver.Ingest(Gangpath("Buddy", SyncLine(OneLine())));
+        ChatLines.Hear(router, Gangpath("Buddy", SyncLine(OneLine())));
 
         Assert.Empty(locations.FindSightings("torch"));
     }
@@ -185,23 +190,28 @@ public sealed class RoombaSyncReceiverTests : IDisposable
     [Fact]
     public void Ingest_MalformedPayload_IsDiscardedWithoutThrowing()
     {
-        var (_, chat, locations, labels) = Setup();
+        var (router, chat, locations, labels) = Setup();
         RoombaSyncReceiver receiver = new(chat, locations, labels);
+        receiver.NoteSyncRequested();
 
         Exception? ex = Record.Exception(() =>
-            receiver.Ingest(Gangpath("Buddy", SyncLine("!!!not-valid-base64url!!!"))));
+            ChatLines.Hear(router, Gangpath("Buddy", SyncLine("!!!not-valid-base64url!!!"))));
 
         Assert.Null(ex);
         Assert.Empty(locations.FindSightings("torch"));
+        // The bad line cost only itself: a good one after it still merges.
+        ChatLines.Hear(router, Gangpath("Buddy", SyncLine(OneLine())));
+        Assert.Single(locations.FindSightings("torch"));
     }
 
     [Fact]
     public void Ingest_NonMatchingLine_IsIgnored()
     {
-        var (_, chat, locations, labels) = Setup();
+        var (router, chat, locations, labels) = Setup();
         RoombaSyncReceiver receiver = new(chat, locations, labels);
+        receiver.NoteSyncRequested();
 
-        receiver.Ingest(Gangpath("Buddy", "just chatting about the weather"));
+        ChatLines.Hear(router, Gangpath("Buddy", "just chatting about the weather"));
 
         Assert.Empty(locations.FindSightings("torch"));
     }
@@ -211,16 +221,23 @@ public sealed class RoombaSyncReceiverTests : IDisposable
     {
         var (router, chat, locations, labels) = Setup();
         RoombaSyncReceiver receiver = new(chat, locations, labels);
-        receiver.Dispose();
+        receiver.NoteSyncRequested();
+        IReadOnlyList<string> lines = TwoRoomLines();
+        Assert.True(lines.Count >= 2);
 
-        // Drive through the real MessageRouter → ChatRouter path (not the
-        // internal Ingest seam) on the SAME router/chat the receiver was
-        // subscribed to, so this actually exercises whether Dispose's -=
-        // took effect — a still-subscribed receiver would merge this in.
-        string wire = $"Buddy gangpaths: {SyncLine(OneLine())}";
+        // Drive through the real MessageRouter → ChatRouter path on the SAME
+        // router/chat the receiver subscribed to: the first room merges while
+        // subscribed, the second doesn't once Dispose has taken the handler off.
+        Dispatch(router, $"Buddy gangpaths: {SyncLine(lines[0])}");
+        Assert.Single(locations.FindSightings("torch"));
+
+        receiver.Dispose();
+        Dispatch(router, $"Buddy gangpaths: {SyncLine(lines[1])}");
+
+        Assert.Single(locations.FindSightings("torch"));
+    }
+
+    private static void Dispatch(MessageRouter router, string wire) =>
         router.Dispatch(new LineExtractor.EmittedLine(
             wire, new CellAttributes[wire.Length], DateTimeOffset.UnixEpoch, IsPromptLine: false));
-
-        Assert.Empty(locations.FindSightings("torch"));
-    }
 }

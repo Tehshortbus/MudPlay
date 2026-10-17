@@ -278,7 +278,6 @@ public sealed class CasterMessageMatcher
     public bool CanNameTarget =>
         IndexOfRole(PlaceholderRole.Target) >= 0 || IndexOfRole(PlaceholderRole.Unknown) >= 0;
     public bool PinsSpell => IndexOfRole(PlaceholderRole.Spell) >= 0;
-    public bool PinsSource => IndexOfRole(PlaceholderRole.Source) >= 0;
     public bool HasNumber => _numberGroupIndexes.Length > 0;
 
     // Match the line and hand back every capture by what it is: the names in template

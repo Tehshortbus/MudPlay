@@ -15,8 +15,6 @@ public sealed class SummonLineSet
 
     private readonly (CasterMessageMatcher Matcher, string Anchor)[] _lines;
 
-    public int TemplateCount => _lines.Length;
-
     public SummonLineSet(IEnumerable<int> summonSpells, IEnumerable<MessageRecord> records)
     {
         HashSet<int> numbers = new(summonSpells);

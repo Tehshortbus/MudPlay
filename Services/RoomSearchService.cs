@@ -53,7 +53,7 @@ public sealed class RoomSearchService
     private readonly MovementFilter? _movement;
     private readonly LogService? _log;
     // Opt-in tiers (nav search box): saved GOTO favourites by label + boss names
-    // from the boss table. Null when the caller didn't wire them (e.g. tests) — the
+    // from the boss table. Null when the caller didn't wire them — the
     // corresponding tier then no-ops.
     private readonly FavoritesStore? _favorites;
     private readonly BossStore? _bosses;

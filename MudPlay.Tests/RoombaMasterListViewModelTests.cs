@@ -66,8 +66,8 @@ public sealed class RoombaMasterListViewModelTests : IDisposable
         RoomGraphManager roomGraph = new(cache);
         roomGraph.OnActiveSetChanged("alpha");
 
-        ProfileService profile = new();
-        profile.LoadBlank();
+        ProfileService profile = TestProfiles.Service();
+        profile.LoadDefaultProfile();
         GhRoomLabelStore labels = new(profile);
         labels.OnRealmChanged(AppPaths.BbsFolder(_scratchBbs));
         labels.SetLabel(new RoomKey(1, 1), new System.Collections.Generic.List<GhCategoryRule>(), isCatchAll: false);

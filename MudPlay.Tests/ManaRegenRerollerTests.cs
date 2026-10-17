@@ -14,6 +14,8 @@ public sealed class ManaRegenRerollerTests
     private sealed class Harness
     {
         public readonly AbilBreakdownParser Parser = new();
+        // The game's output, fed the way the client receives it.
+        public readonly ServerFeed Feed = new();
         public ManaRegenRerollConfig Config = new(Threshold: 5, Cap: 3);
         public bool CanAfford = true;
         public bool UseTickMonitor;   // false = Paradigm (abil 145); true = Stock (tick)
@@ -26,6 +28,7 @@ public sealed class ManaRegenRerollerTests
 
         public Harness()
         {
+            Parser.AttachLineExtractor(Feed.Lines);
             Reroller = new ManaRegenReroller(
                 Parser,
                 () => Config,
@@ -45,8 +48,8 @@ public sealed class ManaRegenRerollerTests
         // prompt that flushes it — the parser fires BreakdownParsed on flush.
         public void FeedRoll(int roll)
         {
-            Parser.FeedTestLine($"spells:   ManaRegen(145)   {roll}");
-            Parser.FeedTestLine("", isPromptLine: true);
+            Feed.Line($"spells:   ManaRegen(145)   {roll}");
+            Feed.Prompt();
         }
     }
 
@@ -224,8 +227,8 @@ public sealed class ManaRegenRerollerTests
         Harness h = new();
 
         h.Reroller.OnRollSpellLanded("ntap");
-        h.Parser.FeedTestLine("worn:     HPRegen(123)                0040");
-        h.Parser.FeedTestLine("", isPromptLine: true);   // flushes a code-123 breakdown
+        h.Feed.Line("worn:     HPRegen(123)                0040");
+        h.Feed.Prompt();   // flushes a code-123 breakdown
 
         // The reroller ignored the non-145 read and is still awaiting ours.
         Assert.True(h.Reroller.CycleActive);

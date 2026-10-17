@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Text;
 using MudPlay.Game;
 using MudPlay.Terminal;
 using Xunit;
@@ -10,6 +11,9 @@ namespace MudPlay.Tests;
 // trained one cyan; Stock also puts a `*` in front of a modified one.
 public sealed class StatScreenMarksTests
 {
+    // The game's output, fed the way the client receives it.
+    private readonly ServerFeed _feed = new();
+
     private const int Green = 2, Cyan = 6, Red = 1;
 
     private readonly PlayerStats _stats = new();
@@ -18,23 +22,15 @@ public sealed class StatScreenMarksTests
     public StatScreenMarksTests()
     {
         _parser = new StatParser(_stats);
-        _parser.TestArm();
+        _parser.AttachLineExtractor(_feed.Lines);
+        _parser.ObserveOutbound(Encoding.Latin1.GetBytes("stat\r"));
     }
 
     // A line built from coloured runs, the way the emulator hands it over: `1;31`
     // arrives as palette index 1 with the bold flag, `0;36` as index 6.
     private void Feed(params (string Text, int Colour)[] runs)
     {
-        var text = new System.Text.StringBuilder();
-        var attrs = new List<CellAttributes>();
-        foreach ((string run, int colour) in runs)
-        {
-            text.Append(run);
-            CellAttributes a = CellAttributes.Default.WithForeground(TerminalColor.Indexed(colour));
-            if (colour == Red) a = a.WithFlag(CellFlags.Bold, true);
-            for (int i = 0; i < run.Length; i++) attrs.Add(a);
-        }
-        _parser.FeedTestLine(text.ToString(), attributes: attrs.ToArray());
+        _feed.Coloured(runs.Select(r => (r.Text, r.Colour, Bold: r.Colour == Red)));
     }
 
     private void FeedHeader() =>
@@ -51,7 +47,7 @@ public sealed class StatScreenMarksTests
              ("MagicRes: ", Green), ("      47", Cyan));
     }
 
-    private void ClosePrompt() => _parser.FeedTestLine("[HP=318/KAI=14]:", isPromptLine: true);
+    private void ClosePrompt() => _feed.Line("[HP=318/KAI=14]:");
 
     [Fact]
     public void Paradigm_RedValuesAreModified_CyanAreNot()
@@ -82,8 +78,8 @@ public sealed class StatScreenMarksTests
     {
         FeedHeader();
         FeedParadigmStats(153, Red, 90, Red);
-        _parser.FeedTestLine("You feel powerful! (54s)");
-        _parser.FeedTestLine("You feel strong, but clumsy! (1m 36s)");
+        _feed.Line("You feel powerful! (54s)");
+        _feed.Line("You feel strong, but clumsy! (1m 36s)");
         ClosePrompt();
 
         Assert.Equal(
@@ -99,8 +95,8 @@ public sealed class StatScreenMarksTests
         Feed(("Strength: ", Green), ("*80   ", Red), ("  Agility:", Green), (" 50   ", Cyan), ("       Tracking:    ", Green), ("    0", Cyan));
         Feed(("Intellect:", Green), (" 40   ", Cyan), ("  Health: ", Green), (" 60   ", Cyan), ("       Martial Arts:", Green), ("    0", Cyan));
         Feed(("Willpower:", Green), (" 30   ", Cyan), ("  Charm:  ", Green), (" 30   ", Cyan), ("       MagicRes:    ", Green), ("   47", Cyan));
-        _parser.FeedTestLine("You are in the front rank of your group.");
-        _parser.FeedTestLine("You feel strong!");
+        _feed.Line("You are in the front rank of your group.");
+        _feed.Line("You feel strong!");
         ClosePrompt();
 
         Assert.Equal(80, _stats.Strength);
@@ -112,10 +108,10 @@ public sealed class StatScreenMarksTests
     [Fact]
     public void Asterisk_AloneIsEnoughToMarkAStat_ButAColourlessScreenIsNotRead()
     {
-        _parser.FeedTestLine("Name: Someone Somewhere                  Lives/CP:      9/26");
-        _parser.FeedTestLine("Strength: *80     Agility:  50          Tracking:        0");
-        _parser.FeedTestLine("Intellect: 40     Health:   60          Martial Arts:    0");
-        _parser.FeedTestLine("Willpower: 30     Charm:    30          MagicRes:       47");
+        _feed.Line("Name: Someone Somewhere                  Lives/CP:      9/26");
+        _feed.Line("Strength: *80     Agility:  50          Tracking:        0");
+        _feed.Line("Intellect: 40     Health:   60          Martial Arts:    0");
+        _feed.Line("Willpower: 30     Charm:    30          MagicRes:       47");
         ClosePrompt();
 
         // Strength is known modified, but nothing says the other five are not.
@@ -131,7 +127,7 @@ public sealed class StatScreenMarksTests
         ClosePrompt();
         Assert.True(_stats.ModifiedMarksRead);
 
-        _parser.TestArm();
+        _parser.ObserveOutbound(Encoding.Latin1.GetBytes("stat\r"));
         FeedHeader();
         // Mid-screen: this screen's values are landing, the marks are the last screen's.
         Assert.False(_stats.ModifiedMarksRead);
@@ -150,8 +146,8 @@ public sealed class StatScreenMarksTests
         FeedParadigmStats(153, Red, 90, Red);
         ClosePrompt();
 
-        _parser.TestArm();
-        _parser.FeedTestLine("Exp: 125379954 Level: 31 Exp needed for next level: 100 (200) [50%]");
+        _parser.ObserveOutbound(Encoding.Latin1.GetBytes("stat\r"));
+        _feed.Line("Exp: 125379954 Level: 31 Exp needed for next level: 100 (200) [50%]");
         ClosePrompt();
 
         Assert.True(_stats.ModifiedMarksRead);
@@ -179,11 +175,13 @@ public sealed class StatScreenMarksTests
             + $"{E}0mYou feel strong, but clumsy! (96s)\r\n";
 
         var stats = new PlayerStats();
-        using var parser = new StatParser(stats);
+        ManualTimers timers = new();
+        using var parser = new StatParser(stats, schedule: timers.Arm);
+        parser.AttachLineExtractor(_feed.Lines);
         var emulator = new TerminalEmulator(80, 24);
         parser.AttachLineExtractor(new LineExtractor(emulator));
         emulator.Feed(System.Text.Encoding.Latin1.GetBytes(wire));
-        parser.SettleNowForTests();
+        timers.RunAll();
 
         Assert.Equal(153, stats.Strength);
         Assert.Equal(26, stats.Cp);
@@ -226,7 +224,7 @@ public sealed class StatScreenMarksTests
     {
         FeedHeader();
         FeedParadigmStats(153, Red, 90, Red);
-        _parser.FeedTestLine("You feel strong, but clumsy! (96s)");
+        _feed.Line("You feel strong, but clumsy! (96s)");
         ClosePrompt();
 
         // Through JSON, as the profile keeps it.
@@ -234,6 +232,7 @@ public sealed class StatScreenMarksTests
             System.Text.Json.JsonSerializer.Serialize(_parser.Snapshot()))!;
         var stats = new PlayerStats();
         using var parser = new StatParser(stats);
+        parser.AttachLineExtractor(_feed.Lines);
         parser.Hydrate(saved);
 
         Assert.True(stats.ModifiedMarksRead);

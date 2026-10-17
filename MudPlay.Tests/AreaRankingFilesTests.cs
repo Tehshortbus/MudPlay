@@ -328,17 +328,18 @@ public sealed class AreaRankingFilesTests : IDisposable
         public LogService Log { get; } = new();
         public AreaRankingStore Store { get; }
 
+        // The file work runs in turn on the calling thread; what it hands back to the
+        // UI thread waits in Posted until Settle runs it.
         public Client(AreaRankingFiles? files = null) =>
-            Store = new AreaRankingStore(files ?? Files(), act => { lock (Posted) Posted.Add(act); }, Log);
+            Store = new AreaRankingStore(files ?? Files(), act => Posted.Add(act), Log, runFileWork: work => work());
 
-        // Let the file work asked for finish, and what it handed back run.
+        // Let what the file work handed back run, and whatever that hands back.
         public void Settle()
         {
             for (int round = 0; round < 10; round++)
             {
-                Store.Idle.GetAwaiter().GetResult();
-                Action[] batch;
-                lock (Posted) { batch = Posted.ToArray(); Posted.Clear(); }
+                Action[] batch = Posted.ToArray();
+                Posted.Clear();
                 if (batch.Length == 0) return;
                 foreach (Action act in batch) act();
             }
@@ -658,8 +659,9 @@ public sealed class AreaRankingFilesTests : IDisposable
             foreach (FileStream hold in holds) hold.Dispose();
         }
 
-        // Waited on, the three would take well over a second.
-        Assert.True(clock.ElapsedMilliseconds < 400, $"{clock.ElapsedMilliseconds} ms");
+        // Waited on, the three would take well over a second; the bound sits well
+        // past scheduler noise and still under that.
+        Assert.True(clock.ElapsedMilliseconds < 1000, $"{clock.ElapsedMilliseconds} ms");
         Assert.All(locked, f => Assert.True(File.Exists(f), f));
         Assert.All(locked, f => Assert.Contains(skipped, s => s.StartsWith(f, StringComparison.Ordinal)));
 

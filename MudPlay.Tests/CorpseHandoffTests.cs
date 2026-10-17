@@ -18,11 +18,14 @@ namespace MudPlay.Tests;
 // everything the client stores.
 public sealed class CorpseHandoffTests
 {
+    // The router each engine reads, which a test's chat lines go through.
+    private readonly Dictionary<RemoteCommandManager, MessageRouter> _routers = new();
+
     private const string Password = "hunter2xyz";
 
     private sealed class Harness
     {
-        public ProfileService Profile { get; } = new();
+        public ProfileService Profile { get; } = TestProfiles.Service();
         public LogService Log { get; } = new();
         public CorpseHandoffManager Manager { get; }
         public List<string> Sent { get; } = new();
@@ -34,7 +37,7 @@ public sealed class CorpseHandoffTests
 
         public Harness()
         {
-            Profile.LoadBlank();
+            Profile.LoadDefaultProfile();
             Profile.Current!.Name = "Fujin";
             CurrencyNaming naming = new();
             Manager = new CorpseHandoffManager(
@@ -289,9 +292,10 @@ public sealed class CorpseHandoffTests
     {
         MessageRouter router = new();
         DefaultPatterns.Seed(router);
-        PlayerDatabase players = new();
+        PlayerDatabase players = new(new ProfileService(), () => null);
         LogService log = new();
         RemoteCommandManager engine = new(new ChatRouter(router), new PartyState(), players, log);
+        _routers[engine] = router;
         DoHandler handler = new(engine, log);
         List<string> wire = new();
         handler.SetWireSender(b => wire.Add(Encoding.Latin1.GetString(b)));
@@ -300,7 +304,7 @@ public sealed class CorpseHandoffTests
         players.EditCustomization("Raijin", new PlayerCustomization(RemoteControls: PlayerRemoteControls.ExecuteCommands));
 
         string said = $"@do recover corpse raijin {Password}";
-        engine.DispatchForTests(new ChatLogEntry(now, ChatChannel.TelepathIncoming, "Raijin", said, $"Raijin telepaths: {said}"));
+        ChatLines.Hear(_routers[engine], new ChatLine(ChatChannel.TelepathIncoming, "Raijin", said));
 
         Assert.Equal($"recover corpse raijin {Password}\r", Assert.Single(wire));
         Assert.Contains(log.Snapshot(), e => e.Message.Contains("recover corpse raijin [redacted]"));

@@ -10,11 +10,9 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Cluster 5d — <see cref="AutoModeRemoteHandler"/> reads / writes
-/// <see cref="AutoActionDefaults"/> on the loaded profile in response
-/// to <c>@auto-*</c> remote commands.
-/// </summary>
+// AutoModeRemoteHandler reads / writes
+// AutoActionDefaults on the loaded profile in response
+// to @auto-* remote commands.
 public sealed class AutoModeRemoteHandlerTests
 {
     private static readonly DateTime Now = new(2026, 6, 3, 0, 0, 0, DateTimeKind.Utc);
@@ -22,6 +20,10 @@ public sealed class AutoModeRemoteHandlerTests
     private sealed class Setup : IDisposable
     {
         public RemoteCommandManager Engine { get; }
+        // The router the engine's chat lines arrive through.
+        public MessageRouter Router { get; }
+        // What the engine put on the wire, through the sender the client binds.
+        public List<byte[]> Sent { get; } = new();
         public AutoModeRemoteHandler Handler { get; }
         public ProfileService Profile { get; }
         public PlayerDatabase Players { get; }
@@ -29,13 +31,15 @@ public sealed class AutoModeRemoteHandlerTests
         public Setup()
         {
             MessageRouter router = new();
+            Router = router;
             DefaultPatterns.Seed(router);
             ChatRouter chat = new(router);
             PartyState party = new();
-            Players = new PlayerDatabase();
+            Players = new PlayerDatabase(new ProfileService(), () => null);
             Engine = new RemoteCommandManager(chat, party, Players);
-            Profile = new ProfileService();
-            Profile.LoadBlank();
+            Engine.SetWireSender(Sent.Add);
+            Profile = TestProfiles.Service();
+            Profile.LoadDefaultProfile();
             AutoModeController controller = new(Profile);
             Handler = new AutoModeRemoteHandler(Engine, Profile, controller);
         }
@@ -43,8 +47,8 @@ public sealed class AutoModeRemoteHandlerTests
         public void Dispose() => Handler.Dispose();
     }
 
-    private static ChatLogEntry Telepath(string sender, string msg) =>
-        new(Now, ChatChannel.TelepathIncoming, sender, msg, $"{sender} telepaths: {msg}");
+    private static ChatLine Telepath(string sender, string msg) =>
+        new(ChatChannel.TelepathIncoming, sender, msg);
 
     private static void SeedPlayer(PlayerDatabase db, string name, PlayerRemoteControls controls)
     {
@@ -65,15 +69,14 @@ public sealed class AutoModeRemoteHandlerTests
     {
         using Setup s = new();
         SeedPlayer(s.Players, "Tank", PlayerRemoteControls.AlterSettings);
-        // Force default off to make the off→on flip observable.
         s.Profile.Current!.Settings = new();
         AutoActionDefaults pre = ReadMode(s.Profile.Current!);
         Assert.True(pre.AutoCombat);    // default true
 
-        s.Engine.DispatchForTests(Telepath("Tank", "@auto-combat off"));
+        ChatLines.Hear(s.Router, Telepath("Tank", "@auto-combat off"));
         Assert.False(ReadMode(s.Profile.Current!).AutoCombat);
 
-        s.Engine.DispatchForTests(Telepath("Tank", "@auto-combat on"));
+        ChatLines.Hear(s.Router, Telepath("Tank", "@auto-combat on"));
         Assert.True(ReadMode(s.Profile.Current!).AutoCombat);
     }
 
@@ -84,10 +87,10 @@ public sealed class AutoModeRemoteHandlerTests
         SeedPlayer(s.Players, "Tank", PlayerRemoteControls.AlterSettings);
 
         // Default true → no-arg toggles to off and reports the new state.
-        s.Engine.DispatchForTests(Telepath("Tank", "@auto-combat"));
+        ChatLines.Hear(s.Router, Telepath("Tank", "@auto-combat"));
 
         Assert.False(ReadMode(s.Profile.Current!).AutoCombat);
-        string reply = Encoding.Latin1.GetString(s.Engine.LastSentForTests[^1]);
+        string reply = Encoding.Latin1.GetString(s.Sent[^1]);
         Assert.Contains("@auto-combat", reply);
         Assert.Contains("off", reply);    // toggled from default on
     }
@@ -98,12 +101,12 @@ public sealed class AutoModeRemoteHandlerTests
         using Setup s = new();
         SeedPlayer(s.Players, "Tank", PlayerRemoteControls.AlterSettings);
 
-        s.Engine.DispatchForTests(Telepath("Tank", "@auto-rest off"));
+        ChatLines.Hear(s.Router, Telepath("Tank", "@auto-rest off"));
         Assert.False(ReadMode(s.Profile.Current!).AutoRest);
         Assert.True(ReadMode(s.Profile.Current!).AutoHeal);
 
-        s.Engine.DispatchForTests(Telepath("Tank", "@auto-heal off"));
-        s.Engine.DispatchForTests(Telepath("Tank", "@auto-rest on"));
+        ChatLines.Hear(s.Router, Telepath("Tank", "@auto-heal off"));
+        ChatLines.Hear(s.Router, Telepath("Tank", "@auto-rest on"));
         Assert.True(ReadMode(s.Profile.Current!).AutoRest);
         Assert.False(ReadMode(s.Profile.Current!).AutoHeal);
     }
@@ -115,25 +118,25 @@ public sealed class AutoModeRemoteHandlerTests
         SeedPlayer(s.Players, "Tank", PlayerRemoteControls.AlterSettings);
 
         // Defaults have engines on → first no-arg toggle kills everything.
-        s.Engine.DispatchForTests(Telepath("Tank", "@auto-all"));
+        ChatLines.Hear(s.Router, Telepath("Tank", "@auto-all"));
         AutoActionDefaults killed = ReadMode(s.Profile.Current!);
         Assert.False(killed.AutoCombat);
         Assert.False(killed.AutoGetCash);
 
         // Second toggle restores the snapshot.
-        s.Engine.DispatchForTests(Telepath("Tank", "@auto-all"));
+        ChatLines.Hear(s.Router, Telepath("Tank", "@auto-all"));
         AutoActionDefaults restored = ReadMode(s.Profile.Current!);
         Assert.True(restored.AutoCombat);
         Assert.True(restored.AutoGetCash);
     }
 
     [Fact]
-    public void AutoAll_On_FlipsEveryFlag()
+    public void AutoAll_Off_ClearsEveryFlag()
     {
         using Setup s = new();
         SeedPlayer(s.Players, "Tank", PlayerRemoteControls.AlterSettings);
         // Start with defaults; flip everything off via @auto-all off.
-        s.Engine.DispatchForTests(Telepath("Tank", "@auto-all off"));
+        ChatLines.Hear(s.Router, Telepath("Tank", "@auto-all off"));
 
         AutoActionDefaults mode = ReadMode(s.Profile.Current!);
         Assert.False(mode.AutoCombat);
@@ -149,8 +152,8 @@ public sealed class AutoModeRemoteHandlerTests
     {
         using Setup s = new();
         SeedPlayer(s.Players, "Tank", PlayerRemoteControls.AlterSettings);
-        s.Engine.DispatchForTests(Telepath("Tank", "@auto-all off"));
-        s.Engine.DispatchForTests(Telepath("Tank", "@auto-all on"));
+        ChatLines.Hear(s.Router, Telepath("Tank", "@auto-all off"));
+        ChatLines.Hear(s.Router, Telepath("Tank", "@auto-all on"));
 
         AutoActionDefaults mode = ReadMode(s.Profile.Current!);
         Assert.True(mode.AutoCombat);
@@ -165,9 +168,9 @@ public sealed class AutoModeRemoteHandlerTests
         using Setup s = new();
         SeedPlayer(s.Players, "Tank", PlayerRemoteControls.AlterSettings);
 
-        s.Engine.DispatchForTests(Telepath("Tank", "@auto-combat maybe"));
+        ChatLines.Hear(s.Router, Telepath("Tank", "@auto-combat maybe"));
 
-        string reply = Encoding.Latin1.GetString(s.Engine.LastSentForTests[^1]);
+        string reply = Encoding.Latin1.GetString(s.Sent[^1]);
         Assert.Contains("?", reply);
     }
 
@@ -177,7 +180,7 @@ public sealed class AutoModeRemoteHandlerTests
         using Setup s = new();
         SeedPlayer(s.Players, "Tank", PlayerRemoteControls.AlterSettings);
 
-        s.Engine.DispatchForTests(Telepath("Tank", "@auto-sneak off"));
+        ChatLines.Hear(s.Router, Telepath("Tank", "@auto-sneak off"));
         Assert.False(ReadMode(s.Profile.Current!).AutoSneak);
     }
 
@@ -187,9 +190,9 @@ public sealed class AutoModeRemoteHandlerTests
         using Setup s = new();
         SeedPlayer(s.Players, "Tank", PlayerRemoteControls.AlterSettings);
 
-        s.Engine.DispatchForTests(Telepath("Tank", "@settings"));
+        ChatLines.Hear(s.Router, Telepath("Tank", "@settings"));
 
-        string reply = Encoding.Latin1.GetString(s.Engine.LastSentForTests[^1]);
+        string reply = Encoding.Latin1.GetString(s.Sent[^1]);
         Assert.Contains("Auto-Combat: On", reply);     // default on
         Assert.Contains("Auto-Light: Off", reply);      // default off
         Assert.Contains("Auto-Heal: On", reply);
@@ -202,10 +205,10 @@ public sealed class AutoModeRemoteHandlerTests
         using Setup s = new();
         SeedPlayer(s.Players, "Tank", PlayerRemoteControls.AlterSettings);
 
-        s.Engine.DispatchForTests(Telepath("Tank", "@auto-combat off"));
-        s.Engine.DispatchForTests(Telepath("Tank", "@settings"));
+        ChatLines.Hear(s.Router, Telepath("Tank", "@auto-combat off"));
+        ChatLines.Hear(s.Router, Telepath("Tank", "@settings"));
 
-        string reply = Encoding.Latin1.GetString(s.Engine.LastSentForTests[^1]);
+        string reply = Encoding.Latin1.GetString(s.Sent[^1]);
         Assert.Contains("Auto-Combat: Off", reply);
     }
 }

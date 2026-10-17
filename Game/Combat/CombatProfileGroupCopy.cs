@@ -10,9 +10,6 @@ namespace MudPlay.Game.Combat;
 // and the switch / Settings-window paths stay "apply the whole profile".
 public static class CombatProfileGroupCopy
 {
-    public static IReadOnlyList<CombatProfileGroup> All { get; } =
-        (CombatProfileGroup[])Enum.GetValues(typeof(CombatProfileGroup));
-
     // Copy every shared group from `from` into each of `to` (skipping `from` itself).
     public static void SyncShared(
         IEnumerable<CombatProfileGroup>? shared, CombatSpellProfile from, IEnumerable<CombatSpellProfile> to)

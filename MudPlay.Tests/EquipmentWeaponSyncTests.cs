@@ -5,12 +5,10 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Pins <see cref="EquipmentWeaponSync"/> — the read-time overlay that derives
-/// CombatSettings' six weapon fields from the Equipment Manager gear sets:
-/// normal + alternate from the Default set, backstab from the Backstab set when
-/// enabled, otherwise the Default set.
-/// </summary>
+// Pins EquipmentWeaponSync — the read-time overlay that derives
+// CombatSettings' six weapon fields from the Equipment Manager gear sets:
+// normal + alternate from the Default set, backstab from the Backstab set when
+// enabled, otherwise the Default set.
 public sealed class EquipmentWeaponSyncTests
 {
     private static EquipmentSet SetOf(
@@ -136,12 +134,19 @@ public sealed class EquipmentWeaponSyncTests
     [Fact]
     public void ApplyWeapons_EmptyEquipment_AllNull()
     {
-        CombatSettings combat = new();
+        CombatSettings combat = new()
+        {
+            NormalWeapon = "stale", AlternateWeapon = "stale", BackstabWeapon = "stale",
+            NormalOffHand = "stale", AlternateOffHand = "stale", BackstabOffHand = "stale",
+        };
 
         EquipmentWeaponSync.ApplyWeapons(combat, new EquipmentSettings());
 
         Assert.Null(combat.NormalWeapon);
         Assert.Null(combat.AlternateWeapon);
         Assert.Null(combat.BackstabWeapon);
+        Assert.Null(combat.NormalOffHand);
+        Assert.Null(combat.AlternateOffHand);
+        Assert.Null(combat.BackstabOffHand);
     }
 }

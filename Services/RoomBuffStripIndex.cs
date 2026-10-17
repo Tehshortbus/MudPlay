@@ -62,13 +62,6 @@ public sealed class RoomBuffStripIndex
     // Set the index was last built from, or null if empty.
     public string? ActiveSet { get; private set; }
 
-    // Number of distinct buff-stripping room-entry spells indexed.
-    public int StripSpellCount => _stripSpells.Count;
-
-    // Fires after every successful (re)load, including the transition to
-    // no-set-active.
-    public event Action? StoreReloaded;
-
     public RoomBuffStripIndex(GameDataCache cache, LogService? log = null)
     {
         ArgumentNullException.ThrowIfNull(cache);
@@ -127,7 +120,6 @@ public sealed class RoomBuffStripIndex
         if (string.IsNullOrWhiteSpace(setName))
         {
             _log?.Info("RoomBuffStripIndex", "No active set; cleared.");
-            StoreReloaded?.Invoke();
             return;
         }
 
@@ -137,7 +129,6 @@ public sealed class RoomBuffStripIndex
         {
             _log?.Info("RoomBuffStripIndex",
                 $"Active set '{setName}' missing Rooms/Spells; empty.");
-            StoreReloaded?.Invoke();
             return;
         }
 
@@ -164,7 +155,6 @@ public sealed class RoomBuffStripIndex
             $"Indexed {_stripSpells.Count} buff-stripping room-entry spell(s) from '{setName}', "
             + $"{_textblockStrips.Count} more through a textblock, and {_commandStrips.Count} room command block(s) that cast one.");
 
-        StoreReloaded?.Invoke();
     }
 
     // The strips a textblock's `cast` reaches: from a room spell's own textblock, and

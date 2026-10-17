@@ -196,7 +196,7 @@ public sealed class BossTimerSyncCollector : IDisposable
         public bool OnBroadcast;
     }
 
-    internal void Ingest(ChatLogEntry e)
+    private void Ingest(ChatLogEntry e)
     {
         // A request of ours seen going out: one typed by hand while the window is
         // open, or the button's own. A telepath's echo names who it went to. Taken

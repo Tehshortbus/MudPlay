@@ -146,7 +146,6 @@ public sealed class LearnedRoomNameStoreTests : IDisposable
         Assert.Equal(new[] { House }, next.Graph.FindCandidates(HouseName, HouseExits));
         Assert.Equal(new[] { House }, next.Graph.FindByName(HouseName).Select(r => r.Key));
         Assert.Equal(new[] { House }, next.Graph.FindByNameCoveringExits(HouseName, new HashSet<Direction> { Direction.N }));
-        Assert.True(next.Graph.IsUnique(House));
         // The cellar was never named and stays so.
         Assert.True(next.Graph.GetRoom(Cellar)!.HasUnknownName);
 
@@ -1264,12 +1263,10 @@ public sealed class LearnedRoomNameStoreTests : IDisposable
         ViewModels.RoomNameLearnedDialogViewModel first = new(House, HouseName);
         Assert.False(first.HasKeptBefore);
         Assert.Equal("Save the name seen for room 15/861?", first.HeaderText);
-        Assert.Equal("(none)", first.DataNameValue);
 
         ViewModels.RoomNameLearnedDialogViewModel again = new(House, Renamed, keptBefore: HouseName);
         Assert.True(again.HasKeptBefore);
         Assert.Equal((HouseName, Renamed), (again.KeptBeforeValue, again.ObservedNameValue));
-        Assert.Equal("(none)", again.DataNameValue);
         Assert.Contains("replaces the name kept", again.WhereKeptText);
 
         // The same name on file is nothing to replace.

@@ -2,17 +2,14 @@ using System.Linq;
 using MudPlay.Game.Conditions;
 using MudPlay.Models.GameData;
 using MudPlay.Services;
-using MudPlay.Terminal;
 using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// PR 9.D — <see cref="ConditionTracker"/> matches lines against the
-/// active <see cref="MessageStore"/> records' AppliedMessage /
-/// AppliedEndsWith pairs and surfaces the aggregated
-/// <see cref="MessageFlags"/>.
-/// </summary>
+// ConditionTracker matches lines against the
+// active MessageStore records' AppliedMessage /
+// AppliedEndsWith pairs and surfaces the aggregated
+// MessageFlags.
 public sealed class ConditionTrackerTests
 {
     private sealed class Harness : IDisposable
@@ -20,6 +17,8 @@ public sealed class ConditionTrackerTests
         public LogService Log { get; } = new();
         public MessageStore Messages { get; } = new();
         public ConditionTracker Tracker { get; }
+        // The game's output, fed the way the client receives it.
+        public ServerFeed Server { get; } = new();
         public List<MessageRecord> Applied { get; } = new();
         public List<MessageRecord> Ended { get; } = new();
         public List<MessageRecord> ActionFailed { get; } = new();
@@ -27,40 +26,15 @@ public sealed class ConditionTrackerTests
         public Harness()
         {
             Tracker = new ConditionTracker(Messages, Log);
+            Tracker.AttachLineExtractor(Server.Lines);
             Tracker.ConditionApplied += Applied.Add;
             Tracker.ConditionEnded   += Ended.Add;
             Tracker.ActionFailed     += ActionFailed.Add;
         }
 
-        public void Feed(string text)
-        {
-            // The tracker subscribes to LineExtractor in real life;
-            // tests reflect into the private OnLine via a public
-            // helper would be overkill. Instead, attach a fake
-            // extractor and dispatch through it.
-            // Simpler: keep the private OnLine internal-via-friend
-            // by exposing FeedTestLine. Use the same pattern other
-            // engines have.
-            var emitted = new LineExtractor.EmittedLine(
-                text, Array.Empty<CellAttributes>(),
-                DateTimeOffset.UtcNow, IsPromptLine: false);
-            typeof(ConditionTracker)
-                .GetMethod("OnLine",
-                    System.Reflection.BindingFlags.Instance |
-                    System.Reflection.BindingFlags.NonPublic)!
-                .Invoke(Tracker, new object[] { emitted });
-        }
+        public void Feed(string text) => Server.Line(text);
 
-        public void FeedAt(string text, DateTimeOffset when)
-        {
-            var emitted = new LineExtractor.EmittedLine(
-                text, Array.Empty<CellAttributes>(), when, IsPromptLine: false);
-            typeof(ConditionTracker)
-                .GetMethod("OnLine",
-                    System.Reflection.BindingFlags.Instance |
-                    System.Reflection.BindingFlags.NonPublic)!
-                .Invoke(Tracker, new object[] { emitted });
-        }
+        public void FeedAt(string text, DateTimeOffset when) => Server.Line(text, when);
 
         public void Dispose() => Tracker.Dispose();
     }
@@ -307,7 +281,7 @@ public sealed class ConditionTrackerTests
 
             h.Feed("You are no longer freezing.");
             Assert.False(h.Tracker.IsConfused);
-            Assert.DoesNotContain(h.Applied, h.Tracker.IsActive);
+            Assert.DoesNotContain(h.Applied, r => h.Tracker.IsActiveByName(r.Name));
         }
         finally
         {
@@ -481,7 +455,7 @@ public sealed class ConditionTrackerTests
 
         h.Feed("The effect of hypnotic hands wears off.");
         Assert.False(h.Tracker.IsConfused);
-        Assert.DoesNotContain(h.Applied, h.Tracker.IsActive);
+        Assert.DoesNotContain(h.Applied, r => h.Tracker.IsActiveByName(r.Name));
     }
 
     // The line's own spell has to carry EVERY condition of the record it is read
@@ -533,7 +507,7 @@ public sealed class ConditionTrackerTests
             h.Feed("The effect of hypnotic hands wears off.");
             Assert.Equal(new[] { "hypnotic hands" }, h.Ended.Select(r => r.Name));
             Assert.Equal(MessageFlags.None, h.Tracker.ActiveFlags);
-            Assert.DoesNotContain(h.Applied, h.Tracker.IsActive);
+            Assert.DoesNotContain(h.Applied, r => h.Tracker.IsActiveByName(r.Name));
         }
         finally
         {
@@ -868,12 +842,12 @@ public sealed class ConditionTrackerTests
         // falsely latched buffs on login and suppressed the real cast's confirm.
         h.Feed(readout);
         Assert.Empty(h.Applied);
-        Assert.False(h.Tracker.IsActive(h.Messages.Messages[0]));
+        Assert.False(h.Tracker.IsActiveByName("Bless"));
 
         // The bare effect line — a genuine fresh cast, no parenthetical — still applies.
         h.Feed("You feel lucky!");
         Assert.Single(h.Applied);
-        Assert.True(h.Tracker.IsActive(h.Messages.Messages[0]));
+        Assert.True(h.Tracker.IsActiveByName("Bless"));
     }
 
     // ----- LastActionFailed (confusion fumble) ------------------------

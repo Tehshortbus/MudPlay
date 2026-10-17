@@ -101,7 +101,7 @@ public sealed class HealthManager : IDisposable
     // (the round's death line is parsed AFTER the end-of-round prompt in the
     // same read) and ConfirmHpGate / ConfirmMaGate (a regen tick can follow the
     // prompt that dropped a pool below its rest-trigger). Synchronous (a => a())
-    // when unwired, so tests stay deterministic.
+    // when unwired.
     private readonly Action<Action> _post;
     private readonly Func<int>? _readDeathFloor;
     private readonly HangupSignal? _hangupSignal;
@@ -281,7 +281,11 @@ public sealed class HealthManager : IDisposable
     private int _lastSeenMaxMa = -1;
     private DateTimeOffset _maxHpChangedAt;
     private DateTimeOffset _maxMaChangedAt;
-    private bool _fledThisCombat;        // reacted to run-trigger (flee OR @heal), awaiting combat end
+    // True between the run-if-below reaction (a flee for leader / solo, or a
+    // broadcast @heal for a party follower) and the next time
+    // PlayerState.InCombat goes false. Single-shot per combat so a low-HP fight
+    // can't burn the reaction on every HP-changed event.
+    private bool _fledThisCombat;
 
     // The flee move last sent, and the ways out the game refused during this run by
     // the room they were tried from. Dropped when the run ends.
@@ -334,7 +338,7 @@ public sealed class HealthManager : IDisposable
     //   findReversePath — (from, to) → the BFS direction list from one room to
     //     another, or null when unreachable. The Backward flee calls this with
     //     (current room, engine JourneyOrigin) to lay the reverse trail. Wired to
-    //     BfsMapper.FindPath; left null in tests that exercise the fallback.
+    //     BfsMapper.FindPath; null takes the fallback.
     //   readCombatSettings — for the flee knobs CombatSettings.RunDirection,
     //     BreakBeforeFleeing and RunDistance.
     //   readGeneralSettings — for GeneralSettings.AllowHangupInAllOffMode, the
@@ -424,7 +428,7 @@ public sealed class HealthManager : IDisposable
     // MUST survive the very hold that a drop raises: hanging up is still allowed
     // at or below 0 HP, and it's the dropped character's last escape. Wiring
     // this to the raw un-wrapped SendUserInput lets the hangup pierce the gate.
-    // Falls back to _wireSender when unset (tests / pre-wire).
+    // Falls back to _wireSender when unset (pre-wire).
     public void SetHangupWireSender(Action<byte[]> sender)
     {
         ArgumentNullException.ThrowIfNull(sender);
@@ -436,8 +440,8 @@ public sealed class HealthManager : IDisposable
     // slowly, leaving a mortally-wounded character sitting connected); this lets
     // us also close the carrier ourselves. The callback owns the flush timing —
     // it must let the just-sent exit command reach the wire before disposing the
-    // socket (see MainWindowViewModel.RequestHangupDisconnect). Unset (tests /
-    // pre-wire) means the pre-existing "send exit, wait for server" behaviour.
+    // socket (see MainWindowViewModel.RequestHangupDisconnect). Unset (pre-wire)
+    // means the pre-existing "send exit, wait for server" behaviour.
     public void SetHangupDisconnect(Action requestDisconnect)
     {
         ArgumentNullException.ThrowIfNull(requestDisconnect);
@@ -450,7 +454,7 @@ public sealed class HealthManager : IDisposable
     // `sys goto <location>`. The callback returns true when it dispatched the jump
     // (so the hangup is skipped), false when it couldn't — power off on this BBS,
     // the location no longer in the table — so the hangup runs as the fallback.
-    // Unset (tests / minimal wiring) means no substitute: the normal hangup fires.
+    // Unset (minimal wiring) means no substitute: the normal hangup fires.
     public void SetWimpyGoto(Func<string, bool> tryWimpyGoto)
     {
         ArgumentNullException.ThrowIfNull(tryWimpyGoto);
@@ -868,18 +872,12 @@ public sealed class HealthManager : IDisposable
         return waits;
     }
 
-    // True between the run-if-below reaction (a flee for leader / solo, or a
-    // broadcast @heal for a party follower) and the next time
-    // PlayerState.InCombat goes false. Single-shot per combat so a low-HP fight
-    // can't burn the reaction on every HP-changed event.
-    public bool FledThisCombat => _fledThisCombat;
-
     // True while an HP-triggered flee retreat is actively in progress — the
     // engine is paused and we're walking (or parked awaiting HP recovery on) the
     // flee route. Drops back to false once HP climbs above the run-trigger and
     // the engine resumes. The room-entity classifier reads this so a monster that
     // pursues us mid-flee does NOT re-arm the combat gate: we keep running instead
-    // of turning to fight the thing we're fleeing. Distinct from FledThisCombat,
+    // of turning to fight the thing we're fleeing. Distinct from _fledThisCombat,
     // which stays true for the rest of the combat even after the retreat ends.
     public bool IsFleeing => _fleeEngine is not null;
 
@@ -896,20 +894,20 @@ public sealed class HealthManager : IDisposable
 
     // The last confirmed room before the current one (RoomTracker history) — the
     // Backward flee's fallback when there's no trail to the engine's origin (we're
-    // standing on it). Null in tests / when unknown.
+    // standing on it). Null when unknown.
     public Func<Map.RoomKey?>? PreviousRoom { get; set; }
 
     // A room's exits by direction (RoomGraph). Lets a flee with no trail left pick a
-    // way out that isn't back into the room it just fled. Null in tests / unknown.
+    // way out that isn't back into the room it just fled. Null when unknown.
     public Func<Map.RoomKey, IReadOnlyDictionary<Map.Direction, Map.RoomKey>?>? RoomExits { get; set; }
 
     // Whether a room is a boss room and its lair's max spawn — what a flee picking its
-    // own way out steers around. Null in tests (every room reads safe).
+    // own way out steers around. Null when unwired (every room reads safe).
     public Func<Map.RoomKey, (bool Boss, int LairMax)>? RoomRisk { get; set; }
 
     // Whether routes keep out of a room (MovementFilter.IsClosedToRoutes: Crystal Lake's
     // teleporting rooms). A flee builds its own retreat, so the filter that keeps routes
-    // out would not reach it. Null in tests (no room is closed).
+    // out would not reach it. Null when unwired (no room is closed).
     public Func<Map.RoomKey, bool>? IsClosedToRoutes { get; set; }
 
     // True while a move is sent but its landing isn't confirmed (RoomTracker Pending).
@@ -924,7 +922,7 @@ public sealed class HealthManager : IDisposable
     public Func<bool>? IsNavigationPausedByUser { get; set; }
 
     // True while the server is auto-attacking (CombatStateTracker.IsServerEngaged).
-    // Null (tests) keeps the old always-break behavior.
+    // Null keeps the always-break behavior.
     public Func<bool>? IsServerEngaged { get; set; }
 
     // The room the flee's latest step left from — a "change" back to it isn't a landing.
@@ -957,8 +955,7 @@ public sealed class HealthManager : IDisposable
     }
 
     // Re-evaluate gate state + rest/stand pacing against the current player
-    // state. Public so tests can drive it deterministically without needing a
-    // real PropertyChanged firing.
+    // state.
     public void Evaluate()
     {
         if (!_isEnabled())
@@ -1984,7 +1981,7 @@ public sealed class HealthManager : IDisposable
         // re-arm the single-shot the moment the danger passes (HP recovered above
         // the trigger, or the room went clear) so a fresh hostile that wanders in
         // or spawns while we're still low fires a new disconnect. Selector unwired
-        // (tests / minimal ctor) fails open — behaves as the pre-gate hangup did.
+        // (minimal ctor) fails open — behaves as the pre-gate hangup did.
         bool hostile = _hasHostileInRoom?.Invoke() ?? true;
         if (!inWindow || !hostile)
         {
@@ -2803,8 +2800,6 @@ public sealed class HealthManager : IDisposable
         Evaluate();
     }
 
-    public void NoteRoomChanged() => NoteRoomChanged(newRoom: null);
-
     // Reset States: drop a flee in progress, and the engine it would resume once HP
     // recovers, so a stopped loop / walk isn't restarted afterwards.
     public void CancelFlee()
@@ -3133,7 +3128,7 @@ public sealed class HealthManager : IDisposable
 
     // Emergency-hangup send. Prefers the un-wrapped hangup sender (which bypasses
     // EngineSendGate) so it fires even while a hold is up; falls back to the
-    // ordinary wrapped sender when no hangup sender was bound (tests / pre-wire).
+    // ordinary wrapped sender when no hangup sender was bound (pre-wire).
     private void SendHangup(string text)
     {
         if (string.IsNullOrWhiteSpace(text)) return;

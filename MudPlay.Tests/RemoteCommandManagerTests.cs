@@ -10,41 +10,47 @@ namespace MudPlay.Tests;
 
 public sealed class RemoteCommandManagerTests
 {
+    // The router each engine reads, which a test's chat lines go through.
+    private readonly Dictionary<RemoteCommandManager, MessageRouter> _routers = new();
+
     private static readonly DateTime Now = new(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc);
 
-    /// <summary>
-    /// Build a self-contained remote-command engine + the minimum
-    /// surrounding state. The test PlayerDatabase starts empty —
-    /// individual tests seed it via RecordObservation / EditCustomization.
-    /// </summary>
-    private static (RemoteCommandManager engine, PartyState party, PlayerDatabase players) Setup()
+    // What the engine put on the wire, through the sender the client binds.
+    private readonly List<byte[]> _sent = new();
+
+    // Build a self-contained remote-command engine + the minimum
+    // surrounding state. The test PlayerDatabase starts empty —
+    // individual tests seed it via RecordObservation / EditCustomization.
+    private (RemoteCommandManager engine, PartyState party, PlayerDatabase players) Setup()
     {
         MessageRouter router = new();
         DefaultPatterns.Seed(router);
         ChatRouter chat = new(router);
         PartyState party = new();
-        PlayerDatabase players = new();
+        PlayerDatabase players = new(new ProfileService(), () => null);
         RemoteCommandManager engine = new(chat, party, players);
+        _routers[engine] = router;
+        engine.SetWireSender(_sent.Add);
         return (engine, party, players);
     }
 
-    private static ChatLogEntry Telepath(string sender, string msg) =>
-        new(Now, ChatChannel.TelepathIncoming, sender, msg, $"{sender} telepaths: {msg}");
+    private static ChatLine Telepath(string sender, string msg) =>
+        new(ChatChannel.TelepathIncoming, sender, msg);
 
-    private static ChatLogEntry Gossip(string sender, string msg) =>
-        new(Now, ChatChannel.Gossip, sender, msg, $"{sender} gossips: {msg}");
+    private static ChatLine Gossip(string sender, string msg) =>
+        new(ChatChannel.Gossip, sender, msg);
 
-    private static ChatLogEntry Yell(string sender, string msg) =>
-        new(Now, ChatChannel.Yell, sender, msg, $"{sender} yells: {msg}");
+    private static ChatLine Yell(string sender, string msg) =>
+        new(ChatChannel.Yell, sender, msg);
 
-    private static ChatLogEntry Local(string sender, string msg) =>
-        new(Now, ChatChannel.Local, sender, msg, $"{sender} says: {msg}");
+    private static ChatLine Local(string sender, string msg) =>
+        new(ChatChannel.Local, sender, msg);
 
-    private static ChatLogEntry Gangpath(string sender, string msg) =>
-        new(Now, ChatChannel.Gangpath, sender, msg, $"{sender} gangpaths: {msg}");
+    private static ChatLine Gangpath(string sender, string msg) =>
+        new(ChatChannel.Gangpath, sender, msg);
 
-    private static ChatLogEntry Broadcast(string sender, string msg) =>
-        new(Now, ChatChannel.Broadcast, sender, msg, $"BROADCAST: {msg}");
+    private static ChatLine Broadcast(string sender, string msg) =>
+        new(ChatChannel.Broadcast, sender, msg);
 
     private static void SeedPlayer(PlayerDatabase db, string name, PlayerRemoteControls controls)
     {
@@ -72,8 +78,8 @@ public sealed class RemoteCommandManagerTests
         // sends. The dedicated WarnOnDenial-on tests below cover the
         // failure-message reply path.
         engine.WarnOnDenial = false;
-        engine.DispatchForTests(Telepath("Stranger", "@health"));
-        Assert.Empty(engine.LastSentForTests);
+        ChatLines.Hear(_routers[engine], Telepath("Stranger", "@health"));
+        Assert.Empty(_sent);
     }
 
     [Fact]
@@ -82,15 +88,6 @@ public sealed class RemoteCommandManagerTests
         var (engine, _, _) = Setup();
         Assert.Throws<ArgumentException>(() =>
             engine.RegisterHandler("health", PlayerRemoteControls.QueryHealthStatus, _ => { }));
-    }
-
-    [Fact]
-    public void RegisterHandler_IncrementsHandlerCount()
-    {
-        var (engine, _, _) = Setup();
-        engine.RegisterHandler("@health", PlayerRemoteControls.QueryHealthStatus, _ => { });
-        engine.RegisterHandler("@where",  PlayerRemoteControls.QueryLocation,     _ => { });
-        Assert.Equal(2, engine.HandlerCount);
     }
 
     [Fact]
@@ -126,7 +123,7 @@ public sealed class RemoteCommandManagerTests
         engine.RegisterPrefixHandler("@equip-", PlayerRemoteControls.ExecuteCommands,
             ctx => captured = ctx.Args);
 
-        engine.DispatchForTests(Telepath("Friend", "@equip-fighting"));
+        ChatLines.Hear(_routers[engine], Telepath("Friend", "@equip-fighting"));
 
         Assert.Equal(new[] { "fighting" }, captured);
     }
@@ -141,7 +138,7 @@ public sealed class RemoteCommandManagerTests
         engine.RegisterPrefixHandler("@equip-", PlayerRemoteControls.ExecuteCommands,
             ctx => captured = ctx.Args);
 
-        engine.DispatchForTests(Telepath("Friend", "@equip-tank now please"));
+        ChatLines.Hear(_routers[engine], Telepath("Friend", "@equip-tank now please"));
 
         Assert.Equal(new[] { "tank", "now", "please" }, captured);
     }
@@ -162,10 +159,10 @@ public sealed class RemoteCommandManagerTests
         engine.RegisterPrefixHandler("@equip-", PlayerRemoteControls.ExecuteCommands,
             _ => fired = true);
 
-        engine.DispatchForTests(Telepath("Friend", "@equip-"));
+        ChatLines.Hear(_routers[engine], Telepath("Friend", "@equip-"));
 
         Assert.False(fired);
-        Assert.Empty(engine.LastSentForTests);
+        Assert.Empty(_sent);
     }
 
     [Fact]
@@ -182,7 +179,7 @@ public sealed class RemoteCommandManagerTests
         engine.RegisterPrefixHandler("@equip-", PlayerRemoteControls.ExecuteCommands,
             _ => hit = "prefix");
 
-        engine.DispatchForTests(Telepath("Friend", "@equip-foo"));
+        ChatLines.Hear(_routers[engine], Telepath("Friend", "@equip-foo"));
 
         Assert.Equal("exact", hit);
     }
@@ -197,7 +194,7 @@ public sealed class RemoteCommandManagerTests
         engine.RegisterPrefixHandler("@equip-", PlayerRemoteControls.ExecuteCommands,
             _ => fired = true);
 
-        engine.DispatchForTests(Telepath("Friend", "@equip-fighting"));
+        ChatLines.Hear(_routers[engine], Telepath("Friend", "@equip-fighting"));
 
         Assert.True(fired);
     }
@@ -212,7 +209,7 @@ public sealed class RemoteCommandManagerTests
         engine.RegisterPrefixHandler("@equip-", PlayerRemoteControls.ExecuteCommands,
             _ => fired = true);
 
-        engine.DispatchForTests(Telepath("Stranger", "@equip-fighting"));
+        ChatLines.Hear(_routers[engine], Telepath("Stranger", "@equip-fighting"));
 
         Assert.False(fired);
     }
@@ -230,10 +227,10 @@ public sealed class RemoteCommandManagerTests
         engine.RegisterPrefixHandler("@equip-", PlayerRemoteControls.ExecuteCommands,
             _ => fired = true);
 
-        engine.DispatchForTests(Telepath("Trusted", "@equip-reroll"));
+        ChatLines.Hear(_routers[engine], Telepath("Trusted", "@equip-reroll"));
 
         Assert.False(fired);
-        Assert.Empty(engine.LastSentForTests);
+        Assert.Empty(_sent);
     }
 
     [Fact]
@@ -249,7 +246,7 @@ public sealed class RemoteCommandManagerTests
         Assert.True(engine.UnregisterPrefixHandler("@equip-"));
         Assert.False(engine.UnregisterPrefixHandler("@equip-"));
 
-        engine.DispatchForTests(Telepath("Friend", "@equip-fighting"));
+        ChatLines.Hear(_routers[engine], Telepath("Friend", "@equip-fighting"));
         Assert.Equal(0, fired);
     }
 
@@ -265,7 +262,7 @@ public sealed class RemoteCommandManagerTests
         engine.RegisterHandler("@health", PlayerRemoteControls.QueryHealthStatus,
             ctx => { fired = true; Assert.Equal("Friend", ctx.Sender); });
 
-        engine.DispatchForTests(Telepath("Friend", "@health"));
+        ChatLines.Hear(_routers[engine], Telepath("Friend", "@health"));
 
         Assert.True(fired);
     }
@@ -280,7 +277,7 @@ public sealed class RemoteCommandManagerTests
         engine.RegisterHandler("@health", PlayerRemoteControls.QueryHealthStatus,
             _ => fired = true);
 
-        engine.DispatchForTests(Telepath("Stranger", "@health"));
+        ChatLines.Hear(_routers[engine], Telepath("Stranger", "@health"));
 
         Assert.False(fired);
     }
@@ -293,7 +290,7 @@ public sealed class RemoteCommandManagerTests
         engine.RegisterHandler("@health", PlayerRemoteControls.QueryHealthStatus,
             _ => fired = true);
 
-        engine.DispatchForTests(Telepath("NeverSeen", "@health"));
+        ChatLines.Hear(_routers[engine], Telepath("NeverSeen", "@health"));
 
         Assert.False(fired);
     }
@@ -309,7 +306,7 @@ public sealed class RemoteCommandManagerTests
         bool fired = false;
         engine.RegisterHandler("@party", PlayerRemoteControls.None, _ => fired = true);
 
-        engine.DispatchForTests(Telepath("Buddy", "@party rest"));
+        ChatLines.Hear(_routers[engine], Telepath("Buddy", "@party rest"));
 
         Assert.True(fired);
     }
@@ -323,7 +320,7 @@ public sealed class RemoteCommandManagerTests
         bool fired = false;
         engine.RegisterHandler("@party", PlayerRemoteControls.None, _ => fired = true);
 
-        engine.DispatchForTests(Telepath("Stranger", "@party rest"));
+        ChatLines.Hear(_routers[engine], Telepath("Stranger", "@party rest"));
 
         Assert.False(fired);
     }
@@ -332,7 +329,7 @@ public sealed class RemoteCommandManagerTests
     // @party in the production catalog sits at QueryHealthStatus so
     // non-party callers with that grant can use it as a status-query
     // alias for @par. The engine adds an @party-specific party-member
-    // fallback so the Phase 6 "base @party always allowed inside an
+    // fallback so the "base @party always allowed inside an
     // active party" rule still holds even for party members who lack
     // an explicit per-player grant.
 
@@ -346,7 +343,7 @@ public sealed class RemoteCommandManagerTests
         bool fired = false;
         engine.RegisterHandler("@party", PlayerRemoteControls.QueryHealthStatus, _ => fired = true);
 
-        engine.DispatchForTests(Telepath("Buddy", "@party"));
+        ChatLines.Hear(_routers[engine], Telepath("Buddy", "@party"));
 
         Assert.True(fired);
     }
@@ -360,7 +357,7 @@ public sealed class RemoteCommandManagerTests
         bool fired = false;
         engine.RegisterHandler("@party", PlayerRemoteControls.QueryHealthStatus, _ => fired = true);
 
-        engine.DispatchForTests(Telepath("Friend", "@party"));
+        ChatLines.Hear(_routers[engine], Telepath("Friend", "@party"));
 
         Assert.True(fired);
     }
@@ -374,7 +371,7 @@ public sealed class RemoteCommandManagerTests
         bool fired = false;
         engine.RegisterHandler("@party", PlayerRemoteControls.QueryHealthStatus, _ => fired = true);
 
-        engine.DispatchForTests(Telepath("Stranger", "@party"));
+        ChatLines.Hear(_routers[engine], Telepath("Stranger", "@party"));
 
         Assert.False(fired);
     }
@@ -389,7 +386,7 @@ public sealed class RemoteCommandManagerTests
         bool fired = false;
         engine.RegisterHandler("@party", PlayerRemoteControls.QueryHealthStatus, _ => fired = true);
 
-        engine.DispatchForTests(Telepath("Buddy", "@party"));
+        ChatLines.Hear(_routers[engine], Telepath("Buddy", "@party"));
 
         // No per-player grant + @party directives disallowed = engine denies.
         Assert.False(fired);
@@ -409,7 +406,7 @@ public sealed class RemoteCommandManagerTests
         bool fired = false;
         engine.RegisterHandler("@party", PlayerRemoteControls.QueryHealthStatus, _ => fired = true);
 
-        engine.DispatchForTests(Telepath("Buddy", "@party"));
+        ChatLines.Hear(_routers[engine], Telepath("Buddy", "@party"));
 
         Assert.True(fired);
     }
@@ -429,7 +426,7 @@ public sealed class RemoteCommandManagerTests
         bool fired = false;
         engine.RegisterHandler("@reset", PlayerRemoteControls.AlterSettings, _ => fired = true);
 
-        engine.DispatchForTests(Telepath("Buddy", "@reset"));
+        ChatLines.Hear(_routers[engine], Telepath("Buddy", "@reset"));
 
         Assert.True(fired);
     }
@@ -443,7 +440,7 @@ public sealed class RemoteCommandManagerTests
         bool fired = false;
         engine.RegisterHandler("@reset", PlayerRemoteControls.AlterSettings, _ => fired = true);
 
-        engine.DispatchForTests(Telepath("Stranger", "@reset"));
+        ChatLines.Hear(_routers[engine], Telepath("Stranger", "@reset"));
 
         Assert.False(fired);
     }
@@ -463,10 +460,10 @@ public sealed class RemoteCommandManagerTests
         foreach (string cmd in new[] { "@wait", "@ok", "@comeback", "@share" })
             engine.RegisterHandler(cmd, PlayerRemoteControls.None, _ => fired++);
 
-        engine.DispatchForTests(Telepath("Buddy", "@wait"));
-        engine.DispatchForTests(Telepath("Buddy", "@ok"));
-        engine.DispatchForTests(Telepath("Buddy", "@comeback"));
-        engine.DispatchForTests(Telepath("Buddy", "@share"));
+        ChatLines.Hear(_routers[engine], Telepath("Buddy", "@wait"));
+        ChatLines.Hear(_routers[engine], Telepath("Buddy", "@ok"));
+        ChatLines.Hear(_routers[engine], Telepath("Buddy", "@comeback"));
+        ChatLines.Hear(_routers[engine], Telepath("Buddy", "@share"));
 
         Assert.Equal(4, fired);
     }
@@ -483,7 +480,7 @@ public sealed class RemoteCommandManagerTests
         bool fired = false;
         engine.RegisterHandler("@health", PlayerRemoteControls.QueryHealthStatus, _ => fired = true);
 
-        engine.DispatchForTests(Telepath("Buddy", "@health"));
+        ChatLines.Hear(_routers[engine], Telepath("Buddy", "@health"));
 
         Assert.True(fired);
     }
@@ -501,7 +498,7 @@ public sealed class RemoteCommandManagerTests
         bool fired = false;
         engine.RegisterHandler("@health", PlayerRemoteControls.QueryHealthStatus, _ => fired = true);
 
-        engine.DispatchForTests(Telepath("Buddy", "@health"));
+        ChatLines.Hear(_routers[engine], Telepath("Buddy", "@health"));
 
         Assert.True(fired);
     }
@@ -516,41 +513,12 @@ public sealed class RemoteCommandManagerTests
         bool fired = false;
         engine.RegisterHandler("@health", PlayerRemoteControls.QueryHealthStatus, _ => fired = true);
 
-        engine.DispatchForTests(Telepath("Stranger", "@health"));
+        ChatLines.Hear(_routers[engine], Telepath("Stranger", "@health"));
 
         Assert.False(fired);
     }
 
     // ===== Hard-blocks =====
-
-    [Fact]
-    public void HardBlock_RerollAlwaysDeniedRegardlessOfFlags()
-    {
-        var (engine, _, players) = Setup();
-        // Give the sender EVERY permission — hard-block must still win.
-        SeedPlayer(players, "Trusted", PlayerRemoteControls.All);
-
-        bool fired = false;
-        engine.RegisterHandler("@do", PlayerRemoteControls.ExecuteCommands, _ => fired = true);
-
-        engine.DispatchForTests(Telepath("Trusted", "@do reroll"));
-
-        Assert.False(fired);
-    }
-
-    [Fact]
-    public void HardBlock_PartyRerollAlwaysDenied()
-    {
-        var (engine, party, _) = Setup();
-        SeedPartyMember(party, "Buddy");
-
-        bool fired = false;
-        engine.RegisterHandler("@party", PlayerRemoteControls.None, _ => fired = true);
-
-        engine.DispatchForTests(Telepath("Buddy", "@party reroll"));
-
-        Assert.False(fired);
-    }
 
     // ===== Forcible @do / @party suicide redirect =====
     // Both unconditionally blocked even at lives > threshold + full
@@ -574,10 +542,10 @@ public sealed class RemoteCommandManagerTests
         bool fired = false;
         engine.RegisterHandler("@party", PlayerRemoteControls.None, _ => fired = true);
 
-        engine.DispatchForTests(Telepath("Buddy", "@party suicide"));
+        ChatLines.Hear(_routers[engine], Telepath("Buddy", "@party suicide"));
 
         Assert.True(fired);
-        Assert.Empty(engine.LastSentForTests);  // no redirect, no denial
+        Assert.Empty(_sent);  // no redirect, no denial
     }
 
     [Fact]
@@ -595,10 +563,10 @@ public sealed class RemoteCommandManagerTests
         bool fired = false;
         engine.RegisterHandler("@do", PlayerRemoteControls.ExecuteCommands, _ => fired = true);
 
-        engine.DispatchForTests(Telepath("Trusted", "@do suicide"));
+        ChatLines.Hear(_routers[engine], Telepath("Trusted", "@do suicide"));
 
         Assert.False(fired);
-        string reply = Encoding.Latin1.GetString(engine.LastSentForTests[^1]);
+        string reply = Encoding.Latin1.GetString(_sent[^1]);
         Assert.Contains("@do suicide is not allowed, use @suicide", reply);
     }
 
@@ -612,10 +580,10 @@ public sealed class RemoteCommandManagerTests
         bool fired = false;
         engine.RegisterHandler("@do", PlayerRemoteControls.ExecuteCommands, _ => fired = true);
 
-        engine.DispatchForTests(Telepath("Trusted", "@do suicide"));
+        ChatLines.Hear(_routers[engine], Telepath("Trusted", "@do suicide"));
 
         Assert.False(fired);
-        string reply = Encoding.Latin1.GetString(engine.LastSentForTests[^1]);
+        string reply = Encoding.Latin1.GetString(_sent[^1]);
         Assert.Contains("@do suicide is not allowed, use @suicide", reply);
     }
 
@@ -633,29 +601,27 @@ public sealed class RemoteCommandManagerTests
         bool fired = false;
         engine.RegisterHandler("@do", PlayerRemoteControls.ExecuteCommands, _ => fired = true);
 
-        engine.DispatchForTests(Telepath("Trusted", "@do suicide"));
+        ChatLines.Hear(_routers[engine], Telepath("Trusted", "@do suicide"));
 
         Assert.False(fired);
-        Assert.Empty(engine.LastSentForTests);
+        Assert.Empty(_sent);
     }
 
     [Fact]
-    public void ForcibleSuicide_DoSuicide_TokenMatchAlsoCatchesNestedArgs()
+    public void ForcibleSuicide_DoSuicide_TheWordAnywhereInTheArgsIsBlocked()
     {
-        // Defensive: any arg containing "suicide" trips the token
-        // match. Reply text is the @do redirect even when the arg
-        // isn't literally "suicide" — close enough; the block is
-        // correct.
+        // "suicide" as a whole word anywhere in @do's args trips the block,
+        // not only as the first word; the reply is the @do redirect.
         var (engine, _, players) = Setup();
         SeedPlayer(players, "Trusted", PlayerRemoteControls.All);
 
         bool fired = false;
         engine.RegisterHandler("@do", PlayerRemoteControls.ExecuteCommands, _ => fired = true);
 
-        engine.DispatchForTests(Telepath("Trusted", "@do par suicide"));
+        ChatLines.Hear(_routers[engine], Telepath("Trusted", "@do par suicide"));
 
         Assert.False(fired);
-        string reply = Encoding.Latin1.GetString(engine.LastSentForTests[^1]);
+        string reply = Encoding.Latin1.GetString(_sent[^1]);
         Assert.Contains("@do suicide is not allowed", reply);
     }
 
@@ -672,7 +638,7 @@ public sealed class RemoteCommandManagerTests
         bool fired = false;
         engine.RegisterHandler("@suicide", PlayerRemoteControls.SysopCommands, _ => fired = true);
 
-        engine.DispatchForTests(Telepath("Trusted", "@suicide"));
+        ChatLines.Hear(_routers[engine], Telepath("Trusted", "@suicide"));
 
         Assert.True(fired);  // policy gate satisfied (5 > 3)
     }
@@ -691,10 +657,10 @@ public sealed class RemoteCommandManagerTests
         bool fired = false;
         engine.RegisterHandler("@suicide", PlayerRemoteControls.SysopCommands, _ => fired = true);
 
-        engine.DispatchForTests(Telepath("Trusted", "@suicide"));
+        ChatLines.Hear(_routers[engine], Telepath("Trusted", "@suicide"));
 
         Assert.False(fired);
-        string reply = Encoding.Latin1.GetString(engine.LastSentForTests[^1]);
+        string reply = Encoding.Latin1.GetString(_sent[^1]);
         Assert.Contains("suicide blocked", reply);
         Assert.DoesNotContain("use @suicide", reply);
     }
@@ -710,10 +676,10 @@ public sealed class RemoteCommandManagerTests
         bool fired = false;
         engine.RegisterHandler("@do", PlayerRemoteControls.ExecuteCommands, _ => fired = true);
 
-        engine.DispatchForTests(Telepath("Trusted", "@do reroll"));
+        ChatLines.Hear(_routers[engine], Telepath("Trusted", "@do reroll"));
 
         Assert.False(fired);
-        Assert.Empty(engine.LastSentForTests);  // no reply, ever
+        Assert.Empty(_sent);  // no reply, ever
     }
 
     [Fact]
@@ -725,10 +691,10 @@ public sealed class RemoteCommandManagerTests
         bool fired = false;
         engine.RegisterHandler("@party", PlayerRemoteControls.None, _ => fired = true);
 
-        engine.DispatchForTests(Telepath("Buddy", "@party reroll"));
+        ChatLines.Hear(_routers[engine], Telepath("Buddy", "@party reroll"));
 
         Assert.False(fired);
-        Assert.Empty(engine.LastSentForTests);
+        Assert.Empty(_sent);
     }
 
     // ===== Channel routing + Reply =====
@@ -746,62 +712,14 @@ public sealed class RemoteCommandManagerTests
         engine.RegisterHandler("@health", PlayerRemoteControls.QueryHealthStatus,
             ctx => ctx.Reply("plain"));
 
-        engine.DispatchForTests(Telepath("Friend",  "@health"));
-        engine.DispatchForTests(Gangpath("Friend",  "@health"));
-        engine.DispatchForTests(Local("Friend",     "@health"));
+        ChatLines.Hear(_routers[engine], Telepath("Friend",  "@health"));
+        ChatLines.Hear(_routers[engine], Gangpath("Friend",  "@health"));
+        ChatLines.Hear(_routers[engine], Local("Friend",     "@health"));
 
-        Assert.Equal(3, engine.LastSentForTests.Count);
-        Assert.Equal("/Friend {plain}\r", Encoding.Latin1.GetString(engine.LastSentForTests[0]));
-        Assert.Equal("bg {plain}\r",      Encoding.Latin1.GetString(engine.LastSentForTests[1]));
-        Assert.Equal(">Friend {plain}\r", Encoding.Latin1.GetString(engine.LastSentForTests[2]));
-    }
-
-    [Fact]
-    public void Reply_TelepathRoutesViaTelepathCommand()
-    {
-        var (engine, _, players) = Setup();
-        SeedPlayer(players, "Friend", PlayerRemoteControls.QueryHealthStatus);
-        engine.RegisterHandler("@health", PlayerRemoteControls.QueryHealthStatus,
-            ctx => ctx.Reply("HP 100/100"));
-
-        engine.DispatchForTests(Telepath("Friend", "@health"));
-
-        byte[] sent = Assert.Single(engine.LastSentForTests);
-        string wire = Encoding.Latin1.GetString(sent);
-        // Engine wraps every reply in { } at SendReply time — per user
-        // direction every remote response carries the curly-brace
-        // meta-line convention.
-        Assert.Equal("/Friend {HP 100/100}\r", wire);
-    }
-
-    [Fact]
-    public void Reply_GangpathRoutesViaBgCommand()
-    {
-        var (engine, _, players) = Setup();
-        SeedPlayer(players, "Friend", PlayerRemoteControls.QueryHealthStatus);
-        engine.RegisterHandler("@health", PlayerRemoteControls.QueryHealthStatus,
-            ctx => ctx.Reply("hi"));
-
-        engine.DispatchForTests(Gangpath("Friend", "@health"));
-
-        string wire = Encoding.Latin1.GetString(engine.LastSentForTests[0]);
-        Assert.Equal("bg {hi}\r", wire);
-    }
-
-    [Fact]
-    public void Reply_LocalRoutesViaDirectedSay_AtTheSender()
-    {
-        var (engine, _, players) = Setup();
-        SeedPlayer(players, "Friend", PlayerRemoteControls.QueryHealthStatus);
-        engine.RegisterHandler("@health", PlayerRemoteControls.QueryHealthStatus,
-            ctx => ctx.Reply("hi"));
-
-        engine.DispatchForTests(Local("Friend", "@health"));
-
-        string wire = Encoding.Latin1.GetString(engine.LastSentForTests[0]);
-        // Say is room-wide, so a say-channel @-command is answered with a DIRECTED
-        // say (`>Name <msg>`) aimed at the sender, not an undirected `.<msg>`.
-        Assert.Equal(">Friend {hi}\r", wire);
+        Assert.Equal(3, _sent.Count);
+        Assert.Equal("/Friend {plain}\r", Encoding.Latin1.GetString(_sent[0]));
+        Assert.Equal("bg {plain}\r",      Encoding.Latin1.GetString(_sent[1]));
+        Assert.Equal(">Friend {plain}\r", Encoding.Latin1.GetString(_sent[2]));
     }
 
     // ===== Channel scope — noise-channel ignores =====
@@ -822,10 +740,10 @@ public sealed class RemoteCommandManagerTests
         engine.RegisterHandler("@health", PlayerRemoteControls.QueryHealthStatus,
             ctx => { fired = true; ctx.Reply("hi"); });
 
-        engine.DispatchForTests(Gossip("Friend", "@health"));
+        ChatLines.Hear(_routers[engine], Gossip("Friend", "@health"));
 
         Assert.False(fired);
-        Assert.Empty(engine.LastSentForTests);
+        Assert.Empty(_sent);
     }
 
     [Fact]
@@ -837,10 +755,10 @@ public sealed class RemoteCommandManagerTests
         engine.RegisterHandler("@health", PlayerRemoteControls.QueryHealthStatus,
             ctx => { fired = true; ctx.Reply("hi"); });
 
-        engine.DispatchForTests(Yell("Friend", "@health"));
+        ChatLines.Hear(_routers[engine], Yell("Friend", "@health"));
 
         Assert.False(fired);
-        Assert.Empty(engine.LastSentForTests);
+        Assert.Empty(_sent);
     }
 
     // The real yell lines from other players, fed through the pattern catalog and
@@ -859,8 +777,10 @@ public sealed class RemoteCommandManagerTests
         DefaultPatterns.Seed(router);
         ChatRouter chat = new(router);
         PartyState party = new();
-        PlayerDatabase players = new();
+        PlayerDatabase players = new(new ProfileService(), () => null);
         RemoteCommandManager engine = new(chat, party, players);
+        _routers[engine] = router;
+        engine.SetWireSender(_sent.Add);
         SeedPlayer(players, "Alder", PlayerRemoteControls.QueryHealthStatus);
         SeedPlayer(players, "Someone", PlayerRemoteControls.QueryHealthStatus);
         int fired = 0;
@@ -876,12 +796,12 @@ public sealed class RemoteCommandManagerTests
 
         Assert.Equal(ChatChannel.Yell, Assert.Single(heard).Channel);
         Assert.Equal(0, fired);
-        Assert.Empty(engine.LastSentForTests);
+        Assert.Empty(_sent);
 
         Hear("Alder says \"@health\"");
 
         Assert.Equal(1, fired);
-        Assert.Single(engine.LastSentForTests);
+        Assert.Single(_sent);
     }
 
     [Fact]
@@ -893,7 +813,7 @@ public sealed class RemoteCommandManagerTests
         engine.RegisterHandler("@health", PlayerRemoteControls.QueryHealthStatus,
             ctx => fired = true);
 
-        engine.DispatchForTests(Broadcast("Friend", "@health"));
+        ChatLines.Hear(_routers[engine], Broadcast("Friend", "@health"));
 
         Assert.False(fired);
     }
@@ -910,7 +830,7 @@ public sealed class RemoteCommandManagerTests
         engine.RegisterHandler("@goto", PlayerRemoteControls.MovePlayer,
             ctx => capturedArgs = ctx.Args);
 
-        engine.DispatchForTests(Telepath("Friend", "@goto Newhaven Cabin"));
+        ChatLines.Hear(_routers[engine], Telepath("Friend", "@goto Newhaven Cabin"));
 
         Assert.NotNull(capturedArgs);
         Assert.Equal(new[] { "Newhaven", "Cabin" }, capturedArgs);
@@ -925,7 +845,7 @@ public sealed class RemoteCommandManagerTests
         engine.RegisterHandler("@health", PlayerRemoteControls.QueryHealthStatus,
             _ => fired = true);
 
-        engine.DispatchForTests(Telepath("Friend", "hello there"));
+        ChatLines.Hear(_routers[engine], Telepath("Friend", "hello there"));
 
         Assert.False(fired);
     }
@@ -935,14 +855,16 @@ public sealed class RemoteCommandManagerTests
     {
         var (engine, _, players) = Setup();
         SeedPlayer(players, "Friend", PlayerRemoteControls.QueryHealthStatus);
+        int calls = 0;
         engine.RegisterHandler("@health", PlayerRemoteControls.QueryHealthStatus,
-            _ => throw new InvalidOperationException("boom"));
+            _ => { calls++; throw new InvalidOperationException("boom"); });
 
-        // Should swallow the exception and continue. A second dispatch
-        // proves the engine is still alive.
-        engine.DispatchForTests(Telepath("Friend", "@health"));
-        engine.DispatchForTests(Telepath("Friend", "@health"));
-        // No assertion needed — the test passes if no exception escapes.
+        // The engine swallows the exception; the second dispatch still reaches
+        // the handler.
+        ChatLines.Hear(_routers[engine], Telepath("Friend", "@health"));
+        ChatLines.Hear(_routers[engine], Telepath("Friend", "@health"));
+
+        Assert.Equal(2, calls);
     }
 
     // ===== Ignored announce tokens =====
@@ -962,9 +884,9 @@ public sealed class RemoteCommandManagerTests
         engine.FailureMessage = "denied";
         engine.RegisterIgnored("@poisoned");
 
-        engine.DispatchForTests(Telepath("Buddy", "@poisoned"));
+        ChatLines.Hear(_routers[engine], Telepath("Buddy", "@poisoned"));
 
-        Assert.Empty(engine.LastSentForTests);
+        Assert.Empty(_sent);
     }
 
     [Fact]
@@ -975,9 +897,9 @@ public sealed class RemoteCommandManagerTests
         engine.FailureMessage = "denied";
         engine.RegisterIgnored("@poisoned");
 
-        engine.DispatchForTests(Telepath("Buddy", "@POISONED"));
+        ChatLines.Hear(_routers[engine], Telepath("Buddy", "@POISONED"));
 
-        Assert.Empty(engine.LastSentForTests);
+        Assert.Empty(_sent);
     }
 
     [Fact]
@@ -994,7 +916,7 @@ public sealed class RemoteCommandManagerTests
         bool fired = false;
         engine.RegisterHandler("@health", PlayerRemoteControls.QueryHealthStatus, _ => fired = true);
 
-        engine.DispatchForTests(Telepath("Buddy", "@health"));
+        ChatLines.Hear(_routers[engine], Telepath("Buddy", "@health"));
 
         Assert.True(fired);
     }
@@ -1016,10 +938,10 @@ public sealed class RemoteCommandManagerTests
         engine.RegisterHandler("@health", PlayerRemoteControls.QueryHealthStatus,
             ctx => { fired = true; ctx.Reply("hi"); });
 
-        engine.DispatchForTests(Telepath("Friend", "@health"));
+        ChatLines.Hear(_routers[engine], Telepath("Friend", "@health"));
 
         Assert.False(fired);
-        Assert.Empty(engine.LastSentForTests);
+        Assert.Empty(_sent);
     }
 
     [Fact]
@@ -1033,9 +955,9 @@ public sealed class RemoteCommandManagerTests
         engine.RegisterHandler("@health", PlayerRemoteControls.QueryHealthStatus,
             _ => fireCount++);
 
-        engine.DispatchForTests(Telepath("Friend", "@health"));   // muted
-        engine.DispatchForTests(Gangpath("Friend", "@health"));   // passes
-        engine.DispatchForTests(Local("Friend", "@health"));      // passes
+        ChatLines.Hear(_routers[engine], Telepath("Friend", "@health"));   // muted
+        ChatLines.Hear(_routers[engine], Gangpath("Friend", "@health"));   // passes
+        ChatLines.Hear(_routers[engine], Local("Friend", "@health"));      // passes
 
         Assert.Equal(2, fireCount);
     }
@@ -1051,7 +973,7 @@ public sealed class RemoteCommandManagerTests
         engine.RegisterHandler("@party", PlayerRemoteControls.QueryHealthStatus,
             _ => fired = true);
 
-        engine.DispatchForTests(Telepath("Buddy", "@party rest"));
+        ChatLines.Hear(_routers[engine], Telepath("Buddy", "@party rest"));
 
         Assert.False(fired);
     }
@@ -1068,9 +990,9 @@ public sealed class RemoteCommandManagerTests
         engine.WarnOnDenial = true;
         engine.FailureMessage = "nope";
 
-        engine.DispatchForTests(Telepath("Chatter", "@because it was funny"));
+        ChatLines.Hear(_routers[engine], Telepath("Chatter", "@because it was funny"));
 
-        Assert.Empty(engine.LastSentForTests);
+        Assert.Empty(_sent);
     }
 
     [Fact]
@@ -1083,9 +1005,9 @@ public sealed class RemoteCommandManagerTests
         engine.RegisterHandler("@health", PlayerRemoteControls.QueryHealthStatus,
             _ => { });
 
-        engine.DispatchForTests(Telepath("Stranger", "@health"));
+        ChatLines.Hear(_routers[engine], Telepath("Stranger", "@health"));
 
-        byte[] sent = Assert.Single(engine.LastSentForTests);
+        byte[] sent = Assert.Single(_sent);
         Assert.Equal("/Stranger {denied}\r", Encoding.Latin1.GetString(sent));
     }
 
@@ -1097,28 +1019,10 @@ public sealed class RemoteCommandManagerTests
         engine.RegisterHandler("@party", PlayerRemoteControls.None, _ => { });
 
         // Stranger isn't in the party → party-whitelist denial path.
-        engine.DispatchForTests(Telepath("Stranger", "@party rest"));
+        ChatLines.Hear(_routers[engine], Telepath("Stranger", "@party rest"));
 
-        byte[] sent = Assert.Single(engine.LastSentForTests);
+        byte[] sent = Assert.Single(_sent);
         Assert.Equal("/Stranger {denied}\r", Encoding.Latin1.GetString(sent));
-    }
-
-    [Fact]
-    public void WarnOnDenial_StaysSilentOnHardBlock()
-    {
-        // Unconditional hard-blocks (reroll, @party set suicide) must
-        // never produce a reply — never advertise the block to a
-        // malicious caller. Sender has every flag; engine
-        // WarnOnDenial is on. The user-configured suicide lives
-        // threshold is a SEPARATE path that DOES reply — see
-        // SuicidePolicyBlock_TelepathsBackReason for that test.
-        var (engine, _, players) = Setup();
-        SeedPlayer(players, "Trusted", PlayerRemoteControls.All);
-        engine.RegisterHandler("@do", PlayerRemoteControls.ExecuteCommands, _ => { });
-
-        engine.DispatchForTests(Telepath("Trusted", "@do reroll"));
-
-        Assert.Empty(engine.LastSentForTests);
     }
 
     [Fact]
@@ -1135,9 +1039,9 @@ public sealed class RemoteCommandManagerTests
         engine.LivesProvider = () => 4;   // below threshold
         engine.RegisterHandler("@suicide", PlayerRemoteControls.SysopCommands, _ => { });
 
-        engine.DispatchForTests(Telepath("Trusted", "@suicide"));
+        ChatLines.Hear(_routers[engine], Telepath("Trusted", "@suicide"));
 
-        byte[] sent = Assert.Single(engine.LastSentForTests);
+        byte[] sent = Assert.Single(_sent);
         Assert.Equal(
             "/Trusted {suicide blocked, 4 lives <= threshold 5}\r",
             Encoding.Latin1.GetString(sent));
@@ -1156,10 +1060,10 @@ public sealed class RemoteCommandManagerTests
         engine.RegisterHandler("@suicide", PlayerRemoteControls.SysopCommands,
             _ => handlerFired = true);
 
-        engine.DispatchForTests(Telepath("Trusted", "@suicide"));
+        ChatLines.Hear(_routers[engine], Telepath("Trusted", "@suicide"));
 
         Assert.False(handlerFired);   // gate stopped it
-        byte[] sent = Assert.Single(engine.LastSentForTests);
+        byte[] sent = Assert.Single(_sent);
         Assert.Equal(
             "/Trusted {suicide blocked, 5 lives <= threshold 5}\r",
             Encoding.Latin1.GetString(sent));
@@ -1178,10 +1082,10 @@ public sealed class RemoteCommandManagerTests
         engine.RegisterHandler("@suicide", PlayerRemoteControls.SysopCommands,
             _ => handlerFired = true);
 
-        engine.DispatchForTests(Telepath("Trusted", "@suicide"));
+        ChatLines.Hear(_routers[engine], Telepath("Trusted", "@suicide"));
 
         Assert.False(handlerFired);
-        byte[] sent = Assert.Single(engine.LastSentForTests);
+        byte[] sent = Assert.Single(_sent);
         Assert.Equal(
             "/Trusted {suicide blocked, lives unknown to client}\r",
             Encoding.Latin1.GetString(sent));
@@ -1200,10 +1104,10 @@ public sealed class RemoteCommandManagerTests
         engine.RegisterHandler("@suicide", PlayerRemoteControls.SysopCommands,
             _ => handlerFired = true);
 
-        engine.DispatchForTests(Telepath("Trusted", "@suicide"));
+        ChatLines.Hear(_routers[engine], Telepath("Trusted", "@suicide"));
 
         Assert.True(handlerFired);
-        Assert.Empty(engine.LastSentForTests);
+        Assert.Empty(_sent);
     }
 
     [Fact]
@@ -1219,9 +1123,9 @@ public sealed class RemoteCommandManagerTests
         engine.WarnOnDenial = false;
         engine.RegisterHandler("@suicide", PlayerRemoteControls.SysopCommands, _ => { });
 
-        engine.DispatchForTests(Telepath("Trusted", "@suicide"));
+        ChatLines.Hear(_routers[engine], Telepath("Trusted", "@suicide"));
 
-        Assert.Empty(engine.LastSentForTests);
+        Assert.Empty(_sent);
     }
 
     [Fact]
@@ -1237,10 +1141,10 @@ public sealed class RemoteCommandManagerTests
         bool fired = false;
         engine.RegisterHandler("@party", PlayerRemoteControls.None, _ => fired = true);
 
-        engine.DispatchForTests(Telepath("Buddy", "@party set suicide hunter2"));
+        ChatLines.Hear(_routers[engine], Telepath("Buddy", "@party set suicide hunter2"));
 
         Assert.False(fired);
-        Assert.Empty(engine.LastSentForTests);
+        Assert.Empty(_sent);
     }
 
     [Fact]
@@ -1249,22 +1153,30 @@ public sealed class RemoteCommandManagerTests
         // The user explicitly muted the channel — don't tell every spammer
         // on that channel why they got ignored.
         var (engine, _, _) = Setup();
+        engine.RegisterHandler("@health", PlayerRemoteControls.QueryHealthStatus, _ => { });
         engine.DisableTelepathChannel = true;
 
-        engine.DispatchForTests(Telepath("Stranger", "@unknown"));
+        ChatLines.Hear(_routers[engine], Telepath("Stranger", "@health"));
+        Assert.Empty(_sent);
 
-        Assert.Empty(engine.LastSentForTests);
+        engine.DisableTelepathChannel = false;
+        ChatLines.Hear(_routers[engine], Telepath("Stranger", "@health"));
+        Assert.Single(_sent);
     }
 
     [Fact]
     public void WarnOnDenialOff_NoFailureMessageSent()
     {
         var (engine, _, _) = Setup();
+        engine.RegisterHandler("@health", PlayerRemoteControls.QueryHealthStatus, _ => { });
         engine.WarnOnDenial = false;
 
-        engine.DispatchForTests(Telepath("Stranger", "@unknown"));
+        ChatLines.Hear(_routers[engine], Telepath("Stranger", "@health"));
+        Assert.Empty(_sent);
 
-        Assert.Empty(engine.LastSentForTests);
+        engine.WarnOnDenial = true;
+        ChatLines.Hear(_routers[engine], Telepath("Stranger", "@health"));
+        Assert.Single(_sent);
     }
 
     [Fact]
@@ -1273,11 +1185,16 @@ public sealed class RemoteCommandManagerTests
         // Empty message would otherwise serialise to "/Stranger \r" which
         // is just noise. Engine treats blank as opt-out.
         var (engine, _, _) = Setup();
+        engine.RegisterHandler("@health", PlayerRemoteControls.QueryHealthStatus, _ => { });
+        string failure = engine.FailureMessage;
         engine.FailureMessage = "   ";
 
-        engine.DispatchForTests(Telepath("Stranger", "@unknown"));
+        ChatLines.Hear(_routers[engine], Telepath("Stranger", "@health"));
+        Assert.Empty(_sent);
 
-        Assert.Empty(engine.LastSentForTests);
+        engine.FailureMessage = failure;
+        ChatLines.Hear(_routers[engine], Telepath("Stranger", "@health"));
+        Assert.Single(_sent);
     }
 
     // ===== Public-channel self-echo =====
@@ -1294,10 +1211,10 @@ public sealed class RemoteCommandManagerTests
         engine.RegisterHandler("@timer", PlayerRemoteControls.QueryBossTimers, _ => fired = true);
         engine.SelfNameProvider = () => "Raijin WuzHere";
 
-        engine.DispatchForTests(Gangpath("Raijin", "@timer sync"));
+        ChatLines.Hear(_routers[engine], Gangpath("Raijin", "@timer sync"));
 
         Assert.False(fired);
-        Assert.Empty(engine.LastSentForTests);
+        Assert.Empty(_sent);
     }
 
     [Fact]
@@ -1310,15 +1227,15 @@ public sealed class RemoteCommandManagerTests
         engine.SelfNameProvider = () => "Raijin";
         SeedPlayer(players, "Fujin", PlayerRemoteControls.QueryBossTimers);
 
-        engine.DispatchForTests(Gangpath("Fujin", "@timer sync"));
+        ChatLines.Hear(_routers[engine], Gangpath("Fujin", "@timer sync"));
 
         Assert.True(fired);
     }
 
     // ===== &@ relay-back =====
 
-    private static List<string> Sent(RemoteCommandManager engine) =>
-        engine.LastSentForTests.Select(b => Encoding.Latin1.GetString(b)).ToList();
+    private List<string> Sent() =>
+        _sent.Select(b => Encoding.Latin1.GetString(b)).ToList();
 
     [Fact]
     public void RelayBack_Granted_EchoesTheCommandToTheSenderBare()
@@ -1328,9 +1245,9 @@ public sealed class RemoteCommandManagerTests
         engine.RegisterHandler("@invite", PlayerRemoteControls.RequestInvite, _ => ranHere = true);
         SeedPlayer(players, "Leader", PlayerRemoteControls.ExecuteCommands);
 
-        engine.DispatchForTests(Telepath("Leader", "&@invite"));
+        ChatLines.Hear(_routers[engine], Telepath("Leader", "&@invite"));
 
-        Assert.Equal(new[] { "/Leader @invite\r" }, Sent(engine));
+        Assert.Equal(new[] { "/Leader @invite\r" }, Sent());
         Assert.False(ranHere);   // relayed, not run on this client
     }
 
@@ -1341,10 +1258,10 @@ public sealed class RemoteCommandManagerTests
         engine.RegisterHandler("@where", PlayerRemoteControls.QueryLocation, _ => { });
         SeedPlayer(players, "Leader", PlayerRemoteControls.ExecuteCommands);
 
-        engine.DispatchForTests(Gangpath("Leader", "&@where now"));
-        engine.DispatchForTests(Local("Leader", "&@where"));
+        ChatLines.Hear(_routers[engine], Gangpath("Leader", "&@where now"));
+        ChatLines.Hear(_routers[engine], Local("Leader", "&@where"));
 
-        Assert.Equal(new[] { "bg @where now\r", ">Leader @where\r" }, Sent(engine));
+        Assert.Equal(new[] { "bg @where now\r", ">Leader @where\r" }, Sent());
     }
 
     [Fact]
@@ -1355,9 +1272,9 @@ public sealed class RemoteCommandManagerTests
         // Holding the command's own grant isn't enough — relay-back is the @do tier.
         SeedPlayer(players, "Leader", PlayerRemoteControls.RequestInvite);
 
-        engine.DispatchForTests(Telepath("Leader", "&@invite"));
+        ChatLines.Hear(_routers[engine], Telepath("Leader", "&@invite"));
 
-        Assert.Equal(new[] { "/Leader {command invalid or not allowed}\r" }, Sent(engine));
+        Assert.Equal(new[] { "/Leader {command invalid or not allowed}\r" }, Sent());
     }
 
     [Fact]
@@ -1367,9 +1284,9 @@ public sealed class RemoteCommandManagerTests
         engine.WarnOnDenial = false;
         engine.RegisterHandler("@invite", PlayerRemoteControls.RequestInvite, _ => { });
 
-        engine.DispatchForTests(Telepath("Stranger", "&@invite"));
+        ChatLines.Hear(_routers[engine], Telepath("Stranger", "&@invite"));
 
-        Assert.Empty(engine.LastSentForTests);
+        Assert.Empty(_sent);
     }
 
     [Fact]
@@ -1378,11 +1295,11 @@ public sealed class RemoteCommandManagerTests
         var (engine, _, players) = Setup();
         SeedPlayer(players, "Leader", PlayerRemoteControls.ExecuteCommands);
 
-        engine.DispatchForTests(Telepath("Leader", "&@nosuchthing"));
-        engine.DispatchForTests(Telepath("Leader", "&@&@invite"));
-        engine.DispatchForTests(Telepath("Leader", "&@"));
+        ChatLines.Hear(_routers[engine], Telepath("Leader", "&@nosuchthing"));
+        ChatLines.Hear(_routers[engine], Telepath("Leader", "&@&@invite"));
+        ChatLines.Hear(_routers[engine], Telepath("Leader", "&@"));
 
-        Assert.Empty(engine.LastSentForTests);
+        Assert.Empty(_sent);
     }
 
     [Fact]
@@ -1392,9 +1309,9 @@ public sealed class RemoteCommandManagerTests
         engine.RegisterHandler("@do", PlayerRemoteControls.ExecuteCommands, _ => { });
         SeedPlayer(players, "Leader", PlayerRemoteControls.ExecuteCommands);
 
-        engine.DispatchForTests(Telepath("Leader", "&@do reroll"));
+        ChatLines.Hear(_routers[engine], Telepath("Leader", "&@do reroll"));
 
-        Assert.Empty(engine.LastSentForTests);
+        Assert.Empty(_sent);
     }
 
     [Fact]
@@ -1405,8 +1322,8 @@ public sealed class RemoteCommandManagerTests
         SeedPlayer(players, "Leader", PlayerRemoteControls.ExecuteCommands);
         engine.MasterDisable = true;
 
-        engine.DispatchForTests(Telepath("Leader", "&@invite"));
+        ChatLines.Hear(_routers[engine], Telepath("Leader", "&@invite"));
 
-        Assert.Empty(engine.LastSentForTests);
+        Assert.Empty(_sent);
     }
 }

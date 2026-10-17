@@ -176,16 +176,6 @@ public sealed class RegenTracker : IDisposable
     // up-deltas drop.
     public void RecordArtifact() => _lastArtifactAt = _clock();
 
-    // Reset every cycle's amount stat + stop bonus cycles. Natural cycles keep
-    // their anchor.
-    public void ResetAll()
-    {
-        HpNatural.Stat.Reset();
-        HpRest.Stat.Reset();
-        MpNatural.Stat.Reset();
-        MpMedi.Stat.Reset();
-    }
-
     private void OnPlayerStateChanged(object? sender, PropertyChangedEventArgs e)
     {
         switch (e.PropertyName)
@@ -230,12 +220,12 @@ public sealed class RegenTracker : IDisposable
         bool restClaimed, natClaimed;
         if (restOwnsTheGain || !HpRest.IsActive)
         {
-            restClaimed = ClaimIfDue(HpRest, now, delta);
-            natClaimed = !restOwnsTheGain && ClaimIfOnATick(HpNatural, now, delta);
+            restClaimed = ClaimIfDue(HpRest, now);
+            natClaimed = !restOwnsTheGain && ClaimIfOnATick(HpNatural, now);
         }
         else
         {
-            (restClaimed, natClaimed) = CreditCommandCountedGain(HpRest, _restStartedAt, HpNatural, now, delta);
+            (restClaimed, natClaimed) = CreditCommandCountedGain(HpRest, _restStartedAt, HpNatural, now);
         }
         if (natClaimed) _hpNaturalTicksInARow = HpNaturalAnchorIsFresh(now) ? _hpNaturalTicksInARow + 1 : 1;
         if (!restClaimed && !natClaimed)
@@ -253,10 +243,10 @@ public sealed class RegenTracker : IDisposable
             }
             // Otherwise anchor on this observation: the first gain, one that shows a
             // lone earlier gain was misplaced, or the first after a silence.
-            if (restOwnsTheGain) HpRest.RecordObservation(now, delta);
+            if (restOwnsTheGain) HpRest.Start(now);
             else
             {
-                HpNatural.RecordObservation(now, delta);
+                HpNatural.Start(now);
                 natClaimed = true;
                 _hpNaturalTicksInARow = 1;
             }
@@ -295,12 +285,12 @@ public sealed class RegenTracker : IDisposable
         bool mediClaimed, natClaimed;
         if (_cadence.MeditatingOnManaGrid || !MpMedi.IsActive)
         {
-            mediClaimed = ClaimIfDue(MpMedi, now, delta);
-            natClaimed = ClaimIfDue(MpNatural, now, delta);
+            mediClaimed = ClaimIfDue(MpMedi, now);
+            natClaimed = ClaimIfDue(MpNatural, now);
         }
         else
         {
-            (mediClaimed, natClaimed) = CreditCommandCountedGain(MpMedi, _mediStartedAt, MpNatural, now, delta);
+            (mediClaimed, natClaimed) = CreditCommandCountedGain(MpMedi, _mediStartedAt, MpNatural, now);
         }
         if (!mediClaimed && !natClaimed)
         {
@@ -309,10 +299,10 @@ public sealed class RegenTracker : IDisposable
             // one is the mana pass: it re-anchors the meditate cycle and leaves a
             // running mana cycle alone.
             bool onMediGrid = _cadence.MeditatingOnManaGrid && MpMedi.IsActive;
-            if (onMediGrid) MpMedi.RecordObservation(now, delta);
+            if (onMediGrid) MpMedi.Start(now);
             if (!onMediGrid || !MpNatural.IsActive)
             {
-                MpNatural.RecordObservation(now, delta);
+                MpNatural.Start(now);
                 natClaimed = true;
             }
         }
@@ -333,7 +323,7 @@ public sealed class RegenTracker : IDisposable
     // tick is never left to fall through to the pass, which would move the pass's
     // countdown onto it.
     private static (bool Bonus, bool Pass) CreditCommandCountedGain(
-        RegenCycle bonus, DateTimeOffset? bonusStartedAt, RegenCycle pass, DateTimeOffset now, double delta)
+        RegenCycle bonus, DateTimeOffset? bonusStartedAt, RegenCycle pass, DateTimeOffset now)
     {
         // Until a gain or a countdown rollover has moved it, the bonus cycle's anchor
         // is the command, where no tick falls.
@@ -347,8 +337,8 @@ public sealed class RegenTracker : IDisposable
             if (bonusOff!.Value > passOff!.Value + SameGainWithin) bonusNear = false;
             else if (passOff.Value > bonusOff.Value + SameGainWithin) passNear = false;
         }
-        if (bonusNear) bonus.RecordObservation(now, delta);
-        if (passNear) pass.RecordObservation(now, delta);
+        if (bonusNear) bonus.Start(now);
+        if (passNear) pass.Start(now);
         return (bonusNear, passNear);
     }
 
@@ -378,22 +368,22 @@ public sealed class RegenTracker : IDisposable
     // there. Judged from both sides, since the countdown rolls the anchor forward as
     // each tick passes and a gain a moment late would otherwise read as a whole
     // interval early. The reach covers the game's catch-up second.
-    private static bool ClaimIfOnATick(RegenCycle cycle, DateTimeOffset now, double delta)
+    private static bool ClaimIfOnATick(RegenCycle cycle, DateTimeOffset now)
     {
         if (OffNearestTick(cycle, now, anchorIsATick: true) is not { } off || off > CommandTickWithin) return false;
-        cycle.RecordObservation(now, delta);
+        cycle.Start(now);
         return true;
     }
 
     // If cycle is active and the now-instant is at or past its next-tick
     // boundary (with a small grace), record the observation and return true.
-    private static bool ClaimIfDue(RegenCycle cycle, DateTimeOffset now, double delta)
+    private static bool ClaimIfDue(RegenCycle cycle, DateTimeOffset now)
     {
         if (cycle.Anchor is not { } anchor) return false;
         TimeSpan elapsed = now - anchor;
         TimeSpan grace = TimeSpan.FromMilliseconds(750);
         if (elapsed + grace < cycle.Interval) return false;
-        cycle.RecordObservation(now, delta);
+        cycle.Start(now);
         return true;
     }
 

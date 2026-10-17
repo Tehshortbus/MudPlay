@@ -62,8 +62,7 @@ public sealed class SelfHeldResponder : IDisposable
             Evaluate();
     }
 
-    // Recompute the held state and fire the transition once per edge. Public so
-    // tests can drive it without a PropertyChanged round-trip.
+    // Recompute the held state and fire the transition once per edge.
     public void Evaluate()
     {
         bool held = _conditions.IsMovementPrevented;

@@ -42,8 +42,7 @@ public sealed class PartyDisconnectMovementGate : IDisposable
     // For the bug report: the dropped members we're still holding for.
     public IReadOnlyCollection<string> PendingMembers => _pending.Keys;
 
-    // Overridable clock so tests drive the timeout deterministically.
-    public Func<DateTime> NowProvider { get; set; } = () => DateTime.UtcNow;
+    private readonly Func<DateTime> _now;
 
     // How long we hold for a dropped follower before giving up and resuming
     // (Settings → Party "If leading, wait only", mirrored from
@@ -51,18 +50,24 @@ public sealed class PartyDisconnectMovementGate : IDisposable
     // disables the timeout — the hold then persists until the member re-follows.
     public TimeSpan GraceWindow { get; set; } = TimeSpan.FromSeconds(90);
 
-    private Avalonia.Threading.DispatcherTimer? _timer;
+    // Arms one tick after the delay; disposing what it returns cancels it.
+    private readonly Func<TimeSpan, Action, IDisposable> _schedule;
+    private IDisposable? _timer;
 
     public PartyDisconnectMovementGate(
         PartyManager party,
         MovementCoordinator coordinator,
-        LogService? log = null)
+        LogService? log = null,
+        Func<TimeSpan, Action, IDisposable>? schedule = null,
+        Func<DateTime>? now = null)
     {
+        _now = now ?? (() => DateTime.UtcNow);
         ArgumentNullException.ThrowIfNull(party);
         ArgumentNullException.ThrowIfNull(coordinator);
         _party = party;
         _coordinator = coordinator;
         _log = log;
+        _schedule = schedule ?? DispatcherTicks.Once;
 
         _party.MemberDisconnected += OnMemberDisconnected;
         _party.MemberFollowConfirmed += OnMemberFollowConfirmed;
@@ -71,7 +76,7 @@ public sealed class PartyDisconnectMovementGate : IDisposable
     private void OnMemberDisconnected(string given)
     {
         if (string.IsNullOrWhiteSpace(given)) return;
-        _pending[given] = NowProvider();
+        _pending[given] = _now();
         _log?.Info("Party",
             $"Follower {given} dropped — holding for reconnect (up to {GraceWindow.TotalSeconds:0}s).");
         UpdateGate();
@@ -130,26 +135,26 @@ public sealed class PartyDisconnectMovementGate : IDisposable
     {
         if (GraceWindow <= TimeSpan.Zero) return;
         if (_timer is not null) return;
-        _timer = new Avalonia.Threading.DispatcherTimer(
-            interval: TimeSpan.FromSeconds(1),
-            priority: Avalonia.Threading.DispatcherPriority.Background,
-            callback: (_, _) => Tick());
-        _timer.Start();
+        _timer = _schedule(TimeSpan.FromSeconds(1), OnTimer);
+    }
+
+    // One tick of the 1 s cadence: the next is armed before this one runs.
+    private void OnTimer()
+    {
+        _timer = _schedule(TimeSpan.FromSeconds(1), OnTimer);
+        Tick();
     }
 
     private void StopTimer()
     {
-        _timer?.Stop();
+        _timer?.Dispose();
         _timer = null;
     }
-
-    // Test seam — one expiry sweep without a real timer.
-    internal void TickForTests() => Tick();
 
     private void Tick()
     {
         if (_pending.Count == 0 || GraceWindow <= TimeSpan.Zero) { StopTimer(); return; }
-        DateTime now = NowProvider();
+        DateTime now = _now();
         List<string>? expired = null;
         foreach (KeyValuePair<string, DateTime> kv in _pending)
         {

@@ -85,7 +85,7 @@ public sealed class EventStateTriggerTests
 
     private sealed class Rig
     {
-        public readonly EventManager Manager = new();
+        public readonly EventManager Manager = EventEngineHarness.ManagerWithoutGameData();
         public readonly List<string> Sent = new();
         public bool InGame = true;
         public EventConditionEvaluator.Readings Readings = Now();
@@ -161,7 +161,7 @@ public sealed class EventStateTriggerTests
     [Fact]
     public void RoombaAction_StartsTheChosenSweep()
     {
-        EventManager mgr = new();
+        EventManager mgr = EventEngineHarness.ManagerWithoutGameData();
         List<EventRoombaMode> started = new();
         mgr.SetRoombaStarter(mode => { started.Add(mode); return null; });
 

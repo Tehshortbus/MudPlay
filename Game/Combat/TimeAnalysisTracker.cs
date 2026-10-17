@@ -29,8 +29,8 @@ namespace MudPlay.Game.Combat;
 // they span three sources (PlayerState, ConditionTracker, RoomTracker);
 // AppServices wires those events to the forwarders. Every Note* call and
 // Snapshot runs on the marshalled dispatch thread (the sources all fire there),
-// so the counters are lock-free, matching CombatSessionTracker. The injectable
-// clock keeps the time arithmetic unit-testable.
+// so the counters are lock-free, matching CombatSessionTracker. The clock is
+// injectable.
 //
 // The tracker is gated on being in-game: it stays disarmed (accruing nothing)
 // until NoteInGame — wired to the first in-game prompt of the session — arms

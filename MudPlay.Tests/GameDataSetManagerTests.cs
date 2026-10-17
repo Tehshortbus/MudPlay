@@ -6,13 +6,11 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// PR 11 (Part B) — <see cref="GameDataSetManager"/> copy / move / delete
-/// operations over the shared per-set loop library. Isolated via unique
-/// GUID-suffixed set names under <see cref="AppPaths.GameDataRoot"/>
-/// (AppPaths caches its root at static-init, so we can't sandbox it) —
-/// Dispose deletes them so nothing leaks into the user's real Data/ tree.
-/// </summary>
+// GameDataSetManager copy / move / delete
+// operations over the shared per-set loop library. Isolated via unique
+// GUID-suffixed set names under AppPaths.GameDataRoot
+// (AppPaths caches its root at static-init, so we can't sandbox it) —
+// Dispose deletes them so nothing leaks into the user's real Data/ tree.
 public sealed class GameDataSetManagerTests : IDisposable
 {
     private readonly List<string> _createdSets = new();
@@ -50,7 +48,7 @@ public sealed class GameDataSetManagerTests : IDisposable
         return name;
     }
 
-    /// <summary>Create the set directory so it counts as "exists".</summary>
+    // Create the set directory so it counts as "exists".
     private string CreateSet()
     {
         string name = NewSetName();
@@ -58,7 +56,7 @@ public sealed class GameDataSetManagerTests : IDisposable
         return name;
     }
 
-    /// <summary>Drop a file into the set's shared Loops/ folder.</summary>
+    // Drop a file into the set's shared Loops/ folder.
     private static void SeedLoop(string setName, string fileName, string content = "x")
     {
         string loops = AppPaths.GameDataSetLoopsFolder(setName);

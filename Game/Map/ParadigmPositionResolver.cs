@@ -1,5 +1,4 @@
 using System.Text;
-using Avalonia.Threading;
 using MudPlay.Services;
 using MudPlay.Services.Patterns;
 
@@ -38,7 +37,10 @@ public sealed class ParadigmPositionResolver : IDisposable
     private readonly GameDataCache _gameData;
     private readonly LogService? _log;
     private readonly IDisposable _locationSub;
-    private readonly DispatcherTimer? _timeout;
+    // One-shot: armed on each request, cancelled by the reply or run out.
+    private IDisposable? _timeout;
+    // Arms one tick after the delay; disposing what it returns cancels it.
+    private readonly Func<TimeSpan, Action, IDisposable> _schedule;
 
     private Action<byte[]>? _wireSender;
     private bool _inFlight;
@@ -71,16 +73,8 @@ public sealed class ParadigmPositionResolver : IDisposable
         RoomTracker tracker,
         EngineRecoveryGate gate,
         GameDataCache gameData,
-        LogService? log = null)
-        : this(router, tracker, gate, gameData, log, useTimer: true) { }
-
-    internal ParadigmPositionResolver(
-        MessageRouter router,
-        RoomTracker tracker,
-        EngineRecoveryGate gate,
-        GameDataCache gameData,
-        LogService? log,
-        bool useTimer)
+        LogService? log = null,
+        Func<TimeSpan, Action, IDisposable>? schedule = null)
     {
         ArgumentNullException.ThrowIfNull(router);
         ArgumentNullException.ThrowIfNull(tracker);
@@ -93,16 +87,9 @@ public sealed class ParadigmPositionResolver : IDisposable
         _log = log;
 
         _locationSub = router.Subscribe(KnownPatterns.ParadigmLocation, OnLocationObserved);
-
-        if (useTimer)
-        {
-            // One-shot: armed on each request, stopped by the reply or by its
-            // own Tick. DispatcherTimer fires on the UI thread, so the gate /
-            // tracker mutations below stay single-threaded like every other
-            // engine send.
-            _timeout = new DispatcherTimer(DispatcherPriority.Background) { Interval = ResyncTimeout };
-            _timeout.Tick += (_, _) => OnTimeout();
-        }
+        // The default timer fires on the UI thread, so the gate / tracker mutations
+        // below stay single-threaded like every other engine send.
+        _schedule = schedule ?? DispatcherTicks.Once;
     }
 
     // Bind the wire sender (main-window VM supplies the EngineSendGate-wrapped
@@ -143,8 +130,8 @@ public sealed class ParadigmPositionResolver : IDisposable
         _requestedAtUtc = now;
         _lastRequestAtUtc = now;
         _wireSender(Encoding.Latin1.GetBytes("rm\r"));
-        _timeout?.Stop();
-        _timeout?.Start();
+        _timeout?.Dispose();
+        _timeout = _schedule(ResyncTimeout, OnTimeout);
         _log?.Log(LogSeverity.Info, LogSource, $"sent `rm` for authoritative resync; reason: {reason}");
         return true;
     }
@@ -200,7 +187,7 @@ public sealed class ParadigmPositionResolver : IDisposable
         // re-anchors too. NoteAuthoritativePosition no-ops unless the gate is
         // actually awaiting a resync, so it's safe on the unsolicited path.
         bool solicited = _inFlight;
-        _timeout?.Stop();
+        CancelTimeout();
         _inFlight = false;
         RoomKey key = new(map, room);
         _lastResolved = key;
@@ -238,7 +225,7 @@ public sealed class ParadigmPositionResolver : IDisposable
 
     private void OnTimeout()
     {
-        _timeout?.Stop();
+        _timeout = null;
         if (!_inFlight) return;
         _inFlight = false;
         _log?.Log(LogSeverity.Warn, LogSource,
@@ -246,20 +233,17 @@ public sealed class ParadigmPositionResolver : IDisposable
         ResyncFailed?.Invoke();
     }
 
-    // ----- test seams ------------------------------------------------
-    internal void FeedLocationForTests(int map, int room)
-        => OnLocationObserved(new MatchResult(
-            KnownPatterns.ParadigmLocation,
-            default,
-            new[] { map.ToString(), room.ToString() }));
-
-    internal void FireTimeoutForTests() => OnTimeout();
+    private void CancelTimeout()
+    {
+        _timeout?.Dispose();
+        _timeout = null;
+    }
 
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
         _locationSub.Dispose();
-        _timeout?.Stop();
+        CancelTimeout();
     }
 }

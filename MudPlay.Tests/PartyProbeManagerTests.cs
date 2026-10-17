@@ -10,12 +10,10 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// PartyProbeManager telepaths @level + @version to a member the FIRST time we
-/// party with them on a local day, and records the @version reply onto the
-/// player record. These cover the daily gate, the invited→joined edge, the
-/// enable/suspend gates, and the brace-wrapped version-reply capture.
-/// </summary>
+// PartyProbeManager telepaths @level + @version to a member the FIRST time we
+// party with them on a local day, and records the @version reply onto the
+// player record. These cover the daily gate, the invited→joined edge, the
+// enable/suspend gates, and the brace-wrapped version-reply capture.
 public sealed class PartyProbeManagerTests
 {
     private sealed class Harness
@@ -23,7 +21,7 @@ public sealed class PartyProbeManagerTests
         public readonly MessageRouter Router;
         public readonly ChatRouter Chat;
         public readonly PartyState State = new();
-        public readonly PlayerDatabase Players = new();
+        public readonly PlayerDatabase Players = new(new ProfileService(), () => null);
         public readonly List<byte[]> Wire = new();
         public readonly PartyProbeManager Probe;
 

@@ -34,8 +34,6 @@ public sealed class RacesSectionViewModel : JsonTableSectionViewModel
         "Abilities",
     };
 
-    public override string SearchKeyColumn => "Name";
-
     public override IEnumerable<string> SearchableLabels => new[]
     {
         Title, "race", "human", "elf", "dwarf", "hobbit", "gnome", "goblin", "orc", "racial",

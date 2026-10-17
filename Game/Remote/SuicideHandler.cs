@@ -66,7 +66,7 @@ public sealed class SuicideHandler : IDisposable
     private readonly IMessagePattern _passwordPrompt;
     private readonly MessageRouter _router;
     internal static readonly TimeSpan PromptWait = TimeSpan.FromSeconds(10);
-    internal Func<DateTimeOffset> Clock { get; set; } = () => DateTimeOffset.UtcNow;
+    private readonly Func<DateTimeOffset> _now;
 
     // True from `suicide` going out until the password is sent or given up on.
     // Read off the UI thread too (the sent-command trail asks from whichever
@@ -84,8 +84,10 @@ public sealed class SuicideHandler : IDisposable
         ProfileService profile,
         PasswordProtector protector,
         WirePromptScanner promptScanner,
-        LogService? log = null)
+        LogService? log = null,
+        Func<DateTimeOffset>? now = null)
     {
+        _now = now ?? (() => DateTimeOffset.UtcNow);
         ArgumentNullException.ThrowIfNull(engine);
         ArgumentNullException.ThrowIfNull(router);
         ArgumentNullException.ThrowIfNull(profile);
@@ -133,10 +135,6 @@ public sealed class SuicideHandler : IDisposable
         _wireSender = sender;
     }
 
-    // Test seam — fire the prompt-observation hook without feeding the scanner
-    // real bytes.
-    internal void FireNextPromptForTests() => OnPromptObserved(default);
-
     public void Dispose()
     {
         if (_disposed) return;
@@ -167,7 +165,7 @@ public sealed class SuicideHandler : IDisposable
             // on the terminal and into anything that copies it.
             if (_promptAwaitedSince is { } since)
             {
-                if (Clock() - since <= PromptWait)
+                if (_now() - since <= PromptWait)
                 {
                     ctx.Refuse("@suicide already in-flight, try again shortly");
                     return;
@@ -175,7 +173,7 @@ public sealed class SuicideHandler : IDisposable
                 GiveUpOnPrompt();
             }
             _pendingReply = why => ctx.Refuse(why);
-            _promptAwaitedSince = Clock();
+            _promptAwaitedSince = _now();
             _awaitingPrompt = true;
             // Nothing an engine sends may reach the game between the command and
             // its password: the game would take that as the password, and the
@@ -214,7 +212,7 @@ public sealed class SuicideHandler : IDisposable
     public void ObserveCursorRow(string rowText)
     {
         if (_promptAwaitedSince is not { } since) return;
-        if (Clock() - since > PromptWait) { GiveUpOnPrompt(); return; }
+        if (_now() - since > PromptWait) { GiveUpOnPrompt(); return; }
         if (!ShowsPasswordPrompt(rowText)) return;
 
         string? password = _profile.Current is { EncryptedSuicidePassword: { Length: > 0 } blob }
@@ -273,12 +271,12 @@ public sealed class SuicideHandler : IDisposable
 
     private const string GateHold = "SuicideCommand";
 
-    // The send gate, held from `suicide` going out until the wait ends. Null in
-    // tests that don't model it.
+    // The send gate, held from `suicide` going out until the wait ends. Null when
+    // unwired.
     public EngineSendGate? SendGate { get; set; }
 
     // The telepath pacer, held over the same stretch (TelepathPacer.Hold). Null
-    // in tests that don't model it.
+    // when unwired.
     public TelepathPacer? Telepaths { get; set; }
 
     private bool _sendingOwn;
@@ -326,7 +324,7 @@ public sealed class SuicideHandler : IDisposable
     // send gate, and a game that says nothing at all must not hold it for ever.
     public void CheckTimeout()
     {
-        if (_promptAwaitedSince is { } since && Clock() - since > PromptWait) GiveUpOnPrompt();
+        if (_promptAwaitedSince is { } since && _now() - since > PromptWait) GiveUpOnPrompt();
     }
 
     private void GiveUpOnPrompt()
@@ -377,7 +375,7 @@ public sealed class SuicideHandler : IDisposable
     private void OnPromptObserved(PromptObservation _)
     {
         // A statline is also the tick that ends a password wait nothing answered.
-        if (_promptAwaitedSince is { } since && Clock() - since > PromptWait) GiveUpOnPrompt();
+        if (_promptAwaitedSince is { } since && _now() - since > PromptWait) GiveUpOnPrompt();
         if (_proPendingReply is null) return;
         Action<string> reply = _proPendingReply;
         bool ok = _seenNotSetInProWindow;

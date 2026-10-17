@@ -387,6 +387,7 @@ public sealed class GameDataTableSectionTests : IDisposable
 
         Assert.Equal("Goblin", vm.AllRows[0].Get("Name"));
         Assert.Equal("5",      vm.AllRows[0].Get("HP"));
+        Assert.Equal("true",   vm.AllRows[0].Get("Undead"));
         // GreetTXT isn't in the Monsters column list so it doesn't appear.
         Assert.DoesNotContain(vm.AllRows[0].Cells, c => c.Column == "GreetTXT");
     }

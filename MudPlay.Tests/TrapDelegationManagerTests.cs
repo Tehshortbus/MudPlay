@@ -9,14 +9,12 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Coverage for <see cref="TrapDelegationManager"/> — the party-member
-/// trap-delegation path. Verifies capability resolution (class main gate /
-/// race secondary, excluding self + invitees), race-capture-on-join via
-/// <c>look</c>, the <c>.@trap</c> say broadcast, and resume-watch on a
-/// party member's say reply. Each test seeds an isolated game-data set so
-/// the suite never touches the user's real Data folder.
-/// </summary>
+// Coverage for TrapDelegationManager — the party-member
+// trap-delegation path. Verifies capability resolution (class main gate /
+// race secondary, excluding self + invitees), race-capture-on-join via
+// look, the .@trap say broadcast, and resume-watch on a
+// party member's say reply. Each test seeds an isolated game-data set so
+// the suite never touches the user's real Data folder.
 public sealed class TrapDelegationManagerTests : IDisposable
 {
     private static readonly DateTimeOffset Now = new(2026, 6, 12, 0, 0, 0, TimeSpan.Zero);
@@ -37,10 +35,8 @@ public sealed class TrapDelegationManagerTests : IDisposable
 
     // ----- Fixtures -------------------------------------------------------
 
-    /// <summary>
-    /// Seed a game-data set: "Ninja" class + "Gnome" race grant traps
-    /// (codes 40 / 1002); "Mage" + "Human" don't. Returns an active cache.
-    /// </summary>
+    // Seed a game-data set: "Ninja" class + "Gnome" race grant traps
+    // (codes 40 / 1002); "Mage" + "Human" don't. Returns an active cache.
     private GameDataCache SeededCache()
     {
         string dir = Path.Combine(_root, "set");
@@ -57,29 +53,34 @@ public sealed class TrapDelegationManagerTests : IDisposable
     private static LineExtractor.EmittedLine Line(string text) =>
         new(text, new CellAttributes[text.Length], Now, IsPromptLine: false);
 
-    /// <summary>
-    /// Build router (with default patterns) + party + players + game data.
-    /// The manager is constructed by the caller so tests control whether
-    /// <see cref="PartyManager.MemberFollowConfirmed"/> fires before or
-    /// after construction.
-    /// </summary>
+    // Build router (with default patterns) + party + players + game data.
+    // The manager is constructed by the caller so tests control whether
+    // PartyManager.MemberFollowConfirmed fires before or
+    // after construction.
     private (MessageRouter router, PartyManager party, PlayerDatabase players, GameDataCache gameData) Harness(
         string localName = "Forged")
     {
         MessageRouter router = new();
         DefaultPatterns.Seed(router);
         PartyManager party = new(router, new PartyState()) { LocalCharacterName = localName };
-        PlayerDatabase players = new();
+        PlayerDatabase players = new(new ProfileService(), () => null);
         GameDataCache gameData = SeededCache();
         return (router, party, players, gameData);
     }
 
-    private static TrapDelegationManager NewManager(
-        (MessageRouter router, PartyManager party, PlayerDatabase players, GameDataCache gameData) h)
-        => new(h.party, h.players, h.gameData, h.router);
+    // What the manager put on the wire, through the sender the client binds.
+    private readonly List<byte[]> _sent = new();
 
-    private static string Sent(TrapDelegationManager mgr, int index) =>
-        Encoding.Latin1.GetString(mgr.LastSentForTests[index]);
+    private TrapDelegationManager NewManager(
+        (MessageRouter router, PartyManager party, PlayerDatabase players, GameDataCache gameData) h)
+    {
+        TrapDelegationManager mgr = new(h.party, h.players, h.gameData, h.router);
+        mgr.SetWireSender(_sent.Add);
+        return mgr;
+    }
+
+    private string Sent(int index) =>
+        Encoding.Latin1.GetString(_sent[index]);
 
     // ===== Capability — class main gate ==================================
 
@@ -156,7 +157,7 @@ public sealed class TrapDelegationManagerTests : IDisposable
 
         h.router.Dispatch(Line("Helper started to follow you."));
 
-        Assert.Equal("look Helper\r", Sent(mgr, 0));
+        Assert.Equal("look Helper\r", Sent(0));
     }
 
     [Fact]
@@ -168,7 +169,7 @@ public sealed class TrapDelegationManagerTests : IDisposable
 
         h.router.Dispatch(Line("Helper started to follow you."));
 
-        Assert.Empty(mgr.LastSentForTests);
+        Assert.Empty(_sent);
     }
 
     [Fact]
@@ -178,8 +179,10 @@ public sealed class TrapDelegationManagerTests : IDisposable
         // confirmation — class settles capability, no race probe needed.
         var h = Harness();
         TrapDelegationManager mgr = NewManager(h);
-        h.party.TestEnterParBlock();
-        h.party.FeedTestLines(new[]
+        ServerFeed feed = new(h.router);
+        h.party.AttachLineExtractor(feed.Lines);
+        feed.Line("The following people are in your travel party:");
+        feed.Rows(new[]
         {
             "  Helper                          (Ninja)         [M:100%] [H:100%]   - Frontrank",
             "",
@@ -187,7 +190,7 @@ public sealed class TrapDelegationManagerTests : IDisposable
 
         h.router.Dispatch(Line("Helper started to follow you."));
 
-        Assert.Empty(mgr.LastSentForTests);
+        Assert.Empty(_sent);
     }
 
     [Fact]
@@ -202,7 +205,7 @@ public sealed class TrapDelegationManagerTests : IDisposable
 
         h.router.Dispatch(Line("Helper started to follow you."));
 
-        Assert.Empty(mgr.LastSentForTests);
+        Assert.Empty(_sent);
     }
 
     [Fact]
@@ -215,7 +218,7 @@ public sealed class TrapDelegationManagerTests : IDisposable
 
         h.router.Dispatch(Line("Helper started to follow you."));
 
-        Assert.Equal("look Helper\r", Sent(mgr, 0));
+        Assert.Equal("look Helper\r", Sent(0));
     }
 
     // ===== Delegation broadcast ==========================================
@@ -228,7 +231,7 @@ public sealed class TrapDelegationManagerTests : IDisposable
 
         mgr.Delegate("north", _ => { });
 
-        Assert.Equal(".@trap north\r", Sent(mgr, mgr.LastSentForTests.Count - 1));
+        Assert.Equal(".@trap north\r", Sent(_sent.Count - 1));
     }
 
     // ===== Resume watch ==================================================
@@ -488,8 +491,9 @@ public sealed class TrapDelegationManagerTests : IDisposable
         TrapDelegationManager mgr = NewManager(h);
 
         h.router.Dispatch(Line("Helper says \"Trap to the n disarmed.\""));
-        // No assertion beyond "didn't throw" — the pending callback is null.
-        Assert.True(true);
+
+        Assert.Equal("idle", mgr.Describe());
+        Assert.Empty(_sent);
     }
 
     [Fact]

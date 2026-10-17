@@ -8,13 +8,11 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Renaming a BBS must move its whole on-disk subtree — bbs.json AND every
-/// nested character profile — and re-key each profile's per-BBS credentials
-/// (keyed by BBS name). The old Delete+Save rename recursively destroyed the
-/// nested profiles and left every reference to the old name dangling, breaking
-/// logon-nav / passwords and showing the dead name in the import picker.
-/// </summary>
+// Renaming a BBS must move its whole on-disk subtree — bbs.json AND every
+// nested character profile — and re-key each profile's per-BBS credentials
+// (keyed by BBS name). The old Delete+Save rename recursively destroyed the
+// nested profiles and left every reference to the old name dangling, breaking
+// logon-nav / passwords and showing the dead name in the import picker.
 public sealed class BbsRenameCascadeTests : IDisposable
 {
     private readonly string _oldBbs;
@@ -22,6 +20,7 @@ public sealed class BbsRenameCascadeTests : IDisposable
 
     public BbsRenameCascadeTests()
     {
+        ScratchRoot.Require();
         string tag = Path.GetRandomFileName();
         _oldBbs = "rename-test-old-" + tag;
         _newBbs = "rename-test-new-" + tag;

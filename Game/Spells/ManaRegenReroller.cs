@@ -31,8 +31,7 @@ public readonly record struct ManaRegenRerollConfig(int? Threshold, int Cap, boo
 // abil breakdown (AbilBreakdownParser.BreakdownParsed). It owns no timers, no wire
 // access, and no spell classification: the caller only invokes OnRollSpellLanded
 // for a spell it has already resolved to a code-145 roll spell, and supplies the
-// query / recast / afford actions. This keeps the decision logic deterministic and
-// unit-testable.
+// query / recast / afford actions. This keeps the decision logic deterministic.
 //
 // The Stock realm has no abil breakdown to read, so there the landed roll is read
 // back off the next natural mana tick instead: the engine pays
@@ -63,12 +62,11 @@ public sealed class ManaRegenReroller : IDisposable
     // signature of nature tap / mana flux (the magnitude is rolled from the
     // level-scaled Min/Max range on each cast). A fixed +N regen buff (AbilVal =
     // N) or a mana HoT (chaos surge, codes 150 / 123) is excluded — rerolling
-    // those is pointless. Thin alias over RegenSpellClassifier.Classify's
-    // ManaRegenRoll trait so the "what counts as a roll spell" rule lives in
-    // exactly one place, shared by the caller's landing classifier and the
-    // Spells tab's range readout.
+    // those is pointless. Thin alias over RegenSpellClassifier.IsManaRegenRoll so
+    // the "what counts as a roll spell" rule lives in exactly one place, shared by
+    // the caller's landing classifier and the Spells tab's range readout.
     public static bool IsRollSpell(in SpellFormulaInput formula)
-        => RegenSpellClassifier.Has(formula, RegenSpellTraits.ManaRegenRoll);
+        => RegenSpellClassifier.IsManaRegenRoll(formula);
 
     private readonly AbilBreakdownParser _parser;
     private readonly Func<ManaRegenRerollConfig> _readConfig;
@@ -130,16 +128,16 @@ public sealed class ManaRegenReroller : IDisposable
     }
 
     // True while a reroll cycle is mid-flight (a roll landed and we're awaiting
-    // its abil read, or about to recast). For diagnostics / tests.
+    // its abil read, or about to recast). For diagnostics.
     public bool CycleActive => _activeShort is not null;
 
     // Rerolls spent in the current cycle; resets when a fresh roll lands while
-    // idle. For diagnostics / tests.
+    // idle. For diagnostics.
     public int RerollsUsed => _rerollsUsed;
 
     // True while a cycle is suspended at the mana floor, waiting for mana to recover
     // before the next reroll. For the bug report, so a paused reroll reads as
-    // "waiting for mana" rather than looking stalled. For diagnostics / tests.
+    // "waiting for mana" rather than looking stalled.
     public bool WaitingForMana => _waitingForMana;
 
     // True while a cycle's next reroll is held for the current fight to end.

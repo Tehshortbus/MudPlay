@@ -19,10 +19,6 @@ public readonly record struct PendingMove(
     public static PendingMove FromDirection(Direction d, DateTimeOffset when) =>
         new(d, null, when);
 
-    // Text-exit move that doesn't map to a cardinal.
-    public static PendingMove FromCommand(string command, DateTimeOffset when) =>
-        new(null, command, when);
-
     // A leader-follow drag — a party follower dragged one room in the leader's
     // direction. Predicts like a cardinal move, but flagged so the tracker's
     // passive-re-look guard (which assumes a real move is SLOWER than a stray

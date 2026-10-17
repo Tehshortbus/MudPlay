@@ -176,7 +176,7 @@ public sealed class LoopShareReceiver : IDisposable
         _chat.EntryClassified -= Ingest;
     }
 
-    internal void Ingest(ChatLogEntry e)
+    private void Ingest(ChatLogEntry e)
     {
         // By telepath or not at all: an offer or a data line on a shared channel is
         // an older client's, and neither is taken.

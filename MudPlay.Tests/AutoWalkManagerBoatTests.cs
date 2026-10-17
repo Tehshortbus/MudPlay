@@ -220,26 +220,6 @@ public sealed class AutoWalkManagerBoatTests : IDisposable
     }
 
     [Fact]
-    public void BoatVoyage_DeadlineFiresAfterLanding_CompletesRatherThanFails()
-    {
-        Harness h = NewHarness();
-        h.Tracker.SetLocated(new RoomKey(1, 1));
-        h.Walker.WalkTo(new RoomKey(1, 11));
-        h.Tracker.NoteRoomObserved(Obs("Pier", Direction.S));   // at dock; boat sent
-
-        // The arrival observation already completed the step (and cancelled the
-        // timer). A stray deadline fire afterward must be a harmless no-op, never a
-        // spurious failure or a double-advance.
-        h.Tracker.NoteRoomObserved(Obs("Isle Port", Direction.N));
-        h.FireBoatDeadline();                                   // cancelled — no-op
-        h.Tracker.NoteRoomObserved(Obs("Isle Town", Direction.S));
-
-        Assert.Equal(WalkState.Idle, h.Walker.State);
-        Assert.Contains(h.Events, e => e.Kind == WalkEventKind.Finished);
-        Assert.DoesNotContain(h.Events, e => e.Kind == WalkEventKind.Failed);
-    }
-
-    [Fact]
     public void BoatStep_Sizes_VoyageDelay_FromTransitRounds_And_ExposesSailingState()
     {
         Harness h = NewHarness();

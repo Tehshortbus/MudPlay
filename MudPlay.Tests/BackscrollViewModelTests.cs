@@ -84,10 +84,11 @@ public class BackscrollViewModelTests
 
         BackscrollViewModel reopened = new(emu);
         // post000 and post030 have long since scrolled off the 5-row screen into
-        // the ring; the last handful (post039) may still be on-screen, so the
-        // scrollback-only snapshot need not contain them.
+        // the ring; post039, the newest, is still on screen, which the snapshot
+        // carries too.
         Assert.Contains(reopened.Rows, r => r.PlainText.Contains("post000"));
         Assert.Contains(reopened.Rows, r => r.PlainText.Contains("post030"));
+        Assert.Contains(reopened.Rows, r => r.PlainText.Contains("post039"));
     }
 
     [Fact]

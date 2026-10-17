@@ -92,8 +92,7 @@ public sealed class RoomEntityClassifier : IDisposable
     public Func<string?>? ActiveCombatTargetProbe { get; set; }
 
     // Fires after each successful "Also here:" parse. Subscribers run on the
-    // MessageRouter's marshalled thread — the UI thread in normal app use; the
-    // test thread under xUnit.
+    // MessageRouter's marshalled thread.
     public event Action<RoomEntitiesObservation>? EntitiesObserved;
 
     // Last observation parsed, or null when no "Also here:" line has been seen
@@ -150,7 +149,7 @@ public sealed class RoomEntityClassifier : IDisposable
     // from the previous room would keep CombatManager swinging at a target that
     // didn't follow us in — the "wasted combat round on move" scenario. The
     // optional GameDataCache backs the first-word-strip Monsters-table fallback
-    // (Pass 3); tests that don't exercise it pass null. flavorPrefixes supplies
+    // (Pass 3); null skips that pass. flavorPrefixes supplies
     // the per-set adjective vocabulary for the Pass-3.5 prefix strip; null → a
     // default store carrying the built-in stock list.
     public RoomEntityClassifier(
@@ -832,7 +831,7 @@ public sealed class RoomEntityClassifier : IDisposable
     // swing on a monster that didn't follow us in. The next Also-Here parse
     // (arrives within milliseconds of the move) rebuilds the list for the new
     // room and CombatManager picks afresh. Public so callers other than
-    // RoomTracker can drive the wipe (tests, forced-refresh paths). Idempotent on
+    // RoomTracker can drive the wipe (forced-refresh paths). Idempotent on
     // already-empty observations.
     public void NoteRoomChanged() => WipeRoster(shownEmpty: false);
 

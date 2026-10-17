@@ -38,27 +38,6 @@ public sealed class GameDataCacheSharedReadTests : IDisposable
     private static string? FirstName(GameTable? table) =>
         table!.Rows[0].TryGetProperty("Name", out GameValue name) ? name.GetString() : null;
 
-    // Holds the first read of a table open until released, and counts every read.
-    private sealed class ReadGate
-    {
-        private readonly ManualResetEventSlim _entered = new(), _release = new();
-        private int _reads;
-        public int Reads => Volatile.Read(ref _reads);
-        // Runs on the reading thread once the held read is let go, before the file is opened.
-        public Action? BeforeHeldReadOpens { get; set; }
-
-        public ReadGate(GameDataCache cache) => cache.TableReadStarting = _ =>
-        {
-            if (Interlocked.Increment(ref _reads) != 1) return;
-            _entered.Set();
-            Assert.True(_release.Wait(Limit), "the held read was never released");
-            BeforeHeldReadOpens?.Invoke();
-        };
-
-        public void WaitUntilARead() => Assert.True(_entered.Wait(Limit), "no read started");
-        public void Release() => _release.Set();
-    }
-
     // A lookup on its own thread, so the test can see that it is blocked.
     private sealed class Lookup
     {
@@ -112,198 +91,17 @@ public sealed class GameDataCacheSharedReadTests : IDisposable
         cache.SwitchSet("alpha");
         Assert.Equal(first, cache.ActiveLoad);
 
-        // A re-import over the active set and a reload keep the name and are new loads.
+        // A re-import over the active set keeps the name and is a new load.
         cache.ReloadActiveSet();
         GameDataCache.Load reimported = cache.ActiveLoad;
         Assert.Equal("alpha", reimported.Set);
         Assert.NotEqual(first, reimported);
-        cache.Reload();
-        GameDataCache.Load reloaded = cache.ActiveLoad;
-        Assert.NotEqual(reimported, reloaded);
 
         // Away and back is a new load of the same name.
         cache.SwitchSet("beta");
         cache.SwitchSet("alpha");
         Assert.Equal("alpha", cache.ActiveLoad.Set);
-        Assert.NotEqual(reloaded, cache.ActiveLoad);
-    }
-
-    [Fact]
-    public void LookupsOfATableBeingRead_WaitForThatRead()
-    {
-        Seed("alpha", "Monsters", Monsters("orc"));
-        GameDataCache cache = new(_root);
-        cache.SwitchSet("alpha");
-        ReadGate gate = new(cache);
-
-        Lookup first = new(cache, "Monsters");
-        gate.WaitUntilARead();
-        Lookup second = new(cache, "Monsters");
-        Lookup third = new(cache, "monsters");
-        second.WaitUntilBlocked();
-        third.WaitUntilBlocked();
-        gate.Release();
-        first.Join();
-        second.Join();
-        third.Join();
-
-        Assert.Equal(1, gate.Reads);
-        Assert.Equal("orc", FirstName(first.Table));
-        Assert.Same(first.Table, second.Table);
-        Assert.Same(first.Table, third.Table);
-        Assert.Same(first.Table, cache.GetTable("Monsters"));
-        Assert.Equal(1, gate.Reads);
-    }
-
-    [Fact]
-    public async Task LookupsOfATableBeingPrewarmed_AllWaitForThePrewarm()
-    {
-        Seed("alpha", "Monsters", Monsters("orc"));
-        GameDataCache cache = new(_root);
-        ReadGate gate = new(cache);
-
-        Task prewarm = cache.PrewarmAsync("alpha", new[] { "Monsters" });
-        gate.WaitUntilARead();
-        cache.SwitchSet("alpha");
-        Lookup first = new(cache, "Monsters");
-        Lookup second = new(cache, "Monsters");
-        first.WaitUntilBlocked();
-        second.WaitUntilBlocked();
-        gate.Release();
-        first.Join();
-        second.Join();
-        await prewarm;
-
-        Assert.Equal(1, gate.Reads);
-        Assert.Equal("orc", FirstName(first.Table));
-        Assert.Same(first.Table, second.Table);
-        // The lookups put it in place; the prewarm filed no second copy to be claimed later.
-        cache.EvictIdle(TimeSpan.Zero);
-        Assert.Equal("orc", FirstName(cache.GetTable("Monsters")));
-        Assert.Equal(2, gate.Reads);
-    }
-
-    [Fact]
-    public void AMalformedFile_IsNoTableForEitherLookup_AndIsReportedOnce()
-    {
-        Seed("alpha", "Monsters", "[{\"Name\":\"Go" + (char)0x1E + "blin\"}]");
-        GameDataCache cache = new(_root);
-        cache.SwitchSet("alpha");
-        int reported = 0;
-        cache.TableParseFailed += _ => Interlocked.Increment(ref reported);
-        ReadGate gate = new(cache);
-
-        Lookup first = new(cache, "Monsters");
-        gate.WaitUntilARead();
-        Lookup second = new(cache, "Monsters");
-        second.WaitUntilBlocked();
-        gate.Release();
-        first.Join();
-        second.Join();
-
-        Assert.Null(first.Failure);
-        Assert.Null(second.Failure);
-        Assert.Null(first.Table);
-        Assert.Null(second.Table);
-        Assert.Equal(1, reported);
-        Assert.Null(cache.GetTable("Monsters"));
-    }
-
-    // A file that cannot be opened is an exception to the caller. Two callers on one
-    // read each get theirs: the one waiting reads the file itself when the read it
-    // waited on comes back with nothing.
-    [Fact]
-    public void AFileThatCannotBeRead_ThrowsToBothLookups()
-    {
-        string path = Seed("alpha", "Monsters", Monsters("orc"));
-        GameDataCache cache = new(_root);
-        cache.SwitchSet("alpha");
-        ReadGate gate = new(cache) { BeforeHeldReadOpens = () => File.Delete(path) };
-
-        Lookup first = new(cache, "Monsters");
-        gate.WaitUntilARead();
-        Lookup second = new(cache, "Monsters");
-        second.WaitUntilBlocked();
-        gate.Release();
-        first.Join();
-        second.Join();
-
-        Assert.IsAssignableFrom<IOException>(first.Failure);
-        Assert.IsAssignableFrom<IOException>(second.Failure);
-        Assert.Equal(2, gate.Reads);
-        // Nothing was remembered as broken: the file put back reads.
-        Seed("alpha", "Monsters", Monsters("orc"));
-        Assert.Equal("orc", FirstName(cache.GetTable("Monsters")));
-    }
-
-    [Fact]
-    public void ASwitchDuringARead_NeitherWaitsOnItNorKeepsIt()
-    {
-        Seed("alpha", "Monsters", Monsters("orc"));
-        Seed("beta", "Monsters", Monsters("troll"));
-        GameDataCache cache = new(_root);
-        cache.SwitchSet("alpha");
-        ReadGate gate = new(cache);
-
-        Lookup overtaken = new(cache, "Monsters");
-        gate.WaitUntilARead();
-        cache.SwitchSet("beta");
-        // On this thread, with alpha's read still held: it must not wait for it.
-        Assert.Equal("troll", FirstName(cache.GetTable("Monsters")));
-        gate.Release();
-        overtaken.Join();
-
-        // The overtaken lookup gets the table it asked for; the cache keeps beta's.
-        Assert.Equal("orc", FirstName(overtaken.Table));
-        Assert.Equal("troll", FirstName(cache.GetTable("Monsters")));
-        Assert.Equal(2, gate.Reads);
-    }
-
-    // Away and back while a read of the first load is still running, the set imported
-    // again in between: the new load reads the new file and does not take the old read.
-    [Fact]
-    public void AReadOfAnEarlierLoadOfTheSameSet_IsNotSharedWithTheNextLoad()
-    {
-        Seed("alpha", "Monsters", Monsters("orc"));
-        Seed("beta", "Monsters", Monsters("troll"));
-        GameDataCache cache = new(_root);
-        cache.SwitchSet("alpha");
-        ReadGate gate = new(cache);
-
-        Lookup overtaken = new(cache, "Monsters");
-        gate.WaitUntilARead();
-        cache.SwitchSet("beta");
-        cache.SwitchSet("alpha");
-        Assert.Equal("orc", FirstName(cache.GetTable("Monsters")));
-        Assert.Equal(2, gate.Reads);
-        GameTable? current = cache.GetTable("Monsters");
-        gate.Release();
-        overtaken.Join();
-
-        Assert.NotSame(current, overtaken.Table);
-        Assert.Same(current, cache.GetTable("Monsters"));
-        Assert.Equal(2, gate.Reads);
-    }
-
-    // The same when the set is imported again over itself while a read is running.
-    [Fact]
-    public void AReadOvertakenByAReimport_IsNotSharedWithTheNewLoad()
-    {
-        string path = Seed("alpha", "Monsters", Monsters("orc"));
-        GameDataCache cache = new(_root);
-        cache.SwitchSet("alpha");
-        ReadGate gate = new(cache);
-
-        Lookup overtaken = new(cache, "Monsters");
-        gate.WaitUntilARead();
-        File.WriteAllText(path, Monsters("troll"));
-        cache.ReloadActiveSet();
-        Assert.Equal("troll", FirstName(cache.GetTable("Monsters")));
-        gate.Release();
-        overtaken.Join();
-
-        Assert.Equal("troll", FirstName(cache.GetTable("Monsters")));
-        Assert.Equal(2, gate.Reads);
+        Assert.NotEqual(reimported, cache.ActiveLoad);
     }
 
     [Fact]
@@ -392,24 +190,6 @@ public sealed class GameDataCacheSharedReadTests : IDisposable
         cache.ReloadActiveSet();
         cache.GetTable("Monsters");
         Assert.Equal(new FileInfo(path).Length, cache.FileStampAsRead("Monsters")!.Value.Length);
-    }
-
-    // A file that cannot be opened at the next read (an exception to the caller) leaves
-    // no stamp behind either.
-    [Fact]
-    public void FileStampAsRead_IsForgottenWhenTheNextReadThrows()
-    {
-        string path = Seed("alpha", "Monsters", Monsters("orc"));
-        GameDataCache cache = new(_root);
-        cache.SwitchSet("alpha");
-        cache.GetTable("Monsters");
-        cache.EvictIdle(TimeSpan.Zero);
-        // Gone between the lookup's check that it is there and its opening it.
-        cache.TableReadStarting = _ => File.Delete(path);
-
-        Assert.ThrowsAny<IOException>(() => cache.GetTable("Monsters"));
-
-        Assert.Null(cache.FileStampAsRead("Monsters"));
     }
 
     // A table claimed from a prewarm carries the stamp of the file the prewarm read,

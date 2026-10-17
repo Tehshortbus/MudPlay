@@ -6,15 +6,14 @@ namespace MudPlay.Services;
 // In-memory index of Items.json for the active game-data set, mapping the
 // MDB Number field to its Name. Walker / handler code resolves an item id
 // back to the verbatim name to send to the game (door keys via
-// use <name> <dir>, tickets via inventory checks, etc.). Also exposes two
-// slot-filtered name lists (WeaponNames / OffHandNames) for the
-// Settings → Combat typeahead boxes.
+// use <name> <dir>, tickets via inventory checks, etc.). Also exposes the
+// off-hand name list (OffHandNames) the equipment classifier reads.
 //
 // Subscribes to GameDataCache.ActiveSetChanged, loads the Items table,
-// populates the int → string map plus the slot-filtered name lists in a
-// single pass, then evicts the table. Only the fields these indexes need
-// (Number, Name, ItemType, Worn, Encum, Price, WeaponType, ArmourType, Gettable
-// and a carried item's Stealth) are retained — full item editing is owned by
+// populates the int → string map plus the off-hand list in a single pass,
+// then evicts the table. Only the fields these indexes need (Number, Name,
+// ItemType, Worn, Encum, Price, WeaponType, ArmourType and a carried item's
+// Stealth) are retained — full item editing is owned by
 // the Game Data browser and reads its own copy.
 public sealed class ItemNameStore
 {
@@ -22,12 +21,8 @@ public sealed class ItemNameStore
     private readonly LogService? _log;
     private readonly Dictionary<int, string> _names = new();
 
-    // Slot-filtered, alphabetically-sorted, de-duplicated name lists
-    // for the Combat-tab typeahead boxes. Classification: a weapon is
-    // ItemType == 1; an off-hand item is Worn == 12 (shields, tomes,
-    // the bard lute, etc.). No class dual-wields, so one-handed weapons
-    // never appear in the off-hand list.
-    private string[] _weaponNames = Array.Empty<string>();
+    // Alphabetically-sorted, de-duplicated off-hand names: Worn == 12 (shields,
+    // tomes, the bard lute, etc.).
     private string[] _offHandNames = Array.Empty<string>();
 
     // Reverse index for resolving a room "You notice ..." entry (e.g.
@@ -61,12 +56,6 @@ public sealed class ItemNameStore
     private readonly Dictionary<int, int> _weaponTypeByNumber = new();
     private readonly Dictionary<int, int> _armourTypeByNumber = new();
 
-    // Item Number → Gettable (MDB flag; 0 means the item can't be picked up).
-    // Roughly a fifth of a realm's items are scenery-like fixtures. A sysop
-    // room dump lists them alongside real loot, so Roomba filters on this
-    // rather than discovering them by a refused get on every lap.
-    private readonly Dictionary<int, bool> _gettableByNumber = new();
-
     // Item Number → the Stealth (ability 27) it adds or takes away just by being in
     // the pack. The game totals a carried item's abilities when it is not a weapon
     // and has no wear slot (GAME_MECHANICS "Abilities of carried items"): a log raft
@@ -86,21 +75,11 @@ public sealed class ItemNameStore
            && _packStealthByNumber.TryGetValue(number, out int stealth)
             ? stealth : 0;
 
-    // Alphabetically-sorted, distinct names of every weapon (ItemType == 1)
-    // in the active set — suggestion source for the Combat-tab weapon
-    // typeahead boxes. Empty when no set is active.
-    public IReadOnlyList<string> WeaponNames => _weaponNames;
-
     // Alphabetically-sorted, distinct names of every off-hand item
-    // (Worn == 12 — shields, tomes, instruments) in the active set —
-    // suggestion source for the Combat-tab off-hand typeahead boxes.
-    // Empty when no set is active.
+    // (Worn == 12 — shields, tomes, instruments) in the active set, which the
+    // equipment classifier checks an off-hand against. Empty when no set is
+    // active.
     public IReadOnlyList<string> OffHandNames => _offHandNames;
-
-    public int EntryCount => _names.Count;
-
-    // Fires after every successful (re)load, including the transition to no-set-active.
-    public event Action? StoreReloaded;
 
     public ItemNameStore(GameDataCache cache) : this(cache, log: null) { }
 
@@ -204,13 +183,6 @@ public sealed class ItemNameStore
     public int? WornOf(int number)
         => _wornByNumber.TryGetValue(number, out int w) ? w : null;
 
-    // Whether the item can be picked up (MDB Gettable). Unknown ids and sets
-    // whose Items table predates the column both read as gettable — the flag
-    // exists to exclude fixtures we know about, and defaulting the other way
-    // would silently filter out every item in such a set.
-    public bool IsGettable(int number)
-        => !_gettableByNumber.TryGetValue(number, out bool gettable) || gettable;
-
     // Lower-case, trim, and strip a leading article / count token so a loose
     // room phrasing collapses to the canonical item name shape. Shared by the
     // reverse-index build and the FindByName lookup so both sides agree on
@@ -255,15 +227,6 @@ public sealed class ItemNameStore
            && el.TryGetInt32(out int v)
             ? v : 0;
 
-    // Gettable is the one flag whose absent-means-0 default would be actively
-    // wrong: a set without the column would read as "nothing can be picked up".
-    // Missing or non-numeric reads as gettable; only an explicit 0 is a fixture.
-    private static bool ReadGettable(GameRow row)
-        => !row.TryGetProperty("Gettable", out GameValue el)
-           || el.ValueKind != JsonValueKind.Number
-           || !el.TryGetInt32(out int v)
-           || v != 0;
-
     private static readonly string[] _articles = { "the ", "an ", "a ", "some " };
 
     private static bool IsCountToken(string token)
@@ -298,16 +261,13 @@ public sealed class ItemNameStore
         _priceByNumber.Clear();
         _weaponTypeByNumber.Clear();
         _armourTypeByNumber.Clear();
-        _gettableByNumber.Clear();
         _packStealthByNumber.Clear();
-        _weaponNames = Array.Empty<string>();
         _offHandNames = Array.Empty<string>();
         ActiveSet = setName;
 
         if (string.IsNullOrWhiteSpace(setName))
         {
             _log?.Log(LogSeverity.Info, "ItemNameStore", "No active set; cleared.");
-            StoreReloaded?.Invoke();
             return;
         }
 
@@ -316,12 +276,10 @@ public sealed class ItemNameStore
         {
             _log?.Log(LogSeverity.Info, "ItemNameStore",
                 $"Active set '{setName}' has no Items.json; empty.");
-            StoreReloaded?.Invoke();
             return;
         }
 
         int parsed = 0;
-        SortedSet<string> weapons = new(StringComparer.OrdinalIgnoreCase);
         SortedSet<string> offHands = new(StringComparer.OrdinalIgnoreCase);
         foreach (GameRow row in doc.Rows)
         {
@@ -347,9 +305,7 @@ public sealed class ItemNameStore
             _priceByNumber[number] = ReadInt(row, "Price");
             _weaponTypeByNumber[number] = ReadInt(row, "WeaponType");
             _armourTypeByNumber[number] = ReadInt(row, "ArmourType");
-            _gettableByNumber[number] = ReadGettable(row);
 
-            if (itemType == 1) weapons.Add(name);
             if (worn == 12) offHands.Add(name);
             if (itemType != 1 && worn == 0 && PackStealth(row) is int packStealth and not 0)
                 _packStealthByNumber[number] = packStealth;
@@ -357,8 +313,6 @@ public sealed class ItemNameStore
             parsed++;
         }
 
-        _weaponNames = new string[weapons.Count];
-        weapons.CopyTo(_weaponNames);
         _offHandNames = new string[offHands.Count];
         offHands.CopyTo(_offHandNames);
 
@@ -366,8 +320,7 @@ public sealed class ItemNameStore
 
         _log?.Log(LogSeverity.Info, "ItemNameStore",
             $"Loaded {parsed} item name(s) from '{setName}' "
-            + $"({_weaponNames.Length} weapon, {_offHandNames.Length} off-hand).");
+            + $"({_offHandNames.Length} off-hand).");
 
-        StoreReloaded?.Invoke();
     }
 }

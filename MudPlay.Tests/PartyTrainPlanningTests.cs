@@ -261,7 +261,8 @@ public sealed class PartyTrainPlanningTests
     {
         PartyTrainFundingOutcome o = PartyTrainFundingPlanner.Plan(
             [F("Lead", true, 500, 900, 400), F("Ann", true, 500, 600, 100)]);
-        Assert.False(o.NeedsAnything);
+        Assert.Empty(o.Transfers);
+        Assert.Empty(o.Withdrawals);
         Assert.Empty(o.Unfunded);
     }
 

@@ -8,10 +8,6 @@ namespace MudPlay.Tests;
 
 public sealed class PartyViewModelTests
 {
-    // Tests use the 3-arg ctor with profile: null so they don't reach
-    // through AppServices.Current — LocalRank stays at the Mid default,
-    // which is fine; the rank-chip render is exercised by smoke / live.
-
     [Fact]
     public void HeaderText_EmptyParty_ShowsNoPartyActive()
     {
@@ -123,11 +119,25 @@ public sealed class PartyViewModelTests
         Assert.Empty(wire);
     }
 
+    // LocalRank follows the loaded character's Party rank, live as it's edited.
     [Fact]
-    public void LocalRank_DefaultsToMid_WhenNoProfileBound()
+    public void LocalRank_FollowsTheProfilesPartyRank()
     {
-        PartyState state = new();
-        PartyViewModel vm = new(state, wireSender: null, profile: null);
-        Assert.Equal(PartyRank.Mid, vm.LocalRank);
+        MudPlay.Services.ProfileService profile = TestProfiles.Loaded();
+        SetRank(profile, PartyRank.Back);
+        using PartyViewModel vm = new(new PartyState(), wireSender: null, profile);
+        Assert.Equal(PartyRank.Back, vm.LocalRank);
+
+        SetRank(profile, PartyRank.Front);
+        profile.NotifyMutated();
+
+        Assert.Equal(PartyRank.Front, vm.LocalRank);
+    }
+
+    private static void SetRank(MudPlay.Services.ProfileService profile, PartyRank rank)
+    {
+        profile.Current!.Settings ??= new();
+        profile.Current.Settings["Party"] =
+            System.Text.Json.JsonSerializer.SerializeToElement(new PartySettings { Rank = rank });
     }
 }

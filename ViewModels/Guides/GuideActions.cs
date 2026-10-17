@@ -7,8 +7,7 @@ namespace MudPlay.ViewModels.Guides;
 // is declared here and raised somewhere in the code.
 public static class GuideActions
 {
-    // Report an action from any window. A no-op until MainWindow wires the bridge
-    // (and in tests, where there is no app).
+    // Report an action from any window. A no-op until MainWindow wires the bridge.
     public static void Report(string key) => Services.AppServices.CurrentOrNull?.NotifyTourAction?.Invoke(key);
 
     // ----- First-time setup ----------------------------------------------

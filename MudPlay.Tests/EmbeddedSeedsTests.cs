@@ -5,14 +5,12 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// The seed data ships EMBEDDED in the assembly (Defaults/*.seed.json), so a
-/// self-contained single-file build carries it inside the exe and replacing just
-/// the binary refreshes the seeds. AppPaths.ExtractEmbeddedSeeds is the launch-time
-/// step that materializes them to disk; these pin that it produces the full set and
-/// the shipped content (a regression guard against the csproj reverting to loose
-/// Content, which would silently drop the embedded resources).
-/// </summary>
+// The seed data ships EMBEDDED in the assembly (Defaults/*.seed.json), so a
+// self-contained single-file build carries it inside the exe and replacing just
+// the binary refreshes the seeds. AppPaths.ExtractEmbeddedSeeds is the launch-time
+// step that materializes them to disk; these pin that it produces the full set and
+// the shipped content (a regression guard against the csproj reverting to loose
+// Content, which would silently drop the embedded resources).
 public sealed class EmbeddedSeedsTests : IDisposable
 {
     private readonly string _dir;

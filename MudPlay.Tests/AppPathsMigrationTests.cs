@@ -5,12 +5,10 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// The one-time legacy "FujinTerm" → MudPlay data migration copies only files the
-/// destination LACKS and never overwrites — so updating from a 2.x build backfills
-/// a user's profiles / BBS folders / settings without clobbering anything the new
-/// install already created. Pins that non-destructive contract.
-/// </summary>
+// The one-time legacy "FujinTerm" → MudPlay data migration copies only files the
+// destination LACKS and never overwrites — so updating from a 2.x build backfills
+// a user's profiles / BBS folders / settings without clobbering anything the new
+// install already created. Pins that non-destructive contract.
 public sealed class AppPathsMigrationTests : IDisposable
 {
     private readonly string _root;

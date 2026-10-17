@@ -27,33 +27,25 @@ public sealed class ManaRegenBreakpointCalculatorTests
     }
 
     [Fact]
-    public void Compute_RangeCrossesBreakpoints_MapsRollValuesAndRecommends()
+    public void Compute_RangeCrossesBreakpoints_MapsRollValues()
     {
         // Spell range [5,15] at this level: worst roll (5) still gives tick 14,
         // best roll (15) gives 16 — two steps sit inside the range.
         var r = ManaRegenBreakpointCalculator.Compute(Mage40(), rollMin: 5, rollMax: 15);
 
-        Assert.Equal(14, r.BaseTick);
-        Assert.Equal(14, r.GearTick);
         Assert.Equal(14, r.WorstTick);
         Assert.Equal(16, r.BestTick);
+        Assert.Equal(5, r.RollMin);
+        Assert.Equal(15, r.RollMax);
 
-        Assert.Equal(2, r.Breakpoints.Count);
-        // tick 15 needs +8% → roll value 8 (gear 0), at 30% of the [5,15] range.
-        Assert.Equal(15, r.Breakpoints[0].Tick);
-        Assert.Equal(8, r.Breakpoints[0].RollValueNeeded);
-        Assert.Equal(0.30, r.Breakpoints[0].RollFractionOfRange, 3);
-        // tick 16 needs the max roll (15) → 100% of the range.
-        Assert.Equal(16, r.Breakpoints[1].Tick);
-        Assert.Equal(15, r.Breakpoints[1].RollValueNeeded);
-
-        // Recommend the highest step within the 75% cutoff: tick 15 (roll 8), not
-        // tick 16 which demands a top-of-range roll.
-        Assert.Equal(8, r.RecommendedRollThreshold);
+        // tick 15 needs +8% → roll value 8 (gear 0); tick 16 needs the max roll (15).
+        Assert.Equal(
+            new[] { new ManaRegenBreakpointCalculator.Breakpoint(15, 8), new ManaRegenBreakpointCalculator.Breakpoint(16, 15) },
+            r.Breakpoints);
     }
 
     [Fact]
-    public void Compute_RangeTooSmallToCrossAStep_NoBreakpointsNoReroll()
+    public void Compute_RangeTooSmallToCrossAStep_NoBreakpoints()
     {
         // [5,7] never lifts the tick off 14 — rerolling here is pure mana waste.
         var r = ManaRegenBreakpointCalculator.Compute(Mage40(), rollMin: 5, rollMax: 7);
@@ -61,7 +53,6 @@ public sealed class ManaRegenBreakpointCalculatorTests
         Assert.Equal(14, r.WorstTick);
         Assert.Equal(14, r.BestTick);
         Assert.Empty(r.Breakpoints);
-        Assert.Null(r.RecommendedRollThreshold);
     }
 
     [Fact]
@@ -69,8 +60,8 @@ public sealed class ManaRegenBreakpointCalculatorTests
     {
         // +8% from gear alone already reaches tick 15 before the spell rolls.
         var r = ManaRegenBreakpointCalculator.Compute(Mage40(gear: 8), rollMin: 5, rollMax: 15);
-        Assert.Equal(14, r.BaseTick);   // level + stat only
-        Assert.Equal(15, r.GearTick);   // gear folded in
+        Assert.Equal(14, ManaRegenBreakpointCalculator.Tick(Mage40(gear: 8) with { GearRegenPercent = 0 }, 0));   // level + stat only
+        Assert.Equal(15, ManaRegenBreakpointCalculator.Tick(Mage40(gear: 8), 0));   // gear folded in
         Assert.True(r.WorstTick >= 15);
     }
 

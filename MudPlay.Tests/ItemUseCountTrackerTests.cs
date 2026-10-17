@@ -46,8 +46,8 @@ public sealed class ItemUseCountTrackerTests : IDisposable
         File.WriteAllText(Path.Combine(_root, "alpha", "Items.json"), ItemsJson);
         _cache = new GameDataCache(_root);
         _cache.SwitchSet("alpha");
-        _profile = new ProfileService();
-        _profile.LoadBlank();
+        _profile = TestProfiles.Service();
+        _profile.LoadDefaultProfile();
 
         _tracker = new ItemUseCountTracker(
             gameData: _cache,

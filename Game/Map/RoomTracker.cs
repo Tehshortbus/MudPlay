@@ -89,13 +89,13 @@ public sealed class RoomTracker
     // the passive footprint.
     private Direction? _passivePendingMove;
     // Reports whether a navigation engine is currently attached to the recovery gate.
-    // Null in tests / before wiring → treated as "not attached", so the passive path
+    // Null before wiring → treated as "not attached", so the passive path
     // runs. Wired by AppServices to EngineRecoveryGate.HasAttachedEngine.
     private Func<bool>? _isEngineAttached;
 
     // Reports whether we're afraid. Fear runs us through the room's obvious exits
     // with no command echo, so while it's on an unexpected display is read as a
-    // move to a neighbour (TryFearMove). Null in tests / before wiring → never.
+    // move to a neighbour (TryFearMove). Null before wiring → never.
     private Func<bool>? _isFeared;
 
     // Profile the tracker is currently writing into. Set by Hydrate; cleared by
@@ -105,7 +105,7 @@ public sealed class RoomTracker
 
     // Optional live-inventory snapshot provider. When set, NoteDeath records the
     // deathpile contents (worn + carried items) on the death record. Bound by
-    // AppServices once the InventoryManager exists; null in tests / before
+    // AppServices once the InventoryManager exists; null before
     // wiring, in which case death records simply carry no item lists.
     private Func<InventorySnapshot>? _inventorySnapshot;
 
@@ -334,7 +334,7 @@ public sealed class RoomTracker
 
     // Reports whether we have an item — carried, worn or on the key ring — or null
     // while the inventory hasn't been read. Settles which landing an item-gated
-    // cast-on-walk teleport takes (InferCastLanding). Unset in tests / before
+    // cast-on-walk teleport takes (InferCastLanding). Unset before
     // wiring → unknown.
     private Func<int, bool?>? _holdsItem;
 
@@ -934,8 +934,8 @@ public sealed class RoomTracker
     private Func<TimeSpan, Action, IDisposable>? _scheduleDelay;
     private Action? _requestRedisplay;
 
-    // One-shot timer for the waits above. Wired by AppServices; unset in tests that
-    // don't exercise them, where they then never run out.
+    // One-shot timer for the waits above. Wired by AppServices; unset, the
+    // waits never run out.
     public void SetDelayScheduler(Func<TimeSpan, Action, IDisposable> schedule)
     {
         ArgumentNullException.ThrowIfNull(schedule);
@@ -1026,9 +1026,6 @@ public sealed class RoomTracker
             $"No room shown {CastDisplayWait.TotalSeconds:0.#}s after move {DescribeMove(head)} through a teleporting exit — asking for the room.");
         _requestRedisplay?.Invoke();
     }
-
-    // Test seam — whether the wait for a room is running.
-    internal bool CastDisplayWaitArmedForTests => _castDisplayTimer is not null;
 
     // We stand in a landing booked off the room passed through. The game shows the
     // landing next; until it has, that display is owed, and when it doesn't come in
@@ -1342,7 +1339,7 @@ public sealed class RoomTracker
     // by the peek-suppression path to avoid dropping a move's confirming display as if
     // it were a look-<dir> peek: only a display that is NEITHER — the peeked adjacent
     // room — is the actual peek. Mirrors ReconcileFromPending's Strategy 1 / 1a / 1b
-    // match tests without mutating any state.
+    // matches without mutating any state.
     private bool ObservationLooksLikePendingMoveOutcome(RoomObservation observation, DateTimeOffset when)
     {
         if (State.Confidence != RoomConfidence.Pending) return false;

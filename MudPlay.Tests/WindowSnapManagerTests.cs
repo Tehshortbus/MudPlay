@@ -11,7 +11,8 @@ namespace MudPlay.Tests;
 public sealed class WindowSnapManagerTests
 {
     private const int Threshold = WindowSnapManager.SnapThreshold; // 12
-    private const int Tol = WindowSnapManager.AdjacencyTolerance;  // 4
+    // The gap within which two edges count as touching, for these tests.
+    private const int Tol = 4;
 
     [Fact]
     public void ComputeSnap_RightEdgeNearLeftEdge_SnapsXFlush()

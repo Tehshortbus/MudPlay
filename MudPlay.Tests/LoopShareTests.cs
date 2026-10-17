@@ -17,6 +17,12 @@ namespace MudPlay.Tests;
 // reassembles and saves without clobbering a loop of its own.
 public sealed class LoopShareTests : IDisposable
 {
+    // The router each engine reads, which a test's chat lines go through.
+    private readonly Dictionary<RemoteCommandManager, MessageRouter> _routers = new();
+    // The router the loop receiver reads; set where a test builds its receiver,
+    // before any line is heard.
+    private MessageRouter _heardBy = null!;
+
     // Loops persist under the set's Loops/ folder in the real app data root (AppPaths
     // caches it at static init), so each test uses its own set name and deletes it.
     private readonly string _setName = "test-set-" + Guid.NewGuid().ToString("N")[..12];
@@ -62,7 +68,7 @@ public sealed class LoopShareTests : IDisposable
     [Fact]
     public void Codec_RoundTripsTheRoute_ButNotFavourite()
     {
-        Loop decoded = LoopShareCodec.Decode(LoopShareCodec.Encode(SampleLoop()));
+        Loop decoded = LoopShareCodec.Decode(LoopShareCodec.Encode(SampleLoop()), out _);
 
         Assert.Equal("King's Road", decoded.Name);
         Assert.Equal("watch the bridge", decoded.Notes);
@@ -86,7 +92,7 @@ public sealed class LoopShareTests : IDisposable
         IReadOnlyList<string> chunks = LoopShareCodec.Encode(loop);
 
         Assert.Contains("\"ld\":3", Unpack(string.Concat(chunks)));
-        Assert.Equal(LairEntryDebuffMode.WaitForPriorityBuffs, LoopShareCodec.Decode(chunks).LairEntryDebuff);
+        Assert.Equal(LairEntryDebuffMode.WaitForPriorityBuffs, LoopShareCodec.Decode(chunks, out _).LairEntryDebuff);
     }
 
     // A way of waiting this client doesn't know (one a newer client added) arrives as
@@ -97,7 +103,7 @@ public sealed class LoopShareTests : IDisposable
     {
         string blob = Pack("{\"n\":\"x\",\"w\":[{\"r\":\"1/1\"},{\"r\":\"1/2\"}],\"ld\":99}");
 
-        Loop decoded = LoopShareCodec.Decode(new[] { blob });
+        Loop decoded = LoopShareCodec.Decode(new[] { blob }, out _);
 
         Assert.Equal(LairEntryDebuffMode.Off, decoded.LairEntryDebuff);
         Assert.Equal(2, decoded.Waypoints.Count);
@@ -119,7 +125,7 @@ public sealed class LoopShareTests : IDisposable
         sent.LairEntryDebuff = LairEntryDebuffMode.WaitForPriorityBuffs;
 
         receiver.NoteSendConfirmed("Raijin");
-        foreach (string line in DataLines(sent)) receiver.Ingest(Tele("Raijin", line));
+        foreach (string line in DataLines(sent)) Hear(Tele("Raijin", line));
 
         Assert.Equal(LairEntryDebuffMode.WaitForPriorityBuffs, loops.Get("King's Road")!.LairEntryDebuff);
         Assert.True(settings.HasOwn("King's Road"));
@@ -145,14 +151,14 @@ public sealed class LoopShareTests : IDisposable
 
         Assert.True(chunks.Count > 1);
         Assert.All(chunks, c => Assert.InRange(c.Length, 1, LoopShareCodec.MaxChunkChars));
-        Assert.Equal(400, LoopShareCodec.Decode(chunks).Waypoints.Count);
+        Assert.Equal(400, LoopShareCodec.Decode(chunks, out _).Waypoints.Count);
     }
 
     [Fact]
     public void Codec_Garbage_IsAFormatException()
     {
-        Assert.Throws<FormatException>(() => LoopShareCodec.Decode(new[] { "not*base64!" }));
-        Assert.Throws<FormatException>(() => LoopShareCodec.Decode(new[] { "AAAA" }));
+        Assert.Throws<FormatException>(() => LoopShareCodec.Decode(new[] { "not*base64!" }, out _));
+        Assert.Throws<FormatException>(() => LoopShareCodec.Decode(new[] { "AAAA" }, out _));
     }
 
     // A loop's name is written to the terminal and to a file name, and a room's
@@ -165,7 +171,7 @@ public sealed class LoopShareTests : IDisposable
     [InlineData("{\"n\":\"x\",\"w\":[{\"r\":\"1/1\",\"c\":\"n\\rdrop all\"},{\"r\":\"1/2\"}]}")]
     [InlineData("{\"n\":\"x\",\"w\":[{\"r\":\"1/1\"},{\"r\":\"1/2\",\"c\":\"say hi\\u0007\"}]}")]
     public void Codec_ControlCharacterInTheNameOrACommand_Refused(string json) =>
-        Assert.Throws<FormatException>(() => LoopShareCodec.Decode(new[] { Pack(json) }));
+        Assert.Throws<FormatException>(() => LoopShareCodec.Decode(new[] { Pack(json) }, out _));
 
     // What chains commands in a loop is plain text, and still goes through.
     [Fact]
@@ -174,7 +180,7 @@ public sealed class LoopShareTests : IDisposable
         Loop decoded = LoopShareCodec.Decode(new[]
         {
             Pack("{\"n\":\"x\",\"w\":[{\"r\":\"1/1\",\"c\":\"open door;n^Msearch\"},{\"r\":\"1/2\"}]}"),
-        });
+        }, out _);
 
         Assert.Equal("open door;n^Msearch", decoded.Waypoints[0].Command);
     }
@@ -189,12 +195,13 @@ public sealed class LoopShareTests : IDisposable
         LoopManager loops = NewLoops();
         List<string> notices = new();
         List<string> told = new();
+        _heardBy = router;
         LoopShareReceiver receiver = new(new ChatRouter(router), loops, notices.Add, clock: () => _now,
             tell: (_, text, _) => { told.Add(text); return true; });
         string blob = Pack("{\"n\":\"x\\u001b[2J\",\"w\":[{\"r\":\"1/1\"},{\"r\":\"1/2\"}]}");
 
         receiver.NoteSendConfirmed("Raijin");
-        receiver.Ingest(Tele("Raijin", $"{{{LoopShareHandler.DataToken} a1b2 1/1 {blob}}}"));
+        Hear(Tele("Raijin", $"{{{LoopShareHandler.DataToken} a1b2 1/1 {blob}}}"));
 
         Assert.Empty(loops.Loops);
         Assert.Equal("[Loop from Raijin arrived damaged, not saved]", notices.Single());
@@ -205,7 +212,7 @@ public sealed class LoopShareTests : IDisposable
     public void Codec_OneRoomLoop_Refused()
     {
         string blob = Pack("{\"n\":\"x\",\"w\":[{\"r\":\"1/1\"}]}");
-        Assert.Throws<FormatException>(() => LoopShareCodec.Decode(new[] { blob }));
+        Assert.Throws<FormatException>(() => LoopShareCodec.Decode(new[] { blob }, out _));
     }
 
     [Fact]
@@ -213,7 +220,7 @@ public sealed class LoopShareTests : IDisposable
     {
         string blob = Pack("{\"n\":\"" + new string('a', 2_000_000) + "\"}");
         Assert.True(blob.Length < 10_000);   // tiny on the wire…
-        Assert.Throws<FormatException>(() => LoopShareCodec.Decode(new[] { blob }));   // …huge inflated
+        Assert.Throws<FormatException>(() => LoopShareCodec.Decode(new[] { blob }, out _));   // …huge inflated
     }
 
     private static string Pack(string json)
@@ -261,7 +268,7 @@ public sealed class LoopShareTests : IDisposable
         Assert.All(data, l => Assert.StartsWith(LoopShareHandler.DataToken + " ", l));
 
         // The data lines decode back to the loop.
-        Loop decoded = LoopShareCodec.Decode(data.Select(l => l.Split(' ')[3]));
+        Loop decoded = LoopShareCodec.Decode(data.Select(l => l.Split(' ')[3]), out _);
         Assert.Equal("King's Road", decoded.Name);
     }
 
@@ -353,6 +360,7 @@ public sealed class LoopShareTests : IDisposable
         DefaultPatterns.Seed(router);
         LoopManager loops = NewLoops();
         List<string> notices = new();
+        _heardBy = router;
         return (new LoopShareReceiver(new ChatRouter(router), loops, notices.Add, clock: () => _now), loops, notices);
     }
 
@@ -362,15 +370,17 @@ public sealed class LoopShareTests : IDisposable
         return chunks.Select((c, i) => $"{{{LoopShareHandler.DataToken} {id} {i + 1}/{chunks.Count} {c}}}").ToList();
     }
 
-    private static ChatLogEntry Tele(string sender, string msg) =>
-        new(DateTimeOffset.UnixEpoch, ChatChannel.TelepathIncoming, sender, msg, $"{sender} telepaths: {msg}");
+    private static ChatLine Tele(string sender, string msg) => new(ChatChannel.TelepathIncoming, sender, msg);
+
+    // A line the game prints, read by the loop receiver through its chat router.
+    private void Hear(ChatLine line) => ChatLines.Hear(_heardBy, line);
 
     // What a notice says of a loop whose offer carried no code: none of these
     // receiver tests sends an offer line unless it says so.
     private const string NoCodeOffered = "not verified: no code came with the offer";
 
     // The sender's offer as it reaches the asker, braces and all.
-    private static ChatLogEntry Offer(string sender, Loop loop, string? code = null) =>
+    private ChatLine Offer(string sender, Loop loop, string? code = null) =>
         Tele(sender, "{" + LoopShareHandler.OfferLine(loop.Name, code ?? LoopSignature.ShortOf(loop)) + "}");
 
     // ----- the code on the offer, and the loop checked against it ----------
@@ -426,9 +436,9 @@ public sealed class LoopShareTests : IDisposable
         var (receiver, loops, notices) = NewReceiver();
         Loop sent = SampleLoop();
 
-        receiver.Ingest(Offer("Raijin", sent));
+        Hear(Offer("Raijin", sent));
         receiver.NoteSendConfirmed("Raijin");
-        foreach (string line in DataLines(sent)) receiver.Ingest(Tele("Raijin", line));
+        foreach (string line in DataLines(sent)) Hear(Tele("Raijin", line));
 
         Assert.NotNull(loops.Get("King's Road"));
         Assert.Equal($"[Received loop 'King's Road' 3 rooms from Raijin ({LoopSignature.ShortOf(sent)}, verified)]",
@@ -445,9 +455,9 @@ public sealed class LoopShareTests : IDisposable
         Loop arrived = SampleLoop();
         arrived.Waypoints[0].DelayMs += 1;
 
-        receiver.Ingest(Offer("Raijin", offered));
+        Hear(Offer("Raijin", offered));
         receiver.NoteSendConfirmed("Raijin");
-        foreach (string line in DataLines(arrived)) receiver.Ingest(Tele("Raijin", line));
+        foreach (string line in DataLines(arrived)) Hear(Tele("Raijin", line));
 
         Assert.Empty(loops.Loops);
         Assert.Equal($"[Received loop 'King's Road' 3 rooms from Raijin does not match the loop offered "
@@ -463,17 +473,17 @@ public sealed class LoopShareTests : IDisposable
         Loop theirs = SampleLoop("Theirs"), others = SampleLoop("Others");
         others.Waypoints[0].DelayMs += 1;
 
-        receiver.Ingest(Offer("Suijin", others));
-        receiver.Ingest(Offer("Raijin", theirs));
+        Hear(Offer("Suijin", others));
+        Hear(Offer("Raijin", theirs));
         receiver.NoteSendConfirmed("Raijin");
-        foreach (string line in DataLines(theirs)) receiver.Ingest(Tele("Raijin", line));
+        foreach (string line in DataLines(theirs)) Hear(Tele("Raijin", line));
         Assert.EndsWith(", verified)]", notices.Single());
 
         // The same player sends again with no new offer: nothing to check it by.
         notices.Clear();
         theirs.Name = "Theirs again";
         receiver.NoteSendConfirmed("Raijin");
-        foreach (string line in DataLines(theirs, id: "c3d4")) receiver.Ingest(Tele("Raijin", line));
+        foreach (string line in DataLines(theirs, id: "c3d4")) Hear(Tele("Raijin", line));
         Assert.EndsWith($", {NoCodeOffered})]", notices.Single());
         Assert.Equal(2, loops.Loops.Count);
     }
@@ -487,9 +497,9 @@ public sealed class LoopShareTests : IDisposable
         var (receiver, loops, notices) = NewReceiver();
         string blob = Pack("{\"n\":\"Later\",\"w\":[{\"r\":\"1/1\"},{\"r\":\"1/2\"}],\"ld\":99}");
 
-        receiver.Ingest(Tele("Raijin", "{" + LoopShareHandler.OfferLine("Later", "0123abcd") + "}"));
+        Hear(Tele("Raijin", "{" + LoopShareHandler.OfferLine("Later", "0123abcd") + "}"));
         receiver.NoteSendConfirmed("Raijin");
-        receiver.Ingest(Tele("Raijin", $"{{{LoopShareHandler.DataToken} a1b2 1/1 {blob}}}"));
+        Hear(Tele("Raijin", $"{{{LoopShareHandler.DataToken} a1b2 1/1 {blob}}}"));
 
         Assert.Equal(LairEntryDebuffMode.Off, loops.Get("Later")!.LairEntryDebuff);
         Assert.Equal($"[Received loop 'Later' 2 rooms from Raijin ({LoopSignature.ShortOf(loops.Get("Later")!)}, "
@@ -525,16 +535,17 @@ public sealed class LoopShareTests : IDisposable
         DefaultPatterns.Seed(router);
         LoopManager loops = NewLoops();
         List<Told> told = new();
+        _heardBy = router;
         LoopShareReceiver receiver = new(new ChatRouter(router), loops, _ => { }, clock: () => _now,
             tell: (to, text, failed) => { told.Add(new Told(to, text, failed)); return true; });
         return (receiver, loops, told);
     }
 
-    private static void Transfer(LoopShareReceiver receiver, Loop loop, string sender = "Raijin", string id = "a1b2")
+    private void Transfer(LoopShareReceiver receiver, Loop loop, string sender = "Raijin", string id = "a1b2")
     {
-        receiver.Ingest(Offer(sender, loop));
+        Hear(Offer(sender, loop));
         receiver.NoteSendConfirmed(sender);
-        foreach (string line in DataLines(loop, id)) receiver.Ingest(Tele(sender, line));
+        foreach (string line in DataLines(loop, id)) Hear(Tele(sender, line));
     }
 
     [Fact]
@@ -563,8 +574,7 @@ public sealed class LoopShareTests : IDisposable
         Assert.Equal(2, loops.Loops.Count);
     }
 
-    private static ChatLogEntry Heard(ChatChannel channel, string sender, string msg) =>
-        new(DateTimeOffset.UnixEpoch, channel, sender, msg, $"{sender}: {msg}");
+    private static ChatLine Heard(ChatChannel channel, string sender, string msg) => new(channel, sender, msg);
 
     private static string OfferText(Loop loop) =>
         "{" + LoopShareHandler.OfferLine(loop.Name, LoopSignature.ShortOf(loop)) + "}";
@@ -580,10 +590,10 @@ public sealed class LoopShareTests : IDisposable
         Loop ours = SampleLoop("Ours"), someoneElses = SampleLoop("Someone else's");
         someoneElses.Waypoints[0].DelayMs += 1;
 
-        receiver.Ingest(Tele("Raijin", OfferText(ours)));
-        receiver.Ingest(Heard(ChatChannel.Gangpath, "Raijin", OfferText(someoneElses)));   // an older client, to another gang member
+        Hear(Tele("Raijin", OfferText(ours)));
+        Hear(Heard(ChatChannel.Gangpath, "Raijin", OfferText(someoneElses)));   // an older client, to another gang member
         receiver.NoteSendConfirmed("Raijin");
-        foreach (string line in DataLines(ours)) receiver.Ingest(Tele("Raijin", line));
+        foreach (string line in DataLines(ours)) Hear(Tele("Raijin", line));
 
         Assert.NotNull(loops.Get("Ours"));
         Assert.Equal(new Told("Raijin", $"@loopresult {LoopSignature.ShortOf(ours)} saved as 'Ours'", false),
@@ -600,16 +610,16 @@ public sealed class LoopShareTests : IDisposable
         Loop first = SampleLoop("First"), second = SampleLoop("Second");
         second.Waypoints[0].DelayMs += 1;
 
-        receiver.Ingest(Tele("Raijin", OfferText(first)));
+        Hear(Tele("Raijin", OfferText(first)));
         receiver.NoteSendConfirmed("Raijin");
-        receiver.Ingest(Tele("Raijin", OfferText(second)));        // the second ask's offer lands mid-transfer
-        foreach (string line in DataLines(first)) receiver.Ingest(Tele("Raijin", line));
+        Hear(Tele("Raijin", OfferText(second)));        // the second ask's offer lands mid-transfer
+        foreach (string line in DataLines(first)) Hear(Tele("Raijin", line));
 
         Assert.Equal($"@loopresult {LoopSignature.ShortOf(first)} saved as 'First'", told.Single().Text);
 
         told.Clear();
         receiver.NoteSendConfirmed("Raijin");
-        foreach (string line in DataLines(second, id: "c3d4")) receiver.Ingest(Tele("Raijin", line));
+        foreach (string line in DataLines(second, id: "c3d4")) Hear(Tele("Raijin", line));
         Assert.Equal($"@loopresult {LoopSignature.ShortOf(second)} saved as 'Second'", told.Single().Text);
         Assert.Equal(2, loops.Loops.Count);
     }
@@ -623,10 +633,10 @@ public sealed class LoopShareTests : IDisposable
         two.Waypoints[0].DelayMs += 1;
         arrived.Waypoints[0].DelayMs += 2;
 
-        receiver.Ingest(Offer("Raijin", one));
-        receiver.Ingest(Offer("Raijin", two));
+        Hear(Offer("Raijin", one));
+        Hear(Offer("Raijin", two));
         receiver.NoteSendConfirmed("Raijin");
-        foreach (string line in DataLines(arrived)) receiver.Ingest(Tele("Raijin", line));
+        foreach (string line in DataLines(arrived)) Hear(Tele("Raijin", line));
 
         Assert.Empty(loops.Loops);
         Assert.Equal($"[Received loop 'Three' 3 rooms from Raijin does not match the loop offered (received {LoopSignature.ShortOf(arrived)}, "
@@ -639,10 +649,10 @@ public sealed class LoopShareTests : IDisposable
         var (receiver, _, notices) = NewReceiver();
         Loop sent = SampleLoop();
 
-        receiver.Ingest(Offer("Raijin", sent));
+        Hear(Offer("Raijin", sent));
         _now += TimeSpan.FromMinutes(5) + TimeSpan.FromSeconds(1);
         receiver.NoteSendConfirmed("Raijin");
-        foreach (string line in DataLines(sent)) receiver.Ingest(Tele("Raijin", line));
+        foreach (string line in DataLines(sent)) Hear(Tele("Raijin", line));
 
         Assert.EndsWith($", {NoCodeOffered})]", notices.Single());
     }
@@ -654,11 +664,11 @@ public sealed class LoopShareTests : IDisposable
     {
         var (receiver, loops, notices) = NewReceiver();
         Loop first = SampleLoop("First");
-        receiver.Ingest(Offer("Raijin", first));
-        for (int i = 0; i < 8; i++) receiver.Ingest(Offer("Raijin", first, code: $"0000000{i}"));
+        Hear(Offer("Raijin", first));
+        for (int i = 0; i < 8; i++) Hear(Offer("Raijin", first, code: $"0000000{i}"));
 
         receiver.NoteSendConfirmed("Raijin");
-        foreach (string line in DataLines(first)) receiver.Ingest(Tele("Raijin", line));
+        foreach (string line in DataLines(first)) Hear(Tele("Raijin", line));
 
         Assert.Empty(loops.Loops);
         Assert.Contains("does not match the loop offered", notices.Single());
@@ -680,15 +690,15 @@ public sealed class LoopShareTests : IDisposable
         var (receiver, loops, told) = NewAnsweringReceiver();
         Loop asked = SampleLoop();
 
-        receiver.Ingest(Tele("Raijin", OfferText(asked)));
+        Hear(Tele("Raijin", OfferText(asked)));
         receiver.NoteSendConfirmed("Raijin");
-        foreach (string line in DataLines(asked, id: "old1")) receiver.Ingest(Heard(channel, "Raijin", line));
-        foreach (string line in DataLines(asked, id: "old2")) receiver.Ingest(Heard(channel, "Mallory", line));
+        foreach (string line in DataLines(asked, id: "old1")) Hear(Heard(channel, "Raijin", line));
+        foreach (string line in DataLines(asked, id: "old2")) Hear(Heard(channel, "Mallory", line));
 
         Assert.Empty(loops.Loops);
         Assert.Empty(told);
 
-        foreach (string line in DataLines(asked)) receiver.Ingest(Tele("Raijin", line));
+        foreach (string line in DataLines(asked)) Hear(Tele("Raijin", line));
 
         Assert.NotNull(loops.Get("King's Road"));
         Assert.Equal(new Told("Raijin", $"@loopresult {LoopSignature.ShortOf(asked)} saved as 'King's Road'", false),
@@ -703,9 +713,9 @@ public sealed class LoopShareTests : IDisposable
         var (receiver, _, notices) = NewReceiver();
         Loop sent = SampleLoop();
 
-        receiver.Ingest(Heard(ChatChannel.Gangpath, "Raijin", OfferText(sent)));
+        Hear(Heard(ChatChannel.Gangpath, "Raijin", OfferText(sent)));
         receiver.NoteSendConfirmed("Raijin");
-        foreach (string line in DataLines(sent)) receiver.Ingest(Tele("Raijin", line));
+        foreach (string line in DataLines(sent)) Hear(Tele("Raijin", line));
 
         Assert.EndsWith($", {NoCodeOffered})]", notices.Single());
     }
@@ -717,9 +727,9 @@ public sealed class LoopShareTests : IDisposable
         var (receiver, loops, notices) = NewReceiver();
         Loop sent = SampleLoop();
 
-        receiver.Ingest(Tele("Raijin", "{preparing to send: King's Road, yes to confirm, no to deny}"));
+        Hear(Tele("Raijin", "{preparing to send: King's Road, yes to confirm, no to deny}"));
         receiver.NoteSendConfirmed("Raijin");
-        foreach (string line in DataLines(sent)) receiver.Ingest(Tele("Raijin", line));
+        foreach (string line in DataLines(sent)) Hear(Tele("Raijin", line));
 
         Assert.NotNull(loops.Get("King's Road"));
         Assert.EndsWith($", {NoCodeOffered})]", notices.Single());
@@ -770,9 +780,9 @@ public sealed class LoopShareTests : IDisposable
         Loop arrived = SampleLoop();
         arrived.Waypoints[0].DelayMs += 1;
 
-        receiver.Ingest(Offer("Raijin", offered));
+        Hear(Offer("Raijin", offered));
         receiver.NoteSendConfirmed("Raijin");
-        foreach (string line in DataLines(arrived)) receiver.Ingest(Tele("Raijin", line));
+        foreach (string line in DataLines(arrived)) Hear(Tele("Raijin", line));
 
         Assert.Equal(new Told("Raijin",
             $"@loopresult {LoopSignature.ShortOf(arrived)} not saved: it is not the loop offered ({LoopSignature.ShortOf(offered)}) - send it again",
@@ -780,27 +790,33 @@ public sealed class LoopShareTests : IDisposable
 
         told.Clear();
         receiver.NoteSendConfirmed("Raijin");
-        receiver.Ingest(Tele("Raijin", $"{{{LoopShareHandler.DataToken} a1b2 1/1 AAAA}}"));
+        Hear(Tele("Raijin", $"{{{LoopShareHandler.DataToken} a1b2 1/1 AAAA}}"));
 
         Assert.Equal(new Told("Raijin", "@loopresult - not saved: it arrived damaged - send it again", true),
             told.Single());
         Assert.Empty(loops.Loops);
     }
 
-    private static RemoteCommandManager Engine(bool masterSwitchOff = false, bool warn = true, bool stealthed = false)
+    // Each engine's own wire, captured through the sender the client binds.
+    private readonly Dictionary<RemoteCommandManager, List<byte[]>> _wire = new();
+
+    private RemoteCommandManager Engine(bool masterSwitchOff = false, bool warn = true, bool stealthed = false)
     {
         MessageRouter router = new();
         DefaultPatterns.Seed(router);
-        return new RemoteCommandManager(new ChatRouter(router), new PartyState(), new PlayerDatabase())
+        RemoteCommandManager engine = new(new ChatRouter(router), new PartyState(), new PlayerDatabase(new ProfileService(), () => null))
         {
             BlockedByMasterSwitch = _ => masterSwitchOff,
             WarnOnDenial = warn,
             StealthedProvider = () => stealthed,
         };
+        _routers[engine] = router;
+        engine.SetWireSender((_wire[engine] = new()).Add);
+        return engine;
     }
 
-    private static string[] Wire(RemoteCommandManager engine) =>
-        engine.LastSentForTests.Select(b => Encoding.Latin1.GetString(b)).ToArray();
+    private string[] Wire(RemoteCommandManager engine) =>
+        _wire[engine].Select(b => Encoding.Latin1.GetString(b)).ToArray();
 
     // The answer leaves as every remote reply does, braced and to the sender's given
     // name, and by telepath: a loop goes by telepath only, and so does what is said
@@ -853,9 +869,9 @@ public sealed class LoopShareTests : IDisposable
     {
         RemoteCommandManager engine = Engine();
 
-        engine.DispatchForTests(Tele("Raijin", line));
+        ChatLines.Hear(_routers[engine], ChatChannel.TelepathIncoming, "Raijin", line);
 
-        Assert.Empty(engine.LastSentForTests);
+        Assert.Empty(_wire[engine]);
         Assert.False(PartyProbeManager.TryParseVersion(line, out _));
     }
 
@@ -909,13 +925,15 @@ public sealed class LoopShareTests : IDisposable
         LogService log = new();
         MessageRouter router = new();
         DefaultPatterns.Seed(router);
-        RemoteCommandManager engine = new(new ChatRouter(router), new PartyState(), new PlayerDatabase(), log) { WarnOnDenial = true };
+        RemoteCommandManager engine = new(new ChatRouter(router), new PartyState(), new PlayerDatabase(new ProfileService(), () => null), log) { WarnOnDenial = true };
+        _routers[engine] = router;
+        engine.SetWireSender((_wire[engine] = new()).Add);
         engine.RegisterIgnored(LoopShareHandler.DataToken);
         engine.RegisterIgnored(LoopShareHandler.ResultToken);
 
-        engine.DispatchForTests(Tele("Raijin", line));
+        ChatLines.Hear(_routers[engine], ChatChannel.TelepathIncoming, "Raijin", line);
 
-        Assert.Empty(engine.LastSentForTests);
+        Assert.Empty(_wire[engine]);
         // Swallowed as a reserved token, ahead of the unknown-command and blocked-word paths.
         Assert.Empty(log.Snapshot());
     }
@@ -932,6 +950,11 @@ public sealed class LoopShareTests : IDisposable
         loops.Save(loop);
         List<string> notices = new();
         LoopShareHandler share = new(loops, clock: () => _now, notice: notices.Add);
+        // The chat the handler reads, wired as the client wires it.
+        MessageRouter router = new();
+        DefaultPatterns.Seed(router);
+        new ChatRouter(router).EntryClassified += share.NoteChat;
+        _heardBy = router;
         List<string> replies = new();
         share.OnSend(Ctx(to, replies), loop.Name);
         share.OnSend(Ctx(to, replies), "yes");
@@ -943,12 +966,12 @@ public sealed class LoopShareTests : IDisposable
     {
         var (share, notices, code) = SenderThatSent(SampleLoop());
 
-        share.NoteChat(Tele("Raijin", $"{{@loopresult {code} saved as 'King's Road 2'}}"));
+        Hear(Tele("Raijin", $"{{@loopresult {code} saved as 'King's Road 2'}}"));
 
         Assert.Equal($"[Raijin on loop 'King's Road': saved as 'King's Road 2' (code {code}, the same as sent)]", notices.Single());
 
         // One answer to a send. A second line is about nothing we sent.
-        share.NoteChat(Tele("Raijin", $"{{@loopresult {code} saved as 'King's Road 3'}}"));
+        Hear(Tele("Raijin", $"{{@loopresult {code} saved as 'King's Road 3'}}"));
         Assert.Single(notices);
     }
 
@@ -957,7 +980,7 @@ public sealed class LoopShareTests : IDisposable
     {
         var (share, notices, code) = SenderThatSent(SampleLoop());
 
-        share.NoteChat(Tele("Raijin", "{@loopresult 0123abcd not saved: it is not the loop offered (9da659db) - send it again}"));
+        Hear(Tele("Raijin", "{@loopresult 0123abcd not saved: it is not the loop offered (9da659db) - send it again}"));
 
         Assert.Equal("[Raijin on loop 'King's Road': not saved: it is not the loop offered (9da659db) - send it again "
             + $"(code 0123abcd, NOT the code sent, {code})]", notices.Single());
@@ -968,13 +991,13 @@ public sealed class LoopShareTests : IDisposable
     {
         var (share, notices, code) = SenderThatSent(SampleLoop());
 
-        share.NoteChat(Tele("Mallory", $"{{@loopresult {code} saved as 'King's Road'}}"));
-        share.NoteChat(Tele("Raijin", "{@loopresult nonsense saved}"));
-        share.NoteChat(Tele("Raijin", "{loopresult saved as 'King's Road'}"));
+        Hear(Tele("Mallory", $"{{@loopresult {code} saved as 'King's Road'}}"));
+        Hear(Tele("Raijin", "{@loopresult nonsense saved}"));
+        Hear(Tele("Raijin", "{loopresult saved as 'King's Road'}"));
         Assert.Empty(notices);
 
         _now += TimeSpan.FromMinutes(11);
-        share.NoteChat(Tele("Raijin", $"{{@loopresult {code} saved as 'King's Road'}}"));
+        Hear(Tele("Raijin", $"{{@loopresult {code} saved as 'King's Road'}}"));
         Assert.Empty(notices);
     }
 
@@ -989,11 +1012,11 @@ public sealed class LoopShareTests : IDisposable
     {
         var (share, notices, code) = SenderThatSent(SampleLoop());
 
-        share.NoteChat(Heard(channel, "Raijin", "{@loopresult 0123abcd saved as 'Some other loop'}"));
-        share.NoteChat(Heard(channel, "Raijin", $"{{@loopresult {code} saved as 'King's Road'}}"));
+        Hear(Heard(channel, "Raijin", "{@loopresult 0123abcd saved as 'Some other loop'}"));
+        Hear(Heard(channel, "Raijin", $"{{@loopresult {code} saved as 'King's Road'}}"));
         Assert.Empty(notices);
 
-        share.NoteChat(Tele("Raijin", $"{{@loopresult {code} saved as 'King's Road'}}"));
+        Hear(Tele("Raijin", $"{{@loopresult {code} saved as 'King's Road'}}"));
         Assert.Equal($"[Raijin on loop 'King's Road': saved as 'King's Road' (code {code}, the same as sent)]", notices.Single());
     }
 
@@ -1004,7 +1027,7 @@ public sealed class LoopShareTests : IDisposable
     {
         var (share, notices, _) = SenderThatSent(SampleLoop());
 
-        share.NoteChat(Tele("Raijin", "{@loopresult - not saved: it arrived damaged - send it again}"));
+        Hear(Tele("Raijin", "{@loopresult - not saved: it arrived damaged - send it again}"));
 
         Assert.Equal("[Raijin on loop 'King's Road': not saved: it arrived damaged - send it again]", notices.Single());
     }
@@ -1015,7 +1038,11 @@ public sealed class LoopShareTests : IDisposable
     {
         var (share, notices, code) = SenderThatSent(SampleLoop());
 
-        share.NoteChat(Tele("Raijin", $"{{@loopresult {code} saved\u001b[2J as {new string('x', 500)}}}"));
+        // Escape codes and a run far past a screen line, which the terminal would
+        // already have taken apart: the handler is handed the entry itself.
+        string message = $"{{@loopresult {code} saved\u001b[2J as {new string('x', 500)}}}";
+        share.NoteChat(new ChatLogEntry(DateTimeOffset.UnixEpoch, ChatChannel.TelepathIncoming, "Raijin", message,
+            $"Raijin telepaths: {message}"));
 
         Assert.DoesNotContain('\u001b', notices.Single());
         Assert.True(notices.Single().Length < 260);
@@ -1027,11 +1054,12 @@ public sealed class LoopShareTests : IDisposable
     public void SendReceiveAndAnswer_BothEndsShowTheSameCode()
     {
         var (share, senderNotices, code) = SenderThatSent(SampleLoop(), to: "Asker");
+        MessageRouter sendersChat = _heardBy;
         var (receiver, loops, told) = NewAnsweringReceiver();
         loops.Delete("King's Road");   // one folder stands in for both clients' here
 
         Transfer(receiver, SampleLoop(), sender: "Scout");
-        share.NoteChat(Tele("Asker", "{" + told.Single().Text + "}"));
+        ChatLines.Hear(sendersChat, Tele("Asker", "{" + told.Single().Text + "}"));
 
         Assert.Equal($"[Asker on loop 'King's Road': saved as 'King's Road' (code {code}, the same as sent)]", senderNotices.Single());
     }
@@ -1050,9 +1078,9 @@ public sealed class LoopShareTests : IDisposable
         senders.Delete("King's Road");   // one folder stands in for both clients' here
         var (receiver, loops, notices) = NewReceiver();
 
-        receiver.Ingest(Tele("Scout", "{" + wire[0] + "}"));
+        Hear(Tele("Scout", "{" + wire[0] + "}"));
         receiver.NoteSendConfirmed("Scout");
-        foreach (string line in wire.Skip(1)) receiver.Ingest(Tele("Scout", "{" + line + "}"));
+        foreach (string line in wire.Skip(1)) Hear(Tele("Scout", "{" + line + "}"));
 
         Assert.Equal($"[Received loop 'King's Road' 3 rooms from Scout ({LoopSignature.ShortOf(SampleLoop())}, verified)]",
             notices.Single());
@@ -1069,7 +1097,7 @@ public sealed class LoopShareTests : IDisposable
         Assert.True(lines.Count > 1);
 
         receiver.NoteSendConfirmed("Raijin");
-        foreach (string line in Enumerable.Reverse(lines)) receiver.Ingest(Tele("Raijin", line));
+        foreach (string line in Enumerable.Reverse(lines)) Hear(Tele("Raijin", line));
 
         Assert.Equal(200, loops.Get("Grand tour")!.Waypoints.Count);
         Assert.Equal($"[Received loop 'Grand tour' 200 rooms from Raijin ({LoopSignature.ShortOf(big)}, {NoCodeOffered})]",
@@ -1080,7 +1108,7 @@ public sealed class LoopShareTests : IDisposable
     public void Receive_WithoutOurYes_Ignored()
     {
         var (receiver, loops, notices) = NewReceiver();
-        foreach (string line in DataLines(SampleLoop())) receiver.Ingest(Tele("Raijin", line));
+        foreach (string line in DataLines(SampleLoop())) Hear(Tele("Raijin", line));
 
         Assert.Empty(loops.Loops);
         Assert.Empty(notices);
@@ -1091,7 +1119,7 @@ public sealed class LoopShareTests : IDisposable
     {
         var (receiver, loops, _) = NewReceiver();
         receiver.NoteSendConfirmed("Raijin");
-        foreach (string line in DataLines(SampleLoop())) receiver.Ingest(Tele("Mallory", line));
+        foreach (string line in DataLines(SampleLoop())) Hear(Tele("Mallory", line));
 
         Assert.Empty(loops.Loops);
     }
@@ -1103,7 +1131,7 @@ public sealed class LoopShareTests : IDisposable
         loops.Save(new Loop("King's Road", new[] { new RoomKey(9, 1), new RoomKey(9, 2) }));
 
         receiver.NoteSendConfirmed("Raijin");
-        foreach (string line in DataLines(SampleLoop())) receiver.Ingest(Tele("Raijin", line));
+        foreach (string line in DataLines(SampleLoop())) Hear(Tele("Raijin", line));
 
         Assert.Equal("9/1", loops.Get("King's Road")!.Waypoints[0].Room);   // ours untouched
         Assert.Equal(3, loops.Get("King's Road 2")!.Waypoints.Count);
@@ -1119,7 +1147,7 @@ public sealed class LoopShareTests : IDisposable
         loops.Save(SampleLoop());
 
         receiver.NoteSendConfirmed("Raijin");
-        foreach (string line in DataLines(SampleLoop())) receiver.Ingest(Tele("Raijin", line));
+        foreach (string line in DataLines(SampleLoop())) Hear(Tele("Raijin", line));
 
         Assert.Single(loops.Loops);
         Assert.Equal($"[Received loop 'King's Road' 3 rooms from Raijin ({LoopSignature.ShortOf(SampleLoop())}, {NoCodeOffered}), "
@@ -1131,8 +1159,8 @@ public sealed class LoopShareTests : IDisposable
     {
         var (receiver, loops, _) = NewReceiver();
         receiver.NoteSendConfirmed("Raijin");
-        foreach (string line in DataLines(SampleLoop("First"))) receiver.Ingest(Tele("Raijin", line));
-        foreach (string line in DataLines(SampleLoop("Second"), id: "c3d4")) receiver.Ingest(Tele("Raijin", line));
+        foreach (string line in DataLines(SampleLoop("First"))) Hear(Tele("Raijin", line));
+        foreach (string line in DataLines(SampleLoop("Second"), id: "c3d4")) Hear(Tele("Raijin", line));
 
         Assert.NotNull(loops.Get("First"));
         Assert.Null(loops.Get("Second"));

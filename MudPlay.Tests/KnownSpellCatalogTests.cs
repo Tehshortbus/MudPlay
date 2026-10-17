@@ -9,14 +9,11 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Pins <see cref="KnownSpellCatalog"/> against the MMUD Explorer
-/// <c>SpellIsUsable</c> rules it ports: magery match, MageryLVL gate,
-/// explicit class-token AND, level gate, the Kai-autolearn learnable
-/// special, and the empty list for non-magery classes. Synthetic
-/// <c>Spells.json</c> + <c>Classes.json</c> are seeded into an isolated
-/// <see cref="GameDataCache"/> per test.
-/// </summary>
+// Pins KnownSpellCatalog's spell-usability rules: magery match, MageryLVL gate,
+// explicit class-token AND, level gate, the Kai-autolearn learnable
+// special, and the empty list for non-magery classes. Synthetic
+// Spells.json + Classes.json are seeded into an isolated
+// GameDataCache per test.
 public sealed class KnownSpellCatalogTests : IDisposable
 {
     private readonly string _root;
@@ -190,17 +187,6 @@ public sealed class KnownSpellCatalogTests : IDisposable
     }
 
     [Fact]
-    public void GetByShort_ReturnsUsable_NullOtherwise()
-    {
-        KnownSpellCatalog catalog = NewCatalog();
-
-        Assert.Equal(100, catalog.GetByShort("star", 12)!.Value.Number);
-        Assert.Null(catalog.GetByShort("star", 1));     // Warrior can't cast it
-        Assert.Null(catalog.GetByShort("kai1", 12));    // Mage ≠ Kai magery
-        Assert.Null(catalog.GetByShort("nope", 12));    // unknown shortcode
-    }
-
-    [Fact]
     public void ResolveClassNumber_IsCaseInsensitive()
     {
         KnownSpellCatalog catalog = NewCatalog();
@@ -224,7 +210,7 @@ public sealed class KnownSpellCatalogTests : IDisposable
     public void KnownSpell_Formula_FeedsCalculator()
     {
         // star: MinBase 5, MaxBase 10, no scaling, no energy multiplier.
-        KnownSpell star = NewCatalog().GetByShort("star", 12)!.Value;
+        KnownSpell star = NewCatalog().Query(12, 0).Single(s => s.Short == "star");
         Assert.Equal(5, SpellCalculator.MinDamage(star.Formula, level: 10));
         Assert.Equal(10, SpellCalculator.MaxDamage(star.Formula, level: 10));
     }

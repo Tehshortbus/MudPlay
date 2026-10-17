@@ -32,12 +32,6 @@ public sealed class SettingsService
         _baseline = AsNode(_current);
     }
 
-    // Replace the in-memory snapshot wholesale.
-    public void Replace(GlobalSettings next)
-    {
-        _current = next ?? throw new ArgumentNullException(nameof(next));
-    }
-
     // Persist the current in-memory snapshot to disk and fire
     // GlobalSettingsChanged. When another client has saved the file since this one
     // read it, what this client changed is applied on top of theirs.

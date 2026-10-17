@@ -5,43 +5,37 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// IL-scans the compiled MudPlay assembly to prove <see cref="RemoteCommandCatalog"/>
-/// and the registered handlers stay in lockstep: every catalog command has
-/// a handler wired somewhere in <c>MudPlay.Game.Remote</c>, and no handler
-/// registers a command the catalog doesn't know. A catalog entry with no
-/// handler would answer an inbound <c>@foo</c> with an unknown-command
-/// denial instead of doing anything, and the drift is invisible at compile
-/// time — the catalog and the handlers live in separate files.
-/// </summary>
-/// <remarks>
-/// <para>
-/// Why an IL scan rather than constructing every handler: the handlers'
-/// constructors pull most of the app object graph (RoomGraphManager,
-/// EquipmentManager, ProfileService, TrainerWalkManager, the hangup/relog
-/// signals, …), so a construct-all harness would re-assemble AppServices and
-/// rot on every new dependency. Instead we read what the code literally
-/// registers — matching the <see cref="SingleWriterInvariantTests"/> Cecil
-/// style.
-/// </para>
-/// <para>
-/// Every command name reaches the engine as an <c>ldstr</c> in its handler's
-/// constructor — the direct <c>RegisterHandler("@x", …)</c> and the private
-/// <c>Register("@x", …)</c> wrapper alike put the literal in <c>.ctor</c>,
-/// while the looped registrations pull theirs from a <c>.cctor</c>-built
-/// static table (the <c>RegisteredCommands</c> arrays and
-/// AutoModeRemoteHandler's <c>Mapping</c>). Collecting the command-shaped
-/// string literals from those two constructor kinds — minus the catalog's
-/// own <c>.cctor</c>, which lists every key — reproduces the registered set
-/// without instantiating anything. Constructors never build reply / help
-/// prose, and the <see cref="LooksLikeCommand"/> filter drops any multi-word
-/// string regardless, so stray <c>@</c>-bearing text can't contaminate the
-/// scan. Assumption: handlers register in their constructors (they all do);
-/// a future handler that registers from some Init() method would surface
-/// here as a false "missing handler" and should either move registration
-/// into its constructor or extend this scan.
-/// </para>
-/// </remarks>
+// IL-scans the compiled MudPlay assembly to prove RemoteCommandCatalog
+// and the registered handlers stay in lockstep: every catalog command has
+// a handler wired somewhere in MudPlay.Game.Remote, and no handler
+// registers a command the catalog doesn't know. A catalog entry with no
+// handler would answer an inbound @foo with an unknown-command
+// denial instead of doing anything, and the drift is invisible at compile
+// time — the catalog and the handlers live in separate files.
+//
+// Why an IL scan rather than constructing every handler: the handlers'
+// constructors pull most of the app object graph (RoomGraphManager,
+// EquipmentManager, ProfileService, TrainerWalkManager, the hangup/relog
+// signals, …), so a construct-all harness would re-assemble AppServices and
+// rot on every new dependency. Instead we read what the code literally
+// registers — matching the SingleWriterInvariantTests Cecil
+// style.
+//
+// Every command name reaches the engine as an ldstr in its handler's
+// constructor — the direct RegisterHandler("@x", …) and the private
+// Register("@x", …) wrapper alike put the literal in .ctor,
+// while the looped registrations pull theirs from a .cctor-built
+// static table (the RegisteredCommands arrays and
+// AutoModeRemoteHandler's Mapping). Collecting the command-shaped
+// string literals from those two constructor kinds — minus the catalog's
+// own .cctor, which lists every key — reproduces the registered set
+// without instantiating anything. Constructors never build reply / help
+// prose, and the LooksLikeCommand filter drops any multi-word
+// string regardless, so stray @-bearing text can't contaminate the
+// scan. Assumption: handlers register in their constructors (they all do);
+// a future handler that registers from some Init() method would surface
+// here as a false "missing handler" and should either move registration
+// into its constructor or extend this scan.
 public sealed class RemoteCommandHandlerCoverageTests
 {
     [Fact]
@@ -117,11 +111,9 @@ public sealed class RemoteCommandHandlerCoverageTests
         return (exact, prefixes);
     }
 
-    /// <summary>
-    /// A command literal is an <c>@</c> followed by non-whitespace — the
-    /// shape every catalog key and prefix uses. Reply / help prose is
-    /// multi-word, so it never matches.
-    /// </summary>
+    // A command literal is an @ followed by non-whitespace — the
+    // shape every catalog key and prefix uses. Reply / help prose is
+    // multi-word, so it never matches.
     private static bool LooksLikeCommand(string s) =>
         s.Length >= 2 && s[0] == '@' && !s.Any(char.IsWhiteSpace);
 }

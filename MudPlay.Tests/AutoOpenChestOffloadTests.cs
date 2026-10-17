@@ -1,8 +1,6 @@
-using System.Reflection;
 using System.Text;
 using MudPlay.Game.Inventory;
 using MudPlay.Services;
-using MudPlay.Terminal;
 using Xunit;
 
 namespace MudPlay.Tests;
@@ -14,8 +12,9 @@ namespace MudPlay.Tests;
 public sealed class AutoOpenChestOffloadTests : IDisposable
 {
     private readonly InventoryManager _inv = new();
-    private readonly LineExtractor _lines = new(new TerminalEmulator(80, 24));
-    private readonly ProfileService _profile = new();
+    // The game's output, fed the way the client receives it.
+    private readonly ServerFeed _feed = new();
+    private readonly ProfileService _profile = TestProfiles.Service();
     private readonly OutboundOpenObserver _outbound = new();
     private readonly List<string> _sent = new();
     private readonly List<Action> _scheduled = new();
@@ -35,8 +34,8 @@ public sealed class AutoOpenChestOffloadTests : IDisposable
 
     public AutoOpenChestOffloadTests()
     {
-        _inv.AttachLineExtractor(_lines);
-        _profile.LoadBlank();
+        _inv.AttachLineExtractor(_feed.Lines);
+        _profile.LoadDefaultProfile();
         _tracker = new ChestOpenTracker(
             _inv, _profile, _outbound,
             isContainer: IsChest,
@@ -81,14 +80,7 @@ public sealed class AutoOpenChestOffloadTests : IDisposable
         _outbound.ObserveOutbound(Encoding.Latin1.GetBytes(command + "\r"));
     }
 
-    private void Feed(string text)
-    {
-        FieldInfo? field = typeof(LineExtractor).GetField(
-            "LineEmitted", BindingFlags.Instance | BindingFlags.NonPublic);
-        if (field?.GetValue(_lines) is Action<LineExtractor.EmittedLine> handler)
-            handler(new LineExtractor.EmittedLine(
-                text, Array.Empty<CellAttributes>(), DateTimeOffset.UtcNow, IsPromptLine: false));
-    }
+    private void Feed(string text) => _feed.Line(text);
 
     private void Inventory(string carrying, int gold)
     {

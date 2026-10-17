@@ -43,8 +43,6 @@ public sealed class TooHeavyWaitSignal : IDisposable
 
     public bool IsTooHeavy => _tooHeavy;
 
-    internal List<byte[]> LastSentForTests => _wire.LastSentForTests;
-
     public TooHeavyWaitSignal(
         MessageRouter router, InventoryManager inventory, PartyRestSync restSync,
         MovementCoordinator coordinator, LogService? log = null)
@@ -142,8 +140,6 @@ public sealed class TooHeavyWaitSignal : IDisposable
         if (MasterSwitchOff?.Invoke() == true) return;
         _wire.Send("i");
     }
-
-    internal void RecheckForTests() => Recheck();
 
     private void StartTimer()
     {

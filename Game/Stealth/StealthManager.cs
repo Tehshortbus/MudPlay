@@ -105,7 +105,7 @@ public sealed class StealthManager : IDisposable
     // A monster arrived in our room (RoomEntryWatcher.ArrivalObserved).
     public void NoteMonsterArrival()
     {
-        if (NowProvider() - _roomChangedAt > FollowWindow) return;
+        if (_now() - _roomChangedAt > FollowWindow) return;
         _followedHere = true;
         if (_followed) return;
         _followed = true;
@@ -168,11 +168,13 @@ public sealed class StealthManager : IDisposable
     }
 
     // ----- sneak-cooldown hold ---------------------------------------------
-    private static readonly TimeSpan SneakCooldownRetry = TimeSpan.FromSeconds(2);
+    internal static readonly TimeSpan SneakCooldownRetry = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan SneakCooldownCap = TimeSpan.FromSeconds(15);
     private MovementCoordinator? _coordinator;
     private DateTimeOffset? _cooldownHoldSince;
-    private Avalonia.Threading.DispatcherTimer? _cooldownTimer;
+    private IDisposable? _cooldownTimer;
+    // Arms one tick after the delay; disposing what it returns cancels it.
+    private readonly Func<TimeSpan, Action, IDisposable> _schedule;
 
     public bool IsHoldingForSneakCooldown => _cooldownHoldSince is not null;
 
@@ -189,9 +191,7 @@ public sealed class StealthManager : IDisposable
     private static readonly TimeSpan SneakSettleTotalCap = TimeSpan.FromSeconds(15);
     private DateTimeOffset _settleSince;
     private bool _settleHold;
-    private Avalonia.Threading.DispatcherTimer? _settleTimer;
-
-    public bool IsHoldingForSneakAnswer => _settleHold;
+    private IDisposable? _settleTimer;
 
     // Set when a sneak attempt ends without taking (retries spent, no answer, cooldown
     // cap) — the next step goes unsneaked rather than re-trying forever.
@@ -235,21 +235,22 @@ public sealed class StealthManager : IDisposable
     {
         if (_coordinator is null || _settleHold) return;
         _settleHold = true;
-        _settleSince = NowProvider();
+        _settleSince = _now();
         _coordinator.AssertGate(MovementCoordinator.SneakSettleGate, nameof(StealthManager), "waiting for the sn answer");
         StartSettleTimer();
     }
 
     private void StartSettleTimer()
     {
-        _settleTimer?.Stop();
-        _settleTimer = new Avalonia.Threading.DispatcherTimer(SneakSettleCap,
-            Avalonia.Threading.DispatcherPriority.Background, (_, _) =>
-            {
-                _moveUnsneakedOnce = true;
-                ReleaseSettleHold("no answer in time");
-            });
-        _settleTimer.Start();
+        _settleTimer?.Dispose();
+        _settleTimer = _schedule(SneakSettleCap, OnSettleCapElapsed);
+    }
+
+    private void OnSettleCapElapsed()
+    {
+        _settleTimer = null;
+        _moveUnsneakedOnce = true;
+        ReleaseSettleHold("no answer in time");
     }
 
     // Reset States: release the sn-answer, combat-cooldown and held-cast movement holds.
@@ -266,11 +267,13 @@ public sealed class StealthManager : IDisposable
     // cast (ReSneakAfterCast) sends us on (report paradigm-20260928-165844). Capped:
     // a cast that doesn't go out in time is given up for this room.
     private static readonly TimeSpan CastHoldCap = TimeSpan.FromSeconds(7);
+    // How often a held cast is looked at again.
+    internal static readonly TimeSpan CastHoldPoll = TimeSpan.FromSeconds(1);
     private Func<bool>? _castDue;
     private bool _castHold;
     private bool _castHoldSpentThisRoom;
     private DateTimeOffset _castHoldSince;
-    private Avalonia.Threading.DispatcherTimer? _castHoldTimer;
+    private IDisposable? _castHoldTimer;
 
     public void SetHeldCastCheck(Func<bool> castDue) => _castDue = castDue;
 
@@ -286,27 +289,28 @@ public sealed class StealthManager : IDisposable
     {
         if (_coordinator is null || _castHold) return;
         _castHold = true;
-        _castHoldSince = NowProvider();
+        _castHoldSince = _now();
         _coordinator.AssertGate(MovementCoordinator.SneakCastGate, nameof(StealthManager),
             "a held buff goes out in this NPC-free room before we re-sneak");
-        _castHoldTimer?.Stop();
-        _castHoldTimer = new Avalonia.Threading.DispatcherTimer(TimeSpan.FromSeconds(1),
-            Avalonia.Threading.DispatcherPriority.Background, (_, _) =>
-            {
-                if (_castDue?.Invoke() != true)
-                    ReleaseCastHold("nothing left to cast here");
-                else if (NowProvider() - _castHoldSince >= CastHoldCap)
-                {
-                    _castHoldSpentThisRoom = true;
-                    ReleaseCastHold($"the cast didn't go out in {CastHoldCap.TotalSeconds:0}s — moving on");
-                }
-            });
-        _castHoldTimer.Start();
+        _castHoldTimer?.Dispose();
+        _castHoldTimer = _schedule(CastHoldPoll, OnCastHoldPoll);
+    }
+
+    private void OnCastHoldPoll()
+    {
+        _castHoldTimer = _schedule(CastHoldPoll, OnCastHoldPoll);
+        if (_castDue?.Invoke() != true)
+            ReleaseCastHold("nothing left to cast here");
+        else if (_now() - _castHoldSince >= CastHoldCap)
+        {
+            _castHoldSpentThisRoom = true;
+            ReleaseCastHold($"the cast didn't go out in {CastHoldCap.TotalSeconds:0}s — moving on");
+        }
     }
 
     private void ReleaseCastHold(string why)
     {
-        _castHoldTimer?.Stop();
+        _castHoldTimer?.Dispose();
         _castHoldTimer = null;
         if (!_castHold) return;
         _castHold = false;
@@ -315,7 +319,7 @@ public sealed class StealthManager : IDisposable
 
     private void ReleaseSettleHold(string why)
     {
-        _settleTimer?.Stop();
+        _settleTimer?.Dispose();
         _settleTimer = null;
         if (!_settleHold) return;
         _settleHold = false;
@@ -358,8 +362,12 @@ public sealed class StealthManager : IDisposable
     public StealthManager(
         MessageRouter router,
         PlayerState state,
-        LogService? log = null)
+        LogService? log = null,
+        Func<DateTimeOffset>? now = null,
+        Func<TimeSpan, Action, IDisposable>? schedule = null)
     {
+        _now = now ?? (() => DateTimeOffset.UtcNow);
+        _schedule = schedule ?? DispatcherTicks.Once;
         ArgumentNullException.ThrowIfNull(router);
         ArgumentNullException.ThrowIfNull(state);
         _state = state;
@@ -463,7 +471,7 @@ public sealed class StealthManager : IDisposable
             _log?.Info(LogCategory, "no longer followed — nothing came in behind us last room; sneaking again");
         }
         _followedHere = false;
-        _roomChangedAt = NowProvider();
+        _roomChangedAt = _now();
 
         // We moved anyway (a manual step, a flee) — the hold was for the room we left.
         ReleaseCooldownHold("moved");
@@ -531,7 +539,7 @@ public sealed class StealthManager : IDisposable
         // emptied the room: a backstab can drop the follower inside the window, and
         // keeping the flag sent the next step out unsneaked (report
         // paradigm-20261004-180252).
-        if (_followed && (roomClearedByKill || NowProvider() - _roomChangedAt > FollowWindow))
+        if (_followed && (roomClearedByKill || _now() - _roomChangedAt > FollowWindow))
         {
             _followed = false;
             _log?.Info(LogCategory, "no longer followed — the fight here is over");
@@ -564,13 +572,13 @@ public sealed class StealthManager : IDisposable
     // seen (report paradigm-20261002-004148). So with nothing driving, a broken sneak
     // is re-taken where we stand, a beat later: a gear swap is a burst of commands,
     // and an `sn` sent into the middle of one would be broken again by the next.
-    private static readonly TimeSpan InPlaceReSneakDelay = TimeSpan.FromMilliseconds(700);
-    private static readonly TimeSpan InPlaceRestRecheck = TimeSpan.FromSeconds(2);
+    internal static readonly TimeSpan InPlaceReSneakDelay = TimeSpan.FromMilliseconds(700);
+    internal static readonly TimeSpan InPlaceRestRecheck = TimeSpan.FromSeconds(2);
     private Func<bool>? _isEngineDriving;
     private Func<bool>? _restUnderWay;
     private Func<bool>? _restKeepsSneak;
     private bool _waitingOnRestLogged;
-    private Avalonia.Threading.DispatcherTimer? _inPlaceTimer;
+    private IDisposable? _inPlaceTimer;
 
     // True while a walk, loop or auto-lair is driving the moves. Unwired, nothing is
     // ever re-taken in place.
@@ -724,19 +732,13 @@ public sealed class StealthManager : IDisposable
 
     private void ArmInPlaceTimer(TimeSpan delay)
     {
-        _inPlaceTimer?.Stop();
-        _inPlaceTimer = new Avalonia.Threading.DispatcherTimer(delay,
-            Avalonia.Threading.DispatcherPriority.Background, (_, _) => ReSneakInPlace());
-        _inPlaceTimer.Start();
+        _inPlaceTimer?.Dispose();
+        _inPlaceTimer = _schedule(delay, ReSneakInPlace);
     }
-
-    internal void ReSneakInPlaceForTests() => ReSneakInPlace();
-
-    internal bool InPlaceReSneakPendingForTests => _inPlaceTimer is not null;
 
     private void ReSneakInPlace()
     {
-        _inPlaceTimer?.Stop();
+        _inPlaceTimer?.Dispose();
         _inPlaceTimer = null;
         // An engine started in the meantime owns it from here.
         if (_isEngineDriving?.Invoke() != false || _isAutoSneakEnabled?.Invoke() != true)
@@ -815,7 +817,7 @@ public sealed class StealthManager : IDisposable
         // Drop the hold's flag now (a held cast would stop the re-sneak from starting)
         // but keep its movement gate until the re-sneak's own is up.
         bool gateUp = _castHold;
-        _castHoldTimer?.Stop();
+        _castHoldTimer?.Dispose();
         _castHoldTimer = null;
         _castHold = false;
         try
@@ -842,7 +844,7 @@ public sealed class StealthManager : IDisposable
             // in-place re-sneak for a moment later. This `sn` answers both.
             if (TryBeginAutoSneak("post-cast re-sneak"))
             {
-                _inPlaceTimer?.Stop();
+                _inPlaceTimer?.Dispose();
                 _inPlaceTimer = null;
             }
         }
@@ -1134,7 +1136,7 @@ public sealed class StealthManager : IDisposable
     private void OnNotSneaking(MatchResult _)
     {
         if (_stateValue == StealthState.Idle && !_state.IsSneaking) return;
-        _sneakBrokeOnEntryAt = NowProvider();
+        _sneakBrokeOnEntryAt = _now();
         Transition(StealthState.Idle);
         _state.IsSneaking = false;
         SneakEntry?.Invoke(false);
@@ -1147,12 +1149,12 @@ public sealed class StealthManager : IDisposable
     private static readonly TimeSpan SneakBrokeWindow = TimeSpan.FromSeconds(3);
     private DateTimeOffset _sneakBrokeOnEntryAt = DateTimeOffset.MinValue;
 
-    public Func<DateTimeOffset> NowProvider { get; set; } = () => DateTimeOffset.UtcNow;
+    private readonly Func<DateTimeOffset> _now;
 
     // True (once) when our sneak broke entering the current room.
     public bool TakeSneakBrokeOnEntry()
     {
-        bool broke = NowProvider() - _sneakBrokeOnEntryAt <= SneakBrokeWindow;
+        bool broke = _now() - _sneakBrokeOnEntryAt <= SneakBrokeWindow;
         _sneakBrokeOnEntryAt = DateTimeOffset.MinValue;
         // A sneaked move whose room showed up without "Sneaking..." broke silently —
         // the same guaranteed backstab failure as a loud entry.
@@ -1177,7 +1179,7 @@ public sealed class StealthManager : IDisposable
          && !_state.InCombat
          && (_sneakRetries < MaxSneakRetries || _settleHold))
         {
-            if (_settleHold && NowProvider() - _settleSince >= SneakSettleTotalCap)
+            if (_settleHold && _now() - _settleSince >= SneakSettleTotalCap)
             {
                 _moveUnsneakedOnce = true;
                 ReleaseSettleHold($"still not sneaking after {SneakSettleTotalCap.TotalSeconds:0}s — moving on unsneaked");
@@ -1209,17 +1211,18 @@ public sealed class StealthManager : IDisposable
         }
         if (_cooldownHoldSince is null)
         {
-            _cooldownHoldSince = NowProvider();
+            _cooldownHoldSince = _now();
             _coordinator.AssertGate(MovementCoordinator.SneakCooldownGate, nameof(StealthManager),
                 "sneak on cooldown — holding the move and retrying sn");
             _log?.Info(LogCategory, "sneak refused (cooldown) — holding movement, retrying sn");
         }
-        if (_cooldownTimer is null)
-        {
-            _cooldownTimer = new Avalonia.Threading.DispatcherTimer(SneakCooldownRetry,
-                Avalonia.Threading.DispatcherPriority.Background, (_, _) => RetrySneakAfterCooldown());
-            _cooldownTimer.Start();
-        }
+        _cooldownTimer ??= _schedule(SneakCooldownRetry, OnCooldownRetryTick);
+    }
+
+    private void OnCooldownRetryTick()
+    {
+        _cooldownTimer = _schedule(SneakCooldownRetry, OnCooldownRetryTick);
+        RetrySneakAfterCooldown();
     }
 
     // Bind the movement coordinator so a sneak cooldown can hold the route.
@@ -1228,8 +1231,6 @@ public sealed class StealthManager : IDisposable
         ArgumentNullException.ThrowIfNull(coordinator);
         _coordinator = coordinator;
     }
-
-    internal void RetrySneakAfterCooldownForTests() => RetrySneakAfterCooldown();
 
     private void RetrySneakAfterCooldown()
     {
@@ -1246,7 +1247,7 @@ public sealed class StealthManager : IDisposable
             ReleaseCooldownHold("combat / NPC in the room");
             return;
         }
-        if (NowProvider() - since >= SneakCooldownCap)
+        if (_now() - since >= SneakCooldownCap)
         {
             _moveUnsneakedOnce = true;
             ReleaseCooldownHold($"still refused after {SneakCooldownCap.TotalSeconds:0}s — moving on unsneaked");
@@ -1267,7 +1268,7 @@ public sealed class StealthManager : IDisposable
 
     private void StopCooldownTimer()
     {
-        _cooldownTimer?.Stop();
+        _cooldownTimer?.Dispose();
         _cooldownTimer = null;
     }
 
@@ -1343,6 +1344,6 @@ public sealed class StealthManager : IDisposable
         _mustWaitSub.Dispose();
         ReleaseCooldownHold("disposed");
         ReleaseSettleHold("disposed");
-        _inPlaceTimer?.Stop();
+        _inPlaceTimer?.Dispose();
     }
 }

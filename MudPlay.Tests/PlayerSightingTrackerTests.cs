@@ -15,7 +15,7 @@ public sealed class PlayerSightingTrackerTests
     {
         Key = new RoomKey(map, room),
         Name = name,
-        Exits = Room.EmptyExits,
+        Exits = RoomExitSet.Empty,
     };
 
     private static RoomEntitiesObservation AlsoHere(params string[] playerNames)

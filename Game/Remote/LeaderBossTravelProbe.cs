@@ -41,21 +41,16 @@ public sealed class LeaderBossTravelProbe : IDisposable
     private bool _confirming;
     private bool _disposed;
 
-    public bool WaitingForLeaderToMove => _waitingForLeaderToMove;
-
     // Whether the leader's trip ends at a boss room. Raised once per question.
     public event Action<bool>? Resolved;
 
     // The last question's outcome, for the bug report.
     public string LastOutcome { get; private set; } = "(never asked)";
 
-    // Test-visible record of every wire payload sent.
-    internal List<byte[]> LastSentForTests { get; } = new();
-
     // leaderGivenName: the leader we're following, or null when we lead / are solo.
     // headsToBoss: whether a leader's @path report describes a trip to a boss room.
     // stillNeeded: the gear is still being kept on, so an answer still matters.
-    // schedule: one-shot timer (null in tests, which drive OnTimeout directly).
+    // schedule: the one-shot timer that ends the wait for an answer.
     public LeaderBossTravelProbe(
         PathReplyTracker replies,
         Func<string?> leaderGivenName,
@@ -99,7 +94,6 @@ public sealed class LeaderBossTravelProbe : IDisposable
         if (_awaiting) return true;
         _awaiting = true;
         byte[] bytes = Encoding.Latin1.GetBytes($"/{leader} @path\r");
-        LastSentForTests.Add(bytes);
         _wireSender?.Invoke(bytes);
         _log?.Info(LogCategory, $"asked {leader} where the party is heading (@path)");
         Arm(ReplyTimeout, OnTimeout);
@@ -159,7 +153,7 @@ public sealed class LeaderBossTravelProbe : IDisposable
         _leaderGivenName() is { Length: > 0 } leader
         && string.Equals(leader, sender, StringComparison.OrdinalIgnoreCase);
 
-    internal void OnTimeout()
+    private void OnTimeout()
     {
         if (!_awaiting) return;
         if (_confirming)

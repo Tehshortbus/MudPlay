@@ -4,7 +4,6 @@ using MudPlay.Game.Spells;
 using MudPlay.Models.GameData;
 using MudPlay.Services;
 using MudPlay.Services.Patterns;
-using MudPlay.Terminal;
 using Xunit;
 
 namespace MudPlay.Tests;
@@ -21,6 +20,8 @@ public sealed class PartyHpEstimatorTests
         public MessageRouter Router { get; } = new();
         public PlayerState State { get; } = new();
         public PartyManager Party { get; }
+        // The game's output through the router and the extractor the party reads.
+        public ServerFeed Server { get; }
         public RoundDamageTracker Damage { get; }
         public PartyHpEstimator Estimator { get; }
 
@@ -29,6 +30,8 @@ public sealed class PartyHpEstimatorTests
         {
             DefaultPatterns.Seed(Router);
             Party = new PartyManager(Router, new PartyState()) { LocalCharacterName = "Fujin" };
+            Server = new ServerFeed(Router);
+            Party.AttachLineExtractor(Server.Lines);
             Damage = new RoundDamageTracker(Router, State);
             Damage.SetNameSources(
                 partyNames: () => Party.State.Members.Select(m => m.Name),
@@ -57,8 +60,7 @@ public sealed class PartyHpEstimatorTests
             return Member("Raijin");
         }
 
-        public void Feed(string line) => Router.Dispatch(
-            new LineExtractor.EmittedLine(line, new CellAttributes[line.Length], DateTimeOffset.UnixEpoch, IsPromptLine: false));
+        public void Feed(string line) => Server.Line(line);
 
         public void Dispose()
         {
@@ -126,8 +128,8 @@ public sealed class PartyHpEstimatorTests
         h.Party.HpEstimateCorrected += (n, e, s, src) => corrected = (n, e, s, src);
         h.Party.AdjustMemberHp("Raijin", -70);   // 730 → 73%
 
-        h.Party.TestEnterParBlock();
-        h.Party.FeedTestLines(new[] { RaijinParRow });
+        h.Server.Line("The following people are in your travel party:");
+        h.Server.Rows(new[] { RaijinParRow });
 
         Assert.Equal(85, raijin.HpPercent);
         Assert.Null(h.Party.HpEstimateOf(raijin).EstimateHp);

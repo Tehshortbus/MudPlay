@@ -1,4 +1,3 @@
-using Avalonia.Threading;
 
 namespace MudPlay.Services;
 
@@ -24,7 +23,10 @@ public sealed class SessionStatsLog : IDisposable
     private readonly Func<DateTimeOffset, string, string> _snapshot;
     private readonly LogService? _log;
     private readonly Func<(Action<string> Write, Action Close, string Path)> _open;
-    private readonly DispatcherTimer? _timer;
+    // Arms one tick after the interval; disposing what it returns cancels it.
+    private readonly Func<TimeSpan, Action, IDisposable> _schedule;
+    private IDisposable? _tick;
+    private TimeSpan _tickInterval;
 
     private (Action<string> Write, Action Close, string Path)? _file;
     private bool _wasOn;
@@ -34,11 +36,12 @@ public sealed class SessionStatsLog : IDisposable
     // snapshot(at, why) is the block to write.
     public SessionStatsLog(LogDiagnosticState diagnostics, Func<bool> inGame,
         Func<DateTimeOffset, string, string> snapshot, LogService? log = null)
-        : this(diagnostics, inGame, snapshot, log, useTimer: true, open: null) { }
+        : this(diagnostics, inGame, snapshot, log, schedule: null, open: null) { }
 
-    // Test seam: no timer, and the file swapped for whatever `open` hands back.
+    // schedule stands in for the dispatcher's timer; open for the file.
     internal SessionStatsLog(LogDiagnosticState diagnostics, Func<bool> inGame,
-        Func<DateTimeOffset, string, string> snapshot, LogService? log, bool useTimer,
+        Func<DateTimeOffset, string, string> snapshot, LogService? log,
+        Func<TimeSpan, Action, IDisposable>? schedule,
         Func<(Action<string> Write, Action Close, string Path)>? open)
     {
         _diagnostics = diagnostics ?? throw new ArgumentNullException(nameof(diagnostics));
@@ -46,11 +49,7 @@ public sealed class SessionStatsLog : IDisposable
         _snapshot = snapshot ?? throw new ArgumentNullException(nameof(snapshot));
         _log = log;
         _open = open ?? OpenFile;
-        if (useTimer)
-        {
-            _timer = new DispatcherTimer { Interval = Interval };
-            _timer.Tick += (_, _) => OnTimer();
-        }
+        _schedule = schedule ?? DispatcherTicks.Once;
         _diagnostics.Changed += OnDiagnosticsChanged;
         OnDiagnosticsChanged();
     }
@@ -79,14 +78,10 @@ public sealed class SessionStatsLog : IDisposable
     {
         if (_disposed) return;
         bool on = _diagnostics.LogSessionStatistics;
-        if (_timer is not null)
-        {
-            // Only a changed interval touches the timer: every toggle in the window
-            // raises Changed, and re-setting it would start the count over.
-            if (_timer.Interval != Interval) _timer.Interval = Interval;
-            if (on && !_timer.IsEnabled) _timer.Start();
-            else if (!on && _timer.IsEnabled) _timer.Stop();
-        }
+        // Only a changed interval touches a running timer: every toggle in the
+        // window raises Changed, and re-arming it would start the count over.
+        if (on && (_tick is null || _tickInterval != Interval)) StartTicking();
+        else if (!on) StopTicking();
         if (on == _wasOn) return;
         _wasOn = on;
         if (on)
@@ -110,8 +105,25 @@ public sealed class SessionStatsLog : IDisposable
             Write($"every {_diagnostics.SessionStatisticsMinutes} min");
     }
 
-    // Test seam: one timer tick.
-    internal void TickForTests() => OnTimer();
+    private void StartTicking()
+    {
+        _tick?.Dispose();
+        _tickInterval = Interval;
+        _tick = _schedule(_tickInterval, OnTick);
+    }
+
+    private void StopTicking()
+    {
+        _tick?.Dispose();
+        _tick = null;
+    }
+
+    private void OnTick()
+    {
+        if (_disposed) return;
+        _tick = _schedule(_tickInterval, OnTick);
+        OnTimer();
+    }
 
     // The character entered or left the game (InGameCapture).
     public void NoteInGameChanged(bool inGame)
@@ -120,11 +132,7 @@ public sealed class SessionStatsLog : IDisposable
         if (inGame)
         {
             // Count the interval from entering, not from whenever the timer last fired.
-            if (_timer is { IsEnabled: true })
-            {
-                _timer.Stop();
-                _timer.Start();
-            }
+            if (_tick is not null) StartTicking();
             return;
         }
         Write("left the game");
@@ -165,7 +173,7 @@ public sealed class SessionStatsLog : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
-        _timer?.Stop();
+        StopTicking();
         _diagnostics.Changed -= OnDiagnosticsChanged;
         CloseFile();
     }

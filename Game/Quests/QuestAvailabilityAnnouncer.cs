@@ -16,9 +16,8 @@ namespace MudPlay.Game.Quests;
 // announced set reset per character (ProfileService.ProfileClosed) so one character's
 // announcements never carry into another.
 //
-// The available-quest set is supplied by an injected provider (QuestEligibility.Resolve in
-// the app; a fake in tests), keeping this crossing/dedup state machine testable without a
-// TBInfo crawl. The terminal write is done by the caller subscribing to QuestBecameAvailable.
+// The available-quest set is supplied by an injected provider (QuestEligibility.Resolve),
+// keeping this crossing/dedup state machine apart from the TBInfo crawl. The terminal write is done by the caller subscribing to QuestBecameAvailable.
 public sealed class QuestAvailabilityAnnouncer : IDisposable
 {
     private readonly StatParser _statParser;
@@ -27,8 +26,8 @@ public sealed class QuestAvailabilityAnnouncer : IDisposable
     private readonly Func<int, IReadOnlyList<QuestAvailabilityInfo>> _eligibleAtLevel;
     // True only once the character is actually in the realm (an in-game status
     // line has been observed). Gates the login dump so it can't fire while still
-    // parked at the character-select / main menu. Null in tests → treated as
-    // in-realm so existing announce tests behave unchanged.
+    // parked at the character-select / main menu. Null → treated as
+    // in-realm.
     private readonly Func<bool>? _isInRealm;
     private readonly LogService? _log;
 
@@ -72,7 +71,7 @@ public sealed class QuestAvailabilityAnnouncer : IDisposable
     // increase (training) announces the quests whose gate falls in the crossed range.
     private void OnScreenParsed(LastKnownStats snapshot) => Observe(snapshot.Level);
 
-    // Exposed for tests to drive the state machine directly (the app path is ScreenParsed).
+    // Advance the state machine for a level reading (fed from ScreenParsed).
     internal void Observe(int level)
     {
         if (level <= 0) return;

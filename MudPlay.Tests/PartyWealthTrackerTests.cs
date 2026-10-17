@@ -9,17 +9,15 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// The wealth tracker is demand-driven with a two-entry split: unlike
-/// <see cref="PartyLevelTracker"/> (which keeps levels warm on every roster
-/// change), it holds no party-state subscription. <c>MinWealth</c> is a pure
-/// cache read (MovementFilter calls it per toll exit during BFS, so it must not
-/// touch the wire — BFS explores off-path toll edges). <c>Probe</c> is the
-/// route-scoped trigger fired from MovementFilter.WarmForRoute only when the
-/// planned route actually crosses a toll. Wired to a real probe with a captured
-/// reply-window and a mutable clock so freshness / debounce are exercised
-/// deterministically.
-/// </summary>
+// The wealth tracker is demand-driven: unlike PartyLevelTracker (which keeps
+// levels warm on every roster change), it holds no party-state subscription.
+// MinWealth is a pure cache read, the party's poorest confirmed purse: it tells
+// the route warm-ups a party is led and is the bug report's line, and no
+// crossing is judged on it (PartyTollGate asks at the toll). Probe is the
+// route-scoped trigger fired from MovementFilter.WarmForRoute only when the
+// planned route actually crosses a paid exit. Wired to a real probe with a
+// captured reply-window and a mutable clock so freshness / debounce are
+// exercised deterministically.
 public sealed class PartyWealthTrackerTests
 {
     private sealed class Harness
@@ -153,9 +151,8 @@ public sealed class PartyWealthTrackerTests
         h.AddMember("Bob");   // never reported wealth
         h.Lead();
 
-        // Unknown follower is skipped, not treated as broke: the toll blocks
-        // only on a CONFIRMED shortfall. The walk-start Probe warms Bob's
-        // reading for a later confirmed evaluation.
+        // An unknown follower is skipped, not read as broke: MinWealth is the
+        // poorest CONFIRMED purse. The walk-start Probe warms Bob's reading.
         Assert.Equal(5000, h.Tracker.MinWealth());
     }
 
@@ -185,14 +182,14 @@ public sealed class PartyWealthTrackerTests
     }
 
     [Fact]
-    public void MinWealth_ConfirmedShortFollower_StillGates()
+    public void MinWealth_IsThePoorestConfirmedPurse()
     {
         var h = new Harness { SelfWealth = 5000 };
         h.AddMember("Bob");
         h.Lead();
-        h.Tracker.Record("Bob", 250);   // confirmed can't cover a 300-copper toll
+        h.Tracker.Record("Bob", 250);
 
-        Assert.Equal(250, h.Tracker.MinWealth());   // below cost → MovementFilter gates the toll
+        Assert.Equal(250, h.Tracker.MinWealth());
     }
 
     // ----- MinWealth is a pure cache read — never touches the wire ------------

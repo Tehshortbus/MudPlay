@@ -68,7 +68,7 @@ public sealed class MonsterRelationshipWatcherTests
             Func<bool>? fleeInFlight = null)
         {
             DefaultPatterns.Seed(Router);
-            Classifier = new RoomEntityClassifier(Router, Monsters, new PlayerDatabase(), Log);
+            Classifier = new RoomEntityClassifier(Router, Monsters, new PlayerDatabase(new ProfileService(), () => null), Log);
             Watcher = new MonsterRelationshipWatcher(
                 Classifier,
                 resolveOverlay: ResolveOverlay,
@@ -889,7 +889,7 @@ public sealed class MonsterRelationshipWatcherTests
         Assert.Equal(expected, carrierDrops);
         Assert.Equal(expected, penaltyAsked.Count);
         Assert.DoesNotContain(true, penaltyAsked);
-        Assert.Equal(expected == 1, signal.PeekForTests().DisconnectExpected);
+        Assert.Equal(expected == 1, signal.ConsumeDisconnectIntent());
     }
 
     // ----- a Flee monster: what is seen ----------------------------------

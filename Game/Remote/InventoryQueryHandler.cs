@@ -48,7 +48,7 @@ public sealed class InventoryQueryHandler : IDisposable
         _engine = engine;
         _inventory = inventory;
         _ground = ground;
-        // Unbound (tests) falls back to stock "runic".
+        // Unbound falls back to stock "runic".
         _naming = naming ?? new CurrencyNaming();
 
         Register("@wealth", OnWealth);

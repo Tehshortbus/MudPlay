@@ -99,14 +99,8 @@ internal static partial class QuestTextFormatter
     // literal to type; a command-less step whose script a monster's death runs is
     // narrated "kill <monster> (<drop>)" and a bare item grant "obtain <item>",
     // matching how the seed guides read. Items the step needs or turns in come first,
-    // "(… required)", the way the seed guides write them. Falls back to a bare "Step N" label when the crawl
-    // captured nothing followable (see StepOrNull) — kept for any caller that wants
-    // a label for every step; the auto-draft (StepLines) drops those steps instead.
-    public static string Step(GameDataCache gameData, QuestStep s,
-        IReadOnlyDictionary<int, IReadOnlyList<RoomKey>>? monsterRooms = null)
-        => StepOrNull(gameData, s, monsterRooms)
-           ?? string.Create(CultureInfo.InvariantCulture, $"Step {s.Order}");
-
+    // "(… required)", the way the seed guides write them.
+    //
     // The step's followable body — room links, command, kill/obtain narration and
     // item notes joined into one line — or null when the crawl captured no action
     // the player can take. Many quest steps are pure flag-advances the crawl can't

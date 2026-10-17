@@ -11,7 +11,7 @@ namespace MudPlay.Services;
 // from the default are persisted.
 //
 // Sister service to MacroStore — same Char-tier storage, same conflict-check
-// shape. IsConflict + FindAction let callers (the macro edit dialog, the
+// shape. FindAction lets callers (the macro edit dialog, the
 // built-in keybind edit dialog) detect cross-store collisions so a chord can
 // never bind to both a macro and a built-in action. BindingChanged fires
 // after any successful rebind so Views.GlobalHotkeys and the menu-item
@@ -33,7 +33,7 @@ public sealed class KeybindingStore
     // inert until the user manually rebinds.
     public event Action? BindingsReloaded;
 
-    // Parameterless ctor for tests / in-memory scenarios. Seeds defaults.
+    // In-memory store with no file behind it. Seeds defaults.
     public KeybindingStore()
     {
         SeedDefaults();
@@ -64,22 +64,6 @@ public sealed class KeybindingStore
         _bindings[action] = chord;
         _profile?.Save();
         BindingChanged?.Invoke(action);
-    }
-
-    // True when chord is already bound to a built-in action. excluding lets
-    // the rebind UI skip the action being edited so it doesn't flag its own
-    // current chord. Out-param returns the colliding action for error
-    // messaging.
-    public bool IsConflict(KeyChord chord, BuiltInAction? excluding, out BuiltInAction? conflictingAction)
-    {
-        if (chord.IsEmpty) { conflictingAction = null; return false; }
-        foreach ((BuiltInAction action, KeyChord c) in _bindings)
-        {
-            if (excluding is BuiltInAction e && action == e) continue;
-            if (c.Equals(chord)) { conflictingAction = action; return true; }
-        }
-        conflictingAction = null;
-        return false;
     }
 
     // Reverse lookup: which built-in action is bound to this chord, if any.

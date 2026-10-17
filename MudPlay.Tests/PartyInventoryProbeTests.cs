@@ -12,13 +12,11 @@ namespace MudPlay.Tests;
 
 public sealed class PartyInventoryProbeTests
 {
-    /// <summary>
-    /// Harness wiring the probe to a real <see cref="ChatRouter"/> (so replies
-    /// flow through the same classification path production uses) and a
-    /// <see cref="PartyBroadcaster"/> whose wire is captured. The
-    /// <c>armWindow</c> seam is captured rather than timer-driven, so tests
-    /// fire the reply window deterministically via <see cref="FireWindows"/>.
-    /// </summary>
+    // Harness wiring the probe to a real ChatRouter (so replies
+    // flow through the same classification path production uses) and a
+    // PartyBroadcaster whose wire is captured. The
+    // armWindow seam is captured rather than timer-driven, so tests
+    // fire the reply window deterministically via FireWindows.
     private sealed class Harness
     {
         public readonly MessageRouter Router;

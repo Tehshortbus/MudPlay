@@ -12,12 +12,10 @@ namespace MudPlay.Services;
 // with no per-item notification and then raises a single Reset, so each
 // subscriber rebuilds exactly once. Individual Add / Remove / indexer edits (the
 // data editor's per-record upserts) keep their normal per-op notification, which
-// downstream rebuilders and tests rely on for synchronous freshness.
+// downstream rebuilders rely on for synchronous freshness.
 public sealed class BulkObservableCollection<T> : ObservableCollection<T>
 {
     public BulkObservableCollection() { }
-
-    public BulkObservableCollection(IEnumerable<T> items) : base(items) { }
 
     // Replace the entire contents, raising a single Reset instead of Clear + N Add.
     public void ReplaceAll(IEnumerable<T> items)

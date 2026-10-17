@@ -171,7 +171,7 @@ public class MenuActionCatalogueTests
     // Config round-trip: ApplyFrom → Snapshot preserves order, kind, id, and the
     // custom label; an empty DTO falls back to the built-in defaults.
     [Fact]
-    public void Config_RoundTripsEntriesAndCustomLabels()
+    public void Config_ApplyFrom_TakesEntriesAndCustomLabels()
     {
         ContextMenuSettings dto = new()
         {
@@ -184,20 +184,19 @@ public class MenuActionCatalogueTests
         };
         ContextMenuConfig cfg = new();
         cfg.ApplyFrom(dto);
-        ContextMenuSettings snap = cfg.Snapshot();
 
-        Assert.Equal(3, snap.Layout!.Count);
-        Assert.Equal("view.party", snap.Layout[0].Id);
-        Assert.Equal("My Party", snap.Layout[0].Label);
-        Assert.Equal(ContextMenuEntryKind.Separator, snap.Layout[1].Kind);
-        Assert.Equal("calc.hit", snap.Layout[2].Id);
-        Assert.Null(snap.Layout[2].Label);
+        Assert.Equal(3, cfg.Layout.Count);
+        Assert.Equal("view.party", cfg.Layout[0].Id);
+        Assert.Equal("My Party", cfg.Layout[0].Label);
+        Assert.Equal(ContextMenuEntryKind.Separator, cfg.Layout[1].Kind);
+        Assert.Equal("calc.hit", cfg.Layout[2].Id);
+        Assert.Null(cfg.Layout[2].Label);
     }
 
     // A user-defined folder with children deep-copies through the config (the
     // live layout must not alias the dto's child lists).
     [Fact]
-    public void Config_RoundTripsFolderWithChildren()
+    public void Config_ApplyFrom_TakesAFolderWithChildren()
     {
         ContextMenuSettings dto = new()
         {
@@ -218,9 +217,8 @@ public class MenuActionCatalogueTests
         };
         ContextMenuConfig cfg = new();
         cfg.ApplyFrom(dto);
-        ContextMenuSettings snap = cfg.Snapshot();
 
-        ContextMenuEntry folder = Assert.Single(snap.Layout!);
+        ContextMenuEntry folder = Assert.Single(cfg.Layout);
         Assert.Equal(ContextMenuEntryKind.Folder, folder.Kind);
         Assert.Equal("Tools", folder.Label);
         Assert.NotNull(folder.Children);

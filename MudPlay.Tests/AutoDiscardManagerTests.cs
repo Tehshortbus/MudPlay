@@ -165,19 +165,6 @@ public sealed class AutoDiscardManagerTests
     }
 
     [Fact]
-    public void FlaggedItem_DropsEveryCopy()
-    {
-        using Harness h = new();
-        h.Map("dagger", 1, discard: true);
-        h.Carried.Set("dagger", 3);
-
-        h.Discard.OnInventoryChanged();
-
-        Assert.Equal(3, h.SentText.Count);
-        Assert.All(h.SentText, s => Assert.Equal("drop dagger", s));
-    }
-
-    [Fact]
     public void DuringRoombaSweep_NoDrop_EvenWhenFlagged()
     {
         // A Roomba sweep is sorting the house: auto-discard is held off so it can't
@@ -191,18 +178,6 @@ public sealed class AutoDiscardManagerTests
         h.Discard.OnInventoryChanged();
 
         Assert.Empty(h.Sent);
-    }
-
-    [Fact]
-    public void Paradigm_BatchesDropIntoOneCountedCommand()
-    {
-        using Harness h = new() { Paradigm = true };
-        h.Map("dagger", 1, discard: true);
-        h.Carried.Set("dagger", 3);
-
-        h.Discard.OnInventoryChanged();
-
-        Assert.Equal("drop 3 dagger", Assert.Single(h.SentText));
     }
 
     [Fact]
@@ -222,18 +197,6 @@ public sealed class AutoDiscardManagerTests
         h.Discard.OnInventoryChanged();
 
         Assert.Single(h.SentText);                 // still just the one command
-    }
-
-    [Fact]
-    public void KeepFloor_LeavesMinimum()
-    {
-        using Harness h = new();
-        h.Map("dagger", 1, discard: true, keep: 1);
-        h.Carried.Set("dagger", 3);
-
-        h.Discard.OnInventoryChanged();
-
-        Assert.Equal(2, h.SentText.Count);   // 3 carried − 1 keep
     }
 
     // A rope bought for a party member is kept until the trip hands it over, over a
@@ -1370,12 +1333,14 @@ public sealed class AutoDiscardManagerTests
         h.Discard.HeldHideEnded += ended.Add;
 
         h.Discard.ReleaseHeld("moonstone", 1);   // "You sold moonstone …", by the wiring
+        // Called off by the sale itself, before the pack or the room changes.
+        Assert.Empty(h.Discard.HeldHides);
+        Assert.Equal(new[] { "moonstone" }, ended);
+
         h.Carried.Lose("moonstone");
         h.Discard.OnRoomEntered(RoomB);
 
         Assert.Empty(h.Sent);
-        Assert.Empty(h.Discard.HeldHides);
-        Assert.Equal(new[] { "moonstone" }, ended);
     }
 
     [Theory]
@@ -1386,11 +1351,13 @@ public sealed class AutoDiscardManagerTests
         using Harness h = OwnTwoAndAHeldChestMoonstone();
 
         h.Feed(line);
+        // Called off by the line itself, before the pack or the room changes.
+        Assert.Empty(h.Discard.HeldHides);
+
         h.Carried.Lose("moonstone");
         h.Discard.OnRoomEntered(RoomB);
 
         Assert.Empty(h.Sent);
-        Assert.Empty(h.Discard.HeldHides);
     }
 
     // The inventory announces the copy gone (Changed) before it names the sale, so

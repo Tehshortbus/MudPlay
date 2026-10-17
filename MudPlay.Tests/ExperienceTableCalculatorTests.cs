@@ -5,11 +5,9 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Coverage for <see cref="ExperienceTableCalculator"/> — the exp-chart term,
-/// the Stock vs ParaMUD cumulative progressions, and the time-to-level helper.
-/// Monotonicity + realm-divergence are the invariants the loops must preserve.
-/// </summary>
+// Coverage for ExperienceTableCalculator — the exp-chart term,
+// the Stock vs ParaMUD cumulative progressions, and the time-to-level helper.
+// Monotonicity + realm-divergence are the invariants the loops must preserve.
 public sealed class ExperienceTableCalculatorTests
 {
     [Fact]
@@ -66,25 +64,12 @@ public sealed class ExperienceTableCalculatorTests
     }
 
     [Fact]
-    public void CalcExpNeeded_RealmProgressionsDiverge()
+    public void CalcExpNeeded_Paradigm_SaturatesAtLongMax_NotOverflow()
     {
-        // The two progressions track closely in the low-level brackets (the
-        // ParaMUD table is offset by its level-1 no-op step), but the seed
-        // differs: Stock level 1 is 0 while ParaMUD is chart*10.
-        long stock = ExperienceTableCalculator.CalcExpNeeded(1, 200, RealmType.Stock);
-        long para = ExperienceTableCalculator.CalcExpNeeded(1, 200, RealmType.ParaMud);
-        Assert.NotEqual(stock, para);
-    }
-
-    [Theory]
-    [InlineData(RealmType.Stock)]
-    [InlineData(RealmType.ParaMud)]
-    public void CalcExpNeeded_SaturatesAtLongMax_NotOverflow(RealmType realm)
-    {
-        // A huge chart at a high level should clamp, never throw or wrap negative.
-        long exp = ExperienceTableCalculator.CalcExpNeeded(200, int.MaxValue, realm);
-        Assert.True(exp >= 0);
-        Assert.True(exp <= long.MaxValue);
+        // A huge chart at a high level clamps, never throws or wraps negative. (Stock
+        // keeps the game's own unsigned rollover arithmetic instead.)
+        long exp = ExperienceTableCalculator.CalcExpNeeded(200, int.MaxValue, RealmType.ParaMud);
+        Assert.Equal(long.MaxValue, exp);
     }
 
     [Fact]

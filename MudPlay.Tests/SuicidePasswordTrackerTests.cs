@@ -9,12 +9,10 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Pins the passive observer for the in-game `set suicide` /
-/// `suicide` password flows. The state machine is the load-bearing
-/// piece — both the engine-gate locking and the encrypted-blob
-/// commit / wipe behaviours hang off it.
-/// </summary>
+// Pins the passive observer for the in-game `set suicide` /
+// `suicide` password flows. The state machine is the load-bearing
+// piece — both the engine-gate locking and the encrypted-blob
+// commit / wipe behaviours hang off it.
 public sealed class SuicidePasswordTrackerTests
 {
     private static (
@@ -29,8 +27,8 @@ public sealed class SuicidePasswordTrackerTests
         MessageRouter router = new();
         DefaultPatterns.Seed(router);
         EngineSendGate gate = new();
-        ProfileService profile = new();
-        profile.LoadBlank();
+        ProfileService profile = TestProfiles.Service();
+        profile.LoadDefaultProfile();
         string tmpDir = Path.Combine(Path.GetTempPath(), "fterm-suicide-tests-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tmpDir);
         PasswordProtector protector = new(Path.Combine(tmpDir, ".credkey"));

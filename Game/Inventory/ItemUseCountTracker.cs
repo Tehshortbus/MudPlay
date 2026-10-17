@@ -129,7 +129,7 @@ public sealed class ItemUseCountTracker
 
     private void OnLine(LineExtractor.EmittedLine emitted) => HandleLine(emitted.Text);
 
-    // Split out so tests can drive a line without standing up a LineExtractor. The armed
+    // The armed
     // item's use-spell caster message confirms the use actually fired → count it.
     internal void HandleLine(string text)
     {

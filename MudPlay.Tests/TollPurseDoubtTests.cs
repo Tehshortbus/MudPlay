@@ -4,7 +4,6 @@ using MudPlay.Game.Map;
 using MudPlay.Game.Recovery;
 using MudPlay.Game.Spells;
 using MudPlay.Services;
-using MudPlay.Terminal;
 using Xunit;
 
 namespace MudPlay.Tests;
@@ -193,7 +192,7 @@ public sealed class TollPurseDoubtTests : IDisposable
             TextCommands: new[] { "ask someone activate" }, FareCopper: fareCopper);
 
     private static MovementFilter FilterWithPurse(long? copper) =>
-        new(new ProfileService()) { WealthProvider = () => copper };
+        new(TestProfiles.Service()) { WealthProvider = () => copper };
 
     // A walker over one of the graphs above, with the toll gate's filter, the line
     // detector that reads the game's refusal, and everything it sent as text. The
@@ -206,6 +205,8 @@ public sealed class TollPurseDoubtTests : IDisposable
         public required MovementFilter Filter { get; init; }
         public required AutoWalkManager Walker { get; init; }
         public required MovementRefusalDetector Detector { get; init; }
+        // The game's output, fed the way the client receives it.
+        public required ServerFeed Feed { get; init; }
         public EngineRecoveryGate? Gate { get; init; }
         public List<string> Sent { get; } = new();
         public List<WalkEvent> Events { get; } = new();
@@ -249,11 +250,12 @@ public sealed class TollPurseDoubtTests : IDisposable
         graph.OnActiveSetChanged("alpha");
         BfsMapper bfs = new(graph);
         RoomTracker tracker = new(graph);
-        MovementFilter filter = new(new ProfileService());
+        MovementFilter filter = new(TestProfiles.Service());
         EngineRecoveryGate? gate = recovery ? new EngineRecoveryGate(graph, tracker) : null;
         AutoWalkManager walker = new(graph, bfs, tracker, new MovementCoordinator(), filter, recovery: gate);
         if (spellsJson is not null) walker.SetBoatPlanner(new BoatRoutePlanner(graph, bfs));
-        MovementRefusalDetector detector = new(new LineExtractor(new TerminalEmulator(80, 25)), tracker);
+        ServerFeed feed = new();
+        MovementRefusalDetector detector = new(feed.Lines, tracker);
         Rig? made = null;
         OwedPurseRead purseRead = new(
             held: () => false,
@@ -265,7 +267,7 @@ public sealed class TollPurseDoubtTests : IDisposable
             });
         Rig rig = made = new()
         {
-            Graph = graph, Bfs = bfs, Tracker = tracker, Filter = filter, Walker = walker, Detector = detector,
+            Graph = graph, Bfs = bfs, Tracker = tracker, Filter = filter, Walker = walker, Detector = detector, Feed = feed,
             Gate = gate, Purse = purse, PurseRead = purseRead,
         };
         walker.SetPurseReadWait(purseRead.WaitForAnswer);
@@ -351,7 +353,7 @@ public sealed class TollPurseDoubtTests : IDisposable
     public void AfterADeath_TheNextInventoryRead_PutsTheRecordBackInCharge()
     {
         long? purse = CoinBeforeTheDeath;
-        MovementFilter filter = new(new ProfileService()) { WealthProvider = () => purse };
+        MovementFilter filter = new(TestProfiles.Service()) { WealthProvider = () => purse };
         filter.NotePurseLostAtDeath();
 
         purse = 0;                       // what the `i` at the graveyard reads
@@ -367,12 +369,12 @@ public sealed class TollPurseDoubtTests : IDisposable
     [Fact]
     public void AfterADeath_AnotherCharactersProfile_StartsWithoutTheDoubt()
     {
-        ProfileService profile = new();
+        ProfileService profile = TestProfiles.Service();
         MovementFilter filter = new(profile) { WealthProvider = () => CoinBeforeTheDeath };
         filter.NotePurseLostAtDeath();
         filter.NoteCrossingRefused(FareExit(1_000), 1_000);
 
-        profile.LoadBlank();
+        profile.LoadDefaultProfile();
 
         Assert.False(filter.IsExitBlocked(TollExit(5)));
         Assert.False(filter.IsExitBlocked(FareExit(1_000)));
@@ -431,18 +433,19 @@ public sealed class TollPurseDoubtTests : IDisposable
     {
         Rig rig = NewRig(TollWithAWayRoundJson, CoinBeforeTheDeath);
         MudPlay.Game.DeathDetector deaths = new(rig.Tracker);
+        deaths.AttachLineExtractor(rig.Feed.Lines);
         List<bool> saved = new();
         rig.Tracker.PlayerDeathObserved += () => saved.Add(deaths.LastDeathSavedInColliseum);
 
         rig.Tracker.SetLocated(new RoomKey(1, 1));
-        deaths.FeedTestLine("You have been killed!");
-        deaths.FeedTestLine("But, because you were in a colliseum, you have been saved.");
-        deaths.FeedTestLine("You have 6 lives left.");
+        rig.Feed.Line("You have been killed!");
+        rig.Feed.Line("But, because you were in a colliseum, you have been saved.");
+        rig.Feed.Line("You have 6 lives left.");
 
         rig.Tracker.SetLocated(new RoomKey(1, 1));
-        deaths.FeedTestLine("You have been killed!");
-        deaths.FeedTestLine("But, due to a miracle, you have been saved.");
-        deaths.FeedTestLine("You have 5 lives left.");
+        rig.Feed.Line("You have been killed!");
+        rig.Feed.Line("But, due to a miracle, you have been saved.");
+        rig.Feed.Line("You have 5 lives left.");
 
         Assert.Equal(new[] { true, false }, saved);
     }
@@ -538,7 +541,7 @@ public sealed class TollPurseDoubtTests : IDisposable
     public void ARefusedToll_TheRecordAlreadyShort_OpensWhenTheRecordCoversThePrice_WithNoRead()
     {
         long? purse = 300;
-        MovementFilter filter = new(new ProfileService()) { WealthProvider = () => purse };
+        MovementFilter filter = new(TestProfiles.Service()) { WealthProvider = () => purse };
         Assert.False(filter.NoteCrossingRefused(TollExit(5), 500));
         Assert.True(filter.IsExitBlocked(TollExit(5)));
         Assert.Equal(
@@ -558,7 +561,7 @@ public sealed class TollPurseDoubtTests : IDisposable
     public void ARefusedToll_TheRecordWrong_OpensOnPickups_OnceOneReadHasLanded()
     {
         long? purse = CoinBeforeTheDeath;
-        MovementFilter filter = new(new ProfileService()) { WealthProvider = () => purse };
+        MovementFilter filter = new(TestProfiles.Service()) { WealthProvider = () => purse };
         Assert.True(filter.NoteCrossingRefused(TollExit(5), 500));
 
         purse = 20_000;                   // the record patched before any read: not believed yet
@@ -591,7 +594,7 @@ public sealed class TollPurseDoubtTests : IDisposable
     public void ARefusedToll_TheGamePricesAboveTheData_StaysClosedUntilTheRecordCoversTheGamesPrice()
     {
         long? purse = 1_000;
-        MovementFilter filter = new(new ProfileService()) { WealthProvider = () => purse };
+        MovementFilter filter = new(TestProfiles.Service()) { WealthProvider = () => purse };
 
         Assert.False(filter.NoteCrossingRefused(TollExit(5), 5_000));   // the record agrees it is short
 
@@ -723,7 +726,7 @@ public sealed class TollPurseDoubtTests : IDisposable
         RoomConfidence? whenRaised = null;
         rig.Detector.PaidCrossingRefused += (_, _) => whenRaised = rig.Tracker.State.Confidence;
 
-        rig.Detector.FeedTestLine(Refusal);
+        rig.Feed.Line(Refusal);
 
         (RoomExit? crossing, long? named) = Assert.Single(rig.Refusals);
         Assert.Equal(new RoomKey(1, 2), crossing!.Value.Target);
@@ -740,7 +743,7 @@ public sealed class TollPurseDoubtTests : IDisposable
         Rig rig = NewRig(TollWithAWayRoundJson, purse: null);
         rig.Tracker.SetLocated(new RoomKey(1, 1));
 
-        rig.Detector.FeedTestLine(Refusal);
+        rig.Feed.Line(Refusal);
 
         Assert.Empty(rig.Refusals);
     }
@@ -752,7 +755,7 @@ public sealed class TollPurseDoubtTests : IDisposable
         rig.Tracker.SetLocated(new RoomKey(1, 1));
         rig.Tracker.NoteMoveSent(Direction.E);
 
-        rig.Detector.FeedTestLine("You do not have enough to cover the toll of 5 platinum pieces.");
+        rig.Feed.Line("You do not have enough to cover the toll of 5 platinum pieces.");
 
         (RoomExit? crossing, long? named) = Assert.Single(rig.Refusals);
         Assert.NotNull(crossing);
@@ -768,7 +771,7 @@ public sealed class TollPurseDoubtTests : IDisposable
         rig.Tracker.SetLocated(new RoomKey(1, 1));
         rig.Tracker.NoteMoveSent(Direction.N);
 
-        rig.Detector.FeedTestLine(PriceRefusal);
+        rig.Feed.Line(PriceRefusal);
 
         Assert.Empty(rig.Refusals);
         Assert.Equal(RoomConfidence.Pending, rig.Tracker.State.Confidence);
@@ -846,7 +849,7 @@ public sealed class TollPurseDoubtTests : IDisposable
         rig.Walker.WalkTo(new RoomKey(1, 2));
         Assert.Equal(new[] { "e" }, rig.Sent);
 
-        rig.Detector.FeedTestLine(Refusal);
+        rig.Feed.Line(Refusal);
         Assert.Equal(new[] { "e" }, rig.Sent);              // the re-plan waits for the read
         Assert.Equal(1, rig.InventoryAsked);
         Assert.Equal(WalkState.Walking, rig.Walker.State);
@@ -871,7 +874,7 @@ public sealed class TollPurseDoubtTests : IDisposable
         rig.Walker.WalkTo(new RoomKey(1, 5));
         Assert.Equal(new[] { "e" }, rig.Sent);
 
-        rig.Detector.FeedTestLine(Refusal);
+        rig.Feed.Line(Refusal);
         rig.AnswerInventory(200);                           // 2 gold: short of 5, enough for 1
 
         Assert.Equal(new[] { "e", "n" }, rig.Sent);         // round the first, on to the second
@@ -887,7 +890,7 @@ public sealed class TollPurseDoubtTests : IDisposable
         Rig rig = NewRig(TollWithAWayRoundJson, CoinBeforeTheDeath);
         rig.Tracker.SetLocated(new RoomKey(1, 1));
         rig.Walker.WalkTo(new RoomKey(1, 2));
-        rig.Detector.FeedTestLine(Refusal);
+        rig.Feed.Line(Refusal);
         Assert.Equal(new[] { "e" }, rig.Sent);
 
         rig.AnswerBound!();
@@ -902,7 +905,7 @@ public sealed class TollPurseDoubtTests : IDisposable
         Rig rig = NewRig(TollWithAWayRoundJson, CoinBeforeTheDeath);
         rig.Tracker.SetLocated(new RoomKey(1, 1));
         rig.Walker.WalkTo(new RoomKey(1, 2));
-        rig.Detector.FeedTestLine(Refusal);
+        rig.Feed.Line(Refusal);
 
         rig.Walker.Stop("test");
         rig.AnswerInventory(0);
@@ -920,7 +923,7 @@ public sealed class TollPurseDoubtTests : IDisposable
         rig.Tracker.NoteRoomObserved(Obs("Bailey", Direction.E, Direction.W));
         Assert.Equal(new[] { "e", "e" }, rig.Sent);
 
-        rig.Detector.FeedTestLine(Refusal);
+        rig.Feed.Line(Refusal);
         rig.AnswerInventory(200);
 
         Assert.Equal(new[] { "e", "e" }, rig.Sent);         // not a third
@@ -939,7 +942,7 @@ public sealed class TollPurseDoubtTests : IDisposable
         Rig rig = NewRig(TollTheOnlyWayJson, CoinBeforeTheDeath);
         rig.Tracker.SetLocated(new RoomKey(1, 2));
         rig.Walker.WalkTo(new RoomKey(1, 3));
-        rig.Detector.FeedTestLine(Refusal);
+        rig.Feed.Line(Refusal);
 
         rig.AnswerBound!();
 
@@ -959,7 +962,7 @@ public sealed class TollPurseDoubtTests : IDisposable
         rig.Tracker.SetLocated(new RoomKey(1, 1));
         rig.Walker.WalkTo(new RoomKey(1, 2));
 
-        rig.Detector.FeedTestLine("You do not have enough to cover the toll of 50 gold crowns.");
+        rig.Feed.Line("You do not have enough to cover the toll of 50 gold crowns.");
 
         Assert.Equal(new[] { "e", "n" }, rig.Sent);
         Assert.Equal(0, rig.InventoryAsked);
@@ -989,7 +992,7 @@ public sealed class TollPurseDoubtTests : IDisposable
         Rig rig = NewRig(TollTheOnlyWayJson, purse: 300);
         rig.Tracker.SetLocated(new RoomKey(1, 2));
         rig.Tracker.NoteMoveSent(Direction.E);
-        rig.Detector.FeedTestLine(Refusal);
+        rig.Feed.Line(Refusal);
         Assert.Equal(0, rig.InventoryAsked);
 
         Assert.False(rig.Walker.WalkTo(new RoomKey(1, 3)));
@@ -1025,7 +1028,7 @@ public sealed class TollPurseDoubtTests : IDisposable
         rig.Tracker.SetLocated(new RoomKey(1, 1));
         rig.Walker.WalkTo(new RoomKey(1, 2));
 
-        rig.Detector.FeedTestLine("You do not have enough to cover the toll of 5 platinum pieces.");
+        rig.Feed.Line("You do not have enough to cover the toll of 5 platinum pieces.");
         Assert.Equal(new[] { "e" }, rig.Sent);             // waiting on the locate
         rig.AnswerInventory(CoinBeforeTheDeath);            // the `i` answer: the record unchanged
         foreach (Action answer in locateAnswers.ToArray()) answer();
@@ -1069,7 +1072,7 @@ public sealed class TollPurseDoubtTests : IDisposable
         rig.Tracker.NoteRoomObserved(Obs("Tavern", Direction.S));
         Assert.Equal(new[] { "n", "ask barmaid adventure" }, rig.Sent);
 
-        rig.Detector.FeedTestLine(PriceRefusal);
+        rig.Feed.Line(PriceRefusal);
         rig.AnswerInventory(300);
 
         (RoomExit? crossing, long? named) = Assert.Single(rig.Refusals);

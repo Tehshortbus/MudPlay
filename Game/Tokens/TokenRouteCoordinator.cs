@@ -26,7 +26,7 @@ namespace MudPlay.Game.Tokens;
 // or it fails out in the room (RegroupFailed → nav header) and sits. A party FOLLOWER
 // declines (TryBegin false) so the caller walks the overland route instead.
 //
-// Delegate-injected (no live line stream) so it unit-tests without the app; driven by
+// Delegate-injected (no live line stream); driven by
 // TokenTracker.TokenUsed / TokenTracker.MemberDeparted, Walker.Event, and
 // RoomTracker.StateChanged, all already on the UI thread — so it needs no locking.
 public sealed class TokenRouteCoordinator

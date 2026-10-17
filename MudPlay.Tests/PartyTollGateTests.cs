@@ -210,7 +210,6 @@ public sealed class PartyTollGateTests : IDisposable
         AutoWalkManager walker = new(graph, bfs, tracker, coordinator, filter);
         if (spellsJson is not null) walker.SetBoatPlanner(new BoatRoutePlanner(graph, bfs));
         LoopRunner runner = new(tracker, coordinator, graph: graph, bfs: bfs, filter: filter, postToUi: act => act());
-        runner.RecoveryAttemptSpacingForTests = TimeSpan.Zero;
 
         Rig rig = made = new()
         {
@@ -709,7 +708,6 @@ public sealed class PartyTollGateTests : IDisposable
         Assert.Equal(new[] { "give 1 runic to Bob" }, runic.Gives);
         // No ceiling but what we keep (user, 2026-10-10: "yes no cap is fine").
         Assert.Contains("1 runic to Bob to cover 3 gold: 99 platinum 97 gold over", Assert.Single(runic.HandOverNotices));
-        Assert.Equal(3_000_000, PartyTollGate.OverpayCeiling(need: 300, spare: 3_000_000));
     }
 
     // The one coin that would cover Bob is the coin our own toll is in: handing it

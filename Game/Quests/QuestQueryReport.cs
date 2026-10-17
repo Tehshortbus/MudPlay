@@ -5,8 +5,7 @@ using MudPlay.Services;
 
 namespace MudPlay.Game.Quests;
 
-// Pure formatting for the @quest reply — kept off the handler so the ordinal
-// numbering and wording are unit-tested without the wire or a live profile.
+// Pure formatting for the @quest reply, kept off the handler.
 //
 // A flag's bands are numbered by ordinal position (1st/2nd/3rd band in Step order),
 // not by their raw Step identity: flag 126's bands are Steps 10/20/30/40/50, shown

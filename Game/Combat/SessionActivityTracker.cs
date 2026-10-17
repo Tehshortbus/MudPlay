@@ -13,7 +13,7 @@ namespace MudPlay.Game.Combat;
 // items from InventoryManager, sneak entries from StealthManager and steps from
 // RoomTracker — so inputs are pushed in via the Note* forwarders and AppServices
 // wires the sources. This mirrors TimeAnalysisTracker and keeps the tracker
-// dependency-free behind an injectable clock for unit tests. Every Note* call
+// dependency-free behind an injectable clock. Every Note* call
 // and Snapshot runs on the marshalled dispatch thread (the sources all fire
 // there), so the counters are lock-free.
 //
@@ -72,8 +72,7 @@ public sealed class SessionActivityTracker
 
     // Rate-window anchor: the session/reset start. The window spans
     // [EffectiveStart(now), now] where EffectiveStart caps the look-back at
-    // MaxRateWindow. ResetRates re-anchors this and clears the histories below
-    // without touching the lifetime totals above.
+    // MaxRateWindow. ResetTotals re-anchors this and clears the histories below.
     private DateTimeOffset _windowAnchor;
 
     // Kill timestamps within the rate window, oldest first. Feeds the sparkline
@@ -377,7 +376,13 @@ public sealed class SessionActivityTracker
         _itemsCollected = 0;
         _itemsSold = 0;
         _itemsStashed = 0;
-        ResetRates();
+        // The rate window restarts with them: the rate clock and the kill /
+        // experience / currency histories feeding the rates and sparklines.
+        _windowAnchor = _clock();
+        _killTimes.Clear();
+        _expGains.Clear();
+        _currencyGains.Clear();
+        Changed?.Invoke();
     }
 
     // The sneak, disarm and walk figures, shown under Time Analysis and reset with it.
@@ -393,16 +398,4 @@ public sealed class SessionActivityTracker
         Changed?.Invoke();
     }
 
-    // Restart only the per-hour rate window: re-anchor the rate clock and clear
-    // the kill / experience / currency histories feeding the rates and sparklines
-    // — leaving the lifetime totals (kills, experience, currency collected /
-    // stashed) intact. Part of ResetTotals.
-    public void ResetRates()
-    {
-        _windowAnchor = _clock();
-        _killTimes.Clear();
-        _expGains.Clear();
-        _currencyGains.Clear();
-        Changed?.Invoke();
-    }
 }

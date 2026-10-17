@@ -61,8 +61,6 @@ public sealed class UnobtainableSectionViewModel : JsonTableSectionViewModel
             ["Align"]  = "Alignment",
         };
 
-    public override string SearchKeyColumn => "Name";
-
     public override IEnumerable<string> SearchableLabels => new[]
     {
         Title, "unobtainable", "in game", "sysop", "unimplemented", "placeholder", "test item", "never spawns",

@@ -42,8 +42,6 @@ public sealed class MessagesSectionViewModel : GameDataTableSectionViewModel, IE
         "Spell #", "Name", "Missing", "Lines", "Preview",
     };
 
-    public override string SearchKeyColumn => "Name";
-
     public override IEnumerable<string> SearchableLabels => new[]
     {
         Title, "messages", "incomplete", "unfiltered", "missing", "worklist", "orphan",

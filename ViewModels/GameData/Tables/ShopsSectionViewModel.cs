@@ -43,8 +43,6 @@ public sealed class ShopsSectionViewModel : JsonTableSectionViewModel, IEditable
         "ClassRest",
     };
 
-    public override string SearchKeyColumn => "Name";
-
     public override IEnumerable<string> SearchableLabels => new[]
     {
         Title, "shop", "bank", "merchant", "buy", "sell", "markup", "room",

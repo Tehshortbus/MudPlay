@@ -17,18 +17,23 @@ namespace MudPlay.Tests;
 /// </summary>
 public sealed class PartyDisconnectDeathTests
 {
+    // The game's output each PartyManager is fed, the way the client feeds it.
+    private readonly Dictionary<PartyManager, ServerFeed> _feeds = new();
+
     private static readonly DateTimeOffset Now = new(2026, 6, 1, 0, 0, 0, TimeSpan.Zero);
 
-    private static (MessageRouter router, PartyManager mgr, List<byte[]> wire) Setup(DateTimeOffset? clock = null)
+    private (MessageRouter router, PartyManager mgr, List<byte[]> wire) Setup(DateTimeOffset? clock = null)
     {
         MessageRouter router = new();
         DefaultPatterns.Seed(router);
         PartyState state = new();
-        PartyManager mgr = new(router, state);
+        DateTimeOffset fakeNow = clock ?? Now;
+        PartyManager mgr = new(router, state, now: () => fakeNow);
+        ServerFeed feed = new(router);
+        mgr.AttachLineExtractor(feed.Lines);
+        _feeds[mgr] = feed;
         List<byte[]> wire = new();
         mgr.SetWireSender(wire.Add);
-        DateTimeOffset fakeNow = clock ?? Now;
-        mgr.NowProvider = () => fakeNow;
         return (router, mgr, wire);
     }
 
@@ -80,13 +85,15 @@ public sealed class PartyDisconnectDeathTests
         MessageRouter router = new();
         DefaultPatterns.Seed(router);
         PartyState state = new();
-        PartyManager mgr = new(router, state) { LocalCharacterName = "MudPlay" };
-        mgr.NowProvider = () => Now;
+        PartyManager mgr = new(router, state, now: () => Now) { LocalCharacterName = "MudPlay" };
+        ServerFeed feed = new(router);
+        mgr.AttachLineExtractor(feed.Lines);
+        _feeds[mgr] = feed;
         mgr.SetWireSender(_ => { });
 
         router.Dispatch(Line("Raijin started to follow you."));
-        mgr.TestEnterParBlock();
-        mgr.FeedTestLines(new[]
+        feed.Line("The following people are in your travel party:");
+        feed.Rows(new[]
         {
             "  Raijin WuzHere                  (Priest)        [M:100%] [H:100%]   - Frontrank",
             "  MudPlay  WuzHere                  (Mystic)                  [H:100%]   - Frontrank",
@@ -113,14 +120,16 @@ public sealed class PartyDisconnectDeathTests
         MessageRouter router = new();
         DefaultPatterns.Seed(router);
         PartyState state = new();
-        PartyManager mgr = new(router, state) { LocalCharacterName = "MudPlay" };
-        mgr.NowProvider = () => Now;
+        PartyManager mgr = new(router, state, now: () => Now) { LocalCharacterName = "MudPlay" };
+        ServerFeed feed = new(router);
+        mgr.AttachLineExtractor(feed.Lines);
+        _feeds[mgr] = feed;
         List<byte[]> wire = new();
         mgr.SetWireSender(wire.Add);
 
         router.Dispatch(Line("Raijin started to follow you."));
-        mgr.TestEnterParBlock();
-        mgr.FeedTestLines(new[]
+        feed.Line("The following people are in your travel party:");
+        feed.Rows(new[]
         {
             "  Raijin WuzHere                  (Priest)        [M:100%] [H:100%]   - Frontrank",
             "  MudPlay  WuzHere                  (Mystic)                  [H:100%]   - Frontrank",
@@ -144,8 +153,10 @@ public sealed class PartyDisconnectDeathTests
         MessageRouter router = new();
         DefaultPatterns.Seed(router);
         PartyState state = new();
-        PartyManager mgr = new(router, state) { LocalCharacterName = "MudPlay" };
-        mgr.NowProvider = () => Now;
+        PartyManager mgr = new(router, state, now: () => Now) { LocalCharacterName = "MudPlay" };
+        ServerFeed feed = new(router);
+        mgr.AttachLineExtractor(feed.Lines);
+        _feeds[mgr] = feed;
         mgr.SetWireSender(_ => { });
 
         router.Dispatch(Line("Raijin started to follow you."));
@@ -169,8 +180,10 @@ public sealed class PartyDisconnectDeathTests
         DefaultPatterns.Seed(router);
         PartyState state = new();
         DateTimeOffset now = Now;
-        PartyManager mgr = new(router, state) { LocalCharacterName = "MudPlay" };
-        mgr.NowProvider = () => now;
+        PartyManager mgr = new(router, state, now: () => now) { LocalCharacterName = "MudPlay" };
+        ServerFeed feed = new(router);
+        mgr.AttachLineExtractor(feed.Lines);
+        _feeds[mgr] = feed;
         mgr.DisconnectGraceWindow = TimeSpan.FromSeconds(90);
         mgr.ComebackWindow = TimeSpan.FromMinutes(2);
         mgr.SetWireSender(_ => { });
@@ -197,8 +210,10 @@ public sealed class PartyDisconnectDeathTests
         MessageRouter router = new();
         DefaultPatterns.Seed(router);
         PartyState state = new();
-        PartyManager mgr = new(router, state) { LocalCharacterName = "MudPlay" };
-        mgr.NowProvider = () => Now;
+        PartyManager mgr = new(router, state, now: () => Now) { LocalCharacterName = "MudPlay" };
+        ServerFeed feed = new(router);
+        mgr.AttachLineExtractor(feed.Lines);
+        _feeds[mgr] = feed;
         mgr.SetWireSender(_ => { });
 
         router.Dispatch(Line("Raijin started to follow you."));
@@ -206,8 +221,8 @@ public sealed class PartyDisconnectDeathTests
         Assert.True(mgr.State.SelfIsLeader);
 
         // First par poll — all three present, names upgrade to long form.
-        mgr.TestEnterParBlock();
-        mgr.FeedTestLines(new[]
+        feed.Line("The following people are in your travel party:");
+        feed.Rows(new[]
         {
             "  MudPlay  WuzHere                  (Mystic)                  [H:100%]   - Frontrank",
             "  Raijin WuzHere                  (Priest)        [M:100%] [H:100%]   - Frontrank",
@@ -218,8 +233,8 @@ public sealed class PartyDisconnectDeathTests
 
         // Second par poll — Raijin dropped silently; par shows just
         // MudPlay + Helper. Reconciliation should mark Raijin as lost.
-        mgr.TestEnterParBlock();
-        mgr.FeedTestLines(new[]
+        feed.Line("The following people are in your travel party:");
+        feed.Rows(new[]
         {
             "  MudPlay  WuzHere                  (Mystic)                  [H:100%]   - Frontrank",
             "  Helper WuzHere                  (Cleric)        [M:100%] [H:100%]   - Midrank",
@@ -239,24 +254,26 @@ public sealed class PartyDisconnectDeathTests
         MessageRouter router = new();
         DefaultPatterns.Seed(router);
         PartyState state = new();
-        PartyManager mgr = new(router, state) { LocalCharacterName = "MudPlay" };
-        mgr.NowProvider = () => Now;
+        PartyManager mgr = new(router, state, now: () => Now) { LocalCharacterName = "MudPlay" };
+        ServerFeed feed = new(router);
+        mgr.AttachLineExtractor(feed.Lines);
+        _feeds[mgr] = feed;
         List<byte[]> wire = new();
         mgr.SetWireSender(wire.Add);
 
         router.Dispatch(Line("Raijin started to follow you."));
         router.Dispatch(Line("Helper started to follow you."));
 
-        mgr.TestEnterParBlock();
-        mgr.FeedTestLines(new[]
+        feed.Line("The following people are in your travel party:");
+        feed.Rows(new[]
         {
             "  MudPlay  WuzHere                  (Mystic)                  [H:100%]   - Frontrank",
             "  Raijin WuzHere                  (Priest)        [M:100%] [H:100%]   - Frontrank",
             "  Helper WuzHere                  (Cleric)        [M:100%] [H:100%]   - Midrank",
             string.Empty,
         });
-        mgr.TestEnterParBlock();
-        mgr.FeedTestLines(new[]
+        feed.Line("The following people are in your travel party:");
+        feed.Rows(new[]
         {
             "  MudPlay  WuzHere                  (Mystic)                  [H:100%]   - Frontrank",
             "  Helper WuzHere                  (Cleric)        [M:100%] [H:100%]   - Midrank",
@@ -278,8 +295,10 @@ public sealed class PartyDisconnectDeathTests
         MessageRouter router = new();
         DefaultPatterns.Seed(router);
         PartyState state = new();
-        PartyManager mgr = new(router, state) { LocalCharacterName = "MudPlay" };
-        mgr.NowProvider = () => Now;
+        PartyManager mgr = new(router, state, now: () => Now) { LocalCharacterName = "MudPlay" };
+        ServerFeed feed = new(router);
+        mgr.AttachLineExtractor(feed.Lines);
+        _feeds[mgr] = feed;
         mgr.SetWireSender(_ => { });
 
         router.Dispatch(Line("Raijin started to follow you."));
@@ -288,8 +307,8 @@ public sealed class PartyDisconnectDeathTests
 
         // Header fires (par block opens) but no rows parse — terminator
         // arrives immediately.
-        mgr.TestEnterParBlock();
-        mgr.FeedTestLines(new[] { string.Empty });
+        feed.Line("The following people are in your travel party:");
+        feed.Rows(new[] { string.Empty });
 
         Assert.Equal(before, mgr.State.Members.Count);
         Assert.Empty(mgr.RecentlyDisconnected);
@@ -343,11 +362,14 @@ public sealed class PartyDisconnectDeathTests
         DefaultPatterns.Seed(router);
         PartyState state = new();
         PartyManager mgr = new(router, state) { LocalCharacterName = "Raijin" };
+        ServerFeed feed = new(router);
+        mgr.AttachLineExtractor(feed.Lines);
+        _feeds[mgr] = feed;
 
         router.Dispatch(Line("You are now following MudPlay."));   // adds MudPlay (leader) + self
         // Simulate a second follower by feeding a par block with three rows.
-        mgr.TestEnterParBlock();
-        mgr.FeedTestLines(new[]
+        feed.Line("The following people are in your travel party:");
+        feed.Rows(new[]
         {
             "  MudPlay  WuzHere                  (Mystic)        [M:100%] [H:100%]   - Frontrank",
             "  Raijin WuzHere                  (Priest)        [M:100%] [H:100%]   - Midrank",
@@ -407,9 +429,12 @@ public sealed class PartyDisconnectDeathTests
         DefaultPatterns.Seed(router);
         PartyState state = new();
         PartyManager mgr = new(router, state) { LocalCharacterName = "Raijin" };
+        ServerFeed feed = new(router);
+        mgr.AttachLineExtractor(feed.Lines);
+        _feeds[mgr] = feed;
         router.Dispatch(Line("You are now following MudPlay."));
-        mgr.TestEnterParBlock();
-        mgr.FeedTestLines(new[]
+        feed.Line("The following people are in your travel party:");
+        feed.Rows(new[]
         {
             "  MudPlay  WuzHere                  (Mystic)        [M:100%] [H:100%]   - Frontrank",
             "  Raijin WuzHere                  (Priest)        [M:100%] [H:100%]   - Midrank",
@@ -474,10 +499,13 @@ public sealed class PartyDisconnectDeathTests
         DefaultPatterns.Seed(router);
         PartyState state = new();
         PartyManager mgr = new(router, state) { LocalCharacterName = "Raijin" };
+        ServerFeed feed = new(router);
+        mgr.AttachLineExtractor(feed.Lines);
+        _feeds[mgr] = feed;
 
         router.Dispatch(Line("You are now following MudPlay."));
-        mgr.TestEnterParBlock();
-        mgr.FeedTestLines(new[]
+        feed.Line("The following people are in your travel party:");
+        feed.Rows(new[]
         {
             "  MudPlay  WuzHere                  (Mystic)        [M:100%] [H:100%]   - Frontrank",
             "  Raijin WuzHere                  (Priest)        [M:100%] [H:100%]   - Midrank",
@@ -512,7 +540,7 @@ public sealed class PartyDisconnectDeathTests
         router.Dispatch(Line("Helper started to follow you."));
         Assert.Single(mgr.State.Members);
 
-        mgr.FeedTestEmittedLine("►►► [Helper] logs OFF the BBS.");
+        _feeds[mgr].Line("►►► [Helper] logs OFF the BBS.");
 
         Assert.Empty(mgr.State.Members);
         Assert.Contains("Helper", mgr.RecentlyDisconnected.Keys, StringComparer.OrdinalIgnoreCase);
@@ -533,7 +561,7 @@ public sealed class PartyDisconnectDeathTests
         string? fired = null;
         mgr.MemberDisconnected += g => fired = g;
 
-        mgr.FeedTestEmittedLine("►►► [SuijinAcct] logs OFF the BBS.");
+        _feeds[mgr].Line("►►► [SuijinAcct] logs OFF the BBS.");
 
         Assert.Empty(mgr.State.Members);
         Assert.Contains("Suijin", mgr.RecentlyDisconnected.Keys, StringComparer.OrdinalIgnoreCase);
@@ -548,7 +576,7 @@ public sealed class PartyDisconnectDeathTests
         mgr.PresenceNameResolver = presence => presence;
         router.Dispatch(Line("Helper started to follow you."));
 
-        mgr.FeedTestEmittedLine("►►► [Stranger] logs OFF the BBS.");
+        _feeds[mgr].Line("►►► [Stranger] logs OFF the BBS.");
 
         Assert.Single(mgr.State.Members);
         Assert.DoesNotContain("Stranger", mgr.RecentlyDisconnected.Keys, StringComparer.OrdinalIgnoreCase);
@@ -563,7 +591,7 @@ public sealed class PartyDisconnectDeathTests
         mgr.PresenceNameResolver = presence => presence;
         router.Dispatch(Line("Helper started to follow you."));
 
-        mgr.FeedTestEmittedLine("►►► [Helper] logs OFF the BBS.");
+        _feeds[mgr].Line("►►► [Helper] logs OFF the BBS.");
 
         Assert.Single(mgr.State.Members);
     }
@@ -578,7 +606,7 @@ public sealed class PartyDisconnectDeathTests
         mgr.PresenceNameResolver = presence => presence;
         router.Dispatch(Line("Helper started to follow you."));
 
-        mgr.FeedTestEmittedLine("anything at all");
+        _feeds[mgr].Line("anything at all");
 
         Assert.Single(mgr.State.Members);
     }
@@ -630,10 +658,12 @@ public sealed class PartyDisconnectDeathTests
         MessageRouter router = new();
         DefaultPatterns.Seed(router);
         PartyState state = new();
-        PartyManager mgr = new(router, state);
+        PartyManager mgr = new(router, state, now: () => clock);
+        ServerFeed feed = new(router);
+        mgr.AttachLineExtractor(feed.Lines);
+        _feeds[mgr] = feed;
         List<byte[]> wire = new();
         mgr.SetWireSender(wire.Add);
-        mgr.NowProvider = () => clock;
         mgr.DisconnectGraceWindow = TimeSpan.FromSeconds(10);
 
         // Establish leadership via the follows-you path.

@@ -3,10 +3,9 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-// Two lair-tag parsers exist and they are NOT interchangeable. This pins which
-// shapes each one handles, because picking the wrong one fails silently — it
-// reports "no monsters here" rather than throwing, which read as "these loops
-// have no lairs" across an entire realm.
+// Pins the lair-tag shape the imported Rooms.Lair cells use, because a parser
+// that misses it fails silently — it reports "no monsters here" rather than
+// throwing, which read as "these loops have no lairs" across an entire realm.
 public sealed class LairTagShapeTests
 {
     // The shape this realm's Rooms.Lair cells actually use: a max-regen header,
@@ -32,38 +31,8 @@ public sealed class LairTagShapeTests
     }
 
     [Fact]
-    public void LairTagParser_ReturnsNullForTheMaxHeaderShape()
+    public void ParseLairTag_ToleratesEmpty()
     {
-        // The reason LocalApiCatalog uses RoomTooltipBuilder instead. LairTagParser
-        // understands the NMR 1.83+ group form and a bare pre-1.83 id list — not
-        // this one — and a null here is indistinguishable from "room has no lair"
-        // unless you know to look.
-        Assert.Null(LairTagParser.TryParse(MaxHeaderShape));
-    }
-
-    [Fact]
-    public void LairTagParser_HandlesTheShapesItDoesClaim()
-    {
-        // NMR 1.83+: carries a group key and NO ids (those live in Lairs.json), so
-        // an ids-only consumer gets nothing even on a successful parse.
-        LairTagInfo? group = LairTagParser.TryParse("[10-10-15-1][3]Group(lair): 7/3");
-        Assert.NotNull(group);
-        Assert.Equal("10-10-15-1", group!.GroupIndex);
-        Assert.Equal(3, group.MaxRegen);
-        Assert.Empty(group.MonsterIds);
-
-        // Pre-1.83: a bare id list.
-        LairTagInfo? list = LairTagParser.TryParse("12, 34, 56");
-        Assert.NotNull(list);
-        Assert.Equal(new[] { 12, 34, 56 }, list!.MonsterIds);
-    }
-
-    [Fact]
-    public void BothParsers_TolerateEmptyAndGarbage()
-    {
-        Assert.Null(LairTagParser.TryParse(null));
-        Assert.Null(LairTagParser.TryParse("   "));
-
         RoomTooltipBuilder.ParseLairTag("", out int? max, out IReadOnlyList<int> ids);
         Assert.Null(max);
         Assert.Empty(ids);

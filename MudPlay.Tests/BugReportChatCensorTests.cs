@@ -8,7 +8,7 @@ namespace MudPlay.Tests;
 public sealed class BugReportChatCensorTests
 {
     private static readonly BugReportChatCensor Censor =
-        new BugReportChatCensor(Array.Empty<ulong>()).WithWords("flibber", "zorptang");
+        StandInCensor.Of("flibber", "zorptang");
 
     [Fact]
     public void Normalise_UndoesSubstitutionsPunctuationAndStretching()

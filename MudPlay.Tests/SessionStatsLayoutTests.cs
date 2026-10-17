@@ -4,12 +4,10 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Phase 11 — <see cref="SessionStatsLayoutStore.Resolve(SessionStatsLayout?)"/>
-/// ordering + visibility resolution. The static resolver is the contract the
-/// Session Stats window relies on to map a saved (possibly stale) layout onto the
-/// live panel set, so its invariants are pinned here without spinning up a profile.
-/// </summary>
+// SessionStatsLayoutStore.Resolve
+// ordering + visibility resolution. The static resolver is the contract the
+// Session Stats window relies on to map a saved (possibly stale) layout onto the
+// live panel set, so its invariants are pinned here without spinning up a profile.
 public sealed class SessionStatsLayoutTests
 {
     private static readonly string[] Default =

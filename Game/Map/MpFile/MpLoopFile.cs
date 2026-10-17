@@ -32,10 +32,6 @@ public sealed record MpLoopFile(
 {
     // A loop starts and ends in the same room; a goto path doesn't.
     public bool IsLoop => string.Equals(StartHashExits, EndHashExits, StringComparison.OrdinalIgnoreCase);
-
-    public string Code4 => Start.Code;
-    public string GroupName => Start.Group;
-    public string RoomName => Start.Name;
 }
 
 // A header room line: [code:group:name], the Rooms.md code, folder and name.
@@ -54,10 +50,7 @@ public sealed record MpStep(
     Direction? Compass,
     IReadOnlyList<string> PreActions,
     string? Command,
-    string? Note)
-{
-    public bool IsCompass => Compass.HasValue;
-}
+    string? Note);
 
 // MegaMUD's per-step options, from its Path Steps help and the STEPF_ constants:
 // Dark room, Rest up here, Don't rest here, Pitch black, Stash point, Don't attack,

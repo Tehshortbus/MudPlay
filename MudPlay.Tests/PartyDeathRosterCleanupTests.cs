@@ -24,6 +24,8 @@ public sealed class PartyDeathRosterCleanupTests
         public MessageRouter Router { get; } = new();
         public PartyState Party { get; } = new();
         public PartyManager Manager { get; }
+        // What Manager put on the wire, through the sender the client binds.
+        public List<byte[]> ManagerWire { get; } = new();
         public MovementCoordinator Coord { get; } = new();
         public PartyDeathRosterCleanup Cleanup { get; }
 
@@ -36,12 +38,10 @@ public sealed class PartyDeathRosterCleanupTests
             Party.IsInParty = true;
             Party.SelfIsLeader = true;
             Manager = new PartyManager(Router, Party);
+            Manager.SetWireSender(ManagerWire.Add);
             Cleanup = new PartyDeathRosterCleanup(
                 Router, Party, Manager, Coord,
-                isMovementActive: () => MovementActive)
-            {
-                NowProvider = () => Now,
-            };
+                isMovementActive: () => MovementActive, now: () => Now);
         }
 
         public PartyMember Add(string name, bool isInvited = false, bool isSelf = false)
@@ -64,7 +64,7 @@ public sealed class PartyDeathRosterCleanupTests
         // The bridge routes every uninvite through PartyManager.Uninvite, which
         // records the wire bytes even with no sender bound.
         public IReadOnlyList<string> Uninvited =>
-            Manager.LastSentForTests.Select(b => Encoding.Latin1.GetString(b)).ToList();
+            ManagerWire.Select(b => Encoding.Latin1.GetString(b)).ToList();
 
         public void Dispose()
         {

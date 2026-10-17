@@ -6,30 +6,29 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-// GhRoomLabelStore is BBS-tier (Data/BBS/{bbs}/roomba.json) — every character
-// on a BBS shares one gang house. Tests pin a unique scratch BBS name via
-// OnBbsPinApplied so Persist/Load round-trips through real disk without
-// colliding with user data, mirroring RoomBlacklistStoreTests.
+// GhRoomLabelStore is realm-tier (roomba.json in the realm's folder) — every
+// character in a realm shares one gang house. Tests point the store at a scratch
+// realm folder through OnRealmChanged so Persist/Load round-trips through real
+// disk, mirroring RoomBlacklistStoreTests.
 public sealed class GhRoomLabelStoreTests : IDisposable
 {
-    private readonly string _scratchBbs = "gh-test-" + Path.GetRandomFileName();
+    private readonly string _realm = Path.Combine(Path.GetTempPath(), "gh-test-" + Path.GetRandomFileName());
 
     public void Dispose()
     {
         try
         {
-            string folder = AppPaths.BbsFolder(_scratchBbs);
-            if (Directory.Exists(folder)) Directory.Delete(folder, recursive: true);
+            if (Directory.Exists(_realm)) Directory.Delete(_realm, recursive: true);
         }
         catch { /* best-effort */ }
     }
 
     private GhRoomLabelStore NewPinnedStore()
     {
-        ProfileService profile = new();
-        profile.LoadBlank();
+        ProfileService profile = TestProfiles.Service();
+        profile.LoadDefaultProfile();
         GhRoomLabelStore store = new(profile);
-        store.OnRealmChanged(AppPaths.BbsFolder(_scratchBbs));
+        store.OnRealmChanged(_realm);
         return store;
     }
 
@@ -118,11 +117,11 @@ public sealed class GhRoomLabelStoreTests : IDisposable
     }
 
     [Fact]
-    public void SetSearchesPerRoom_WithoutBbsPin_IsNoOp()
+    public void SetSearchesPerRoom_WithoutARealm_IsNoOp()
     {
-        ProfileService profile = new();
-        profile.LoadBlank();
-        GhRoomLabelStore store = new(profile);   // no OnBbsPinApplied
+        ProfileService profile = TestProfiles.Service();
+        profile.LoadDefaultProfile();
+        GhRoomLabelStore store = new(profile);   // no OnRealmChanged
 
         store.SetSearchesPerRoom(1);
 
@@ -130,32 +129,32 @@ public sealed class GhRoomLabelStoreTests : IDisposable
     }
 
     [Fact]
-    public void Settings_SurviveAcrossStoreInstances_ForTheSameBbs()
+    public void Settings_SurviveAcrossStoreInstances_ForTheSameRealm()
     {
         GhRoomLabelStore first = NewPinnedStore();
         first.SetSearchesPerRoom(7);
         first.SetSearchForHidden(true);
 
-        ProfileService profile = new();
-        profile.LoadBlank();
+        ProfileService profile = TestProfiles.Service();
+        profile.LoadDefaultProfile();
         GhRoomLabelStore second = new(profile);
-        second.OnRealmChanged(AppPaths.BbsFolder(_scratchBbs));
+        second.OnRealmChanged(_realm);
 
         Assert.Equal(7, second.SearchesPerRoom);
         Assert.True(second.SearchForHidden);
     }
 
     [Fact]
-    public void OnBbsPinApplied_MigratesLegacyPerCharacterData_Once()
+    public void OnRealmChanged_MigratesLegacyPerCharacterData_Once()
     {
-        ProfileService profile = new();
-        profile.LoadBlank();
+        ProfileService profile = TestProfiles.Service();
+        profile.LoadDefaultProfile();
         profile.Current!.GhRoomLabels = new List<GhRoomLabel> { new(1, 100) };
         profile.Current!.GhSearchesPerRoom = 9;
         profile.Current!.GhSearchForHidden = true;
 
         GhRoomLabelStore store = new(profile);
-        store.OnRealmChanged(AppPaths.BbsFolder(_scratchBbs));
+        store.OnRealmChanged(_realm);
 
         Assert.Single(store.Labels);
         Assert.Equal(9, store.SearchesPerRoom);
@@ -167,20 +166,20 @@ public sealed class GhRoomLabelStoreTests : IDisposable
     }
 
     [Fact]
-    public void OnBbsPinApplied_DoesNotOverwriteExistingBbsData_WithLegacyData()
+    public void OnRealmChanged_DoesNotOverwriteExistingRealmData_WithLegacyData()
     {
-        // A second character on the same BBS already labeled rooms; a stale
+        // A second character in the same realm already labeled rooms; a stale
         // legacy per-character field on THIS profile must not clobber the
-        // BBS's real data.
+        // realm's real data.
         GhRoomLabelStore seed = NewPinnedStore();
         seed.SetLabel(new RoomKey(1, 1), new List<GhCategoryRule>(), isCatchAll: false);
 
-        ProfileService profile = new();
-        profile.LoadBlank();
+        ProfileService profile = TestProfiles.Service();
+        profile.LoadDefaultProfile();
         profile.Current!.GhRoomLabels = new List<GhRoomLabel> { new(9, 999) };
 
         GhRoomLabelStore store = new(profile);
-        store.OnRealmChanged(AppPaths.BbsFolder(_scratchBbs));
+        store.OnRealmChanged(_realm);
 
         Assert.Single(store.Labels);
         Assert.True(store.TryGetLabel(new RoomKey(1, 1), out _));

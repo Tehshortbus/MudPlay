@@ -263,8 +263,8 @@ public sealed class AutoDiscardManager : IDisposable
     // commands behind the move's delay and drops them past a dozen. The batch goes
     // in under a tag, to be taken back while it waits (RecallQueued), and with a
     // check the pacer makes just before each command goes: a command can wait
-    // seconds, and what made it right to queue may not hold by then. Unbound
-    // (tests): each goes straight out.
+    // seconds, and what made it right to queue may not hold by then. Unbound,
+    // each goes straight out.
     public Action<IReadOnlyList<string>, object, Func<string, bool>>? PacedSender { get; set; }
 
     // Takes back commands still waiting in the pacer under a tag: handed a test
@@ -291,14 +291,14 @@ public sealed class AutoDiscardManager : IDisposable
         ArgumentNullException.ThrowIfNull(resolve);
         ArgumentNullException.ThrowIfNull(isEnabled);
         _carried = carriedItems;
-        // Unbound (tests that wear nothing): only the pack counts.
+        // Unbound: only the pack counts.
         _worn = wornItems ?? (static () => Array.Empty<string>());
         _lit = litLight ?? (static () => null);
         _carriedForJourney = carriedForJourney ?? (static _ => 0);
         _now = now ?? (static () => DateTimeOffset.UtcNow);
         _resolve = resolve;
         _isEnabled = isEnabled;
-        // Unbound (tests) → Stock behaviour: one drop/hide per copy, never batched.
+        // Unbound → Stock behaviour: one drop/hide per copy, never batched.
         _isParadigm = isParadigm ?? (static () => false);
         _log = log;
 
@@ -738,7 +738,7 @@ public sealed class AutoDiscardManager : IDisposable
 
     // Copies of an item in the pack: an entry is a stack with its count in front
     // ("3 moonstone"). AppServices.CountInPack does the same sum off the snapshot;
-    // this one goes through the resolver the class is handed, as its tests do.
+    // this one goes through the resolver the class is handed.
     private int CarriedCopies(int number)
     {
         int copies = 0;

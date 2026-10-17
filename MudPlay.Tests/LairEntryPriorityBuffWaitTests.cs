@@ -15,6 +15,11 @@ namespace MudPlay.Tests;
 // other here as the app wires them, so what is "due" is the scheduler's own answer.
 public sealed class LairEntryPriorityBuffWaitTests
 {
+    // The hold stands outside a lair waiting, as the bug report's pending list
+    // tells it.
+    private static bool Waiting(LairEntryDebuffHold hold) =>
+        hold.DescribePending()?.StartsWith("waiting", StringComparison.Ordinal) == true;
+
     private sealed class Harness : IDisposable
     {
         public MessageRouter Router { get; } = new();
@@ -62,10 +67,10 @@ public sealed class LairEntryPriorityBuffWaitTests
                 readSpells: () => Spells,
                 readHealth: () => Health,
                 isEnabled: () => AutoHeal,
-                log: Log);
+                log: Log,
+                now: () => Now);
             Director.SetAutoBlessGate(() => AutoBless);
             Director.SetManaCostLookup(code => ManaCosts.TryGetValue(code, out int cost) ? cost : null);
-            Director.SetClock(() => Now);
             Director.SetPartyBuffSource(() => Buffs);
             Director.SetStealthMaintenanceDeferGate(() => SneakKept);
             Director.SetBuffDurationSources(
@@ -725,14 +730,14 @@ public sealed class LairEntryPriorityBuffWaitTests
         Assert.Equal(new[] { "shld" }, h.CastsSent);        // not held: we fight with what we have
         h.NextRound(seconds: 30);
         h.Poll();
-        Assert.True(h.Hold.IsWaiting);                      // no step is decided on mid-fight
+        Assert.True(Waiting(h.Hold));                      // no step is decided on mid-fight
 
         h.State.InCombat = false;
         h.Poll();
         Assert.True(h.HeldForMana);                         // the fight is over; mana is still short
         h.State.Ma = 65;
         h.Poll();
-        Assert.False(h.Hold.IsWaiting);
+        Assert.False(Waiting(h.Hold));
     }
 
     // A long fight in the lair where the debuff never comes (the boss can't be
@@ -871,7 +876,7 @@ public sealed class LairEntryPriorityBuffWaitTests
         h.Poll();
 
         Assert.Single(h.InfoLog("Loop"), m => m == "a fight at the door: buffs are free, the wait resumes after");
-        Assert.True(h.Hold.IsWaiting);
+        Assert.True(Waiting(h.Hold));
     }
 
     // An item-cast buff ticked priority is a priority buff to the scheduler, so it is

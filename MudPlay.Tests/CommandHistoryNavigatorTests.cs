@@ -3,12 +3,10 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Pins the Up / Down recall cursor: Previous walks older, Next walks back
-/// toward the newest, the in-progress line is stashed on the first Up and
-/// restored when Down passes the newest entry, ends clamp, and Reset
-/// returns to the live line.
-/// </summary>
+// Pins the Up / Down recall cursor: Previous walks older, Next walks back
+// toward the newest, the in-progress line is stashed on the first Up and
+// restored when Down passes the newest entry, ends clamp, and Reset
+// returns to the live line.
 public sealed class CommandHistoryNavigatorTests
 {
     private static (CommandHistory hist, CommandHistoryNavigator nav) Setup(params string[] cmds)

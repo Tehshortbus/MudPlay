@@ -48,7 +48,7 @@ public sealed class DoorOpenManager : IDisposable
     // than a fixed attempt cap: _bashRestNeeded is true once HP has fallen to the
     // rest-if-below trigger (pause bashing, let HealthManager rest), _bashRestRecovered
     // true once it climbs back to rest-max (resume). Both null → no rest gating
-    // (tests / no wiring): bash proceeds uncapped without pausing.
+    // (no wiring): bash proceeds uncapped without pausing.
     private readonly Func<bool>? _bashRestNeeded;
     private readonly Func<bool>? _bashRestRecovered;
     // True while the movement engines hold for a rest or a meditate. Unset → never.
@@ -102,12 +102,12 @@ public sealed class DoorOpenManager : IDisposable
     // paradigm-20260812-050055: stuck WaitingBash after a training detour, not
     // moving). Arm a one-shot after each command send; on expiry treat the wait
     // as a miss so a wedge becomes a bounded retry + replan. Optional — until a
-    // scheduler is wired (tests drive result lines synchronously) it's inert.
+    // scheduler is wired it's inert.
     private readonly Func<TimeSpan, Action, IDisposable>? _scheduleDelay;
     private IDisposable? _verbWatchdog;
     private static readonly TimeSpan VerbResponseTimeout = TimeSpan.FromSeconds(8);
 
-    // Current state — exposed for tests + diagnostics.
+    // Current state, for diagnostics.
     public DoorState CurrentState => _state;
 
     // Direction of the in-flight request, or null when idle.
@@ -145,14 +145,13 @@ public sealed class DoorOpenManager : IDisposable
         _bashRestNeeded = bashRestNeeded;
         _bashRestRecovered = bashRestRecovered;
         // The per-set bash ceiling (MaxStrengthIndex). Absent it, fall back to the
-        // conservative constant so plain-door tests can construct without game data.
+        // conservative constant.
         _maxBashStrengthProvider = maxBashableStrengthProvider
                                    ?? (() => DoorPolicy.UnbashableStrengthThreshold);
-        // Default to "no items known" so plain-door tests can construct
-        // the manager without an ItemNameStore.
+        // Default to "no items known" when no ItemNameStore is wired.
         _itemNameLookup = itemNameLookup ?? (_ => null);
-        // Default "assume held" so keyed-door tests keep the plain use path with
-        // no opportunistic floor-grab; production wires the live inventory check.
+        // Default "assume held": the plain use path with no opportunistic
+        // floor-grab; AppServices wires the live inventory check.
         _holdsKeyItem = holdsKeyItem ?? (_ => true);
         _log = log;
         _scheduleDelay = scheduleDelay;
@@ -176,9 +175,6 @@ public sealed class DoorOpenManager : IDisposable
     // Bind the wire-sender. Same shape as TrapDisarmManager.SetWireSender
     // — MainWindowVM supplies the gate-wrapped SendUserInput.
     public void SetWireSender(Action<byte[]> sender) => _wire.Bind(sender);
-
-    // Test seam — bytes the manager asked to write to the wire.
-    internal List<byte[]> LastSentForTests => _wire.LastSentForTests;
 
     public void Dispose()
     {
@@ -239,16 +235,6 @@ public sealed class DoorOpenManager : IDisposable
             $"open {DirectionShort(direction)} queued (sender={sender}, key={keyItemId}, depth={_queue.Count}).");
         TryStartNext();
     }
-
-    // Overload for plain-door callers (no key). Equivalent to the keyed
-    // Enqueue with keyItemId = 0.
-    public void Enqueue(
-        Direction direction,
-        int statRequirement,
-        bool canBash,
-        string sender,
-        Action<DoorOpenResult> reply)
-        => Enqueue(direction, statRequirement, canBash, keyItemId: 0, sender, reply);
 
     // Abort the current request (if any) + drain the queue. Pending
     // callers receive a Failed("flow stopped") reply.
@@ -822,7 +808,7 @@ public sealed class DoorOpenManager : IDisposable
         _ => "?",
     };
 
-    // Public FSM state — exposed for tests + diagnostics.
+    // Public FSM state, for diagnostics.
     public enum DoorState
     {
         // No request in flight.

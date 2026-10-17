@@ -1,6 +1,5 @@
 using System;
 using System.Text.Json;
-using Avalonia.Threading;
 using MudPlay.Game.Map;
 using MudPlay.Models.Profile;
 using MudPlay.Services;
@@ -67,7 +66,9 @@ public sealed class DefaultTaskRunner : IDisposable
     private bool _wasInPartyBeforeDrop;
 
     // One-shot party-rebuild hold; non-null only while counting down.
-    private DispatcherTimer? _holdTimer;
+    private IDisposable? _holdTimer;
+    // Arms one tick after the delay; disposing what it returns cancels it.
+    private readonly Func<TimeSpan, Action, IDisposable> _schedule;
 
     private bool _disposed;
 
@@ -81,9 +82,11 @@ public sealed class DefaultTaskRunner : IDisposable
         AutoLairManager autoLair,
         PartyState partyState,
         PartyManager party,
-        LogService? log = null)
+        LogService? log = null,
+        Func<TimeSpan, Action, IDisposable>? schedule = null)
     {
         ArgumentNullException.ThrowIfNull(prompt);
+        _schedule = schedule ?? DispatcherTicks.Once;
         ArgumentNullException.ThrowIfNull(tracker);
         ArgumentNullException.ThrowIfNull(profile);
         ArgumentNullException.ThrowIfNull(loops);
@@ -285,9 +288,7 @@ public sealed class DefaultTaskRunner : IDisposable
                 $"reconnect after a party session — holding {window.TotalSeconds:0}s for party rebuild before starting {label}.");
             CancelHold();
             _held = (label, start);
-            _holdTimer = new DispatcherTimer { Interval = window };
-            _holdTimer.Tick += (_, _) => OnHoldElapsed();
-            _holdTimer.Start();
+            _holdTimer = _schedule(window, OnHoldElapsed);
             return;
         }
 
@@ -306,8 +307,6 @@ public sealed class DefaultTaskRunner : IDisposable
         if (_isConnected) held.Start();
         else _log?.Info("DefaultTask", $"party-rebuild hold elapsed but no longer connected — skipping {held.Label}.");
     }
-
-    internal void FireHoldElapsedForTests() => OnHoldElapsed();
 
     // The task waiting out the hold, as it reads in the notice of what a stop
     // dropped ("loop 'Ring', held for the party to rebuild,"); null when none is.
@@ -377,8 +376,7 @@ public sealed class DefaultTaskRunner : IDisposable
     private void CancelHold()
     {
         _held = null;
-        if (_holdTimer is null) return;
-        _holdTimer.Stop();
+        _holdTimer?.Dispose();
         _holdTimer = null;
     }
 

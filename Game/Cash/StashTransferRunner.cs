@@ -35,7 +35,7 @@ namespace MudPlay.Game.Cash;
 // they took isn't read from the reply — a second search counts what is left.
 //
 // Walker, wire and collect engine are reached through delegates, like
-// TrainFundingRouter, so the trips can be unit-tested without a map.
+// TrainFundingRouter.
 public sealed class StashTransferRunner
 {
     public const string LogCategory = "StashTransfer";

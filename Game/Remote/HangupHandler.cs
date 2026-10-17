@@ -49,7 +49,7 @@ public sealed class HangupHandler : IDisposable
     // Bind the wire-sender — same shape as PartyEssentialHandlers.
     // MainWindowViewModel supplies SendUserInput. Without it the handler still
     // authorises the @hangup AND raises the HangupSignal intent flags, but
-    // produces no actual wire output — useful for tests.
+    // produces no wire output.
     public void SetWireSender(Action<byte[]> sender)
     {
         ArgumentNullException.ThrowIfNull(sender);
@@ -78,7 +78,7 @@ public sealed class HangupHandler : IDisposable
         // Raise the signal BEFORE the wire write so the Disconnected
         // event handler (which can race with the wire round-trip) sees
         // the intent flag and classifies the drop as HangupInitiated.
-        // Set even when there's no wire-sender so a test or
+        // Set even when there's no wire-sender so a
         // pre-connection invocation still records the intent.
         _signal.SignalHangup();
         if (_wireSender is null) return;

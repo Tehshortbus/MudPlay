@@ -142,8 +142,7 @@ public enum AutoLairHeuristic
 
 // Per-candidate input for the scheduler. The caller (typically
 // AutoLairManager) precomputes the BFS hop count and wait-room — keeps
-// the scheduler pure (no graph dependency) so the scoring logic stays
-// trivial to unit-test against fixtures.
+// the scheduler pure (no graph dependency).
 //   Lair: the marked lair room key.
 //   ReadyAt: wall-clock instant at which the lair's spawn check will be
 //     ready on next entry, i.e. LairTimerStore.NextReadyAt. null when

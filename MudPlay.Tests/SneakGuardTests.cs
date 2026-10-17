@@ -206,15 +206,17 @@ public sealed class SneakGuardTests
             getSnapshot: () => snapshot,
             readCombat: () => new CombatSettings(),
             writeCombat: _ => { });
+        List<byte[]> sent = new();
+        mgr.SetWireSender(sent.Add);
         mgr.SetGearHold(() => held);
 
         mgr.SwapWeapon("silver dagger", null);
-        Assert.Empty(mgr.LastSentForTests);
+        Assert.Empty(sent);
         Assert.Contains("weapon", mgr.HeldGearKinds);
 
         held = false;
         mgr.RunHeldGear();
         Assert.Equal(new[] { "eq silver dagger" },
-            mgr.LastSentForTests.Select(b => System.Text.Encoding.Latin1.GetString(b).TrimEnd('\r')));
+            sent.Select(b => System.Text.Encoding.Latin1.GetString(b).TrimEnd('\r')));
     }
 }

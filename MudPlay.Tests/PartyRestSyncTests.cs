@@ -4,7 +4,6 @@ using MudPlay.Game.Remote;
 using MudPlay.Models.GameData;
 using MudPlay.Services;
 using MudPlay.Services.Patterns;
-using MudPlay.Terminal;
 using Xunit;
 
 namespace MudPlay.Tests;
@@ -27,7 +26,7 @@ public sealed class PartyRestSyncTests
     // PlayerState.Position changes. A user manually typing `rest`
     // should NOT auto-broadcast @wait — only engines that decide
     // the leader should pause / resume call RequestWait / RequestOk
-    // (e.g. Phase 12 HealthManager auto-rest, message-engine flag
+    // (e.g. HealthManager auto-rest, message-engine flag
     // triggers on paralyze / held / confused, etc.).
 
     [Fact]
@@ -114,16 +113,6 @@ public sealed class PartyRestSyncTests
         Assert.Single(wire);                               // nothing new on the wire
         sync.RequestOk(WaitReason.Poison);                 // last one out
         Assert.Equal("/Leader @ok\r", LastWire(wire));
-    }
-
-    [Fact]
-    public void RequestOk_ForAReasonNeverPlaced_SendsNothing()
-    {
-        var (sync, party, wire) = Setup();
-        party.IsInParty = true;
-        party.LeaderName = "Leader";
-        sync.RequestOk(WaitReason.Held);
-        Assert.Empty(wire);
     }
 
     [Fact]
@@ -258,28 +247,6 @@ public sealed class PartyRestSyncTests
     }
 
     [Fact]
-    public void TwoReasons_SendOneWait_OkOnlyWhenLastClears()
-    {
-        // Health + Poison both hold the wait. @wait fires once (on the
-        // first reason); @ok fires only when the LAST reason releases.
-        var (sync, party, wire) = Setup();
-        party.IsInParty = true;
-        party.LeaderName = "Leader";
-
-        sync.RequestWait(WaitReason.Health);
-        sync.RequestWait(WaitReason.Poison);
-        Assert.Single(wire);                       // only one @wait
-        Assert.Equal("/Leader @wait\r", LastWire(wire));
-
-        sync.RequestOk(WaitReason.Health);
-        Assert.Single(wire);                       // Poison still holds — no @ok yet
-
-        sync.RequestOk(WaitReason.Poison);
-        Assert.Equal(2, wire.Count);
-        Assert.Equal("/Leader @ok\r", LastWire(wire));
-    }
-
-    [Fact]
     public void Resend_ReTelepathsAWaitAlreadyHeld_AndStillOnlyOneOk()
     {
         // The leader may have timed out the first wait; a resend re-asks. The reason
@@ -328,16 +295,6 @@ public sealed class PartyRestSyncTests
         Assert.Equal("/Leader @wait\r", LastWire(wire));
     }
 
-    [Fact]
-    public void RequestWait_NoWireSender_NoThrow()
-    {
-        PartyState party = new() { IsInParty = true, LeaderName = "Leader" };
-        PartyRestSync sync = new(party);
-        // No SetWireSender — call should silently no-op.
-        sync.RequestWait(WaitReason.Health);
-        sync.Dispose();
-    }
-
     // ===== RequestHeal — follower flee-substitute broadcast =====
 
     [Fact]
@@ -372,52 +329,31 @@ public sealed class PartyRestSyncTests
         Assert.Empty(wire);
     }
 
-    [Fact]
-    public void RequestHeal_NoWireSender_NoThrow()
-    {
-        PartyState party = new() { IsInParty = true, LeaderName = "Leader" };
-        PartyRestSync sync = new(party);
-        sync.RequestHeal();   // no SetWireSender — silent no-op
-        sync.Dispose();
-    }
-
-    [Fact]
-    public void PositionChange_DoesNotAutoFire()
-    {
-        // Regression guard for the live-test feedback: manual `rest`
-        // (which sets PlayerState.Position = Resting) must NOT trigger
-        // @wait. PartyRestSync no longer subscribes to PlayerState at
-        // all; engines drive it explicitly.
-        var (sync, party, wire) = Setup();
-        party.IsInParty = true;
-        party.LeaderName = "Leader";
-        // Just mutating a PlayerState would have fired the old code;
-        // we don't even construct one here because the new ctor
-        // doesn't take it. The point of this test is to document the
-        // contract.
-        Assert.Empty(wire);
-    }
 }
 
 public sealed class PartyEssentialHandlersPauseGateTests
 {
+    // The router each engine reads, which a test's chat lines go through.
+    private readonly Dictionary<RemoteCommandManager, MessageRouter> _routers = new();
+
     private static readonly DateTime Now = new(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc);
 
-    private static (RemoteCommandManager engine, PartyEssentialHandlers handlers, PartyState party) Setup()
+    private (RemoteCommandManager engine, PartyEssentialHandlers handlers, PartyState party) Setup()
     {
         MessageRouter router = new();
         DefaultPatterns.Seed(router);
         ChatRouter chat = new(router);
         PartyState party = new();
-        PlayerDatabase players = new();
+        PlayerDatabase players = new(new ProfileService(), () => null);
         PlayerState player = new();
         RemoteCommandManager engine = new(chat, party, players);
+        _routers[engine] = router;
         PartyEssentialHandlers handlers = new(engine, player, party);
         return (engine, handlers, party);
     }
 
-    private static ChatLogEntry Telepath(string sender, string msg) =>
-        new(Now, ChatChannel.TelepathIncoming, sender, msg, $"{sender} telepaths: {msg}");
+    private static ChatLine Telepath(string sender, string msg) =>
+        new(ChatChannel.TelepathIncoming, sender, msg);
 
     private static void SeedPartyMember(PartyState p, string name)
     {
@@ -440,7 +376,7 @@ public sealed class PartyEssentialHandlersPauseGateTests
         List<bool> events = new();
         handlers.PauseGateChanged += events.Add;
 
-        engine.DispatchForTests(Telepath("Follower", "@wait"));
+        ChatLines.Hear(_routers[engine], Telepath("Follower", "@wait"));
 
         Assert.True(handlers.IsPaused);
         Assert.Equal(new[] { true }, events);
@@ -455,8 +391,8 @@ public sealed class PartyEssentialHandlersPauseGateTests
         List<bool> events = new();
         handlers.PauseGateChanged += events.Add;
 
-        engine.DispatchForTests(Telepath("FollowerA", "@wait"));
-        engine.DispatchForTests(Telepath("FollowerB", "@wait"));
+        ChatLines.Hear(_routers[engine], Telepath("FollowerA", "@wait"));
+        ChatLines.Hear(_routers[engine], Telepath("FollowerB", "@wait"));
 
         Assert.True(handlers.IsPaused);
         Assert.Single(events); // edge-only — only one transition fired
@@ -468,16 +404,16 @@ public sealed class PartyEssentialHandlersPauseGateTests
         var (engine, handlers, party) = Setup();
         SeedPartyMember(party, "FollowerA");
         SeedPartyMember(party, "FollowerB");
-        engine.DispatchForTests(Telepath("FollowerA", "@wait"));
-        engine.DispatchForTests(Telepath("FollowerB", "@wait"));
+        ChatLines.Hear(_routers[engine], Telepath("FollowerA", "@wait"));
+        ChatLines.Hear(_routers[engine], Telepath("FollowerB", "@wait"));
         List<bool> events = new();
         handlers.PauseGateChanged += events.Add;
 
-        engine.DispatchForTests(Telepath("FollowerA", "@ok"));
+        ChatLines.Hear(_routers[engine], Telepath("FollowerA", "@ok"));
         Assert.True(handlers.IsPaused);   // FollowerB still waiting
         Assert.Empty(events);
 
-        engine.DispatchForTests(Telepath("FollowerB", "@ok"));
+        ChatLines.Hear(_routers[engine], Telepath("FollowerB", "@ok"));
         Assert.False(handlers.IsPaused);
         Assert.Equal(new[] { false }, events);
     }

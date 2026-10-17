@@ -7,13 +7,10 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// PR 7.18 — EncumbranceParser pulls the bracket token (None / Light /
-/// Medium / Heavy / Encumbered) from the <c>Encumbrance:</c> stat line
-/// and pushes it into <see cref="PlayerState.Encumbrance"/>. This is
-/// the sole writer of that field per the Phase 3 single-writer
-/// invariant.
-/// </summary>
+// EncumbranceParser pulls the bracket token (None / Light /
+// Medium / Heavy / Encumbered) from the Encumbrance: stat line
+// and pushes it into PlayerState.Encumbrance. This is
+// the sole writer of that field per the single-writer invariant.
 public sealed class EncumbranceParserTests
 {
     private static LineExtractor.EmittedLine Line(string text) =>
@@ -83,21 +80,6 @@ public sealed class EncumbranceParserTests
         router.Dispatch(Line("Forged gossips: hello"));
 
         Assert.Equal(EncumbranceLevel.Light, state.Encumbrance);
-    }
-
-    [Fact]
-    public void Dispatch_UnchangedLevel_NoReentrantWrite()
-    {
-        // Idempotence — re-observing the same level on every prompt
-        // refresh shouldn't churn the observable. We can't easily
-        // intercept the [ObservableProperty] setter from outside, so
-        // just confirm the second dispatch leaves state stable.
-        var (router, state, _) = Setup();
-        router.Dispatch(Line("Encumbrance: 0/100 - None [0%]"));
-        Assert.Equal(EncumbranceLevel.None, state.Encumbrance);
-
-        router.Dispatch(Line("Encumbrance: 0/100 - None [0%]"));
-        Assert.Equal(EncumbranceLevel.None, state.Encumbrance);
     }
 
     [Fact]

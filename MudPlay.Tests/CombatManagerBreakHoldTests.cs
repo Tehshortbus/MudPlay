@@ -28,7 +28,7 @@ public sealed class CombatManagerBreakHoldTests
     {
         public MessageRouter Router { get; } = new();
         public MonsterMessageStore Monsters { get; } = new();
-        public PlayerDatabase Players { get; } = new();
+        public PlayerDatabase Players { get; } = new(new ProfileService(), () => null);
         public PartyState Party { get; } = new();
         public LogService Log { get; } = new();
         public MovementCoordinator Coordinator { get; }
@@ -88,10 +88,10 @@ public sealed class CombatManagerBreakHoldTests
                 isEnabled: () => AutoCombatEnabled,
                 readOwnGivenName: () => "MudPlay",
                 post: a => Posted.Add(a),
-                log: Log);
+                log: Log,
+                now: () => _clock);
             Combat.SetWireSender(b => Sent.Add(b));
             Combat.RoomSpellKill += Deaths.NoteRoomSpellKill;
-            Combat.SetClock(() => _clock);
             Combat.SetDarkRoomProbe(() => Dark);
             Combat.SetBackstabHooks(() => Sneaking, _ => false);
             Combat.SetCombatSpellPredicate(c => AttackSpells.Contains(c));
@@ -216,6 +216,11 @@ public sealed class CombatManagerBreakHoldTests
     }
 
     // A weapon fight with one rat, engaged and answered.
+    // The monster the user's break holds the attack on, as the bug report tells it.
+    private static string? HeldOn(Harness h) =>
+        System.Text.RegularExpressions.Regex.Match(h.Combat.UserBreakHoldSummary, "^on '([^']*)'")
+            is { Success: true } m ? m.Groups[1].Value : null;
+
     private static Harness FightingARat()
     {
         Harness h = new();
@@ -240,7 +245,7 @@ public sealed class CombatManagerBreakHoldTests
 
         h.UserSends(word);
 
-        Assert.Equal(Rat, h.Combat.UserBreakHoldTarget);
+        Assert.Equal(Rat, HeldOn(h));
         Assert.True(h.Combat.AttackHeldByUserBreak);
         Assert.Null(h.Combat.CurrentTarget);
         Assert.Contains(Rat, Assert.Single(h.Notices));
@@ -259,7 +264,7 @@ public sealed class CombatManagerBreakHoldTests
 
         h.UserSends(line);
 
-        Assert.Null(h.Combat.UserBreakHoldTarget);
+        Assert.Null(HeldOn(h));
         Assert.Equal(Rat, h.Combat.CurrentTarget);
     }
 
@@ -271,7 +276,7 @@ public sealed class CombatManagerBreakHoldTests
 
         h.UserSends("break");
 
-        Assert.Null(h.Combat.UserBreakHoldTarget);
+        Assert.Null(HeldOn(h));
         Assert.Empty(h.Notices);
     }
 
@@ -291,7 +296,7 @@ public sealed class CombatManagerBreakHoldTests
         h.UserSends("a rat");
         h.UserSends("break");
 
-        Assert.Equal(Rat, h.Combat.UserBreakHoldTarget);
+        Assert.Equal(Rat, HeldOn(h));
         Assert.False(h.Combat.AttackHeldByUserBreak);
         Assert.Empty(h.Notices);
 
@@ -301,7 +306,7 @@ public sealed class CombatManagerBreakHoldTests
         h.Tick();
 
         Assert.Empty(h.Sent);
-        Assert.Equal(Rat, h.Combat.UserBreakHoldTarget);
+        Assert.Equal(Rat, HeldOn(h));
         Assert.True(h.Combat.AttackHeldByUserBreak);
     }
 
@@ -319,7 +324,7 @@ public sealed class CombatManagerBreakHoldTests
         h.Feed(RatBites);
         h.Tick();
 
-        Assert.Equal(Rat, h.Combat.UserBreakHoldTarget);
+        Assert.Equal(Rat, HeldOn(h));
         Assert.Equal(sent, h.Sent.Count);
         Assert.Contains("Leader's @do break", Assert.Single(h.Notices));
         Assert.Contains("asked for by Leader's @do", h.Combat.UserBreakHoldSummary);
@@ -339,7 +344,7 @@ public sealed class CombatManagerBreakHoldTests
 
         h.PartyMemberDoes("Leader", "a rat");
 
-        Assert.Null(h.Combat.UserBreakHoldTarget);
+        Assert.Null(HeldOn(h));
         Assert.Equal(Rat, h.Combat.CurrentTarget);
         Assert.Contains("'a rat' sent by Leader's @do", h.Combat.UserBreakHoldSummary);
     }
@@ -358,7 +363,7 @@ public sealed class CombatManagerBreakHoldTests
         h.Feed(RatBites);
         h.Tick();
 
-        Assert.Equal(Rat, h.Combat.UserBreakHoldTarget);
+        Assert.Equal(Rat, HeldOn(h));
         Assert.Equal(sent, h.Sent.Count);
         Assert.Contains("Leader's @party break", Assert.Single(h.Notices));
         Assert.Contains("asked for by Leader's @party", h.Combat.UserBreakHoldSummary);
@@ -377,7 +382,7 @@ public sealed class CombatManagerBreakHoldTests
 
         h.PartyMemberRelays("Leader", "a rat");
 
-        Assert.Null(h.Combat.UserBreakHoldTarget);
+        Assert.Null(HeldOn(h));
         Assert.Equal(Rat, h.Combat.CurrentTarget);
         Assert.Contains("'a rat' sent by Leader's @party", h.Combat.UserBreakHoldSummary);
     }
@@ -399,7 +404,7 @@ public sealed class CombatManagerBreakHoldTests
         h.Tick();
 
         Assert.Equal(sent, h.Sent.Count);
-        Assert.Equal(Rat, h.Combat.UserBreakHoldTarget);
+        Assert.Equal(Rat, HeldOn(h));
     }
 
     // A break typed ahead of the round: the round's lines arrive before the game
@@ -464,7 +469,7 @@ public sealed class CombatManagerBreakHoldTests
         h.Tick();
 
         Assert.Equal(sent, h.Sent.Count);
-        Assert.Equal(Rat, h.Combat.UserBreakHoldTarget);
+        Assert.Equal(Rat, HeldOn(h));
     }
 
     // The engine stands down for the room, not for one monster: another that walks
@@ -590,7 +595,7 @@ public sealed class CombatManagerBreakHoldTests
 
         h.UserSends(attack);
 
-        Assert.Null(h.Combat.UserBreakHoldTarget);
+        Assert.Null(HeldOn(h));
         Assert.Equal(Rat, h.Combat.CurrentTarget);
         Assert.Equal(sent, h.Sent.Count);                       // the round is the user's
         Assert.Equal(2, h.Notices.Count);
@@ -622,7 +627,7 @@ public sealed class CombatManagerBreakHoldTests
 
         h.UserSends(line);
 
-        Assert.Equal(Rat, h.Combat.UserBreakHoldTarget);
+        Assert.Equal(Rat, HeldOn(h));
     }
 
     [Fact]
@@ -639,7 +644,7 @@ public sealed class CombatManagerBreakHoldTests
 
         h.UserSends("a kobold");
 
-        Assert.Null(h.Combat.UserBreakHoldTarget);
+        Assert.Null(HeldOn(h));
         Assert.Equal(Thief, h.Combat.CurrentTarget);
         Assert.Equal(sent, h.Sent.Count);
     }
@@ -655,7 +660,7 @@ public sealed class CombatManagerBreakHoldTests
 
         h.UserSends("a wyvern");
 
-        Assert.Null(h.Combat.UserBreakHoldTarget);
+        Assert.Null(HeldOn(h));
         Assert.Equal(sent, h.Sent.Count);
 
         h.Tick();
@@ -679,7 +684,7 @@ public sealed class CombatManagerBreakHoldTests
 
         h.Feed($"Also here: {Thief}.");
 
-        Assert.Null(h.Combat.UserBreakHoldTarget);
+        Assert.Null(HeldOn(h));
         Assert.Equal($"a {Thief}", h.LastSent);
         Assert.Equal(sent + 1, h.Sent.Count);
     }
@@ -692,7 +697,7 @@ public sealed class CombatManagerBreakHoldTests
 
         h.Classifier.RemoveDepartedEntity(Rat);
 
-        Assert.Null(h.Combat.UserBreakHoldTarget);
+        Assert.Null(HeldOn(h));
         Assert.False(h.CombatGateHeld);
     }
 
@@ -705,7 +710,7 @@ public sealed class CombatManagerBreakHoldTests
 
         h.Classifier.AppendArrivalEntity(h.Classifier.Classify(Thief), "A kobold thief sneaks in from the west.");
 
-        Assert.Equal(Rat, h.Combat.UserBreakHoldTarget);
+        Assert.Equal(Rat, HeldOn(h));
     }
 
     // The round beat the break to the game and killed the monster: its exp line
@@ -725,7 +730,7 @@ public sealed class CombatManagerBreakHoldTests
         h.Feed("You gain 50 experience.");
         h.Feed("*Combat Off*");
 
-        Assert.Null(h.Combat.UserBreakHoldTarget);
+        Assert.Null(HeldOn(h));
         Assert.Contains("it died", h.Combat.UserBreakHoldSummary);
         Assert.True(h.Classifier.Current is { Entities.Count: 1 });
         Assert.Equal($"a {Rat}", h.LastSent);
@@ -749,12 +754,12 @@ public sealed class CombatManagerBreakHoldTests
         h.Feed("You gain 50 experience.");
         h.Feed("*Combat Off*");
 
-        Assert.Equal(Rat, h.Combat.UserBreakHoldTarget);
+        Assert.Equal(Rat, HeldOn(h));
         Assert.Equal(sent + 1, h.Sent.Count);
         Assert.Equal(string.Empty, h.LastSent);                 // a bare Enter
 
         h.Feed($"Also here: {Rat}.");                           // the thief was the one that died
-        Assert.Equal(Rat, h.Combat.UserBreakHoldTarget);
+        Assert.Equal(Rat, HeldOn(h));
         Assert.Equal(sent + 1, h.Sent.Count);
     }
 
@@ -773,12 +778,12 @@ public sealed class CombatManagerBreakHoldTests
 
         h.Feed("You gain 50 experience.");
         h.Feed("*Combat Off*");
-        Assert.Equal(Rat, h.Combat.UserBreakHoldTarget);
+        Assert.Equal(Rat, HeldOn(h));
         Assert.Equal(string.Empty, h.LastSent);                 // the room is asked for
 
         h.Feed($"Also here: {Rat}, {Thief}.");
 
-        Assert.Null(h.Combat.UserBreakHoldTarget);
+        Assert.Null(HeldOn(h));
         Assert.Equal($"a {Rat}", h.LastSent);
         Assert.Equal(sent + 2, h.Sent.Count);
     }
@@ -801,7 +806,7 @@ public sealed class CombatManagerBreakHoldTests
 
         h.Feed($"Also here: {Rat}.");
 
-        Assert.Null(h.Combat.UserBreakHoldTarget);
+        Assert.Null(HeldOn(h));
         Assert.Contains("one of that name died or left", h.Combat.UserBreakHoldSummary);
         Assert.Equal($"a {Rat}", h.LastSent);
         Assert.Equal(sent + 1, h.Sent.Count);
@@ -820,7 +825,7 @@ public sealed class CombatManagerBreakHoldTests
 
         h.Classifier.RemoveDepartedEntity(Rat);
 
-        Assert.Null(h.Combat.UserBreakHoldTarget);
+        Assert.Null(HeldOn(h));
         Assert.Equal($"a {Rat}", h.LastSent);
     }
 
@@ -833,12 +838,12 @@ public sealed class CombatManagerBreakHoldTests
         h.UserBreaks();
 
         h.Classifier.AppendArrivalEntity(h.Classifier.Classify(Rat), "A giant rat scurries in from the west.");
-        Assert.Equal(Rat, h.Combat.UserBreakHoldTarget);
+        Assert.Equal(Rat, HeldOn(h));
         Assert.Contains("2 of that name listed", h.Combat.UserBreakHoldSummary);
 
         h.Feed($"Also here: {Rat}.");
 
-        Assert.Null(h.Combat.UserBreakHoldTarget);
+        Assert.Null(HeldOn(h));
     }
 
     // ----- a round with no attack from it --------------------------------
@@ -878,11 +883,11 @@ public sealed class CombatManagerBreakHoldTests
         h.Tick();
         Assert.Equal(sent + 1, h.Sent.Count);
         Assert.Equal(string.Empty, h.LastSent);     // a bare Enter: the room is read first
-        Assert.Equal(Rat, h.Combat.UserBreakHoldTarget);
+        Assert.Equal(Rat, HeldOn(h));
 
         h.Feed($"Also here: {Thief}.");
 
-        Assert.Null(h.Combat.UserBreakHoldTarget);
+        Assert.Null(HeldOn(h));
         Assert.Contains("no longer in the room", h.Combat.UserBreakHoldSummary);
         Assert.Equal($"a {Thief}", h.LastSent);
         Assert.Equal(sent + 2, h.Sent.Count);
@@ -903,7 +908,7 @@ public sealed class CombatManagerBreakHoldTests
         h.Feed($"Also here: {Rat}.");
         h.Tick();
 
-        Assert.Equal(Rat, h.Combat.UserBreakHoldTarget);
+        Assert.Equal(Rat, HeldOn(h));
         Assert.Equal(sent, h.Sent.Count);
         Assert.True(h.CombatGateHeld);
     }
@@ -933,7 +938,7 @@ public sealed class CombatManagerBreakHoldTests
         for (int round = 0; round < 5; round++) h.Tick();   // to 35 s after the break
 
         Assert.Equal(new[] { string.Empty }, h.AllSent);
-        Assert.Equal(Guard, h.Combat.UserBreakHoldTarget);
+        Assert.Equal(Guard, HeldOn(h));
         Assert.Null(h.Combat.CurrentTarget);
     }
 
@@ -958,7 +963,7 @@ public sealed class CombatManagerBreakHoldTests
         h.Feed($"Also here: {Guard}.");
         h.Tick();
 
-        Assert.Null(h.Combat.UserBreakHoldTarget);
+        Assert.Null(HeldOn(h));
         Assert.Null(h.Combat.CurrentTarget);
         Assert.Empty(h.Sent);
 
@@ -994,7 +999,7 @@ public sealed class CombatManagerBreakHoldTests
             h.Tick();
         }
 
-        Assert.Equal(Rat, h.Combat.UserBreakHoldTarget);
+        Assert.Equal(Rat, HeldOn(h));
         Assert.Equal(sent, h.Sent.Count);
     }
 
@@ -1033,7 +1038,7 @@ public sealed class CombatManagerBreakHoldTests
 
         h.Tick();                                   // five seconds after the break, nine after the bite
         Assert.Equal(sent, h.Sent.Count);
-        Assert.Equal(Rat, h.Combat.UserBreakHoldTarget);
+        Assert.Equal(Rat, HeldOn(h));
 
         h.Tick();
         Assert.Equal(sent + 1, h.Sent.Count);
@@ -1054,7 +1059,7 @@ public sealed class CombatManagerBreakHoldTests
         h.Feed($"Also here: {Rat}.");
         h.Tick();
 
-        Assert.Equal(Rat, h.Combat.UserBreakHoldTarget);
+        Assert.Equal(Rat, HeldOn(h));
         Assert.Equal(sent, h.Sent.Count);
     }
 
@@ -1068,11 +1073,11 @@ public sealed class CombatManagerBreakHoldTests
         h.UserBreaks();
         h.Tick();
         h.Tick();
-        Assert.Equal(Rat, h.Combat.UserBreakHoldTarget);
+        Assert.Equal(Rat, HeldOn(h));
 
         h.Tick();
 
-        Assert.Null(h.Combat.UserBreakHoldTarget);
+        Assert.Null(HeldOn(h));
         Assert.Contains("taken for dead", h.Combat.UserBreakHoldSummary);
         Assert.True(h.Classifier.Current is { Entities.Count: 1 });
         Assert.Equal($"a {Thief}", h.LastSent);
@@ -1091,7 +1096,7 @@ public sealed class CombatManagerBreakHoldTests
 
         h.Combat.NoteRoomDisplayed();
 
-        Assert.Null(h.Combat.UserBreakHoldTarget);
+        Assert.Null(HeldOn(h));
         Assert.Contains("lists nobody", h.Combat.UserBreakHoldSummary);
         Assert.False(h.CombatGateHeld);
     }
@@ -1105,7 +1110,7 @@ public sealed class CombatManagerBreakHoldTests
 
         h.Combat.NoteRoomDisplayed();
 
-        Assert.Equal(Rat, h.Combat.UserBreakHoldTarget);
+        Assert.Equal(Rat, HeldOn(h));
         Assert.True(h.Classifier.Current is { Entities.Count: 1 });
     }
 
@@ -1123,7 +1128,7 @@ public sealed class CombatManagerBreakHoldTests
         h.Tick();
         h.Tick();
 
-        Assert.Null(h.Combat.UserBreakHoldTarget);
+        Assert.Null(HeldOn(h));
         Assert.Contains("taken for dead", h.Combat.UserBreakHoldSummary);
         Assert.DoesNotContain(string.Empty, h.AllSent.Skip(sent));
         Assert.True(h.Classifier.Current is { Entities.Count: 1 });
@@ -1144,13 +1149,13 @@ public sealed class CombatManagerBreakHoldTests
         h.Tick();
         h.Tick();
 
-        Assert.Equal(Rat, h.Combat.UserBreakHoldTarget);
+        Assert.Equal(Rat, HeldOn(h));
         Assert.Equal(sent, h.Sent.Count);
 
         h.AutoCombatEnabled = true;
         h.Tick();
 
-        Assert.Equal(Rat, h.Combat.UserBreakHoldTarget);
+        Assert.Equal(Rat, HeldOn(h));
         Assert.Equal(sent + 1, h.Sent.Count);
         Assert.Equal(string.Empty, h.LastSent);
     }
@@ -1178,7 +1183,7 @@ public sealed class CombatManagerBreakHoldTests
             h.Combat.OnHeartbeat();
         }
         Assert.Equal(sent + 1, h.Sent.Count);
-        Assert.Equal(Rat, h.Combat.UserBreakHoldTarget);
+        Assert.Equal(Rat, HeldOn(h));
 
         h.Tick();                                   // 40 s: thirty seconds after that reading
         h.Combat.OnHeartbeat();
@@ -1192,7 +1197,7 @@ public sealed class CombatManagerBreakHoldTests
         Assert.Equal(string.Empty, h.LastSent);
         h.Combat.OnHeartbeat();
         Assert.Equal(sent + 2, h.Sent.Count);       // asked once
-        Assert.Equal(Rat, h.Combat.UserBreakHoldTarget);
+        Assert.Equal(Rat, HeldOn(h));
     }
 
     // An ordinary room display in between is judged by the count as always: the
@@ -1209,7 +1214,7 @@ public sealed class CombatManagerBreakHoldTests
 
         h.Feed($"Also here: {Thief}.");
 
-        Assert.Null(h.Combat.UserBreakHoldTarget);
+        Assert.Null(HeldOn(h));
         Assert.Equal($"a {Thief}", h.LastSent);
     }
 
@@ -1229,7 +1234,7 @@ public sealed class CombatManagerBreakHoldTests
 
         Assert.Empty(h.TrackerSent);
         Assert.True(h.CombatGateHeld);
-        Assert.Equal(Rat, h.Combat.UserBreakHoldTarget);
+        Assert.Equal(Rat, HeldOn(h));
     }
 
     [Fact]
@@ -1247,7 +1252,7 @@ public sealed class CombatManagerBreakHoldTests
         h.Combat.NoteRoomLeft(lastMoveSentAt: DateTimeOffset.Now);
         h.DrainPosted();
 
-        Assert.Null(h.Combat.UserBreakHoldTarget);
+        Assert.Null(HeldOn(h));
         Assert.Contains("left the room", h.Combat.UserBreakHoldSummary);
         Assert.Equal($"a {Rat}", h.LastSent);
         Assert.Equal(sent + 1, h.Sent.Count);
@@ -1271,7 +1276,7 @@ public sealed class CombatManagerBreakHoldTests
         h.Combat.NoteRoomLeft(lastMove);
         h.DrainPosted();
 
-        Assert.Equal(Rat, h.Combat.UserBreakHoldTarget);
+        Assert.Equal(Rat, HeldOn(h));
         Assert.Equal(sent, h.Sent.Count);
 
         // The classifier wiping its roster for that change is no sighting of the
@@ -1279,7 +1284,7 @@ public sealed class CombatManagerBreakHoldTests
         h.Classifier.NoteRoomChanged();
         h.Feed($"Also here: {Rat}.");
 
-        Assert.Equal(Rat, h.Combat.UserBreakHoldTarget);
+        Assert.Equal(Rat, HeldOn(h));
         Assert.Equal(sent, h.Sent.Count);
     }
 
@@ -1347,11 +1352,11 @@ public sealed class CombatManagerBreakHoldTests
 
             Assert.Equal(Direction.S, Assert.Single(walk.Moves));
             Assert.Contains("break", healthSent);
-            Assert.Equal(Rat, h.Combat.UserBreakHoldTarget);    // the flee's own break is no user's attack or break
+            Assert.Equal(Rat, HeldOn(h));    // the flee's own break is no user's attack or break
 
             h.Combat.NoteRoomLeft(lastMoveSentAt: DateTimeOffset.Now);
 
-            Assert.Null(h.Combat.UserBreakHoldTarget);
+            Assert.Null(HeldOn(h));
             Assert.Contains("left the room", h.Combat.UserBreakHoldSummary);
         }
     }
@@ -1395,14 +1400,14 @@ public sealed class CombatManagerBreakHoldTests
 
         h.UserBreaks();
         h.Combat.OnDisconnected();
-        Assert.Null(h.Combat.UserBreakHoldTarget);
+        Assert.Null(HeldOn(h));
 
         h.Feed($"Also here: {Rat}.");
         h.Feed("*Combat Engaged*");
         h.UserBreaks();
-        Assert.Equal(Rat, h.Combat.UserBreakHoldTarget);
+        Assert.Equal(Rat, HeldOn(h));
         h.Combat.ClearUserBreakHold("another profile was loaded");
-        Assert.Null(h.Combat.UserBreakHoldTarget);
+        Assert.Null(HeldOn(h));
         Assert.Contains("another profile was loaded", h.Combat.UserBreakHoldSummary);
     }
 
@@ -1422,7 +1427,7 @@ public sealed class CombatManagerBreakHoldTests
         h.Feed(RatBites);
         h.Tick();
 
-        Assert.Equal(Rat, h.Combat.UserBreakHoldTarget);
+        Assert.Equal(Rat, HeldOn(h));
         Assert.Equal(sent, h.Sent.Count);
     }
 
@@ -1435,7 +1440,7 @@ public sealed class CombatManagerBreakHoldTests
 
         h.UserSends("break");
 
-        Assert.Equal(Rat, h.Combat.UserBreakHoldTarget);
+        Assert.Equal(Rat, HeldOn(h));
         Assert.Single(h.Notices);
     }
 }

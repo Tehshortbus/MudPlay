@@ -50,19 +50,6 @@ public sealed class SplitterLayoutStore
         owner.Closing += (_, _) => CaptureFrom(grid, leftColumnIndex, rightColumnIndex, id);
     }
 
-    // Row equivalent of AttachGrid: persists a vertical split between two rows of
-    // grid (topRowIndex above the splitter, bottomRowIndex below) under id. Same
-    // ratio semantics — topHeight / (topHeight + bottomHeight).
-    public void AttachGridRows(Window owner, Grid grid, int topRowIndex, int bottomRowIndex, string id)
-    {
-        ArgumentNullException.ThrowIfNull(owner);
-        ArgumentNullException.ThrowIfNull(grid);
-        ArgumentException.ThrowIfNullOrWhiteSpace(id);
-
-        owner.Opened  += (_, _) => RestoreRowsOnto(grid, topRowIndex, bottomRowIndex, id);
-        owner.Closing += (_, _) => CaptureFromRows(grid, topRowIndex, bottomRowIndex, id);
-    }
-
     // The same for a grid that lives in a tab rather than a window of its own. A tab
     // has no Opened / Closing to follow: it is restored each time it comes on screen
     // and captured when it leaves, and also as the window around it closes, since a

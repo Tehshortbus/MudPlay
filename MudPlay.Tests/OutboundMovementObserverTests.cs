@@ -7,11 +7,9 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Coverage for <see cref="OutboundMovementObserver"/> + the tracker's
-/// look-suppression machinery. Verifies <c>look &lt;dir&gt;</c> peeks
-/// don't desync the tracker and text-exit verbs are announced as moves.
-/// </summary>
+// Coverage for OutboundMovementObserver + the tracker's
+// look-suppression machinery. Verifies look <dir> peeks
+// don't desync the tracker and text-exit verbs are announced as moves.
 public sealed class OutboundMovementObserverTests : IDisposable
 {
     private readonly string _root;
@@ -207,7 +205,8 @@ public sealed class OutboundMovementObserverTests : IDisposable
         observer.ObserveOutbound(Cmd(command));
 
         Assert.Equal(RoomConfidence.Pending, tracker.State.Confidence);
-        _ = expected;
+        Assert.True(tracker.MatchesPendingHeadMove(expected.ToToken()));
+        Assert.False(tracker.MatchesPendingHeadMove(expected.Opposite().ToToken()));
     }
 
     [Theory]
@@ -429,5 +428,4 @@ public sealed class OutboundMovementObserverTests : IDisposable
         observer.ObserveOutbound(Cmd("go path"));
         Assert.Equal(new[] { "move" }, raised);
     }
-
 }

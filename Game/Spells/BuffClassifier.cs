@@ -31,8 +31,7 @@ public static class BuffClassifier
 
     // A spell actually persists — has a duration, base or level-scaled — rather
     // than firing once. An instant heal, cure, or utility spell (identify, and
-    // the like) leaves all three duration columns 0, same signal
-    // RegenSpellClassifier uses to split a HoT from an instant heal. Zero-energy,
+    // the like) leaves all three duration columns 0. Zero-energy,
     // self/single-target scope alone isn't enough to call something a "buff" —
     // cure poison and minor healing share that exact shape and are not buffs;
     // only something with a real timer to maintain belongs in the Buff Watchdog.
@@ -67,12 +66,6 @@ public static class BuffClassifier
         }
         return true;
     }
-
-    // True when the spell belongs in the party-buff picker: a zero-energy,
-    // maintained buff whose scope targets another player or the whole party.
-    public static bool IsPartyBuff(in KnownSpell spell) =>
-        spell.Formula.EnergyCost == 0 && HasDuration(spell.Formula)
-        && (IsSingleTargetBuff(spell.Targets) || IsWholeParty(spell.Targets));
 
     // True when the spell belongs in the UNIFIED buff picker: a zero-energy,
     // maintained buff we can keep up on ourselves, a member, or the whole party

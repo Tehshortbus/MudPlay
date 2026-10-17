@@ -37,42 +37,60 @@ public sealed class InstalledFontCatalogTests
         Assert.False(InstalledFontCatalog.IsFixedPitch(face));
     }
 
+    // Advances in font design units with hinting off, against the client's
+    // tolerance of 2% of the em (a 1000-unit em here).
+    private const double Em = 1000;
+    private static bool Uniform(params double[] widths) =>
+        InstalledFontCatalog.WidthsUniform(widths, epsilon: Em * 0.02);
+
     [Fact]
     public void IdenticalWidths_AreUniform()
     {
-        Assert.True(InstalledFontCatalog.WidthsUniform(new[] { 9.0, 9.0, 9.0, 9.0 }));
+        Assert.True(Uniform(600, 600, 600, 600));
     }
 
     [Fact]
-    public void WithinHalfPixel_IsUniform()
+    public void DesignUnitRounding_InsideTheTolerance_IsUniform()
     {
-        // Rasteriser rounding jitter under the tolerance still counts as fixed pitch.
-        Assert.True(InstalledFontCatalog.WidthsUniform(new[] { 9.0, 9.3, 8.7, 9.1 }));
+        Assert.True(Uniform(600, 600, 612, 600));
+    }
+
+    [Fact]
+    public void ASpreadPastTheTolerance_IsNotUniform()
+    {
+        Assert.False(Uniform(600, 612, 621));
     }
 
     [Fact]
     public void ProportionalSpread_IsNotUniform()
     {
         // A narrow 'i' next to a wide 'W' — the proportional-font signature.
-        Assert.False(InstalledFontCatalog.WidthsUniform(new[] { 4.0, 9.0, 12.0, 4.5 }));
+        Assert.False(Uniform(278, 600, 944, 300));
     }
 
     [Fact]
     public void AnyZeroWidth_FailsOutright()
     {
-        Assert.False(InstalledFontCatalog.WidthsUniform(new[] { 9.0, 9.0, 0.0, 9.0 }));
+        Assert.False(Uniform(600, 600, 0, 600));
     }
 
     [Fact]
     public void LeadingZeroWidth_FailsOutright()
     {
-        Assert.False(InstalledFontCatalog.WidthsUniform(new[] { 0.0, 9.0, 9.0, 9.0 }));
+        Assert.False(Uniform(0, 600, 600, 600));
+    }
+
+    [Fact]
+    public void AMissingGlyph_FailsOutright()
+    {
+        // A face without a probe glyph measures it as -1.
+        Assert.False(Uniform(600, -1, 600, 600));
     }
 
     [Fact]
     public void EmptySet_IsNotUniform()
     {
-        Assert.False(InstalledFontCatalog.WidthsUniform(System.Array.Empty<double>()));
+        Assert.False(Uniform());
     }
 
     // ----- The saved catalogue -----------------------------------------

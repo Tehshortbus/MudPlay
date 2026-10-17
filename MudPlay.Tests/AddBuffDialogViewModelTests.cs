@@ -96,7 +96,10 @@ public sealed class AddBuffDialogViewModelTests
         Assert.Equal(-64m, d.RerollNumericMinimum);
         Assert.Equal("6 MP/tick at worst · 7 from 12", d.RerollTickStepsText);
         d.RerollThreshold = 75;
-        Assert.Equal(75, d.RerollThreshold);
+        AddBuffResult? result = null;
+        d.CloseRequested += r => result = r;
+        d.OkCommand.Execute(null);
+        Assert.Equal(75, result!.RerollThreshold);
     }
 
     [Fact]

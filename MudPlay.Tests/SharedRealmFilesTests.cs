@@ -33,9 +33,9 @@ public sealed class SharedRealmFilesTests : IDisposable
 
     private PlayerDatabase NewPlayers()
     {
-        ProfileService profile = new();
+        ProfileService profile = TestProfiles.Service();
         PlayerDatabase db = new(profile, () => _realm);
-        profile.LoadBlank();
+        profile.LoadDefaultProfile();
         return db;
     }
 

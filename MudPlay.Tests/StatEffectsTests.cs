@@ -57,8 +57,7 @@ public sealed class StatEffectsTests
 
     // Stealth is NOT identical across realms (correcting the old PNG-based assumption):
     // Stock truncates each stat term, Paradigm rounds the summed float. AGI/INT/CHM=50
-    // → stock 12+6+8=26 vs Paradigm round(27.08)=27, a 1-point gap. (MMUD-Explorer
-    // CalculateStealth bGreaterMUD branch.)
+    // → stock 12+6+8=26 vs Paradigm round(27.08)=27, a 1-point gap.
     [Fact]
     public void Stealth_RealmDiffers_ParadigmRoundsStockTruncates()
     {
@@ -214,7 +213,7 @@ public sealed class StatEffectsTests
         Assert.Equal(expected, CharacterCalculator.CalcSpellcasting(20, 60, 80, 40, 2, 4, 0));
         // Non-casters have no spellcasting skill.
         Assert.Equal(0, CharacterCalculator.CalcSpellcasting(20, 60, 80, 40, 0, 0, 0));
-        // Mystics: a flat 500 instead of a stat blend (DLL + MMUD-Explorer).
+        // Mystics: a flat 500 instead of a stat blend .
         Assert.Equal(500 + 40 + 15, CharacterCalculator.CalcSpellcasting(20, 60, 80, 40, 5, 3, 0));
     }
 

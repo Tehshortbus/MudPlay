@@ -7,14 +7,12 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// QuestStore resolution precedence: the BBS-tier overlay wins over the universal
-/// seed, which wins over a blank auto-draft. Also exercises the (flag, step)
-/// identity, the visibility default, and the load fall-throughs (missing /
-/// malformed overlay). Uses a unique scratch BBS under the shared AppPaths.DataRoot
-/// plus a temp seed file so runs don't collide with real user data or the shared
-/// Global seed.
-/// </summary>
+// QuestStore resolution precedence: the game-data set's overlay wins over the
+// universal seed, which wins over a blank auto-draft. Also exercises the (flag,
+// step) identity, the visibility default, and the load fall-throughs (missing /
+// malformed overlay). Uses a unique scratch set (and, for the per-realm file, a
+// scratch BBS folder) plus a temp seed file so runs don't collide with each other
+// or the shared Global seed.
 public sealed class QuestStoreTests : IDisposable
 {
     private readonly string _scratchBbs;
@@ -175,7 +173,7 @@ public sealed class QuestStoreTests : IDisposable
         Assert.False(store.Resolve(50, 1).Visible);
     }
 
-    // ----- Save (PR 10.11a editor persistence) ----------------------------
+    // ----- Save -----------------------------------------------------------
 
     [Fact]
     public void Save_PersistsUserDelta_AndSurvivesReload()
@@ -253,13 +251,17 @@ public sealed class QuestStoreTests : IDisposable
     }
 
     [Fact]
-    public void Save_NoActiveBbs_IsNoOp()
+    public void Save_NoActiveSet_IsNoOp()
     {
         QuestStore store = new(seedPath: _seedPath);   // never OnActiveSetChanged
 
-        store.Save([new QuestDefinition(50, 1, "User Name")]);   // must not throw
+        store.Save([new QuestDefinition(50, 1, "User Name")]);
 
-        Assert.Null(store.ActiveSet);
+        // Nowhere to write: the set opened afterwards has nothing of it.
+        QuestStore later = new(seedPath: _seedPath);
+        later.OnActiveSetChanged(_scratchSet);
+        Assert.NotEqual("User Name", later.Resolve(50, 1).Name);
+        Assert.False(File.Exists(AppPaths.QuestsFile(_scratchSet)));
     }
 
     [Fact]

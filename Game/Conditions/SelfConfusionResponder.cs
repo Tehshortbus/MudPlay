@@ -68,8 +68,7 @@ public sealed class SelfConfusionResponder : IDisposable
             Evaluate();
     }
 
-    // Recompute the confused state and fire the transition once per edge. Public
-    // so tests can drive it without a PropertyChanged round-trip.
+    // Recompute the confused state and fire the transition once per edge.
     public void Evaluate()
     {
         bool confused = _conditions.IsConfused;

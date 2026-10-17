@@ -7,10 +7,8 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// PR 9.F — <see cref="StealthManager"/> line-driven FSM, silent-
-/// loss detection on room change, and hide-via-explicit-mark API.
-/// </summary>
+// StealthManager line-driven FSM, silent-
+// loss detection on room change, and hide-via-explicit-mark API.
 public sealed class StealthManagerTests
 {
     private sealed class Harness : IDisposable
@@ -19,13 +17,17 @@ public sealed class StealthManagerTests
         public LogService Log { get; } = new();
         public PlayerState State { get; } = new();
         public StealthManager Stealth { get; }
+        // The clock the Stealth reads: the real one unless a test sets its own.
+        public Func<DateTimeOffset> StealthNow { get; set; } = () => DateTimeOffset.UtcNow;
+        // The manager's re-sneak, cooldown-retry, answer and held-cast timers.
+        public ManualTimers Timers { get; } = new();
         public List<(StealthState From, StealthState To)> Transitions { get; } = new();
         public int SilentLossCount { get; private set; }
 
         public Harness()
         {
             DefaultPatterns.Seed(Router);
-            Stealth = new StealthManager(Router, State, Log);
+            Stealth = new StealthManager(Router, State, Log, now: () => StealthNow(), schedule: Timers.Arm);
             Stealth.StateChanged += (from, to) => Transitions.Add((from, to));
             Stealth.SilentSneakLost += () => SilentLossCount++;
         }
@@ -98,7 +100,7 @@ public sealed class StealthManagerTests
     {
         using Harness h = new();
         DateTimeOffset now = new(2026, 9, 26, 22, 22, 6, TimeSpan.Zero);
-        h.Stealth.NowProvider = () => now;
+        h.StealthNow = () => now;
         h.Feed("Sneaking...");
         h.Feed("You make a sound as you enter the room!");
 
@@ -324,7 +326,7 @@ public sealed class StealthManagerTests
         Assert.Single(h.Transitions);
     }
 
-    // ----- Auto-sneak / auto-hide engines (Cluster 3) ----------------
+    // ----- Auto-sneak / auto-hide engines ----------------------------
 
     private sealed class AutoHarness : IDisposable
     {
@@ -332,6 +334,10 @@ public sealed class StealthManagerTests
         public LogService Log { get; } = new();
         public PlayerState State { get; } = new();
         public StealthManager Stealth { get; }
+        // The clock the Stealth reads: the real one unless a test sets its own.
+        public Func<DateTimeOffset> StealthNow { get; set; } = () => DateTimeOffset.UtcNow;
+        // The manager's re-sneak, cooldown-retry, answer and held-cast timers.
+        public ManualTimers Timers { get; } = new();
         public List<byte[]> Sent { get; } = new();
         public bool AutoSneakOn { get; set; }
         public bool AutoHideOn { get; set; }
@@ -340,7 +346,7 @@ public sealed class StealthManagerTests
         public AutoHarness()
         {
             DefaultPatterns.Seed(Router);
-            Stealth = new StealthManager(Router, State, Log);
+            Stealth = new StealthManager(Router, State, Log, now: () => StealthNow(), schedule: Timers.Arm);
             Stealth.SetWireSender(b => Sent.Add(b));
             Stealth.SetAutoToggles(
                 () => AutoSneakOn,
@@ -383,7 +389,7 @@ public sealed class StealthManagerTests
         h.Stealth.NoteSneakBroken("'sea'");
         Assert.Empty(h.Sent);                     // not at once: a burst may still be going out
 
-        h.Stealth.ReSneakInPlaceForTests();       // the pause has passed
+        h.Timers.RunDue(StealthManager.InPlaceReSneakDelay);       // the pause has passed
         Assert.Equal("sn", h.LastSent());
     }
 
@@ -394,7 +400,7 @@ public sealed class StealthManagerTests
         using AutoHarness h = ManualPlay();
 
         h.Stealth.NoteCombatEndedStealthReset();
-        h.Stealth.ReSneakInPlaceForTests();
+        h.Timers.RunDue(StealthManager.InPlaceReSneakDelay);
 
         Assert.Equal("sn", h.LastSent());
     }
@@ -406,7 +412,7 @@ public sealed class StealthManagerTests
         h.Stealth.SetSneakBlockCheck(() => true);
 
         h.Stealth.NoteCombatEndedStealthReset();
-        h.Stealth.ReSneakInPlaceForTests();
+        h.Timers.RunDue(StealthManager.InPlaceReSneakDelay);
 
         Assert.Empty(h.Sent);
     }
@@ -419,7 +425,7 @@ public sealed class StealthManagerTests
         h.Sent.Clear();
 
         h.Stealth.NoteSneakBroken("'sea'");
-        h.Stealth.ReSneakInPlaceForTests();
+        h.Timers.RunDue(StealthManager.InPlaceReSneakDelay);
 
         Assert.Empty(h.Sent);
     }
@@ -461,7 +467,7 @@ public sealed class StealthManagerTests
         Assert.False(h.Stealth.IsSneaking);
 
         // The next sn's answer counts again.
-        h.Stealth.ReSneakInPlaceForTests();
+        h.Timers.RunDue(StealthManager.InPlaceReSneakDelay);
         h.Feed("Attempting to sneak...");
         Assert.True(h.Stealth.IsSneaking);
     }
@@ -475,11 +481,12 @@ public sealed class StealthManagerTests
         bool resting = true;
         h.Stealth.SetIdleRestChecks(restUnderWay: () => resting, restKeepsSneak: () => false);
 
-        h.Stealth.ReSneakInPlaceForTests();
+        h.Stealth.NoteCombatEndedStealthReset();
+        h.Timers.RunDue(StealthManager.InPlaceReSneakDelay);
         Assert.Empty(h.Sent);
 
         resting = false;                          // topped off
-        h.Stealth.ReSneakInPlaceForTests();
+        h.Timers.RunDue(StealthManager.InPlaceRestRecheck);
         Assert.Equal("sn", h.LastSent());
     }
 
@@ -491,7 +498,8 @@ public sealed class StealthManagerTests
         using AutoHarness h = ManualPlay();
         h.Stealth.SetIdleRestChecks(restUnderWay: () => true, restKeepsSneak: () => true);
 
-        h.Stealth.ReSneakInPlaceForTests();
+        h.Stealth.NoteCombatEndedStealthReset();
+        h.Timers.RunDue(StealthManager.InPlaceReSneakDelay);
         Assert.Equal("sn", h.LastSent());
     }
 
@@ -500,13 +508,13 @@ public sealed class StealthManagerTests
     {
         using AutoHarness h = ManualPlay();
         h.Stealth.NoteAutoSneakSwitchedOn();
-        h.Stealth.ReSneakInPlaceForTests();
+        h.Timers.RunDue(StealthManager.InPlaceReSneakDelay);
         Assert.Equal("sn", h.LastSent());
 
         using AutoHarness off = ManualPlay();
         off.AutoSneakOn = false;
         off.Stealth.NoteCombatEndedStealthReset();
-        off.Stealth.ReSneakInPlaceForTests();
+        off.Timers.RunDue(StealthManager.InPlaceReSneakDelay);
         Assert.Empty(off.Sent);
     }
 
@@ -522,7 +530,7 @@ public sealed class StealthManagerTests
         Game.Map.MovementCoordinator coord = new(h.Log);
         h.Stealth.SetMovementCoordinator(coord);
         DateTimeOffset now = new(2026, 10, 4, 14, 50, 0, TimeSpan.Zero);
-        h.Stealth.NowProvider = () => now;
+        h.StealthNow = () => now;
         return (h, coord, () => now, ms => now = now.AddMilliseconds(ms));
     }
 
@@ -617,7 +625,7 @@ public sealed class StealthManagerTests
         Assert.True(coord.IsGateAsserted(Game.Map.MovementCoordinator.SneakCooldownGate));
 
         h.Sent.Clear();
-        h.Stealth.RetrySneakAfterCooldownForTests();     // 2s later
+        h.Timers.RunDue(StealthManager.SneakCooldownRetry);     // 2s later
         Assert.Equal("sn", h.LastSent());
 
         h.Feed("Attempting to sneak...");                 // it took
@@ -673,12 +681,12 @@ public sealed class StealthManagerTests
         Game.Map.MovementCoordinator coord = new(h.Log);
         h.Stealth.SetMovementCoordinator(coord);
         DateTimeOffset now = new(2026, 9, 26, 23, 33, 53, TimeSpan.Zero);
-        h.Stealth.NowProvider = () => now;
+        h.StealthNow = () => now;
 
         h.Stealth.NoteRoomChanged();
         h.Feed("You may not sneak right now!");
         now = now.AddSeconds(16);
-        h.Stealth.RetrySneakAfterCooldownForTests();
+        h.Timers.RunDue(StealthManager.SneakCooldownRetry);
 
         Assert.False(coord.IsGateAsserted(Game.Map.MovementCoordinator.SneakCooldownGate));
     }
@@ -798,7 +806,7 @@ public sealed class StealthManagerTests
         Game.Map.MovementCoordinator coord = new(h.Log);
         h.Stealth.SetMovementCoordinator(coord);
         DateTimeOffset now = new(2026, 9, 27, 1, 40, 26, TimeSpan.Zero);
-        h.Stealth.NowProvider = () => now;
+        h.StealthNow = () => now;
 
         h.Stealth.ReadyToMoveSneaking();
         for (int i = 0; i < 12; i++)
@@ -1037,7 +1045,7 @@ public sealed class StealthManagerTests
         Assert.Empty(h.Sent);
     }
 
-    // ----- pre-move stealth hook (PR 4.b) ----------------------------
+    // ----- pre-move stealth hook -------------------------------------
 
     [Fact]
     public void RequestPreMoveStealth_FromIdle_SendsSneak()

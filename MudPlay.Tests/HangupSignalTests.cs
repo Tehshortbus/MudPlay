@@ -3,11 +3,9 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Pins the two-flag one-shot semantics. Each ConsumeXxx returns true
-/// exactly once per SignalHangup and resets back to false, so the
-/// signal can be raised on subsequent hangups without leaking state.
-/// </summary>
+// Pins the two-flag one-shot semantics. Each ConsumeXxx returns true
+// exactly once per SignalHangup and resets back to false, so the
+// signal can be raised on subsequent hangups without leaking state.
 public sealed class HangupSignalTests
 {
     [Fact]
@@ -16,16 +14,6 @@ public sealed class HangupSignalTests
         HangupSignal s = new();
         Assert.False(s.ConsumeDisconnectIntent());
         Assert.False(s.ConsumeSuppressEntry());
-    }
-
-    [Fact]
-    public void SignalHangup_ArmsBothFlags()
-    {
-        HangupSignal s = new();
-        s.SignalHangup();
-        var (disc, supp) = s.PeekForTests();
-        Assert.True(disc);
-        Assert.True(supp);
     }
 
     [Fact]
@@ -104,7 +92,8 @@ public sealed class HangupSignalTests
         HangupSignal s = new();
         s.SignalHangup();
         Assert.True(s.Reset());
-        var (disc, supp) = s.PeekForTests();
+        bool disc = s.ConsumeDisconnectIntent();
+        bool supp = s.ConsumeSuppressEntry();
         Assert.False(disc);
         Assert.False(supp);
     }

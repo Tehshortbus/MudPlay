@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using MudPlay.Game.Map;
 using MudPlay.Game.Simulation;
+using MudPlay.Services;
 using Xunit;
 
 namespace MudPlay.Tests;
@@ -11,8 +13,36 @@ namespace MudPlay.Tests;
 // made on: a pairing gets its own back and no other's, names match without case, a
 // set read in again keeps the rankings whose tables it still has, and only the last
 // few made or shown are held.
-public sealed class AreaRankingStoreTests
+public sealed class AreaRankingStoreTests : IDisposable
 {
+    // Set and BBS names carry the test's own tag: the store keeps every ranking in
+    // a file under its set, and a rename by character walks every set under the
+    // data root, other test classes' included.
+    private readonly string _tag = Guid.NewGuid().ToString("N")[..10];
+
+    private string S(string set) => $"{set}-{_tag}";
+
+    private string C(string character)
+    {
+        int slash = character.IndexOf('/');
+        return $"{character[..slash]}-{_tag}{character[slash..]}";
+    }
+
+    // The store as the client runs it, with its file work done in turn on the
+    // calling thread and what a read finds handed straight back.
+    private static AreaRankingStore NewStore() =>
+        new(new AreaRankingFiles(), act => act(), runFileWork: work => work());
+
+    public void Dispose()
+    {
+        if (!Directory.Exists(AppPaths.GameDataRoot)) return;
+        foreach (string dir in Directory.GetDirectories(AppPaths.GameDataRoot, $"*-{_tag}"))
+        {
+            try { Directory.Delete(dir, recursive: true); }
+            catch { /* best-effort temp cleanup */ }
+        }
+    }
+
     private static AreaRanking Ranking(string area) => new(
         new[]
         {
@@ -24,25 +54,25 @@ public sealed class AreaRankingStoreTests
     [Fact]
     public void APairingGetsItsOwnRankingBackAndNoOthers()
     {
-        var store = new AreaRankingStore();
+        AreaRankingStore store = NewStore();
         AreaRanking hills = Ranking("Hills"), marsh = Ranking("Marsh"), fen = Ranking("Fen");
-        store.Keep(new SimulatorOwner("alpha", "board/one"), hills);
-        store.Keep(new SimulatorOwner("beta", "board/one"), marsh);
-        store.Keep(new SimulatorOwner("alpha", "board/two"), fen);
+        store.Keep(new SimulatorOwner(S("alpha"), C("board/one")), hills);
+        store.Keep(new SimulatorOwner(S("beta"), C("board/one")), marsh);
+        store.Keep(new SimulatorOwner(S("alpha"), C("board/two")), fen);
 
-        Assert.Same(hills, store.Get(new SimulatorOwner("ALPHA", "Board/One")));
-        Assert.Same(marsh, store.Get(new SimulatorOwner("beta", "board/one")));
-        Assert.Same(fen, store.Get(new SimulatorOwner("alpha", "board/two")));
-        Assert.Null(store.Get(new SimulatorOwner("beta", "board/two")));
-        Assert.Null(store.Get(new SimulatorOwner("alpha", null)));
-        Assert.Null(store.Get(new SimulatorOwner(null, "board/one")));
+        Assert.Same(hills, store.Get(new SimulatorOwner(S("ALPHA"), C("Board/One"))));
+        Assert.Same(marsh, store.Get(new SimulatorOwner(S("beta"), C("board/one"))));
+        Assert.Same(fen, store.Get(new SimulatorOwner(S("alpha"), C("board/two"))));
+        Assert.Null(store.Get(new SimulatorOwner(S("beta"), C("board/two"))));
+        Assert.Null(store.Get(new SimulatorOwner(S("alpha"), null)));
+        Assert.Null(store.Get(new SimulatorOwner(null, C("board/one"))));
     }
 
     [Fact]
     public void RankingAgainReplacesThePairingsRanking()
     {
-        var store = new AreaRankingStore();
-        var owner = new SimulatorOwner("alpha", "board/one");
+        AreaRankingStore store = NewStore();
+        var owner = new SimulatorOwner(S("alpha"), C("board/one"));
         AreaRanking second = Ranking("Marsh");
         store.Keep(owner, Ranking("Hills"));
         store.Keep(owner, second);
@@ -68,17 +98,17 @@ public sealed class AreaRankingStoreTests
     [Fact]
     public void NeitherASwitchOfGameDataNorTheSameSetReadInAgainDropsARankingOfTheSameTables()
     {
-        var store = new AreaRankingStore();
-        store.NoteActiveSet("alpha");
+        AreaRankingStore store = NewStore();
+        store.NoteActiveSet(S("alpha"));
         AreaRanking hills = Ranking("Hills") with { World = Tables };
-        var one = new SimulatorOwner("alpha", "board/one");
+        var one = new SimulatorOwner(S("alpha"), C("board/one"));
         store.Keep(one, hills);
-        store.Keep(new SimulatorOwner("alpha", "board/two"), Ranking("Marsh") with { World = Tables });
-        store.Keep(new SimulatorOwner("beta", "board/one"), Ranking("Fen") with { World = Tables });
+        store.Keep(new SimulatorOwner(S("alpha"), C("board/two")), Ranking("Marsh") with { World = Tables });
+        store.Keep(new SimulatorOwner(S("beta"), C("board/one")), Ranking("Fen") with { World = Tables });
 
-        Assert.Equal(0, store.NoteActiveSet("beta"));
-        Assert.Equal(0, store.NoteActiveSet("alpha"));
-        Assert.Equal(0, store.NoteActiveSet("Alpha"));
+        Assert.Equal(0, store.NoteActiveSet(S("beta")));
+        Assert.Equal(0, store.NoteActiveSet(S("alpha")));
+        Assert.Equal(0, store.NoteActiveSet(S("Alpha")));
 
         Assert.Equal(3, store.Count);
         Assert.Same(hills, store.Get(one, Tables));
@@ -93,14 +123,14 @@ public sealed class AreaRankingStoreTests
     [Fact]
     public void ARankingHeldThroughAReloadIsComparedWithTheNewLoadBeforeItIsHandedBack()
     {
-        var store = new AreaRankingStore();
-        store.NoteActiveSet("alpha");
-        var one = new SimulatorOwner("alpha", "board/one");
-        var two = new SimulatorOwner("alpha", "board/two");
+        AreaRankingStore store = NewStore();
+        store.NoteActiveSet(S("alpha"));
+        var one = new SimulatorOwner(S("alpha"), C("board/one"));
+        var two = new SimulatorOwner(S("alpha"), C("board/two"));
         store.Keep(one, Ranking("Hills") with { World = Tables });
         store.Keep(two, Ranking("Marsh") with { World = Tables });
 
-        store.NoteActiveSet("alpha");
+        store.NoteActiveSet(S("alpha"));
 
         // No world to compare with (the load can't be stamped): not shown, still held.
         Assert.Null(store.Get(one));
@@ -117,9 +147,9 @@ public sealed class AreaRankingStoreTests
     [Fact]
     public void TheWorldInHandIsNotComparedWithARankingOfAnotherSet()
     {
-        var store = new AreaRankingStore();
-        store.NoteActiveSet("alpha");
-        var onBeta = new SimulatorOwner("beta", "board/one");
+        AreaRankingStore store = NewStore();
+        store.NoteActiveSet(S("alpha"));
+        var onBeta = new SimulatorOwner(S("beta"), C("board/one"));
         store.Keep(onBeta, Ranking("Fen") with { World = Tables });
 
         Assert.NotNull(store.Get(onBeta, OtherTables));
@@ -135,25 +165,25 @@ public sealed class AreaRankingStoreTests
     [InlineData(false)]
     public void ARankingWithNoRecordOfItsTablesGoesAtTheNextLoadOfItsSet(bool readAgain)
     {
-        var store = new AreaRankingStore();
-        store.NoteActiveSet("alpha");
-        var one = new SimulatorOwner("alpha", "board/one");
+        AreaRankingStore store = NewStore();
+        store.NoteActiveSet(S("alpha"));
+        var one = new SimulatorOwner(S("alpha"), C("board/one"));
         store.Keep(one, Ranking("Hills"));
-        store.Keep(new SimulatorOwner("alpha", "board/two"), Ranking("Marsh"));
+        store.Keep(new SimulatorOwner(S("alpha"), C("board/two")), Ranking("Marsh"));
 
         if (readAgain)
         {
-            Assert.Equal(2, store.NoteActiveSet("Alpha"));
+            Assert.Equal(2, store.NoteActiveSet(S("Alpha")));
             Assert.Equal(0, store.Count);
             return;
         }
         // Away to beta, where one is made, and back.
-        Assert.Equal(0, store.NoteActiveSet("beta"));
+        Assert.Equal(0, store.NoteActiveSet(S("beta")));
         Assert.Equal(2, store.Count);
-        var onBeta = new SimulatorOwner("beta", "board/one");
+        var onBeta = new SimulatorOwner(S("beta"), C("board/one"));
         store.Keep(onBeta, Ranking("Fen"));
 
-        Assert.Equal(2, store.NoteActiveSet("alpha"));
+        Assert.Equal(2, store.NoteActiveSet(S("alpha")));
 
         Assert.Null(store.Get(one));
         Assert.Null(store.Get(one, Tables));
@@ -172,14 +202,14 @@ public sealed class AreaRankingStoreTests
     [Fact]
     public void ARankingWithNoRecordOfItsTables_IsNotHandedBackUnderALaterLoadOfChangedTables()
     {
-        var store = new AreaRankingStore();
-        store.NoteActiveSet("alpha");
-        var owner = new SimulatorOwner("alpha", "board/one");
+        AreaRankingStore store = NewStore();
+        store.NoteActiveSet(S("alpha"));
+        var owner = new SimulatorOwner(S("alpha"), C("board/one"));
         store.Keep(owner, Ranking("Hills"));
         Assert.NotNull(store.Get(owner, Tables));   // listed while its own load lasts
 
-        store.NoteActiveSet("beta");
-        store.NoteActiveSet("alpha");
+        store.NoteActiveSet(S("beta"));
+        store.NoteActiveSet(S("alpha"));
 
         Assert.Null(store.Get(owner, OtherTables));
         Assert.Null(store.Get(owner));
@@ -189,67 +219,67 @@ public sealed class AreaRankingStoreTests
     [Fact]
     public void ASetWhoseDataIsReplacedWhileAnotherIsActiveLosesItsRankings()
     {
-        var store = new AreaRankingStore();
-        store.NoteActiveSet("alpha");
-        store.Keep(new SimulatorOwner("alpha", "board/one"), Ranking("Hills"));
-        store.Keep(new SimulatorOwner("alpha", "board/two"), Ranking("Marsh"));
-        store.NoteActiveSet("beta");
-        store.Keep(new SimulatorOwner("beta", "board/one"), Ranking("Fen"));
+        AreaRankingStore store = NewStore();
+        store.NoteActiveSet(S("alpha"));
+        store.Keep(new SimulatorOwner(S("alpha"), C("board/one")), Ranking("Hills"));
+        store.Keep(new SimulatorOwner(S("alpha"), C("board/two")), Ranking("Marsh"));
+        store.NoteActiveSet(S("beta"));
+        store.Keep(new SimulatorOwner(S("beta"), C("board/one")), Ranking("Fen"));
 
         // alpha deleted, or its data replaced in Manage Sets, from beta.
-        Assert.Equal(2, store.ForgetSet("ALPHA"));
+        Assert.Equal(2, store.ForgetSet(S("ALPHA")));
 
         // Coming back to it is a plain switch, with nothing left to list.
-        Assert.Equal(0, store.NoteActiveSet("alpha"));
-        Assert.Null(store.Get(new SimulatorOwner("alpha", "board/one")));
-        Assert.Null(store.Get(new SimulatorOwner("alpha", "board/two")));
-        Assert.NotNull(store.Get(new SimulatorOwner("beta", "board/one")));
+        Assert.Equal(0, store.NoteActiveSet(S("alpha")));
+        Assert.Null(store.Get(new SimulatorOwner(S("alpha"), C("board/one"))));
+        Assert.Null(store.Get(new SimulatorOwner(S("alpha"), C("board/two"))));
+        Assert.NotNull(store.Get(new SimulatorOwner(S("beta"), C("board/one"))));
     }
 
     [Fact]
     public void ARenamedCharactersRankingsGoWithItOnEverySetAndTheOldNameKeepsNone()
     {
-        var store = new AreaRankingStore();
+        AreaRankingStore store = NewStore();
         AreaRanking hills = Ranking("Hills"), marsh = Ranking("Marsh");
-        store.Keep(new SimulatorOwner("alpha", "board/one"), hills);
-        store.Keep(new SimulatorOwner("beta", "board/one"), marsh);
-        store.Keep(new SimulatorOwner("alpha", "board/two"), Ranking("Fen"));
+        store.Keep(new SimulatorOwner(S("alpha"), C("board/one")), hills);
+        store.Keep(new SimulatorOwner(S("beta"), C("board/one")), marsh);
+        store.Keep(new SimulatorOwner(S("alpha"), C("board/two")), Ranking("Fen"));
         // Kept for a character that had the new name before: no longer that name's.
-        store.Keep(new SimulatorOwner("alpha", "board/new"), Ranking("Dunes"));
+        store.Keep(new SimulatorOwner(S("alpha"), C("board/new")), Ranking("Dunes"));
 
-        Assert.Equal(2, store.RenameCharacter("Board/One", "board/new"));
+        Assert.Equal(2, store.RenameCharacter(C("Board/One"), C("board/new")));
 
-        Assert.Same(hills, store.Get(new SimulatorOwner("alpha", "board/new")));
-        Assert.Same(marsh, store.Get(new SimulatorOwner("beta", "board/new")));
-        Assert.Null(store.Get(new SimulatorOwner("alpha", "board/one")));
-        Assert.Null(store.Get(new SimulatorOwner("beta", "board/one")));
-        Assert.NotNull(store.Get(new SimulatorOwner("alpha", "board/two")));
+        Assert.Same(hills, store.Get(new SimulatorOwner(S("alpha"), C("board/new"))));
+        Assert.Same(marsh, store.Get(new SimulatorOwner(S("beta"), C("board/new"))));
+        Assert.Null(store.Get(new SimulatorOwner(S("alpha"), C("board/one"))));
+        Assert.Null(store.Get(new SimulatorOwner(S("beta"), C("board/one"))));
+        Assert.NotNull(store.Get(new SimulatorOwner(S("alpha"), C("board/two"))));
         Assert.Equal(3, store.Count);
 
         // The default profile given a name, and a name that is the same but for case.
-        store.Keep(new SimulatorOwner("alpha", null), Ranking("Moor"));
-        Assert.Equal(1, store.RenameCharacter(null, "board/named"));
-        Assert.Null(store.Get(new SimulatorOwner("alpha", null)));
-        Assert.Equal(0, store.RenameCharacter("board/named", "BOARD/NAMED"));
-        Assert.NotNull(store.Get(new SimulatorOwner("alpha", "board/named")));
+        store.Keep(new SimulatorOwner(S("alpha"), null), Ranking("Moor"));
+        Assert.Equal(1, store.RenameCharacter(null, C("board/named")));
+        Assert.Null(store.Get(new SimulatorOwner(S("alpha"), null)));
+        Assert.Equal(0, store.RenameCharacter(C("board/named"), C("BOARD/NAMED")));
+        Assert.NotNull(store.Get(new SimulatorOwner(S("alpha"), C("board/named"))));
     }
 
     [Fact]
     public void OnlyTheLastFewMadeOrShownAreKept()
     {
-        var store = new AreaRankingStore();
+        AreaRankingStore store = NewStore();
         List<SimulatorOwner> owners = Enumerable.Range(0, AreaRankingStore.MaxKept)
-            .Select(i => new SimulatorOwner($"set-{i}", "board/one")).ToList();
+            .Select(i => new SimulatorOwner(S($"set-{i}"), C("board/one"))).ToList();
         foreach (SimulatorOwner owner in owners) Assert.Null(store.Keep(owner, Ranking("Hills")));
         // The oldest is shown again, so the next oldest is the one let go.
         Assert.NotNull(store.Get(owners[0]));
 
-        SimulatorOwner? dropped = store.Keep(new SimulatorOwner("one-more", "board/one"), Ranking("Marsh"));
+        SimulatorOwner? dropped = store.Keep(new SimulatorOwner(S("one-more"), C("board/one")), Ranking("Marsh"));
 
         Assert.Equal(owners[1], dropped);
         Assert.Equal(AreaRankingStore.MaxKept, store.Count);
         Assert.NotNull(store.Get(owners[0]));
         Assert.Null(store.Get(owners[1]));
-        Assert.NotNull(store.Get(new SimulatorOwner("one-more", "board/one")));
+        Assert.NotNull(store.Get(new SimulatorOwner(S("one-more"), C("board/one"))));
     }
 }

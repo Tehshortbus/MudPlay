@@ -48,8 +48,8 @@ public sealed class CombatRedisplaySettle : IDisposable
     private readonly LogService? _log;
     private readonly TimeSpan _window;
 
-    // Test seam: when set, the settle window is scheduled through this callback
-    // instead of a real DispatcherTimer (which needs a live Avalonia dispatcher).
+    // When set, the settle window is scheduled through this callback instead of a
+    // real DispatcherTimer (which needs a live Avalonia dispatcher).
     private readonly Action<TimeSpan, Action>? _scheduleOverride;
 
     private DispatcherTimer? _timer;

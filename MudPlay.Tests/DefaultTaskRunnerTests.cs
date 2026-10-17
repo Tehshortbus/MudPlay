@@ -65,7 +65,7 @@ public sealed class DefaultTaskRunnerTests
         MessageRouter router = new();
         DefaultPatterns.Seed(router);  // PartyManager subscribes to catalog pattern ids on construction.
         PartyManager party = new(router, partyState);
-        ProfileService profile = new();
+        ProfileService profile = TestProfiles.Service();
 
         DefaultTaskRunner runner = new(
             prompt, tracker, profile, loops, lairs, loopRunner, autoLair, partyState, party);
@@ -137,7 +137,7 @@ public sealed class DefaultTaskRunnerTests
     public void ADeathWorkedOutOnEntry_CallsTheTaskOffForThisConnection()
     {
         using Harness h = Build();
-        h.Profile.LoadBlank();
+        h.Profile.LoadDefaultProfile();
         h.Tracker.Hydrate(h.Profile.Current!);
         h.Runner.NotifyConnected();
         h.EnterGame();   // the room isn't known yet: the task is still to start
@@ -160,7 +160,7 @@ public sealed class DefaultTaskRunnerTests
     public void ADeathWorkedOutWhileNotConnected_ChangesNothing()
     {
         using Harness h = Build();
-        h.Profile.LoadBlank();
+        h.Profile.LoadDefaultProfile();
         h.Tracker.Hydrate(h.Profile.Current!);
 
         h.Tracker.NoteUnwitnessedDeath(new MudPlay.Game.Recovery.UnwitnessedDeath(
@@ -196,7 +196,7 @@ public sealed class DefaultTaskRunnerTests
 
         // Switching characters wipes the reconnect memory — a fresh profile
         // never inherits the previous one's party-session state.
-        h.Profile.LoadBlank();
+        h.Profile.LoadDefaultProfile();
         Assert.False(h.Runner.PendingPartyRebuildHold);
     }
 

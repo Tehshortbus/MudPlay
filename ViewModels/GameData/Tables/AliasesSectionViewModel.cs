@@ -32,8 +32,6 @@ public sealed class AliasesSectionViewModel : GameDataTableSectionViewModel, IEd
         "Enabled", "Name", "Expansion",
     };
 
-    public override string SearchKeyColumn => "Name";
-
     // Engine-backed table — see GameDataTableSectionViewModel.ShowUseColumn.
     public override bool ShowUseColumn => false;
 

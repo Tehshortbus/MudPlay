@@ -6,18 +6,16 @@ using MudPlay.ViewModels.GameData.Edit;
 namespace MudPlay.ViewModels.Navigation;
 
 // Builds the "Details…" step list for the route the nav engine is CURRENTLY
-// executing (or previewing), in the same shape the route picker's Show-steps panel
-// uses. Input is the active route's room-key polyline (source-first) — the very
-// sequence the map draws as the route line, so the same builder serves a
-// point-to-point walk, a loop circuit, and an Auto-Lair approach. The polyline is
-// turned into the expanded WalkStep sequence exactly as the picker does
-// (DirectionsAlong → RemoteActionPathExpander.Expand → RouteStepList.Build); each
+// executing (or previewing), and for a route-picker choice. Input is the route's
+// room-key polyline (source-first) — the very sequence the map draws as the route
+// line, so the same builder serves a point-to-point walk, a loop circuit, and an
+// Auto-Lair approach. The polyline is turned into the expanded WalkStep sequence
+// the walker runs (DirectionsAlong → RemoteActionPathExpander.Expand → RouteStepList.Build); each
 // resulting row is then annotated with its room's monsters and a warning (a
 // room-entry hazard and/or an item-gated exit).
 //
-// Pure aside from the injected lookups (item names, per-room monster links, the
-// per-room hazard, the item-link factory), so it's unit-testable without a live
-// game-data cache or the record-opener commands.
+// Pure aside from the injected lookups (per-room monster links, the
+// per-room hazard, the item-link factory).
 public static class CurrentRouteDetails
 {
     public static IReadOnlyList<RouteDetailRow> Build(
@@ -25,7 +23,6 @@ public static class CurrentRouteDetails
         BfsMapper? bfs,
         IRoomFilter? filter,
         IReadOnlyList<RoomKey> route,
-        Func<int, string?> itemName,
         Func<RoomKey, IReadOnlyList<RoomDetailLink>> roomMonsterLinks,
         Action<RoomKey> onRoomClick,
         Func<RoomKey, RouteStepWarning?> roomHazard,
@@ -38,7 +35,6 @@ public static class CurrentRouteDetails
         IReadOnlyList<WalkStep>? walk = null)
     {
         ArgumentNullException.ThrowIfNull(graph);
-        ArgumentNullException.ThrowIfNull(itemName);
         ArgumentNullException.ThrowIfNull(roomMonsterLinks);
         ArgumentNullException.ThrowIfNull(onRoomClick);
         ArgumentNullException.ThrowIfNull(roomHazard);
@@ -58,16 +54,11 @@ public static class CurrentRouteDetails
             steps = RemoteActionPathExpander.Expand(graph, source, dirs, bfs, filter);
         }
 
-        // No gated acquire rows for the current route — the run's gates were already
-        // resolved at plan time, and the walker's expanded steps already carry the
-        // door/winch/lever crossings. So pass no gate stops (obtain lookup unused).
-        // With no gate stops the rows are 1:1 with `steps`, in order — which lets us
-        // pair each row with the exit its step crosses to spot an item gate.
+        // The walker's expanded steps already carry the door/winch/lever crossings.
+        // The rows are 1:1 with `steps`, in order — which lets us pair each row with
+        // the exit its step crosses to spot an item gate.
         IReadOnlyList<RouteStepRow> rows = RouteStepList.Build(
-            source, steps, Array.Empty<RouteGateStop>(),
-            key => graph.GetRoom(key)?.DisplayName,
-            itemName,
-            static _ => null);
+            source, steps, key => graph.GetRoom(key)?.DisplayName);
 
         // Per-step required item ids for an item-gated exit (rope & grapple, a raft,
         // a ticket…). Walk the steps tracking the current room so each MoveStep's

@@ -7,11 +7,9 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Covers the two pure helpers behind the Monsters tab's new columns:
-/// the lair-tag → monster-id match (for the "Spawns In" map/room list)
-/// and the synthesised "Accuracy" column.
-/// </summary>
+// Covers the two pure helpers behind the Monsters tab's new columns:
+// the lair-tag → monster-id match (for the "Spawns In" map/room list)
+// and the synthesised "Accuracy" column.
 public sealed class MonstersSectionViewModelTests
 {
     // ----- LairNamesMonster ------------------------------------------

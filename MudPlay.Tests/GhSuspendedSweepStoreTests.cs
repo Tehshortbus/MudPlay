@@ -19,8 +19,8 @@ public sealed class GhSuspendedSweepStoreTests
     [Fact]
     public void SavedLoadSurvivesIntoTheProfile()
     {
-        ProfileService profile = new();
-        profile.LoadBlank();
+        ProfileService profile = TestProfiles.Service();
+        profile.LoadDefaultProfile();
         GhSuspendedSweepStore store = new(profile);
 
         store.Save(new[] { Item("war hammer"), Item("mace", count: 3) });
@@ -40,8 +40,8 @@ public sealed class GhSuspendedSweepStoreTests
     {
         // A clean sweep must clear the record, or its load would be re-delivered
         // by every later sweep forever.
-        ProfileService profile = new();
-        profile.LoadBlank();
+        ProfileService profile = TestProfiles.Service();
+        profile.LoadDefaultProfile();
         GhSuspendedSweepStore store = new(profile);
         store.Save(new[] { Item("war hammer") });
 
@@ -55,7 +55,7 @@ public sealed class GhSuspendedSweepStoreTests
     [Fact]
     public void NoProfileLoaded_IsANoOp()
     {
-        ProfileService profile = new();
+        ProfileService profile = TestProfiles.Service();
         GhSuspendedSweepStore store = new(profile);
 
         store.Save(new[] { Item("war hammer") });
@@ -67,8 +67,8 @@ public sealed class GhSuspendedSweepStoreTests
     [Fact]
     public void LoadReturnsACopy_SoCallersCannotMutateTheStoredList()
     {
-        ProfileService profile = new();
-        profile.LoadBlank();
+        ProfileService profile = TestProfiles.Service();
+        profile.LoadDefaultProfile();
         GhSuspendedSweepStore store = new(profile);
         store.Save(new[] { Item("war hammer") });
 
@@ -83,8 +83,8 @@ public sealed class GhSuspendedSweepStoreTests
     {
         // A fresh Start honours the carried half (they're in the player's pack
         // either way) but not the planned half, since it re-scans anyway.
-        ProfileService profile = new();
-        profile.LoadBlank();
+        ProfileService profile = TestProfiles.Service();
+        profile.LoadDefaultProfile();
         GhSuspendedSweepStore store = new(profile);
 
         store.Save(new[]

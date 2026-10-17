@@ -61,13 +61,11 @@ public sealed class DefaultPatternsTests
     }
 
     [Fact]
-    public void Seed_PopulatesCatalogWithoutAttachingHandlers()
+    public void Seed_PopulatesTheCatalog()
     {
         MessageRouter router = new();
         DefaultPatterns.Seed(router);
-        Assert.True(router.PatternCount > 30);   // ~30+ patterns ship; pin a floor.
-        Assert.Equal(0, router.SubscriptionCount);
-        Assert.True(router.TryGetPattern(KnownPatterns.UserHits, out _));
+        Assert.All(DefaultPatterns.BuildDefaultPatterns(), p => Assert.True(router.TryGetPattern(p.Id, out _), p.Id));
     }
 
     private static IMessagePattern PatternById(string id)

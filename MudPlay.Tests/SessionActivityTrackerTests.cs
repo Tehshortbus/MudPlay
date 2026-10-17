@@ -3,13 +3,11 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Phase 11 — <see cref="SessionActivityTracker"/> kill / exp counters and the
-/// kills/hour running-average series. An injected clock makes the time arithmetic
-/// deterministic: kills and exp are pushed via the <c>Note*</c> forwarders and
-/// time advanced by hand, so each test pins exactly how a counter or the running
-/// sparkline rate is derived.
-/// </summary>
+// SessionActivityTracker kill / exp counters and the
+// kills/hour running-average series. An injected clock makes the time arithmetic
+// deterministic: kills and exp are pushed via the Note* forwarders and
+// time advanced by hand, so each test pins exactly how a counter or the running
+// sparkline rate is derived.
 public sealed class SessionActivityTrackerTests
 {
     private sealed class Clock
@@ -443,46 +441,19 @@ public sealed class SessionActivityTrackerTests
     }
 
     [Fact]
-    public void ResetRates_KeepsLifetimeTotals_ButZeroesTheRates()
-    {
-        (SessionActivityTracker t, Clock c) = Make();
-        for (int i = 0; i < 4; i++) t.NoteKill();
-        t.NoteExperience(5000);
-        t.NoteCurrencyCollected(7000, 1);
-        t.NoteCurrencyStashed(3000, 1);
-        c.Advance(30);
-
-        t.ResetRates();     // restarts only the rate window
-        c.Advance(15);
-
-        SessionActivityStats s = t.Snapshot();
-        // Lifetime totals survive the rate-window reset.
-        Assert.Equal(4, s.MonstersKilled);
-        Assert.Equal(5000L, s.ExperienceEarned);
-        Assert.Equal(7000L, s.CurrencyCollected);
-        Assert.Equal(3000L, s.CurrencyStashed);
-        // Rates fall to zero — no events have landed in the fresh window yet.
-        Assert.Equal(0d, s.KillsPerHour);
-        Assert.Equal(0d, s.ExperiencePerHour);
-        Assert.Equal(0d, s.CurrencyPerHour);
-        // The window clock restarted at ResetRates, so TimeOnline measures from there.
-        Assert.Equal(TimeSpan.FromMinutes(15), s.TimeOnline);
-    }
-
-    [Fact]
-    public void ResetRates_NewEventsDriveAFreshRate_TotalsKeepClimbing()
+    public void ResetTotals_NewEventsDriveAFreshRate()
     {
         (SessionActivityTracker t, Clock c) = Make();
         for (int i = 0; i < 10; i++) t.NoteKill();
         c.Advance(60);
-        t.ResetRates();
+        t.ResetTotals();
 
         t.NoteKill();
         t.NoteKill();
         c.Advance(30); // half an hour into the new window
 
         SessionActivityStats s = t.Snapshot();
-        Assert.Equal(12, s.MonstersKilled);   // lifetime total spans both windows
+        Assert.Equal(2, s.MonstersKilled);
         Assert.Equal(4d, s.KillsPerHour, 3);  // 2 kills / 0.5 h in the new window only
 
         // The sparkline re-anchors to the new window, so its right edge still
@@ -492,12 +463,12 @@ public sealed class SessionActivityTrackerTests
     }
 
     [Fact]
-    public void ResetRates_FiresChanged()
+    public void ResetTotals_FiresChanged()
     {
         (SessionActivityTracker t, _) = Make();
         int fired = 0;
         t.Changed += () => fired++;
-        t.ResetRates();
+        t.ResetTotals();
         Assert.Equal(1, fired);
     }
 

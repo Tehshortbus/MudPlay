@@ -44,9 +44,10 @@ public sealed partial class DeathRecoveryManagerTests
         h.Paradigm = paradigm;
         h.Snapshot = GearAndCoin();
         DeathDetector deaths = new(h.Tracker) { IsParadigm = () => paradigm };
-        deaths.FeedTestLine("You have been killed!");
-        deaths.FeedTestLine(savedLine);
-        deaths.FeedTestLine($"You have {lives} lives left.");
+        deaths.AttachLineExtractor(h.Feed.Lines);
+        h.Feed.Line("You have been killed!");
+        h.Feed.Line(savedLine);
+        h.Feed.Line($"You have {lives} lives left.");
         h.Sent.Clear();
         return deaths;
     }
@@ -85,7 +86,7 @@ public sealed partial class DeathRecoveryManagerTests
         // else's, and nothing of ours is waited for.
         h.FeedSurvey("a rusty dagger, a torch");
         h.Tracker.NoteRoomObserved(ArenaFloor());
-        h.Recovery.FeedTestLine("Obvious exits: north");
+        h.Feed.Line("Obvious exits: north");
         for (int i = 0; i < 3; i++) h.Heartbeat();
 
         Assert.Empty(h.Sent);
@@ -168,9 +169,9 @@ public sealed partial class DeathRecoveryManagerTests
         DeathDetector deaths = DieBy(h, paradigm: false, ColliseumLine, lives: 6);
 
         h.Tracker.NoteRoomObserved(ArenaFloor());
-        deaths.FeedTestLine("You have been killed!");
-        deaths.FeedTestLine(MiracleLine);
-        deaths.FeedTestLine("You have 5 lives left.");
+        h.Feed.Line("You have been killed!");
+        h.Feed.Line(MiracleLine);
+        h.Feed.Line("You have 5 lives left.");
 
         Assert.Equal(2, h.Recovery.Records.Count);
         Assert.True(h.Recovery.Records[0].NothingLost);
@@ -191,7 +192,7 @@ public sealed partial class DeathRecoveryManagerTests
         Die(h, new[] { new EquippedItem("plate mail", "Torso") }, Array.Empty<string>());
         h.Recovery.AutoEquip = true;
         h.EnterGates();
-        h.Recovery.FeedTestLine("You have recovered the corpse of Ermias.");
+        h.Feed.Line("You have recovered the corpse of Ermias.");
         Assert.Equal(1, h.Recovery.HeldReequipCount);
 
         h.Tracker.NoteDeath(2, "You have 2 lives left.", tookNothing: true);

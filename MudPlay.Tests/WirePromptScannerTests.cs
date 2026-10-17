@@ -291,7 +291,7 @@ public sealed class WirePromptScannerTests
 
         Assert.Throws<InvalidOperationException>(() => s.Append(B("\u001b[79D\u001b[K[HP=749/MA=608]:")));
         boom = false;
-        s.Reset();
+        s.NoteCommandSent();   // the answer to the prompt that threw
         s.Append(B("\r\nHits 749 Mana 608 > "));
         s.NoteCommandSent();
 
@@ -368,17 +368,26 @@ public sealed class WirePromptScannerTests
         Assert.Equal(0, unmatched);
     }
 
-    [Fact]
-    public void Reset_DropsCarryoverState()
+    // The link drops with a prompt half-sent. Left in the buffer, the next
+    // connection's first bytes would finish it as a prompt nobody sent; the
+    // disconnect's Reset drops it, and the new session's own prompt reads alone.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ADisconnect_DropsThePromptTheLinkCutOff(bool disconnected)
     {
         WirePromptScanner s = new();
         var seen = Collect(s);
 
-        s.Append(B("[HP=2"));   // partial.
-        s.Reset();
-        s.Append(B("8/MA=34]:"));   // would have completed the partial; should not match.
+        s.Append(B("\u001b[79D\u001b[K[HP=2"));   // the link drops here
+        if (disconnected) s.Reset();
+        s.Append(B("8/MA=34]:"));                  // first bytes of the next connection
 
-        Assert.Empty(seen);
+        if (disconnected) Assert.Empty(seen);
+        else Assert.Equal(28, Assert.Single(seen).Hp);   // what the reset is there to stop
+
+        s.Append(B("\r\n\u001b[79D\u001b[K[HP=120/MA=40]:"));
+        Assert.Equal(120, seen[^1].Hp);
     }
 
     [Fact]

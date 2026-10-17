@@ -45,14 +45,6 @@ public sealed class ShopStockIndexTests : IDisposable
     }
 
     [Fact]
-    public void Load_IndexesDistinctStockedItems()
-    {
-        ShopStockIndex s = NewIndex();
-        // 175, 176, 64 — three distinct stocked ids (0 slots skipped).
-        Assert.Equal(3, s.ItemCount);
-    }
-
-    [Fact]
     public void ShopsSelling_SingleShopItem_ReturnsThatShop()
     {
         ShopStockIndex s = NewIndex();
@@ -94,11 +86,11 @@ public sealed class ShopStockIndexTests : IDisposable
     public void ActiveSetChanged_ToNull_ClearsIndex()
     {
         ShopStockIndex s = NewIndex();
-        Assert.True(s.ItemCount > 0);
+        Assert.True(s.AnyShopSells(176));
 
         s.OnActiveSetChanged(null);
 
-        Assert.Equal(0, s.ItemCount);
         Assert.False(s.AnyShopSells(176));
+        Assert.Empty(s.ShopsSelling(176));
     }
 }

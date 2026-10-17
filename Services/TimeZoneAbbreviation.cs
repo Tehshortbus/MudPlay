@@ -36,7 +36,7 @@ public static class TimeZoneAbbreviation
     // zone's abbreviation for the given instant (standard or daylight,
     // whichever applies at `at`), or that instant's numeric UTC offset
     // ("-07:00") when the zone isn't in the table above. Defaults to the local
-    // machine's zone; a caller passes an explicit zone only in tests.
+    // machine's zone.
     public static string For(DateTimeOffset at, TimeZoneInfo? zone = null)
     {
         zone ??= TimeZoneInfo.Local;

@@ -41,9 +41,9 @@ public sealed class WinchManager : IDisposable
     // True when the gate for `dir` currently reads open (OpenDoorDirections). Read
     // off the live RoomTracker state after each poll `l` re-displays the room.
     private readonly Func<Direction, bool> _isGateOpen;
-    // Schedules a one-shot after a delay; returns a handle to cancel it. Production
-    // wires the UI-thread timer. Null (tests) collapses the paced retry / poll to
-    // synchronous immediate action so the FSM decisions stay drivable line-by-line.
+    // Schedules a one-shot after a delay; returns a handle to cancel it. AppServices
+    // wires the UI-thread timer. Null collapses the paced retry / poll to
+    // synchronous immediate action.
     private readonly Func<TimeSpan, Action, IDisposable>? _scheduleDelay;
     private readonly LogService? _log;
     private readonly IDisposable _turnedSub;
@@ -113,8 +113,6 @@ public sealed class WinchManager : IDisposable
         _log?.Info(LogCategory, "rest over — pulling the winch.");
         SendPull();
     }
-
-    internal List<byte[]> LastSentForTests => _wire.LastSentForTests;
 
     // Whether an exit's prerequisite is a winch this FSM handles — a same-room
     // MultiActionHidden whose (only) action command is a `pull <something> winch`.
@@ -217,8 +215,8 @@ public sealed class WinchManager : IDisposable
             return;
         }
         // Pace the re-pull — the winch winds up over a few pulls, so a delay avoids
-        // spamming "does not budge" faster than it can turn. Null scheduler (tests)
-        // re-pulls immediately so the retry chain stays drivable.
+        // spamming "does not budge" faster than it can turn. Null scheduler
+        // re-pulls immediately.
         _log?.Info(LogCategory, "winch would not budge — re-pulling.");
         Schedule(PullRetryDelay, SendPull);
     }
@@ -342,7 +340,7 @@ public sealed class WinchManager : IDisposable
         TryStartNext();
     }
 
-    // Schedule the paced follow-up, or run it now when no scheduler is wired (tests).
+    // Schedule the paced follow-up, or run it now when no scheduler is wired.
     private void Schedule(TimeSpan delay, Action action)
     {
         CancelTimer();

@@ -131,8 +131,8 @@ public sealed class HazardBuffRefreshTests : IDisposable
             Engine.SetStepHold(Coordinator, (after, run) => Timers.Add((after, run)));
             Engine.UseSent += () => UsesSent++;
             Engine.SneakSpentHere += () => SneakSpent++;
-            ProfileService profile = new();
-            profile.LoadBlank();
+            ProfileService profile = TestProfiles.Service();
+            profile.LoadDefaultProfile();
             Switch = new AutoModeController(profile);
             Engine.MasterSwitchOff = () => Switch.Blocks("Hazard counter item");
         }
@@ -395,7 +395,6 @@ public sealed class HazardBuffRefreshTests : IDisposable
 
         Assert.True(index.StripsBuff(1361, 711));
         Assert.False(index.StripsBuffs(1361));
-        Assert.Equal(0, index.StripSpellCount);
     }
 
     // A transport token casts negate magic ahead of its teleport.
@@ -1011,6 +1010,7 @@ public sealed class HazardBuffRefreshTests : IDisposable
     {
         Field f = new();
         f.Engine.OnApproachingRoom(Dunes);
+        Assert.Equal(new[] { "use waterskin" }, f.Wire);
         Assert.Equal(0, f.SneakSpent);
     }
 

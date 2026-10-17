@@ -6,33 +6,14 @@ using MudPlay.Services;
 
 namespace MudPlay.Game.GameData;
 
-// One boss monster in the active set's Monsters table — a monster with GameLimit 1
-// (only one alive in the game at a time). RegenHours is its respawn timer
-// (RegenTime is HOURS; confirmed against the boss-timer sheet). Mirrors
-// BankCatalog: the "what is a boss" rule lives in one place.
-public readonly record struct BossMonster(int Number, string Name, int RegenHours);
-
+// A boss is a monster with GameLimit 1 (only one alive in the game at a time); its
+// RegenTime is its respawn timer in HOURS (confirmed against the boss-timer sheet).
+// Mirrors BankCatalog: the "what is a boss" rule lives in one place.
 public static class BossCatalog
 {
     // A boss is exactly GameLimit 1. A long RegenTime alone doesn't make one — a placed
     // GameLimit-5 barmaid with RegenTime 1 still respawns the moment you re-enter.
     public static bool IsBoss(int gameLimit) => gameLimit == 1;
-
-    // Every boss monster in the active set, for a "seed against game data" pass.
-    public static IReadOnlyList<BossMonster> Enumerate(GameDataCache gameData)
-    {
-        ArgumentNullException.ThrowIfNull(gameData);
-        var list = new List<BossMonster>();
-        GameTable? doc = gameData.GetTable("Monsters");
-        if (doc is null) return list;
-        foreach (GameRow el in doc.Rows)
-        {
-            int regen = GetInt(el, "RegenTime");
-            if (!IsBoss(GetInt(el, "GameLimit"))) continue;
-            list.Add(new BossMonster(GetInt(el, "Number"), GetString(el, "Name"), Math.Max(0, regen)));
-        }
-        return list;
-    }
 
     // Respawn hours for a boss by its (game-data) name, or null if the active set
     // has no such boss monster. This is the version-proof timer: the value comes

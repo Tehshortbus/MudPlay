@@ -5,12 +5,10 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// The Game Data grid sort comparer. Beyond pure numbers it now sorts
-/// numeric-with-suffix ("2hp@90s") and numeric-list ("10/25/5") cells by
-/// their leading value, so the HP Regen + Accuracy columns don't sort
-/// lexically (where "10…" would come before "2…").
-/// </summary>
+// The Game Data grid sort comparer. Beyond pure numbers it now sorts
+// numeric-with-suffix ("2hp@90s") and numeric-list ("10/25/5") cells by
+// their leading value, so the HP Regen + Accuracy columns don't sort
+// lexically (where "10…" would come before "2…").
 public sealed class NumericAwareCellComparerTests
 {
     private static GameDataRow Row(string? value) =>

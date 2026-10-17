@@ -37,13 +37,13 @@ public sealed class MpFileParserTests
         MpLoopFile file = MpFileParser.Parse(AcryLoopText);
         Assert.Equal("Ancient Crypt-1 1943", file.Label);
         Assert.Equal("",                     file.Author);
-        Assert.Equal("ACRY",                 file.Code4);
-        Assert.Equal("Island",               file.GroupName);
-        Assert.Equal("Ancient Crypt-1 1943", file.RoomName);
+        Assert.Equal("ACRY",                 file.Start.Code);
+        Assert.Equal("Island",               file.Start.Group);
+        Assert.Equal("Ancient Crypt-1 1943", file.Start.Name);
         Assert.Equal("3C900060",             file.StartHashExits);
         Assert.Equal(32,                     file.Steps.Count);
         Assert.Equal(Direction.W,            file.Steps[0].Compass);
-        Assert.True(file.Steps[0].IsCompass);
+        Assert.NotNull(file.Steps[0].Compass);
         Assert.Equal("w",                    file.Steps[0].RawAction);
         Assert.Equal("3C900060",             file.Steps[0].HashExits);
     }
@@ -123,7 +123,7 @@ public sealed class MpFileParserTests
         MpLoopFile file = MpFileParser.Parse(text);
         Assert.Equal("Dhelvanen, Trade Loop-7 199", file.Label);
         Assert.Equal("Kitty & Wulfman", file.Author);
-        Assert.Equal("FFSB", file.Code4);
+        Assert.Equal("FFSB", file.Start.Code);
         Assert.Equal("FNG1LOOP.MP", file.SuccessPath);
     }
 
@@ -180,10 +180,10 @@ public sealed class MpFileParserTests
             "AAAAAAAA:0000:go path\n" +
             "BBBBBBBB:0000:s\n";
         MpLoopFile file = MpFileParser.Parse(text);
-        Assert.False(file.Steps[0].IsCompass);
+        Assert.Null(file.Steps[0].Compass);
         Assert.Null(file.Steps[0].Compass);
         Assert.Equal("go path", file.Steps[0].Command);
-        Assert.True(file.Steps[1].IsCompass);
+        Assert.NotNull(file.Steps[1].Compass);
     }
 
     [Fact]

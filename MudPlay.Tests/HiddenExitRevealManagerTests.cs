@@ -115,7 +115,7 @@ public sealed class HiddenExitRevealManagerTests : IDisposable
         // a room observation that lands us at the same key but with
         // the updated exit map.
         File.WriteAllText(Path.Combine(_root, "alpha", "Rooms.json"), GraphWithExit);
-        h.Cache.EvictAll();
+        h.Cache.ReloadActiveSet();
         h.Graph.OnActiveSetChanged("alpha");
         h.Tracker.SetLocated(new RoomKey(1, 1));
 

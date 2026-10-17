@@ -44,8 +44,8 @@ public sealed class GameDataDeltaTests : IDisposable
     [Fact]
     public async Task A_delta_is_found_by_the_rows_number_and_merges_over_the_seed_record()
     {
-        ProfileService profile = new();
-        profile.LoadBlank();
+        ProfileService profile = TestProfiles.Service();
+        profile.LoadDefaultProfile();
         SettingsResolver resolver = new(new SettingsService(), new BbsProfileStore(), profile, () => _cache.ActiveSet);
         resolver.WriteGameDataAt(SettingsTier.Global, "Monsters", "12",
             new Dictionary<string, object> { ["Landmass"] = "Edited Land", ["OverridePreAttackCount"] = 5 });

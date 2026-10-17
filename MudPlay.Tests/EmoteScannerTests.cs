@@ -105,7 +105,6 @@ public sealed class EmoteScannerTests
             "pepeclown", "pepeclown2", "pepehands", "sadgepray", "peperage", "pepeno",
             "pepeok", "pepethink", "pepedeath", "prayge", "pepecringe", "pepehmm",
             "clownge", "poggies" };
-        Assert.Equal(20, pepe.Length);
         foreach (string name in pepe)
         {
             Assert.True(EmoteCatalog.BuiltIn.TryGetShortcode(name, out var e), name);

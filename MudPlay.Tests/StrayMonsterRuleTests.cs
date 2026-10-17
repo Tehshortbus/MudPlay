@@ -16,7 +16,7 @@ public sealed class StrayMonsterRuleTests
     {
         Key = new RoomKey(map, room),
         Name = "room",
-        Exits = Room.EmptyExits,
+        Exits = RoomExitSet.Empty,
         Npc = npc,
         RawLairTag = lair,
     };

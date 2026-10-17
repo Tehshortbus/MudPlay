@@ -34,8 +34,8 @@ public sealed class RollingLogFile
     // Set (signalled) whenever no background flush is queued or running. Reset when a
     // flush is scheduled, set again when the writer finishes. Flush() waits on it so a
     // caller that reads the file right after Flush()/Close() can't race a background
-    // write that was still queued (production reads the in-memory Snapshot, not the
-    // file, so this only matters for direct-file readers such as the tests).
+    // write that was still queued (the app reads the in-memory Snapshot, so this only
+    // matters for a direct-file reader).
     private readonly System.Threading.ManualResetEventSlim _idle = new(initialState: true);
 
     public bool IsOpen

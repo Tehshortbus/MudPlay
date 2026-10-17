@@ -8,12 +8,10 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Alignment staleness. <see cref="AlignmentTracker"/> flags the local
-/// character's alignment stale on "A dark cloud passes over you" and clears it
-/// once our own row is re-observed by a <c>who</c> (matched on given name,
-/// case-insensitively); another player's row leaves the flag set.
-/// </summary>
+// Alignment staleness. AlignmentTracker flags the local
+// character's alignment stale on "A dark cloud passes over you" and clears it
+// once our own row is re-observed by a who (matched on given name,
+// case-insensitively); another player's row leaves the flag set.
 public sealed class AlignmentTrackerTests
 {
     private static LineExtractor.EmittedLine Line(string text) =>
@@ -24,7 +22,7 @@ public sealed class AlignmentTrackerTests
         var router = new MessageRouter();
         DefaultPatterns.Seed(router);
         var stats = new PlayerStats { Name = name };
-        var db = new PlayerDatabase();   // parameterless ctor = in-memory, no disk
+        var db = new PlayerDatabase(new ProfileService(), () => null);   // parameterless ctor = in-memory, no disk
         var tracker = new AlignmentTracker(router, stats, db);
         return (router, db, tracker);
     }
@@ -75,7 +73,7 @@ public sealed class AlignmentTrackerTests
     {
         var router = new MessageRouter();
         DefaultPatterns.Seed(router);
-        var db = new PlayerDatabase();
+        var db = new PlayerDatabase(new ProfileService(), () => null);
         var tracker = new AlignmentTracker(router, new PlayerStats { Name = "Fujin" }, db);
         Assert.Null(tracker.SelfAlignment);
 

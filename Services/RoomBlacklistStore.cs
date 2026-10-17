@@ -69,16 +69,6 @@ public sealed class RoomBlacklistStore
         Changed?.Invoke();
     }
 
-    // Remove key. No-op when absent. Fires Changed on actual removal.
-    public bool Remove(RoomKey key)
-    {
-        TakeInOutsideChanges();
-        if (!_entries.Remove(key)) return false;
-        Persist();
-        Changed?.Invoke();
-        return true;
-    }
-
     // Replace the entire blacklist with newEntries and persist — one commit of a
     // staged working copy, so an editor's Cancel can discard cleanly.
     public void ReplaceAll(IEnumerable<BlacklistedRoom> newEntries)

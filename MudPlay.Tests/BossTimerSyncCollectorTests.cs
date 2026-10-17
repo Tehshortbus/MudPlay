@@ -16,11 +16,16 @@ public sealed class BossTimerSyncCollectorTests
     // Our own character in these tests, as a shared channel names it in an echo.
     private const string Us = "Ourself";
 
-    private static BossTimerSyncCollector NewCollector(out List<BossTimerSyncResponse> got)
+    // The game's lines the collector reads, and its chat router.
+    private MessageRouter _router = null!;   // set by NewCollector
+    private ChatRouter _chat = null!;        // set by NewCollector
+
+    private BossTimerSyncCollector NewCollector(out List<BossTimerSyncResponse> got)
     {
-        MessageRouter router = new();
-        DefaultPatterns.Seed(router);
-        BossTimerSyncCollector c = new(new ChatRouter(router),
+        _router = new();
+        DefaultPatterns.Seed(_router);
+        _chat = new ChatRouter(_router);
+        BossTimerSyncCollector c = new(_chat,
             isOurName: name => name.Equals(Us, StringComparison.OrdinalIgnoreCase));
         List<BossTimerSyncResponse> received = new();
         c.ResponseReceived += r => received.Add(r);
@@ -30,15 +35,16 @@ public sealed class BossTimerSyncCollectorTests
 
     // Feed a responder's timers as chunked @timerdata lines (as the responder emits
     // them, wrapped in {} the way the remote reply path does).
-    private static void FeedResponse(
-        BossTimerSyncCollector c, string sender,
+    private void FeedResponse(
+        string sender,
         IReadOnlyList<BossTimerSyncRecord> records, int chunkChars, ChatChannel channel = ChatChannel.Gangpath)
     {
         IReadOnlyList<string> chunks = BossTimerSyncCodec.Chunk(BossTimerSyncCodec.Encode(records), chunkChars);
         for (int i = 0; i < chunks.Count; i++)
         {
             string msg = $"{{{BossTimerQueryHandler.SyncResponseToken} {i + 1}/{chunks.Count} {chunks[i]}}}";
-            c.Ingest(new ChatLogEntry(DateTimeOffset.UtcNow, channel, sender, msg, msg));
+            if (channel == ChatChannel.TelepathOutgoing) ChatLines.Telepath(_router, _chat, sender, msg);
+            else ChatLines.Hear(_router, channel, sender, msg);
         }
     }
 
@@ -53,7 +59,7 @@ public sealed class BossTimerSyncCollectorTests
             new(102, "vault wyrm",    T("2026-08-22T09:30:00Z")),
         };
 
-        FeedResponse(c, "Bob", bob, chunkChars: 8); // small chunks → multi-line
+        FeedResponse("Bob", bob, chunkChars: 8); // small chunks → multi-line
 
         Assert.Single(got);
         Assert.Equal("Bob", got[0].Sender);
@@ -67,8 +73,8 @@ public sealed class BossTimerSyncCollectorTests
     {
         BossTimerSyncCollector c = NewCollector(out var got);
         c.Begin(RemoteChannel.Gangpath);
-        FeedResponse(c, "Bob", new[] { new BossTimerSyncRecord(1, "a", T("2026-08-22T01:00:00Z")) }, 6);
-        FeedResponse(c, "Sue", new[] { new BossTimerSyncRecord(2, "b", T("2026-08-22T02:00:00Z")) }, 6);
+        FeedResponse("Bob", new[] { new BossTimerSyncRecord(1, "a", T("2026-08-22T01:00:00Z")) }, 6);
+        FeedResponse("Sue", new[] { new BossTimerSyncRecord(2, "b", T("2026-08-22T02:00:00Z")) }, 6);
 
         Assert.Equal(2, got.Count);
         Assert.Contains(got, r => r.Sender == "Bob");
@@ -104,7 +110,7 @@ public sealed class BossTimerSyncCollectorTests
         BossTimerSyncCollector c = NewCollector(out var got);
         c.Begin(askedOn);
 
-        FeedResponse(c, "Bob", OneTimer, 6, heardOn);
+        FeedResponse("Bob", OneTimer, 6, heardOn);
 
         if (!taken) { Assert.Empty(got); return; }
         BossTimerSyncResponse response = Assert.Single(got);
@@ -119,12 +125,12 @@ public sealed class BossTimerSyncCollectorTests
     {
         BossTimerSyncCollector c = NewCollector(out var got);
         c.Begin(RemoteChannel.Gangpath);
-        FeedResponse(c, "Bob", OneTimer, 6, ChatChannel.TelepathIncoming);
+        FeedResponse("Bob", OneTimer, 6, ChatChannel.TelepathIncoming);
         Assert.Empty(got);
 
-        c.Ingest(new ChatLogEntry(DateTimeOffset.UtcNow, ChatChannel.TelepathOutgoing, "Bob", "@timer sync", "raw"));
-        FeedResponse(c, "Bob", OneTimer, 6, ChatChannel.TelepathIncoming);
-        FeedResponse(c, "Sue", OneTimer, 6, ChatChannel.Gangpath);
+        ChatLines.Telepath(_router, _chat, "Bob", "@timer sync");
+        FeedResponse("Bob", OneTimer, 6, ChatChannel.TelepathIncoming);
+        FeedResponse("Sue", OneTimer, 6, ChatChannel.Gangpath);
 
         Assert.Equal(new[] { "Bob", "Sue" }, got.Select(r => r.Sender));
     }
@@ -137,8 +143,8 @@ public sealed class BossTimerSyncCollectorTests
         BossTimerSyncCollector c = NewCollector(out var got);
         c.Begin(RemoteChannel.Gangpath);
 
-        c.Ingest(new ChatLogEntry(DateTimeOffset.UtcNow, ChatChannel.Broadcast, "Bob", "@timer sync", "raw"));
-        FeedResponse(c, "Bob", OneTimer, 6, ChatChannel.Broadcast);
+        ChatLines.Hear(_router, ChatChannel.Broadcast, "Bob", "@timer sync");
+        FeedResponse("Bob", OneTimer, 6, ChatChannel.Broadcast);
 
         Assert.Empty(got);
     }
@@ -154,10 +160,10 @@ public sealed class BossTimerSyncCollectorTests
         BossTimerSyncCollector c = NewCollector(out var got);
         c.Begin(askedOn);
 
-        FeedResponse(c, Us, OneTimer, 6, echoedOn);
+        FeedResponse(Us, OneTimer, 6, echoedOn);
         Assert.Empty(got);
 
-        FeedResponse(c, "Bob", OneTimer, 6, echoedOn);
+        FeedResponse("Bob", OneTimer, 6, echoedOn);
         Assert.Equal("Bob", Assert.Single(got).Sender);
     }
 
@@ -167,24 +173,25 @@ public sealed class BossTimerSyncCollectorTests
     [Fact]
     public void WithTheBroadcastChannelSwitchedOff_AResponseHeardThereIsPassedOver()
     {
-        MessageRouter router = new();
-        DefaultPatterns.Seed(router);
+        _router = new();
+        DefaultPatterns.Seed(_router);
+        _chat = new ChatRouter(_router);
         bool off = true;
-        BossTimerSyncCollector c = new(new ChatRouter(router), broadcastOff: () => off);
+        BossTimerSyncCollector c = new(_chat, broadcastOff: () => off);
         List<BossTimerSyncResponse> got = new();
         c.ResponseReceived += got.Add;
         c.Begin(RemoteChannel.Broadcast);
 
-        FeedResponse(c, "Bob", OneTimer, 6, ChatChannel.Broadcast);
+        FeedResponse("Bob", OneTimer, 6, ChatChannel.Broadcast);
         Assert.Empty(got);
 
         off = false;   // unticked while the window is open
-        FeedResponse(c, "Bob", OneTimer, 6, ChatChannel.Broadcast);
+        FeedResponse("Bob", OneTimer, 6, ChatChannel.Broadcast);
         Assert.Equal("Bob", Assert.Single(got).Sender);
 
         off = true;
         c.Begin(RemoteChannel.Gangpath);
-        FeedResponse(c, "Sue", OneTimer, 6, ChatChannel.Gangpath);
+        FeedResponse("Sue", OneTimer, 6, ChatChannel.Gangpath);
         Assert.Equal(new[] { "Bob", "Sue" }, got.Select(r => r.Sender));
     }
 
@@ -197,7 +204,7 @@ public sealed class BossTimerSyncCollectorTests
         BossTimerSyncCollector c = NewCollector(out var got);
         c.Begin(RemoteChannel.Telepath);
 
-        FeedResponse(c, "Bob", OneTimer, 6, channel);
+        FeedResponse("Bob", OneTimer, 6, channel);
 
         Assert.Empty(got);
     }
@@ -208,7 +215,7 @@ public sealed class BossTimerSyncCollectorTests
         BossTimerSyncCollector c = NewCollector(out var got);
         var recs = new[] { new BossTimerSyncRecord(1, "a", T("2026-08-22T01:00:00Z")) };
 
-        FeedResponse(c, "Bob", recs, 100);
+        FeedResponse("Bob", recs, 100);
         Assert.Empty(got);
     }
 
@@ -218,7 +225,7 @@ public sealed class BossTimerSyncCollectorTests
         BossTimerSyncCollector c = NewCollector(out var got);
         c.Begin(RemoteChannel.Gangpath);
         string msg =$"{{{BossTimerQueryHandler.SyncResponseToken} 1/1 not-a-valid-blob!!!}}";
-        c.Ingest(new ChatLogEntry(DateTimeOffset.UtcNow, ChatChannel.Gangpath, "Bob", msg, msg));
+        ChatLines.Hear(_router, ChatChannel.Gangpath, "Bob", msg);
         Assert.Empty(got);
     }
 }

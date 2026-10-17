@@ -6,7 +6,6 @@ using MudPlay.Game.Map;
 using MudPlay.Game.Remote;
 using MudPlay.Services;
 using MudPlay.Services.Patterns;
-using MudPlay.Terminal;
 using Xunit;
 
 namespace MudPlay.Tests;
@@ -48,11 +47,49 @@ public sealed class ComebackRequesterTests : IDisposable
         ]
         """;
 
+    // The same rooms with a hole in 1/1: its command 100 is `go hole`, a teleport
+    // to 1/4, which no exit reaches.
+    private const string HoleGraphJson = """
+        [
+          { "Map Number": 1, "Room Number": 1, "Name": "A",
+            "Light": 0, "Shop": 0, "CMD": 100, "Lair": "", "Delay": 0,
+            "N": "1/2", "S": "0", "E": "1/3 (Cast: pre-0, post-857)", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 2, "Name": "B",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "1/1", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 3, "Name": "C",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "0", "E": "0", "W": "1/1",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 4, "Name": "Below",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "0", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+        ]
+        """;
+
+    private const string HoleTbInfo = """
+        [ { "Number": 100, "LinkTo": 0,
+            "Action": "go hole:teleport 4 1\n",
+            "Called From": "Room 1/1" } ]
+        """;
+
     private const string ItemRefusal = "You do not have the appropriate item to go that direction!";
     private const string ParHeader = "The following people are in your travel party:";
     private const string BossFullRow = "  Boss Hogg                         (Warrior)                 [H:100%]   - Frontrank";
     private const string BossInvited = "  Boss Hogg                      (Warrior)    [Invited]";
     private const string OtherInvited = "  Other Guy                      (Mage)       [Invited]";
+
+    // The wait for the leader to come: the requester's one timer of a minute or more.
+    private static TimeSpan? Waiting(Harness h) =>
+        h.Timers.PendingDelays.Where(d => d >= TimeSpan.FromMinutes(1)).Select(d => (TimeSpan?)d).LastOrDefault();
+
+    private static void LapseTheWait(Harness h)
+    {
+        if (Waiting(h) is { } wait) h.Timers.RunDue(wait);
+    }
 
     private sealed class Harness : IDisposable
     {
@@ -60,6 +97,8 @@ public sealed class ComebackRequesterTests : IDisposable
         public required RoomTracker Tracker { get; init; }
         public required PartyState Party { get; init; }
         public required ComebackRequester Requester { get; init; }
+        // The requester's settle, retry and wait timers.
+        public required ManualTimers Timers { get; init; }
 
         // The two things that move the map on these lines in the app: the follow
         // line books a drag, and a refusal the detector knows takes a move back.
@@ -73,28 +112,25 @@ public sealed class ComebackRequesterTests : IDisposable
 
         // Everything the requester (and whatever else a test binds) put on the wire.
         public List<string> Wire { get; } = new();
+        // The requester's own part of it.
+        public List<string> RequesterWire { get; } = new();
 
         private DateTimeOffset _clock = new(2026, 6, 10, 0, 0, 0, TimeSpan.Zero);
 
-        /// <summary>Advance the deterministic clock the requester reads.</summary>
+        // Advance the deterministic clock the requester reads.
         public void Advance(TimeSpan by) => _clock += by;
 
         public DateTimeOffset Now => _clock;
 
-        public int Sent => Requester.LastSentForTests.Count;
+        public int Sent => RequesterWire.Count;
 
-        public string? LastWire => Requester.LastSentForTests.Count == 0
-            ? null
-            : Encoding.Latin1.GetString(Requester.LastSentForTests[^1]).TrimEnd('\r');
+        public string? LastWire => RequesterWire.Count == 0 ? null : RequesterWire[^1];
 
-        // The router first and the refusal detector after it, the order the app
-        // hands a line on in.
-        public void Feed(string text)
-        {
-            Router.Dispatch(new LineExtractor.EmittedLine(
-                text, new CellAttributes[text.Length], _clock, IsPromptLine: false));
-            RefusalDetector.FeedTestLine(text, _clock);
-        }
+        // The game's output through the client's input path: the router first and
+        // the refusal detector after it, the order the app hands a line on in.
+        public required ServerFeed Server { get; init; }
+
+        public void Feed(string text) => Server.Line(text);
 
         public void Type(string line) => Requester.ObserveOutbound(Encoding.Latin1.GetBytes(line + "\r"));
 
@@ -108,49 +144,62 @@ public sealed class ComebackRequesterTests : IDisposable
 
     // Solo, and not yet located: the state the "no longer following" line alone
     // speaks for.
-    private Harness NewHarness(Func<bool>? isMovementPrevented = null)
+    private Harness NewHarness(Func<bool>? isMovementPrevented = null, bool holeInA = false)
     {
         Directory.CreateDirectory(Path.Combine(_root, "alpha"));
-        File.WriteAllText(Path.Combine(_root, "alpha", "Rooms.json"), GraphJson);
+        File.WriteAllText(Path.Combine(_root, "alpha", "Rooms.json"), holeInA ? HoleGraphJson : GraphJson);
+        if (holeInA) File.WriteAllText(Path.Combine(_root, "alpha", "TBInfo.json"), HoleTbInfo);
 
         MessageRouter router = new();
         DefaultPatterns.Seed(router);
 
         GameDataCache cache = new(_root);
         cache.SwitchSet("alpha");
-        RoomGraphManager graph = new(cache);
+        TBInfoStore tbinfo = new(cache);
+        tbinfo.OnActiveSetChanged("alpha");
+        RoomGraphManager graph = new(cache, log: null, tbinfo);
         graph.OnActiveSetChanged("alpha");
         RoomTracker tracker = new(graph);
         PartyState party = new();
         FollowMoveObserver followObserver = new(router, tracker);
-        MovementRefusalDetector refusalDetector = new(new LineExtractor(new TerminalEmulator(80, 24)), tracker);
-
         Harness? h = null;
+        ServerFeed server = new(router, clock: () => h!.Now);
+        MovementRefusalDetector refusalDetector = new(server.Lines, tracker);
+
+        ManualTimers timers = new();
         ComebackRequester requester = new(router, tracker,
             isMovementPrevented: isMovementPrevented,
             party: party,
             isSelfDown: () => h!.SelfDown,
             sendBlocked: () => h!.SendBlocked,
-            inTrainTrip: _ => h!.InTrainTrip);
+            inTrainTrip: _ => h!.InTrainTrip,
+            now: () => h!.Now,
+            schedule: timers.Arm);
         h = new Harness
         {
             Router = router,
             Tracker = tracker,
             Party = party,
             Requester = requester,
+            Timers = timers,
             FollowObserver = followObserver,
             RefusalDetector = refusalDetector,
+            Server = server,
         };
-        requester.NowProvider = () => h.Now;
         requester.MasterSwitchOff = () => !h.MasterSwitchOn;
-        requester.SetWireSender(b => h.Wire.Add(Encoding.Latin1.GetString(b).TrimEnd('\r')));
+        requester.SetWireSender(b =>
+        {
+            string line = Encoding.Latin1.GetString(b).TrimEnd('\r');
+            h.RequesterWire.Add(line);
+            h.Wire.Add(line);
+        });
         return h;
     }
 
     // Following Boss, standing in 1/1.
-    private Harness NewFollower(Func<bool>? isMovementPrevented = null)
+    private Harness NewFollower(Func<bool>? isMovementPrevented = null, bool holeInA = false)
     {
-        Harness h = NewHarness(isMovementPrevented);
+        Harness h = NewHarness(isMovementPrevented, holeInA);
         h.Party.IsInParty = true;
         h.Party.SelfIsLeader = false;
         h.Party.LeaderName = "Boss";
@@ -276,7 +325,7 @@ public sealed class ComebackRequesterTests : IDisposable
         h.Feed("You are no longer following Boss.");
         Assert.Null(h.LastWire);
 
-        h.Requester.FireSettleForTests();
+        h.Timers.RunDue(ComebackRequester.SettleTime);
 
         Assert.Equal("/Boss @comeback 1/1", h.LastWire);
     }
@@ -291,7 +340,7 @@ public sealed class ComebackRequesterTests : IDisposable
         h.Feed("Boss just left to the north.");
         h.Feed("You are no longer following Boss.");
         h.SelfDown = true;
-        h.Requester.FireSettleForTests();
+        h.Timers.RunDue(ComebackRequester.SettleTime);
 
         Assert.Null(h.LastWire);
         Assert.Contains("we died or dropped", h.Requester.LastIncidentSummary);
@@ -310,7 +359,7 @@ public sealed class ComebackRequesterTests : IDisposable
         h.Feed("-- Following your Party leader east --");
         h.Feed("You don't have a mine pass, so you can't enter the mines.");
         h.Feed("You are no longer following Boss.");
-        h.Requester.FireSettleForTests();
+        h.Timers.RunDue(ComebackRequester.SettleTime);
 
         Assert.Equal(new[] { "/Boss @comeback 1/1" }, h.Wire);
     }
@@ -330,7 +379,7 @@ public sealed class ComebackRequesterTests : IDisposable
         h.Feed("The doorman looks you up and down and shakes his head.");
         h.Feed("You are no longer following Boss.");
         Assert.Null(h.LastWire);                            // waits for the prompt
-        h.Requester.FireSettleForTests();
+        h.Timers.RunDue(ComebackRequester.SettleTime);
 
         Assert.Equal(new[] { "/Boss @comeback 1/1" }, h.Wire);
         Assert.Contains("never arrived", h.Requester.LastIncidentSummary);
@@ -352,7 +401,7 @@ public sealed class ComebackRequesterTests : IDisposable
         h.Feed(arrival);
         h.Advance(TimeSpan.FromSeconds(2));
         h.Feed("You are no longer following Boss.");
-        h.Requester.FireSettleForTests();
+        h.Timers.RunDue(ComebackRequester.SettleTime);
 
         Assert.Null(h.LastWire);
     }
@@ -367,7 +416,7 @@ public sealed class ComebackRequesterTests : IDisposable
         h.Feed(" -- Following your Party leader north --");
         h.Advance(TimeSpan.FromSeconds(1));
         h.Feed("You are no longer following Boss.");
-        h.Requester.FireSettleForTests();
+        h.Timers.RunDue(ComebackRequester.SettleTime);
 
         Assert.Null(h.LastWire);
     }
@@ -383,7 +432,7 @@ public sealed class ComebackRequesterTests : IDisposable
         h.Feed("Obvious exits: up, down.");
         h.Advance(TimeSpan.FromSeconds(1));
         h.Feed("You are no longer following Boss.");
-        h.Requester.FireSettleForTests();
+        h.Timers.RunDue(ComebackRequester.SettleTime);
 
         Assert.Null(h.LastWire);
     }
@@ -393,14 +442,14 @@ public sealed class ComebackRequesterTests : IDisposable
     [Fact]
     public void FollowShape_BehindARelayedTeleport_IsTheLeadersSplit()
     {
-        using Harness h = NewFollower();
+        using Harness h = NewFollower(holeInA: true);
 
-        h.Requester.StampPartyTeleportForTests();
+        h.Requester.NotePartyRelay("Boss", "go hole");
         h.Advance(TimeSpan.FromSeconds(4));
         h.Feed(" -- Following your Party leader north --");
         h.Feed("The chime's note hangs in the air.");
         h.Feed("You are no longer following Boss.");
-        h.Requester.FireSettleForTests();
+        h.Timers.RunDue(ComebackRequester.SettleTime);
 
         Assert.Null(h.LastWire);
         Assert.Contains("party teleport", h.Requester.LastIncidentSummary);
@@ -414,7 +463,7 @@ public sealed class ComebackRequesterTests : IDisposable
         h.Feed(" -- Following your Party leader north --");
         h.Type("leave party");
         h.Feed("You are no longer following Boss.");
-        h.Requester.FireSettleForTests();
+        h.Timers.RunDue(ComebackRequester.SettleTime);
 
         Assert.Null(h.LastWire);
     }
@@ -429,7 +478,7 @@ public sealed class ComebackRequesterTests : IDisposable
         h.Feed("-- Following your Party leader north --");
         h.Tracker.SetLocated(new RoomKey(1, 2), h.Now);
         h.Feed("You are no longer following Boss.");
-        h.Requester.FireSettleForTests();
+        h.Timers.RunDue(ComebackRequester.SettleTime);
 
         Assert.Null(h.LastWire);
     }
@@ -442,7 +491,7 @@ public sealed class ComebackRequesterTests : IDisposable
 
         h.Type("leave party");
         h.Feed("You are no longer following Boss.");
-        h.Requester.FireSettleForTests();
+        h.Timers.RunDue(ComebackRequester.SettleTime);
 
         Assert.Null(h.LastWire);
         Assert.Contains("left the party by command", h.Requester.LastIncidentSummary);
@@ -456,7 +505,7 @@ public sealed class ComebackRequesterTests : IDisposable
         using Harness h = NewFollower();
 
         h.Feed("You are no longer following Boss.");
-        h.Requester.FireSettleForTests();
+        h.Timers.RunDue(ComebackRequester.SettleTime);
 
         Assert.Null(h.LastWire);
     }
@@ -470,7 +519,7 @@ public sealed class ComebackRequesterTests : IDisposable
         Assert.False(h.Requester.IsLeaderWeAsked("Boss"));
 
         h.Feed(ItemRefusal);
-        h.Requester.FireSettleForTests();
+        h.Timers.RunDue(ComebackRequester.SettleTime);
         Assert.True(h.Requester.IsLeaderWeAsked("Boss Hogg"));
         Assert.False(h.Requester.IsLeaderWeAsked("Stranger"));
 
@@ -479,7 +528,7 @@ public sealed class ComebackRequesterTests : IDisposable
 
         h.Advance(TimeSpan.FromSeconds(30));
         h.Feed(ItemRefusal);
-        h.Requester.FireSettleForTests();
+        h.Timers.RunDue(ComebackRequester.SettleTime);
         h.Feed("Boss telepaths: {I can't, my loop goes through an exit you can't pass}");
         Assert.False(h.Requester.IsLeaderWeAsked("Boss"));
         Assert.Equal(2, h.Sent);
@@ -496,7 +545,7 @@ public sealed class ComebackRequesterTests : IDisposable
         Assert.Null(h.LastWire);
         Assert.Equal("Boss", h.Requester.PendingCheckFor);
 
-        h.Requester.FireSettleForTests();
+        h.Timers.RunDue(ComebackRequester.SettleTime);
 
         Assert.Equal("/Boss @comeback 1/1", h.LastWire);
         Assert.Contains("appropriate item", h.Requester.LastIncidentSummary);
@@ -517,7 +566,7 @@ public sealed class ComebackRequesterTests : IDisposable
         using Harness h = NewFollower();
 
         h.Feed(line);
-        h.Requester.FireSettleForTests();
+        h.Timers.RunDue(ComebackRequester.SettleTime);
 
         Assert.Equal("/Boss @comeback 1/1", h.LastWire);
     }
@@ -531,7 +580,7 @@ public sealed class ComebackRequesterTests : IDisposable
         h.Feed("The door is closed in that direction!");
 
         Assert.Null(h.Requester.PendingCheckFor);
-        h.Requester.FireSettleForTests();
+        h.Timers.RunDue(ComebackRequester.SettleTime);
         Assert.Null(h.LastWire);
     }
 
@@ -549,7 +598,7 @@ public sealed class ComebackRequesterTests : IDisposable
         h.Feed("There is no exit in that direction!");
 
         Assert.Null(h.Requester.PendingCheckFor);
-        h.Requester.FireSettleForTests();
+        h.Timers.RunDue(ComebackRequester.SettleTime);
         Assert.Null(h.LastWire);
     }
 
@@ -604,7 +653,7 @@ public sealed class ComebackRequesterTests : IDisposable
 
         h.Type(typed);
         h.Feed(ItemRefusal);
-        h.Requester.FireSettleForTests();
+        h.Timers.RunDue(ComebackRequester.SettleTime);
 
         Assert.Equal("/Boss @comeback 1/1", h.LastWire);
     }
@@ -619,7 +668,7 @@ public sealed class ComebackRequesterTests : IDisposable
         h.Feed("Boss just left to the north.");
         Assert.Null(h.LastWire);
 
-        h.Requester.FireSettleForTests();
+        h.Timers.RunDue(ComebackRequester.SettleTime);
 
         Assert.Equal("/Boss @comeback 1/1", h.LastWire);
         Assert.Contains("Boss left north", h.Requester.LastIncidentSummary);
@@ -634,7 +683,7 @@ public sealed class ComebackRequesterTests : IDisposable
         h.Feed(" -- Following your Party leader north --");
 
         Assert.Null(h.Requester.PendingCheckFor);
-        h.Requester.FireSettleForTests();
+        h.Timers.RunDue(ComebackRequester.SettleTime);
         Assert.Null(h.LastWire);
     }
 
@@ -647,7 +696,7 @@ public sealed class ComebackRequesterTests : IDisposable
 
         h.Feed("Boss just left to the north.");
         h.Tracker.SetLocated(new RoomKey(1, 2), h.Now);
-        h.Requester.FireSettleForTests();
+        h.Timers.RunDue(ComebackRequester.SettleTime);
 
         Assert.Null(h.LastWire);
     }
@@ -661,7 +710,7 @@ public sealed class ComebackRequesterTests : IDisposable
 
         h.Feed("Boss just left to the north.");
         h.Tracker.NoteFollowMove(Direction.N, h.Now);   // any state that is not Confirmed
-        h.Requester.FireSettleForTests();
+        h.Timers.RunDue(ComebackRequester.SettleTime);
 
         Assert.Null(h.LastWire);
     }
@@ -688,14 +737,15 @@ public sealed class ComebackRequesterTests : IDisposable
         using Harness h = NewHarness();
         h.Tracker.SetLocated(new RoomKey(1, 1), h.Now);
         using PartyManager manager = new(h.Router, h.Party);
+        manager.AttachLineExtractor(h.Server.Lines);
         manager.LeaderListedAsInvited += h.Requester.NoteLeaderListedAsInvited;
         MovementCoordinator coordinator = new();
         using PartyFollowerMovementGate gate = new(h.Party, coordinator);
         h.Feed("You are now following Boss.");
 
         h.Feed(ParHeader);
-        manager.FeedTestLines(new[] { BossInvited });
-        manager.FeedTestPromptLine();
+        h.Server.Rows(new[] { BossInvited });
+        h.Server.Prompt("[HP=0/MA=0]:");
 
         Assert.Equal("/Boss @comeback 1/1", h.LastWire);
         Assert.Contains("[Invited]", h.Requester.LastIncidentSummary);
@@ -711,6 +761,7 @@ public sealed class ComebackRequesterTests : IDisposable
         using Harness h = NewHarness();
         h.Tracker.SetLocated(new RoomKey(1, 1), h.Now);
         using PartyManager manager = new(h.Router, h.Party);
+        manager.AttachLineExtractor(h.Server.Lines);
         manager.LeaderListedAsInvited += h.Requester.NoteLeaderListedAsInvited;
         MovementCoordinator coordinator = new();
         using PartyFollowerMovementGate gate = new(h.Party, coordinator);
@@ -718,12 +769,12 @@ public sealed class ComebackRequesterTests : IDisposable
 
         h.Feed("Boss just left to the north.");
         h.Feed(ItemRefusal);
-        h.Requester.FireSettleForTests();
+        h.Timers.RunDue(ComebackRequester.SettleTime);
         Assert.Equal(1, h.Sent);
 
         h.Feed(ParHeader);
-        manager.FeedTestLines(new[] { BossInvited });
-        manager.FeedTestPromptLine();
+        h.Server.Rows(new[] { BossInvited });
+        h.Server.Prompt("[HP=0/MA=0]:");
 
         Assert.Equal(1, h.Sent);
         Assert.False(h.Party.SelfIsLeader);
@@ -738,18 +789,19 @@ public sealed class ComebackRequesterTests : IDisposable
         using Harness h = NewHarness();
         h.Tracker.SetLocated(new RoomKey(1, 1), h.Now);
         using PartyManager manager = new(h.Router, h.Party);
+        manager.AttachLineExtractor(h.Server.Lines);
         manager.LeaderListedAsInvited += h.Requester.NoteLeaderListedAsInvited;
         h.Feed("You are now following Boss.");
 
         h.Feed(ParHeader);
-        manager.FeedTestLines(new[] { OtherInvited, BossInvited });
-        manager.FeedTestPromptLine();
+        h.Server.Rows(new[] { OtherInvited, BossInvited });
+        h.Server.Prompt("[HP=0/MA=0]:");
         Assert.Equal(1, h.Sent);
 
         h.Advance(TimeSpan.FromSeconds(5));
         h.Feed(ParHeader);
-        manager.FeedTestLines(new[] { OtherInvited, BossInvited });
-        manager.FeedTestPromptLine();
+        h.Server.Rows(new[] { OtherInvited, BossInvited });
+        h.Server.Prompt("[HP=0/MA=0]:");
 
         Assert.Equal(1, h.Sent);
         Assert.False(h.Party.SelfIsLeader);
@@ -763,6 +815,7 @@ public sealed class ComebackRequesterTests : IDisposable
         using Harness h = NewHarness();
         h.Tracker.SetLocated(new RoomKey(1, 1), h.Now);
         using PartyManager manager = new(h.Router, h.Party);
+        manager.AttachLineExtractor(h.Server.Lines);
         manager.LeaderListedAsInvited += h.Requester.NoteLeaderListedAsInvited;
         MovementCoordinator coordinator = new();
         using PartyFollowerMovementGate gate = new(h.Party, coordinator);
@@ -770,8 +823,8 @@ public sealed class ComebackRequesterTests : IDisposable
 
         h.Feed("You are following Boss.");
         h.Feed(ParHeader);
-        manager.FeedTestLines(new[] { OtherInvited, BossFullRow });
-        manager.FeedTestPromptLine();
+        h.Server.Rows(new[] { OtherInvited, BossFullRow });
+        h.Server.Prompt("[HP=0/MA=0]:");
 
         Assert.False(h.Party.SelfIsLeader);
         Assert.Equal("Boss", h.Party.LeaderName);
@@ -782,12 +835,12 @@ public sealed class ComebackRequesterTests : IDisposable
         h.Feed("Boss just left to the north.");
         h.Feed(ItemRefusal);
         Assert.Equal("Boss", h.Requester.PendingCheckFor);
-        h.Requester.FireSettleForTests();
+        h.Timers.RunDue(ComebackRequester.SettleTime);
         Assert.Equal(1, h.Sent);
 
         h.Feed(ParHeader);
-        manager.FeedTestLines(new[] { OtherInvited, BossInvited });
-        manager.FeedTestPromptLine();
+        h.Server.Rows(new[] { OtherInvited, BossInvited });
+        h.Server.Prompt("[HP=0/MA=0]:");
         Assert.Equal(1, h.Sent);
         Assert.Contains(MovementCoordinator.FollowerGate, coordinator.AssertedGates);
     }
@@ -797,11 +850,12 @@ public sealed class ComebackRequesterTests : IDisposable
     {
         using Harness h = NewHarness();
         using PartyManager manager = new(h.Router, h.Party);
+        manager.AttachLineExtractor(h.Server.Lines);
         manager.LeaderListedAsInvited += h.Requester.NoteLeaderListedAsInvited;
         h.Feed("You are now following Boss.");
 
         h.Feed(ParHeader);
-        manager.FeedTestLines(new[] { OtherInvited });
+        h.Server.Rows(new[] { OtherInvited });
 
         Assert.Null(h.LastWire);
     }
@@ -901,9 +955,9 @@ public sealed class ComebackRequesterTests : IDisposable
     {
         using Harness h = NewFollower();
         h.Feed(ItemRefusal);
-        h.Requester.FireSettleForTests();
+        h.Timers.RunDue(ComebackRequester.SettleTime);
 
-        h.Feed("Boss telepaths: {follow timed out — resuming anyway}");
+        h.Feed("Boss telepaths: {follow timed out - resuming anyway}");
         h.Feed("Boss telepaths: {I can't yet, I'm on a train trip. I'll come for you when the training is done}");
         h.Advance(TimeSpan.FromMinutes(9));
         Assert.True(h.Requester.IsLeaderWeAsked("Boss"));
@@ -929,7 +983,7 @@ public sealed class ComebackRequesterTests : IDisposable
         h.Advance(TimeSpan.FromSeconds(1));
         h.Feed("Boss just left to the north.");
         h.Feed(ItemRefusal);
-        h.Requester.FireSettleForTests();
+        h.Timers.RunDue(ComebackRequester.SettleTime);
 
         Assert.Equal("/Boss @comeback 1/1", h.LastWire);
     }
@@ -945,7 +999,7 @@ public sealed class ComebackRequesterTests : IDisposable
         h.Feed("You are now following Boss.");
         h.Advance(TimeSpan.FromSeconds(1));
         h.Feed(ItemRefusal);
-        h.Requester.FireSettleForTests();
+        h.Timers.RunDue(ComebackRequester.SettleTime);
 
         Assert.Equal("/Boss @comeback 1/1", h.LastWire);
     }
@@ -958,7 +1012,7 @@ public sealed class ComebackRequesterTests : IDisposable
         h.Tracker.NoteMoveSentByObserver(Direction.S, h.Now);   // typed, no engine claim
         h.Advance(TimeSpan.FromSeconds(1));
         h.Feed("Boss just left to the north.");
-        h.Requester.FireSettleForTests();
+        h.Timers.RunDue(ComebackRequester.SettleTime);
 
         Assert.Null(h.LastWire);
         Assert.Contains("a move of your own", h.Requester.LastIncidentSummary);
@@ -975,7 +1029,7 @@ public sealed class ComebackRequesterTests : IDisposable
         h.Feed("There is no exit in that direction!");
         h.Advance(TimeSpan.FromSeconds(1));
         h.Feed("Boss just left to the north.");
-        h.Requester.FireSettleForTests();
+        h.Timers.RunDue(ComebackRequester.SettleTime);
 
         Assert.StartsWith("/Boss @comeback", h.LastWire);
     }
@@ -995,7 +1049,7 @@ public sealed class ComebackRequesterTests : IDisposable
         h.Feed("Boss just left to the north.");
         h.Feed(ItemRefusal);
         h.Advance(TimeSpan.FromSeconds(2));
-        h.Requester.FireSettleForTests();
+        h.Timers.RunDue(ComebackRequester.SettleTime);
 
         Assert.Equal("/Boss @comeback 1/1", h.LastWire);
     }
@@ -1009,7 +1063,7 @@ public sealed class ComebackRequesterTests : IDisposable
 
         h.Feed("Boss just left to the east.");
         h.Feed("You are no longer following Boss.");
-        h.Requester.FireSettleForTests();
+        h.Timers.RunDue(ComebackRequester.SettleTime);
 
         Assert.Null(h.LastWire);
         Assert.Contains("casts a spell", h.Requester.LastIncidentSummary);
@@ -1037,7 +1091,7 @@ public sealed class ComebackRequesterTests : IDisposable
 
         h.Feed(line);
         h.Feed(ItemRefusal);
-        h.Requester.FireSettleForTests();
+        h.Timers.RunDue(ComebackRequester.SettleTime);
 
         Assert.Null(h.LastWire);
         Assert.Contains("Boss died or dropped", h.Requester.LastIncidentSummary);
@@ -1068,10 +1122,10 @@ public sealed class ComebackRequesterTests : IDisposable
         h.Feed("You are no longer following MudPlay.");
         Assert.Equal("/MudPlay @comeback 1/1", h.LastWire);
 
-        int sentCount = h.Requester.LastSentForTests.Count;
+        int sentCount = h.Sent;
         // A later, unrelated unfollow must not reuse the consumed failure.
         h.Feed("You are no longer following Raijin.");
-        Assert.Equal(sentCount, h.Requester.LastSentForTests.Count);
+        Assert.Equal(sentCount, h.Sent);
     }
 
     [Fact]
@@ -1084,7 +1138,7 @@ public sealed class ComebackRequesterTests : IDisposable
         h.Feed("Boss just left to the north.");
 
         Assert.Null(h.Requester.PendingCheckFor);
-        h.Requester.FireSettleForTests();
+        h.Timers.RunDue(ComebackRequester.SettleTime);
         Assert.Null(h.LastWire);
     }
 
@@ -1102,7 +1156,7 @@ public sealed class ComebackRequesterTests : IDisposable
         h.Feed("Self just left to the north.");
 
         Assert.Null(h.Requester.PendingCheckFor);
-        h.Requester.FireSettleForTests();
+        h.Timers.RunDue(ComebackRequester.SettleTime);
         Assert.Null(h.LastWire);
     }
 
@@ -1115,7 +1169,7 @@ public sealed class ComebackRequesterTests : IDisposable
 
         h.Feed("Boss just left to the north.");
         h.Party.IsInParty = false;
-        h.Requester.FireSettleForTests();
+        h.Timers.RunDue(ComebackRequester.SettleTime);
 
         Assert.Null(h.LastWire);
     }
@@ -1132,14 +1186,14 @@ public sealed class ComebackRequesterTests : IDisposable
 
         h.Feed("You can't seem to move anywhere!");
         h.Feed("You are no longer following Boss.");
-        h.Requester.FireRetryForTests();
+        h.Timers.RunDue(ComebackRequester.RetryInterval);
         Assert.Null(h.LastWire);
         Assert.Contains("master switch", h.Requester.LastIncidentSummary);
         Assert.NotNull(h.Requester.HeldBack);
 
         h.MasterSwitchOn = true;
         h.Advance(TimeSpan.FromSeconds(30));
-        h.Requester.FireRetryForTests();
+        h.Timers.RunDue(ComebackRequester.RetryInterval);
 
         Assert.Equal("/Boss @comeback 1/1", h.LastWire);
         Assert.Null(h.Requester.HeldBack);
@@ -1153,15 +1207,15 @@ public sealed class ComebackRequesterTests : IDisposable
 
         h.Feed("Boss just left to the north.");
         h.Feed(ItemRefusal);
-        h.Requester.FireSettleForTests();
+        h.Timers.RunDue(ComebackRequester.SettleTime);
         Assert.Null(h.LastWire);
 
         h.SendBlocked = null;
         h.Advance(TimeSpan.FromSeconds(30));
         h.Feed(ItemRefusal);                 // more of the same evidence adds nothing
-        h.Requester.FireSettleForTests();
-        h.Requester.FireRetryForTests();
-        h.Requester.FireRetryForTests();
+        h.Timers.RunDue(ComebackRequester.SettleTime);
+        h.Timers.RunDue(ComebackRequester.RetryInterval);
+        h.Timers.RunDue(ComebackRequester.RetryInterval);
 
         Assert.Equal(1, h.Sent);
         Assert.Equal("/Boss @comeback 1/1", h.LastWire);
@@ -1175,11 +1229,11 @@ public sealed class ComebackRequesterTests : IDisposable
         h.Requester.RetryWindow = TimeSpan.FromMinutes(2);
         h.MasterSwitchOn = false;
         h.Feed(ItemRefusal);
-        h.Requester.FireSettleForTests();
+        h.Timers.RunDue(ComebackRequester.SettleTime);
 
         h.Advance(TimeSpan.FromMinutes(3));
         h.MasterSwitchOn = true;
-        h.Requester.FireRetryForTests();
+        h.Timers.RunDue(ComebackRequester.RetryInterval);
 
         Assert.Null(h.LastWire);
         Assert.Null(h.Requester.HeldBack);
@@ -1191,11 +1245,11 @@ public sealed class ComebackRequesterTests : IDisposable
         using Harness h = NewFollower();
         h.MasterSwitchOn = false;
         h.Feed(ItemRefusal);
-        h.Requester.FireSettleForTests();
+        h.Timers.RunDue(ComebackRequester.SettleTime);
 
         h.Feed("You are now following Boss.");
         h.MasterSwitchOn = true;
-        h.Requester.FireRetryForTests();
+        h.Timers.RunDue(ComebackRequester.RetryInterval);
 
         Assert.Null(h.LastWire);
     }
@@ -1211,17 +1265,17 @@ public sealed class ComebackRequesterTests : IDisposable
 
         h.Feed("Boss just left to the north.");
         h.Feed("You have not progressed far enough to go through this exit!");
-        h.Requester.FireSettleForTests();
+        h.Timers.RunDue(ComebackRequester.SettleTime);
         Assert.Null(h.LastWire);
         Assert.Contains("party train trip", h.Requester.LastIncidentSummary);
 
         h.Advance(TimeSpan.FromMinutes(6));
-        h.Requester.FireRetryForTests();
+        h.Timers.RunDue(ComebackRequester.RetryInterval);
         Assert.Null(h.LastWire);
 
         h.InTrainTrip = false;
         h.Advance(TimeSpan.FromSeconds(5));
-        h.Requester.FireRetryForTests();
+        h.Timers.RunDue(ComebackRequester.RetryInterval);
 
         Assert.Equal("/Boss @comeback 1/1", h.LastWire);
     }
@@ -1237,13 +1291,13 @@ public sealed class ComebackRequesterTests : IDisposable
         h.Advance(TimeSpan.FromSeconds(40));
         h.Feed("Boss just left to the north.");
         h.Feed(ItemRefusal);
-        h.Requester.FireSettleForTests();
+        h.Timers.RunDue(ComebackRequester.SettleTime);
         Assert.Null(h.LastWire);
 
         h.Feed("You are now following Boss.");
         h.Advance(TimeSpan.FromSeconds(20));
         h.Feed(ItemRefusal);
-        h.Requester.FireSettleForTests();
+        h.Timers.RunDue(ComebackRequester.SettleTime);
         Assert.Equal("/Boss @comeback 1/1", h.LastWire);
     }
 
@@ -1255,21 +1309,21 @@ public sealed class ComebackRequesterTests : IDisposable
         using Harness h = NewFollower();
 
         h.Feed(ItemRefusal);
-        h.Requester.FireSettleForTests();
+        h.Timers.RunDue(ComebackRequester.SettleTime);
         Assert.Equal(1, h.Sent);
 
         // Still standing there: more of the same evidence asks nothing more.
         h.Advance(TimeSpan.FromSeconds(20));
         h.Feed(ItemRefusal);
         h.Feed("Boss just left to the north.");
-        h.Requester.FireSettleForTests();
+        h.Timers.RunDue(ComebackRequester.SettleTime);
         Assert.Equal(1, h.Sent);
 
         // Picked up, and left behind a second time.
         h.Feed("You are now following Boss.");
         h.Advance(TimeSpan.FromSeconds(20));
         h.Feed(ItemRefusal);
-        h.Requester.FireSettleForTests();
+        h.Timers.RunDue(ComebackRequester.SettleTime);
         Assert.Equal(2, h.Sent);
     }
 
@@ -1286,7 +1340,7 @@ public sealed class ComebackRequesterTests : IDisposable
             h.Feed("Boss just left to the north.");
             h.Feed(ItemRefusal);
             h.Advance(TimeSpan.FromSeconds(2));
-            h.Requester.FireSettleForTests();
+            h.Timers.RunDue(ComebackRequester.SettleTime);
             h.Advance(TimeSpan.FromSeconds(20));
             h.Feed("You are now following Boss");
             h.Advance(TimeSpan.FromSeconds(5));
@@ -1303,8 +1357,8 @@ public sealed class ComebackRequesterTests : IDisposable
 
         h.Feed("Boss just left to the north.");
         h.Feed(ItemRefusal);
-        h.Requester.FireSettleForTests();
-        h.Requester.FireSettleForTests();
+        h.Timers.RunDue(ComebackRequester.SettleTime);
+        h.Timers.RunDue(ComebackRequester.SettleTime);
 
         Assert.Equal(1, h.Sent);
         Assert.Contains("Boss left north", h.Requester.LastIncidentSummary);
@@ -1317,7 +1371,7 @@ public sealed class ComebackRequesterTests : IDisposable
     {
         using Harness h = NewFollower();
         h.Feed(ItemRefusal);
-        h.Requester.FireSettleForTests();
+        h.Timers.RunDue(ComebackRequester.SettleTime);
 
         h.Feed("Stranger telepaths: {I can't I'm idle}");
         Assert.DoesNotContain("idle", h.Requester.LastIncidentSummary);
@@ -1341,7 +1395,7 @@ public sealed class ComebackRequesterTests : IDisposable
     {
         using Harness h = NewFollower();
         h.Feed(ItemRefusal);
-        h.Requester.FireSettleForTests();
+        h.Timers.RunDue(ComebackRequester.SettleTime);
         string before = h.Requester.LastIncidentSummary;
 
         h.Feed($"Boss telepaths: {{{line}}}");
@@ -1368,7 +1422,7 @@ public sealed class ComebackRequesterTests : IDisposable
     {
         using Harness h = NewFollower();
         h.Feed(ItemRefusal);
-        h.Requester.FireSettleForTests();
+        h.Timers.RunDue(ComebackRequester.SettleTime);
         string before = h.Requester.LastIncidentSummary;
 
         h.Feed($"Boss telepaths: {{{line}}}");
@@ -1395,7 +1449,7 @@ public sealed class ComebackRequesterTests : IDisposable
         h.Feed("Boss just left to the north.");
         h.Feed("You are too heavy to move!");
         h.Feed("You are no longer following Boss.");
-        h.Requester.FireSettleForTests();
+        h.Timers.RunDue(ComebackRequester.SettleTime);
 
         Assert.Equal(new[] { "/Boss @wait (too heavy to move)", "/Boss @comeback 1/1" }, h.Wire);
     }
@@ -1415,7 +1469,7 @@ public sealed class ComebackRequesterTests : IDisposable
             h.Party.LeaderName = null;
         };
         h.Feed(ItemRefusal);
-        h.Requester.FireSettleForTests();
+        h.Timers.RunDue(ComebackRequester.SettleTime);
         Assert.Equal("/Boss @comeback 1/1", h.LastWire);
         Assert.Empty(givenUp);
         return givenUp;
@@ -1426,8 +1480,8 @@ public sealed class ComebackRequesterTests : IDisposable
     [Theory]
     [InlineData("I can't I'm idle")]
     [InlineData("I can't, my loop goes through an exit you can't pass")]
-    [InlineData("my party is full — can't take you back")]
-    [InlineData("you're 40 rooms off (limit 30) — can't come, forget me")]
+    [InlineData("my party is full - can't take you back")]
+    [InlineData("you're 40 rooms off (limit 30) - can't come, forget me")]
     public void Stock_TheLeaderRefuses_TheFollowIsGivenUp(string refusal)
     {
         using Harness h = NewFollower();
@@ -1437,7 +1491,7 @@ public sealed class ComebackRequesterTests : IDisposable
 
         Assert.Equal(new[] { "Boss" }, givenUp);
         Assert.False(h.Party.IsInParty);
-        Assert.Null(h.Requester.WaitingForTests);
+        Assert.Null(Waiting(h));
         Assert.Contains("follow given up", h.Requester.LastIncidentSummary);
     }
 
@@ -1452,29 +1506,27 @@ public sealed class ComebackRequesterTests : IDisposable
     {
         using Harness h = NewFollower();
         List<string> givenUp = AskedOnStock(h);
-        Assert.Equal(h.Requester.RetryWindow, h.Requester.WaitingForTests);
+        Assert.Equal(h.Requester.RetryWindow, Waiting(h));
 
         h.Feed($"Boss telepaths: {{{answer}}}");
 
         Assert.Empty(givenUp);
         Assert.True(h.Party.IsInParty);
-        Assert.Equal(TimeSpan.FromMinutes(15), h.Requester.WaitingForTests);
+        Assert.Equal(TimeSpan.FromMinutes(15), Waiting(h));
         Assert.True(h.Requester.IsLeaderWeAsked("Boss"));
     }
 
     // Every answer a leader gives that says it is coming, now or later, in the
-    // words this version sends and with the long dash older ones sent.
+    // words this version sends.
     [Theory]
     [InlineData("coming to your location for pickup")]
     [InlineData("backtracking up to 12 room(s) to find you")]
     [InlineData("comeback already in progress")]
     [InlineData("comeback already in progress - fetching Tank first, then you")]
-    [InlineData("comeback already in progress — fetching Tank first, then you")]
     [InlineData("I can't yet, I'm on a train trip. I'll come for you when the training is done")]
     [InlineData("I can't yet, an exit on my way turned you away. I'll invite you when my next pass finds you")]
     [InlineData("didn't find you where the trip left you - @comeback with your room and I'll come")]
     [InlineData("found you - re-inviting Me")]
-    [InlineData("found you — re-inviting Me")]
     [InlineData("got you - resuming")]
     [InlineData("got you - waiting for your @ok")]
     public void Stock_ARecognisedComingAnswer_IsWaitedOnForLonger(string answer)
@@ -1485,7 +1537,7 @@ public sealed class ComebackRequesterTests : IDisposable
         h.Feed($"Boss telepaths: {{{answer}}}");
 
         Assert.Empty(givenUp);
-        Assert.Equal(TimeSpan.FromMinutes(15), h.Requester.WaitingForTests);
+        Assert.Equal(TimeSpan.FromMinutes(15), Waiting(h));
     }
 
     // The leader's own constants are among them: what it sends is what we read.
@@ -1512,13 +1564,13 @@ public sealed class ComebackRequesterTests : IDisposable
     {
         using Harness h = NewFollower();
         List<string> givenUp = AskedOnStock(h);
-        Assert.Equal(h.Requester.RetryWindow, h.Requester.WaitingForTests);
+        Assert.Equal(h.Requester.RetryWindow, Waiting(h));
 
         h.Feed($"Boss telepaths: {{{other}}}");
 
         Assert.Empty(givenUp);
         Assert.True(h.Party.IsInParty);
-        Assert.Equal(h.Requester.RetryWindow, h.Requester.WaitingForTests);
+        Assert.Equal(h.Requester.RetryWindow, Waiting(h));
         Assert.True(h.Requester.IsLeaderWeAsked("Boss"));
     }
 
@@ -1529,7 +1581,7 @@ public sealed class ComebackRequesterTests : IDisposable
         using Harness h = NewFollower();
         List<string> givenUp = AskedOnStock(h);
 
-        h.Requester.FireWaitLapsedForTests();
+        LapseTheWait(h);
 
         Assert.Equal(new[] { "Boss" }, givenUp);
         Assert.False(h.Party.IsInParty);
@@ -1546,7 +1598,7 @@ public sealed class ComebackRequesterTests : IDisposable
         List<string> givenUp = AskedOnStock(h);
         h.Feed("Boss telepaths: {coming to your location for pickup}");
 
-        h.Feed("Boss telepaths: {follow timed out — resuming anyway}");
+        h.Feed("Boss telepaths: {follow timed out - resuming anyway}");
 
         Assert.Equal(new[] { "Boss" }, givenUp);
         Assert.True(h.Requester.IsLeaderWeAsked("Boss"));
@@ -1560,8 +1612,8 @@ public sealed class ComebackRequesterTests : IDisposable
         List<string> givenUp = AskedOnStock(h);
 
         h.Feed("You are now following Boss");
-        Assert.Null(h.Requester.WaitingForTests);
-        h.Requester.FireWaitLapsedForTests();
+        Assert.Null(Waiting(h));
+        LapseTheWait(h);
 
         Assert.Empty(givenUp);
         Assert.True(h.Party.IsInParty);
@@ -1577,11 +1629,11 @@ public sealed class ComebackRequesterTests : IDisposable
         h.Requester.FollowGivenUp = (leader, _) => givenUp.Add(leader);
         h.MasterSwitchOn = false;
         h.Feed(ItemRefusal);
-        h.Requester.FireSettleForTests();
+        h.Timers.RunDue(ComebackRequester.SettleTime);
         Assert.Null(h.LastWire);
 
         h.Advance(h.Requester.RetryWindow + TimeSpan.FromSeconds(1));
-        h.Requester.FireRetryForTests();
+        h.Timers.RunDue(ComebackRequester.RetryInterval);
 
         Assert.Equal(new[] { "Boss" }, givenUp);
     }
@@ -1602,11 +1654,11 @@ public sealed class ComebackRequesterTests : IDisposable
         h.Feed("You are no longer following Boss.");
         h.Party.IsInParty = false;          // as PartyManager clears it on that line
         h.Party.LeaderName = null;
-        h.Requester.FireSettleForTests();
+        h.Timers.RunDue(ComebackRequester.SettleTime);
         Assert.Equal("/Boss @comeback 1/1", h.LastWire);
 
         if (refused) h.Feed("Boss telepaths: {I can't, my loop goes through an exit you can't pass}");
-        else h.Requester.FireWaitLapsedForTests();
+        else LapseTheWait(h);
 
         Assert.Empty(givenUp);
         Assert.Equal(1, h.Sent);
@@ -1644,19 +1696,6 @@ public sealed class ComebackRequesterTests : IDisposable
 
         Assert.Equal("join Boss", h.LastWire);
         Assert.True(h.Requester.JoinJustSentTo("Boss"));
-    }
-
-    // An older leader's wording, with the long dash, is read the same.
-    [Fact]
-    public void Stock_FoundYouFromAnOlderLeader_IsReadTheSame()
-    {
-        using Harness h = NewFollower();
-        h.Requester.OnStock = () => true;
-        AskedOnStock(h);
-
-        h.Feed("Boss telepaths: {found you — re-inviting Me}");
-
-        Assert.Equal("join Boss", h.LastWire);
     }
 
     // The leader we asked is in the room with us: a leader who walked back by
@@ -1750,7 +1789,7 @@ public sealed class ComebackRequesterTests : IDisposable
         AskedOnStock(h);
         string? listedWith = null;
         h.Requester.ListedWith = () => listedWith;
-        h.Requester.FireWaitLapsedForTests();          // nobody came in time: given up
+        LapseTheWait(h);          // nobody came in time: given up
         Assert.False(h.Party.IsInParty);
 
         h.Requester.NotePlayerInRoom("Boss");

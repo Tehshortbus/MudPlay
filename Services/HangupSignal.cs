@@ -84,10 +84,4 @@ public sealed class HangupSignal
         _suppressNextEntry = false;
         return wasSet;
     }
-
-    // Test seam — non-mutating read of both flags. Lets unit tests assert "flag
-    // is currently set" without consuming it. Production callers always go
-    // through the Consume methods.
-    internal (bool DisconnectExpected, bool SuppressNextEntry) PeekForTests()
-        => (_disconnectExpected, _suppressNextEntry);
 }

@@ -29,7 +29,7 @@ public sealed class SummonOnDeathSettleTests
 
         public MessageRouter Router { get; } = new();
         public MonsterMessageStore Monsters { get; } = new();
-        public PlayerDatabase Players { get; } = new();
+        public PlayerDatabase Players { get; } = new(new ProfileService(), () => null);
         public PlayerState State { get; } = new();
         public LogService Log { get; } = new();
         public MovementCoordinator Coordinator { get; }

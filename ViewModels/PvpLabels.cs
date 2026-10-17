@@ -35,5 +35,4 @@ public static class PvpLabels
 
     // A player's own response, where null means the PvP settings' general one.
     public const string UseGeneral = "Use the PvP settings";
-    public static string Of(PvpAction? response) => response is { } own ? Of(own) : UseGeneral;
 }

@@ -6,21 +6,9 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// PR 7.18 — LairTimerStore default-respawn lookup paths. We exercise
-/// both shapes the MDB exports: the NMR 1.83+ <c>Lairs.AvgDelay</c>
-/// path (resolved via the GroupIndex back-reference on the room's
-/// lair tag) and the pre-1.83 fallback that picks the slowest
-/// <c>Monsters.RegenTime</c> across the listed mob ids.
-/// </summary>
-/// <remarks>
-/// In-session arrival tracking is wired through
-/// <see cref="RoomTracker.StateChanged"/> — that path is exercised by
-/// the integration smoke once the scheduler PR (7.19) lands; this
-/// suite focuses on the deterministic JSON-only lookup, the
-/// game-data-cache invalidation contract, and the <c>NextReadyAt</c>
-/// projection.
-/// </remarks>
+// LairTimerStore's default respawn, read from a lair room's Delay by realm, the
+// game-data-cache invalidation, and the NextReadyAt projection off the arrival
+// and kill anchors.
 public sealed class LairTimerStoreTests : IDisposable
 {
     private readonly string _setName;
@@ -43,12 +31,12 @@ public sealed class LairTimerStoreTests : IDisposable
 
     // ----- fixture builders -----------------------------------------
 
-    // One lair room at 5/100 keyed to GroupIndex "120-005-001"; one
-    // non-lair room at 1/1 for the empty-tag negative test.
+    // Two lair rooms in the imported shape, 5/100 (Delay 30) and 7/50 (Delay 15),
+    // and a non-lair room at 1/1 for the empty-tag negative test.
     private const string RoomsJson = """
         [
           { "Map Number": 5, "Room Number": 100, "Name": "Sewer Lair",
-            "Light": 0, "Shop": 0, "Lair": "[120-005-001][2]Group(lair): 5/100", "Delay": 0,
+            "Light": 0, "Shop": 0, "Lair": "(Max 2): 12,[120-5-1-2]", "Delay": 30,
             "N": "0", "S": "0", "E": "0", "W": "0",
             "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
           { "Map Number": 1, "Room Number": 1, "Name": "Lobby",
@@ -56,23 +44,9 @@ public sealed class LairTimerStoreTests : IDisposable
             "N": "0", "S": "0", "E": "0", "W": "0",
             "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
           { "Map Number": 7, "Room Number": 50, "Name": "Old Lair",
-            "Light": 0, "Shop": 0, "Lair": "12, 34, 56", "Delay": 0,
+            "Light": 0, "Shop": 0, "Lair": "(Max 1): 34,[7-50-50-1]", "Delay": 15,
             "N": "0", "S": "0", "E": "0", "W": "0",
             "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
-        ]
-        """;
-
-    private const string LairsJson = """
-        [
-          { "GroupIndex": "120-005-001", "AvgDelay": 30 }
-        ]
-        """;
-
-    private const string MonstersJson = """
-        [
-          { "Number": 12, "RegenTime": 5 },
-          { "Number": 34, "RegenTime": 15 },
-          { "Number": 56, "RegenTime": 10 }
         ]
         """;
 
@@ -80,14 +54,11 @@ public sealed class LairTimerStoreTests : IDisposable
     private const string ParadigmInfoJson = """[ { "Legit": 2 } ]""";
 
     private (GameDataCache cache, RoomGraphManager graph, RoomTracker tracker)
-        BuildFixture(string? lairsOverride = null, string? monstersOverride = null,
-            RealmType realm = RealmType.Stock)
+        BuildFixture(RealmType realm = RealmType.Stock)
     {
         string setRoot = Path.Combine(AppPaths.GameDataRoot, _setName);
         Directory.CreateDirectory(setRoot);
         File.WriteAllText(Path.Combine(setRoot, "Rooms.json"),    RoomsJson);
-        File.WriteAllText(Path.Combine(setRoot, "Lairs.json"),    lairsOverride    ?? LairsJson);
-        File.WriteAllText(Path.Combine(setRoot, "Monsters.json"), monstersOverride ?? MonstersJson);
         if (realm == RealmType.ParaMud)
             File.WriteAllText(Path.Combine(setRoot, "Info.json"), ParadigmInfoJson);
 
@@ -104,16 +75,14 @@ public sealed class LairTimerStoreTests : IDisposable
     [Theory]
     [InlineData(RealmType.ParaMud, 270)]   // (5-1)*60 + 30
     [InlineData(RealmType.Stock, 330)]     // 5 to 6 min after the last kill → 5*60 + 30
-    public void DefaultRespawnSeconds_PerRoomDelay_TakesPrecedence(RealmType realm, int expected)
+    public void DefaultRespawnSeconds_PerRoomDelay_ReadByRealm(RealmType realm, int expected)
     {
-        // Rooms.json with Delay=5, read by realm. Lairs.json says 30 min
-        // (1800s) for the same group index — the per-room Delay must win
-        // because that's the tooltip's source of truth + the actual
-        // server behaviour.
+        // Rooms.json with Delay=5, read by realm: the tooltip's source of truth
+        // and the actual server behaviour.
         const string roomsWithDelay = """
             [
               { "Map Number": 1, "Room Number": 35, "Name": "Intersection",
-                "Light": 0, "Shop": 0, "Lair": "[1-1-1][1]Group(lair): 1/35", "Delay": 5,
+                "Light": 0, "Shop": 0, "Lair": "(Max 1): 12,[1-1-1-1]", "Delay": 5,
                 "N": "0", "S": "0", "E": "0", "W": "0",
                 "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
             ]
@@ -121,8 +90,6 @@ public sealed class LairTimerStoreTests : IDisposable
         string setRoot = Path.Combine(AppPaths.GameDataRoot, _setName);
         Directory.CreateDirectory(setRoot);
         File.WriteAllText(Path.Combine(setRoot, "Rooms.json"), roomsWithDelay);
-        File.WriteAllText(Path.Combine(setRoot, "Lairs.json"),
-            """[ { "GroupIndex": "1-1-1", "AvgDelay": 30 } ]""");
         if (realm == RealmType.ParaMud)
             File.WriteAllText(Path.Combine(setRoot, "Info.json"), ParadigmInfoJson);
 
@@ -145,7 +112,7 @@ public sealed class LairTimerStoreTests : IDisposable
         const string roomsJson = """
             [
               { "Map Number": 1, "Room Number": 1, "Name": "FastRespawn",
-                "Light": 0, "Shop": 0, "Lair": "[1-1-1][1]Group(lair): 1/1", "Delay": 1,
+                "Light": 0, "Shop": 0, "Lair": "(Max 1): 12,[1-1-1-1]", "Delay": 1,
                 "N": "0", "S": "0", "E": "0", "W": "0",
                 "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
             ]
@@ -168,21 +135,6 @@ public sealed class LairTimerStoreTests : IDisposable
         Assert.Equal(expected, store.DefaultRespawnSeconds(new RoomKey(1, 1)));
     }
 
-    // ----- DefaultRespawnSeconds — NMR 1.83+ path -------------------
-
-    [Fact]
-    public void DefaultRespawnSeconds_NmrTag_ResolvesViaGroupIndexAvgDelay()
-    {
-        var (cache, graph, tracker) = BuildFixture();
-        using LairTimerStore store = new(cache, graph, tracker);
-
-        int? seconds = store.DefaultRespawnSeconds(new RoomKey(5, 100));
-
-        // AvgDelay = 30 minutes × 60s/min = 1800s under the stock-realm
-        // unit conversion (see LairTimerStore.AvgDelayUnitSeconds).
-        Assert.Equal(1800, seconds);
-    }
-
     [Fact]
     public void DefaultRespawnSeconds_NonLairRoom_ReturnsNull()
     {
@@ -201,32 +153,6 @@ public sealed class LairTimerStoreTests : IDisposable
         Assert.Null(store.DefaultRespawnSeconds(new RoomKey(999, 999)));
     }
 
-    // ----- DefaultRespawnSeconds — pre-1.83 fallback ----------------
-
-    [Fact]
-    public void DefaultRespawnSeconds_PreNmrTag_ResolvesToSlowestMonsterRegen()
-    {
-        var (cache, graph, tracker) = BuildFixture();
-        using LairTimerStore store = new(cache, graph, tracker);
-
-        int? seconds = store.DefaultRespawnSeconds(new RoomKey(7, 50));
-
-        // Slowest of {5, 15, 10} = 15 minutes × 60s/min = 900s.
-        Assert.Equal(900, seconds);
-    }
-
-    [Fact]
-    public void DefaultRespawnSeconds_PreNmrTag_NoMatchingMonsters_ReturnsNull()
-    {
-        // Monsters table missing the listed ids — we can't resolve a
-        // respawn, return null so the scheduler treats it as "ready
-        // now" rather than guessing.
-        var (cache, graph, tracker) = BuildFixture(monstersOverride: "[]");
-        using LairTimerStore store = new(cache, graph, tracker);
-
-        Assert.Null(store.DefaultRespawnSeconds(new RoomKey(7, 50)));
-    }
-
     // ----- Cache invalidation ---------------------------------------
 
     [Fact]
@@ -235,20 +161,20 @@ public sealed class LairTimerStoreTests : IDisposable
         var (cache, graph, tracker) = BuildFixture();
         using LairTimerStore store = new(cache, graph, tracker);
 
-        // Prime the cache then rewrite Lairs.json with a different
-        // delay and switch sets — the new value should be observed.
-        Assert.Equal(1800, store.DefaultRespawnSeconds(new RoomKey(5, 100)));
+        // Prime the cache then rewrite the room's Delay and switch sets — the
+        // new value should be observed.
+        Assert.Equal(1830, store.DefaultRespawnSeconds(new RoomKey(5, 100)));
 
         string setRoot = Path.Combine(AppPaths.GameDataRoot, _setName);
-        File.WriteAllText(Path.Combine(setRoot, "Lairs.json"),
-            """[ { "GroupIndex": "120-005-001", "AvgDelay": 90 } ]""");
+        File.WriteAllText(Path.Combine(setRoot, "Rooms.json"),
+            RoomsJson.Replace("\"Delay\": 30", "\"Delay\": 90"));
         // Swap to null then back — cleanest way to force the cache to
         // re-read without poking private state.
         cache.SwitchSet(null);
         cache.SwitchSet(_setName);
         graph.OnActiveSetChanged(_setName);
 
-        Assert.Equal(5400, store.DefaultRespawnSeconds(new RoomKey(5, 100)));
+        Assert.Equal(5430, store.DefaultRespawnSeconds(new RoomKey(5, 100)));
     }
 
     // ----- MaxDefaultRespawnSeconds ---------------------------------
@@ -256,13 +182,12 @@ public sealed class LairTimerStoreTests : IDisposable
     [Fact]
     public void MaxDefaultRespawnSeconds_ReturnsLongestLairInSet()
     {
-        // Fixture has two lairs: 5/100 (AvgDelay 30min = 1800s) and 7/50
-        // (slowest monster regen 15min = 900s), plus non-lair 1/1. The
-        // whole-set max is the 1800s lair.
+        // Fixture has two lairs: 5/100 (Delay 30 = 1830s) and 7/50 (Delay 15 =
+        // 930s), plus non-lair 1/1. The whole-set max is the 1830s lair.
         var (cache, graph, tracker) = BuildFixture();
         using LairTimerStore store = new(cache, graph, tracker);
 
-        Assert.Equal(1800, store.MaxDefaultRespawnSeconds());
+        Assert.Equal(1830, store.MaxDefaultRespawnSeconds());
     }
 
     [Fact]
@@ -336,7 +261,7 @@ public sealed class LairTimerStoreTests : IDisposable
         store.NoteKill(lastKill);
 
         Assert.Equal(lastKill, store.ClockStart(lair));
-        Assert.Equal(lastKill.AddSeconds(1800), store.NextReadyAt(lair));
+        Assert.Equal(lastKill.AddSeconds(1830), store.NextReadyAt(lair));
         Assert.Equal(lastKill.AddSeconds(60), store.NextReadyAt(lair, overrideRespawnSeconds: 60));
     }
 
@@ -364,7 +289,7 @@ public sealed class LairTimerStoreTests : IDisposable
         store.NoteKill(entered.AddSeconds(25));
 
         Assert.Equal(entered, store.ClockStart(lair));
-        Assert.Equal(entered.AddSeconds(1800), store.NextReadyAt(lair));
+        Assert.Equal(entered.AddSeconds(1770), store.NextReadyAt(lair));   // Paradigm: (30-1)*60 + 30
     }
 
     [Fact]
@@ -414,7 +339,7 @@ public sealed class LairTimerStoreTests : IDisposable
         DateTimeOffset killLocal = killUtc.ToOffset(TimeSpan.FromHours(-4));
         store.NoteKill(killLocal);
 
-        Assert.Equal(killUtc.AddSeconds(1800), store.NextReadyAt(lair));
+        Assert.Equal(killUtc.AddSeconds(1830), store.NextReadyAt(lair));
         Assert.Equal(TimeSpan.FromSeconds(25), store.LastKilled(lair)!.Value - entered);
         Assert.Equal(LairTimerStore.LogTime(killUtc), LairTimerStore.LogTime(killLocal));
         Assert.Equal(

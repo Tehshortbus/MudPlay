@@ -114,7 +114,7 @@ public sealed class DarkRoomMovementSettleTests : IDisposable
     }
 
     [Fact]
-    public void ConsecutiveDarkAdvances_KeepGateAsserted_UntilLatestElapse()
+    public void ConsecutiveDarkAdvances_HoldOneGate_TheSettleReleasesIt()
     {
         RoomTracker tracker = NewTracker();
         MovementCoordinator coord = new();

@@ -27,9 +27,9 @@ public sealed record NavHoldNames(
 
 // Pure mapping from the live MovementCoordinator gate state to a plain-English
 // "what is the engine doing / why is it held" phrase. Split out of
-// NavigationViewModel so it's unit-testable and so a NEW gate can't silently slip
-// through to a raw internal name on the UI — NavActivityTests asserts
-// every MovementCoordinator *Gate constant resolves to a real label here.
+// NavigationViewModel. Every MovementCoordinator *Gate constant must resolve to a
+// real label here, so a NEW gate can't silently slip through to a raw internal
+// name on the UI.
 //
 // The order is a priority scan: the most important reason a human wants to see
 // wins (an explicit user pause, then combat, then severe self-states, then

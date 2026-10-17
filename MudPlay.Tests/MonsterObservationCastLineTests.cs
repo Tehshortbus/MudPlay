@@ -18,7 +18,7 @@ public sealed class MonsterObservationCastLineTests
     {
         public MessageRouter Router { get; } = new();
         public MonsterMessageStore Monsters { get; } = new();
-        public PlayerDatabase Players { get; } = new();
+        public PlayerDatabase Players { get; } = new(new ProfileService(), () => null);
         public LogService Log { get; } = new();
         public FlavorPrefixStore Prefixes { get; } = new();
         public PlayerState State { get; } = new();

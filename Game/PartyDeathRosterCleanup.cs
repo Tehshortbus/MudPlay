@@ -61,8 +61,7 @@ public sealed class PartyDeathRosterCleanup : IDisposable
     // within this window. Generous — a par poll is ~5 s and combat can run long.
     public TimeSpan CleanupWindow { get; set; } = TimeSpan.FromMinutes(2);
 
-    // Test seam — overrides the wall clock for record/expiry timing.
-    public Func<DateTimeOffset> NowProvider { get; set; } = () => DateTimeOffset.Now;
+    private readonly Func<DateTimeOffset> _now;
 
     private bool _disposed;
 
@@ -72,8 +71,10 @@ public sealed class PartyDeathRosterCleanup : IDisposable
         PartyManager manager,
         MovementCoordinator coordinator,
         Func<bool> isMovementActive,
-        LogService? log = null)
+        LogService? log = null,
+        Func<DateTimeOffset>? now = null)
     {
+        _now = now ?? (() => DateTimeOffset.Now);
         ArgumentNullException.ThrowIfNull(router);
         ArgumentNullException.ThrowIfNull(party);
         ArgumentNullException.ThrowIfNull(manager);
@@ -110,7 +111,7 @@ public sealed class PartyDeathRosterCleanup : IDisposable
         // IsInvited already — both are correctly ignored here.
         if (!IsActiveMember(given)) return;
 
-        _pendingDeaths[given] = NowProvider();
+        _pendingDeaths[given] = _now();
         _log?.Info(LogCategory,
             $"{given} died mid-route — will uninvite the corpse's pending slot once the room clears.");
         TryCleanup();
@@ -148,7 +149,7 @@ public sealed class PartyDeathRosterCleanup : IDisposable
         // Hold until the room is clear of combat, then let the route continue.
         if (_coordinator.AssertedGates.Contains(MovementCoordinator.CombatGate)) return;
 
-        DateTimeOffset now = NowProvider();
+        DateTimeOffset now = _now();
         foreach (string given in _pendingDeaths.Keys.ToArray())
         {
             if (now - _pendingDeaths[given] > CleanupWindow)

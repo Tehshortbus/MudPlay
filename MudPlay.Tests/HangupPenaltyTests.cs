@@ -281,8 +281,10 @@ public sealed class HangupPenaltyTests : IDisposable
         BbsProfileStore store = new();
         store.Save(new BbsProfile { Name = a, Host = "a.example", Port = 23 });
         store.Save(new BbsProfile { Name = b, Host = "b.example", Port = 23 });
-        ProfileService profile = new();
-        profile.LoadBlank();
+        // Started on a test board, so the view model never opens (and writes back)
+        // another test's.
+        ProfileService profile = TestProfiles.Service();
+        profile.LoadDefaultProfile(onBbs: a);
         using BbsSectionViewModel vm = new(store, profile, new PasswordProtector(), new DisplayConfig(), new SettingsService());
 
         vm.SelectedBbsName = a;
@@ -335,8 +337,8 @@ public sealed class HangupPenaltyTests : IDisposable
         string board = NewBoard();
         BbsProfileStore store = new();
         store.Save(new BbsProfile { Name = board, Host = "a.example", Port = 23 });
-        ProfileService profile = new();
-        profile.LoadBlank();
+        ProfileService profile = TestProfiles.Service();
+        profile.LoadDefaultProfile(onBbs: board);
         using BbsSectionViewModel vm = new(store, profile, new PasswordProtector(), new DisplayConfig(), new SettingsService());
         vm.SelectedBbsName = board;
 

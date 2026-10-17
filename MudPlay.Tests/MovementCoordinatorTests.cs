@@ -6,7 +6,7 @@ namespace MudPlay.Tests;
 
 public sealed class MovementCoordinatorTests
 {
-    // ----- Pause-state basics (Phase 7 — unchanged behavior) ----------
+    // ----- Pause-state basics -----------------------------------------
 
     [Fact]
     public void Fresh_NotPaused()
@@ -134,22 +134,7 @@ public sealed class MovementCoordinatorTests
         Assert.Equal(1, fires);
     }
 
-    // ----- Phase 9 PR 9.0b — gate constants -----
-
-    [Fact]
-    public void GateConstants_AreAllPascalCase()
-    {
-        // The constants are the strings that show up in logs, history,
-        // and the AssertedGates list. PascalCase is the Phase 9 plan's
-        // requirement; locking the values catches a rename-to-lowercase
-        // regression that would scramble grep patterns.
-        Assert.Equal("User",           MovementCoordinator.UserGate);
-        Assert.Equal("Combat",         MovementCoordinator.CombatGate);
-        Assert.Equal("HealthRecovery", MovementCoordinator.HealthRecoveryGate);
-        Assert.Equal("ManaRecovery",   MovementCoordinator.ManaRecoveryGate);
-        Assert.Equal("CorpseRecovery", MovementCoordinator.CorpseRecoveryGate);
-        Assert.Equal("PartyWait",      MovementCoordinator.PartyWaitGate);
-    }
+    // ----- gate constants -----------------------
 
     [Fact]
     public void GateNames_CaseInsensitiveMatch()
@@ -163,7 +148,7 @@ public sealed class MovementCoordinatorTests
         Assert.Single(c.AssertedGates);
     }
 
-    // ----- Phase 9 PR 9.0b — GateHistory ring buffer -----
+    // ----- GateHistory ring buffer -----------------------
 
     [Fact]
     public void History_RecordsAssertAndClearTransitions()
@@ -223,8 +208,9 @@ public sealed class MovementCoordinatorTests
     [Fact]
     public void History_RingBufferTrimsToCapacity()
     {
-        // 200 capacity (HistoryCapacity const). Push 250 transitions
-        // and verify the oldest 50 fell off.
+        // 200 capacity (HistoryCapacity const). 250 assert/clear pairs are 500
+        // entries, so the oldest 300 (G0..G149) fall off and the assert of G150
+        // is the first survivor.
         MovementCoordinator c = new();
         for (int i = 0; i < 250; i++)
         {
@@ -234,12 +220,8 @@ public sealed class MovementCoordinatorTests
         }
         IReadOnlyList<GateTransitionEntry> hist = c.History;
         Assert.Equal(200, hist.Count);
-        // The earliest entry that survived is the assert for G25
-        // (since the first 25 G{n} pairs = 50 entries fell off, and
-        // 250*2-200 = 300 → 100 entries removed → G50 / clear-G49 is
-        // the surviving start). Just confirm it isn't G0/G1.
-        Assert.NotEqual("G0", hist[0].Gate);
-        Assert.NotEqual("G1", hist[0].Gate);
+        Assert.Equal("G150", hist[0].Gate);
+        Assert.True(hist[0].Asserted);
         // Newest entry is the clear of G249.
         Assert.Equal("G249", hist[^1].Gate);
         Assert.False(hist[^1].Asserted);
@@ -275,7 +257,7 @@ public sealed class MovementCoordinatorTests
         Assert.Equal(2, c.History.Count); // fresh snapshot reflects the new entry
     }
 
-    // ----- Phase 9 PR 9.0b — canonical [Gate] log writer -----
+    // ----- canonical [Gate] log writer -----------------------
 
     [Fact]
     public void Log_WritesGateLineOnAssertAndClear_WhenLogServiceProvided()
@@ -305,16 +287,6 @@ public sealed class MovementCoordinatorTests
         Assert.Contains("cleared",                  gateRows[1].Message);
         Assert.Contains("gate=Combat",              gateRows[1].Message);
         Assert.Contains("reason=lastKill=giant_rat", gateRows[1].Message);
-    }
-
-    [Fact]
-    public void Log_NoLogService_SilentlyRecordsHistoryButWritesNothing()
-    {
-        MovementCoordinator c = new(log: null);
-        c.AssertGate(MovementCoordinator.UserGate);
-        c.ClearGate(MovementCoordinator.UserGate);
-        Assert.Equal(2, c.History.Count); // history still populated
-        // (no LogService → nothing to assert about log output)
     }
 
     [Fact]

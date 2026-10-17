@@ -3,13 +3,11 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Pins <see cref="CrashReporter.Build"/> — the deterministic Markdown half of
-/// the crash reporter. The Desktop-write path and the CLR channel hooks are
-/// side-effecting and smoke-tested via <c>dotnet run</c>; these exercise the
-/// document formatting, which is where the fiddly logic (inner-exception walk,
-/// null-fault fallback) lives.
-/// </summary>
+// Pins CrashReporter.Build — the deterministic Markdown half of
+// the crash reporter. The Desktop-write path and the CLR channel hooks are
+// side-effecting and smoke-tested via dotnet run; these exercise the
+// document formatting, which is where the fiddly logic (inner-exception walk,
+// null-fault fallback) lives.
 public sealed class CrashReporterTests
 {
     [Fact]

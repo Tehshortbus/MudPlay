@@ -8,7 +8,7 @@ namespace MudPlay.Game.Tokens;
 // `look` and `use` produce. A token's identity, its `look` name, and its `use`
 // message all fall out of the item name (the place is just the name minus
 // "token of "), so no per-token table is needed and it stays set-independent.
-// Pure + static so every parser is unit-tested without the wire.
+// Pure + static.
 public static partial class TokenCatalog
 {
     private const string NamePrefix = "token of ";

@@ -65,7 +65,7 @@ public sealed partial class ToolbarButtonItem : ObservableObject
     // The sub-action a click runs — the character's saved pick, else the first.
     [ObservableProperty] private ToolbarMenuAction? _selectedSubAction;
 
-    // Saves a pick (the sub-action's Key) to the character. Null in tests.
+    // Saves a pick (the sub-action's Key) to the character.
     private readonly Action<string>? _saveChoice;
 
     // The ▾ menu's pick only re-points the button: nothing is sent until the button

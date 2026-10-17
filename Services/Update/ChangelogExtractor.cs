@@ -7,7 +7,7 @@ namespace MudPlay.Services.Update;
 // Pulls the entries an update brings out of CHANGELOG.md so the update window can show
 // the actual "what's new" bullets instead of the hand-authored GitHub release body
 // (which is publish boilerplate — the asset table + checksum instructions). Pure
-// string work so it's unit-testable without a network fetch.
+// string work, no network fetch.
 public static class ChangelogExtractor
 {
     // The entries someone going from `current` to `release` gains: every `## <version>`

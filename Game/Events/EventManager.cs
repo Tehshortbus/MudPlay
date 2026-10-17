@@ -86,17 +86,17 @@ namespace MudPlay.Game.Events;
 // Fire and the run ticker (a DispatcherTimer), so no internal locking is needed.
 public sealed class EventManager : IDisposable
 {
-    private readonly ProfileService? _profile;
-    private readonly LoopManager? _loops;
-    private readonly LairManager? _lairs;
-    private readonly LoopRunner? _loopRunner;
-    private readonly AutoLairManager? _autoLair;
-    private readonly AutoWalkManager? _walker;
+    private readonly ProfileService _profile;
+    private readonly LoopManager _loops;
+    private readonly LairManager _lairs;
+    private readonly LoopRunner _loopRunner;
+    private readonly AutoLairManager _autoLair;
+    private readonly AutoWalkManager _walker;
     private readonly LogService? _log;
     private readonly WireSender _wire = new();
     // Runs an action once the engine raise it was asked from has unwound (see the
-    // header). Inline without engines (the parameterless ctor): nothing resets.
-    private readonly Action<Action> _post = static act => act();
+    // header).
+    private readonly Action<Action> _post;
 
     // Tracks which events the reconciler auto-disabled (vs the user manually
     // flipping Disabled). The Settings.Events row badge renders "↻ target missing"
@@ -125,8 +125,10 @@ public sealed class EventManager : IDisposable
         AutoLairManager autoLair,
         AutoWalkManager walker,
         LogService? log = null,
-        Action<Action>? post = null)
+        Action<Action>? post = null,
+        Func<DateTimeOffset>? now = null)
     {
+        _now = now ?? (() => DateTimeOffset.UtcNow);
         ArgumentNullException.ThrowIfNull(profile);
         ArgumentNullException.ThrowIfNull(loops);
         ArgumentNullException.ThrowIfNull(lairs);
@@ -153,9 +155,6 @@ public sealed class EventManager : IDisposable
         if (profile.Current is { } current) LoadFrom(current);
     }
 
-    // Parameterless ctor for tests / in-memory scenarios — no profile, no engines.
-    public EventManager() { }
-
     // Symmetric tear-down for the five ProfileService / LoopManager / LairManager
     // subscriptions wired in the engine-bound ctor. Today AppServices keeps
     // EventManager alive for the app's lifetime so this is mostly hygiene — but it
@@ -166,17 +165,14 @@ public sealed class EventManager : IDisposable
         if (_disposed) return;
         _disposed = true;
         StopTicker();
-        if (_walker is not null) _walker.Event -= OnWalkEvent;
-        if (_loopRunner is not null) _loopRunner.Event -= OnLoopEvent;
-        if (_autoLair is not null) _autoLair.ActiveChanged -= OnAutoLairActiveChanged;
-        if (_profile is not null)
-        {
-            _profile.ProfileLoaded -= LoadFrom;
-            _profile.ProfileClosed -= Clear;
-            _profile.ProfileSaving -= SnapshotForSave;
-        }
-        if (_loops is not null)  _loops.LoopsChanged -= ReconcileTargets;
-        if (_lairs is not null)  _lairs.SetupsChanged -= ReconcileTargets;
+        _walker.Event -= OnWalkEvent;
+        _loopRunner.Event -= OnLoopEvent;
+        _autoLair.ActiveChanged -= OnAutoLairActiveChanged;
+        _profile.ProfileLoaded -= LoadFrom;
+        _profile.ProfileClosed -= Clear;
+        _profile.ProfileSaving -= SnapshotForSave;
+        _loops.LoopsChanged -= ReconcileTargets;
+        _lairs.SetupsChanged -= ReconcileTargets;
     }
     private bool _disposed;
 
@@ -195,9 +191,6 @@ public sealed class EventManager : IDisposable
     // SendUserInput.
     public void SetWireSender(Action<byte[]> sender) => _wire.Bind(sender);
 
-    // Test seam — bytes the engine asked to write to the wire.
-    internal List<byte[]> LastSentForTests => _wire.LastSentForTests;
-
     // ----- CRUD ------------------------------------------------------
 
     // Append a new event and persist. No duplicate check.
@@ -206,7 +199,7 @@ public sealed class EventManager : IDisposable
         ArgumentNullException.ThrowIfNull(e);
         Events.Add(e);
         ReconcileTargets();
-        _profile?.Save();
+        _profile.Save();
     }
 
     // Replace an existing event by reference. Persists. No-op when original isn't
@@ -224,7 +217,7 @@ public sealed class EventManager : IDisposable
         if (_lastSwitch.Remove(original, out string? note) && updated.Disabled == original.Disabled)
             _lastSwitch[updated] = note;
         ReconcileTargets();
-        _profile?.Save();
+        _profile.Save();
         return true;
     }
 
@@ -235,7 +228,7 @@ public sealed class EventManager : IDisposable
         if (!Events.Remove(e)) return false;
         _autoDisabled.Remove(e);
         _lastSwitch.Remove(e);
-        _profile?.Save();
+        _profile.Save();
         return true;
     }
 
@@ -248,7 +241,7 @@ public sealed class EventManager : IDisposable
 
     // "Disable all events" (Settings → Events) is ticked: nothing fires, whatever
     // each event's own state says.
-    public bool AllDisabled => _profile?.Current?.EventsGloballyDisabled == true;
+    public bool AllDisabled => _profile.Current?.EventsGloballyDisabled == true;
 
     // That event is the one whose run is under way.
     public bool IsRunning(ScheduledEvent e) => _run is { } run && ReferenceEquals(run.Event, e);
@@ -307,9 +300,9 @@ public sealed class EventManager : IDisposable
 
         e.Disabled = !enabled;
         _autoDisabled.Remove(e);
-        _lastSwitch[e] = $"switched {(enabled ? "on" : "off")} by {by} at {Now().ToLocalTime():HH:mm:ss}";
+        _lastSwitch[e] = $"switched {(enabled ? "on" : "off")} by {by} at {_now().ToLocalTime():HH:mm:ss}";
         Events[index] = e;
-        _profile?.Save();
+        _profile.Save();
         _log?.Info("Events",
             $"Event '{Label(e)}' switched {(enabled ? "on" : "off")} by {by}"
             + (!enabled && IsRunning(e) ? "; its run under way goes on to its end" : "")
@@ -390,8 +383,7 @@ public sealed class EventManager : IDisposable
     // a "rest up here" room, resting to rest max.
     public bool RestUpRequested => _run is { Action: EventActionType.RestUp };
 
-    // Clock seam for tests.
-    internal Func<DateTimeOffset> Now { get; set; } = () => DateTimeOffset.UtcNow;
+    private readonly Func<DateTimeOffset> _now;
 
     // ----- Dispatch --------------------------------------------------
 
@@ -421,11 +413,11 @@ public sealed class EventManager : IDisposable
     public const int SuspendedIdleMinutesCeiling = 120;
 
     public int MaxQueued =>
-        Math.Clamp(_profile?.Current?.EventQueueLimit ?? DefaultMaxQueued, 1, MaxQueuedCeiling);
+        Math.Clamp(_profile.Current?.EventQueueLimit ?? DefaultMaxQueued, 1, MaxQueuedCeiling);
     public TimeSpan MaxQueueWait => TimeSpan.FromMinutes(
-        Math.Clamp(_profile?.Current?.EventQueueWaitMinutes ?? DefaultMaxQueueWaitMinutes, 1, MaxQueueWaitMinutesCeiling));
+        Math.Clamp(_profile.Current?.EventQueueWaitMinutes ?? DefaultMaxQueueWaitMinutes, 1, MaxQueueWaitMinutesCeiling));
     public TimeSpan SuspendedIdleLimit => TimeSpan.FromMinutes(
-        Math.Clamp(_profile?.Current?.EventSuspendedIdleMinutes ?? DefaultSuspendedIdleMinutes, 1, SuspendedIdleMinutesCeiling));
+        Math.Clamp(_profile.Current?.EventSuspendedIdleMinutes ?? DefaultSuspendedIdleMinutes, 1, SuspendedIdleMinutesCeiling));
 
     private sealed class EventRun(
         ScheduledEvent e, ScheduledEvent origin, EventResumePlan? resume, int depth, DateTimeOffset startedAt)
@@ -462,7 +454,7 @@ public sealed class EventManager : IDisposable
     // has already been asked about (see the queue choice below).
     private readonly record struct QueuedEvent(ScheduledEvent Event, DateTimeOffset At)
     {
-        public DateTimeOffset FiredAt { get; init; } = At;
+        public DateTimeOffset FiredAt { get; } = At;
         public TimeSpan HeldBySwitch { get; init; }
         public TimeSpan HeldAnswered { get; init; }
     }
@@ -492,12 +484,12 @@ public sealed class EventManager : IDisposable
     {
         if (IsMasterSwitchOff?.Invoke() == true)
         {
-            _heldSince ??= Now();
+            _heldSince ??= _now();
             return true;
         }
         if (_heldSince is not { } since) return false;
         _heldSince = null;
-        TimeSpan held = Now() - since;
+        TimeSpan held = _now() - since;
         if (_run is { } run)
         {
             run.StartedAt += held;
@@ -509,7 +501,7 @@ public sealed class EventManager : IDisposable
         if (_choiceSince is { } asked) _choiceSince = asked + held;
         // Decided here, at the moment the hold ends, so nothing waiting can be
         // taken between the switch coming on and the user being asked.
-        else if (_queue.Any(q => q.HeldBySwitch - q.HeldAnswered > HeldQueuePromptAfter)) _choiceSince = Now();
+        else if (_queue.Any(q => q.HeldBySwitch - q.HeldAnswered > HeldQueuePromptAfter)) _choiceSince = _now();
         return false;
     }
 
@@ -586,8 +578,6 @@ public sealed class EventManager : IDisposable
     // that queued after the prompt opened is neither run early nor dropped by it.
     private List<ScheduledEvent>? _offered;
 
-    public bool QueueChoicePending => _choiceSince is not null;
-
     // Open the prompt, or bring the open one forward.
     public event Action? QueueChoiceNeeded;
     // Close the prompt with no answer: the switch went off again, or the queue
@@ -599,7 +589,7 @@ public sealed class EventManager : IDisposable
     public IReadOnlyList<HeldQueueEntry> OfferQueueChoice()
     {
         if (_choiceSince is null) return Array.Empty<HeldQueueEntry>();
-        DateTimeOffset now = Now();
+        DateTimeOffset now = _now();
         _offered = _queue.Select(q => q.Event).ToList();
         return _queue.Select(q => new HeldQueueEntry(q.Event, now - q.FiredAt, q.HeldBySwitch)).ToList();
     }
@@ -623,7 +613,7 @@ public sealed class EventManager : IDisposable
         SettleQueueChoice(Array.Empty<ScheduledEvent>(), unanswered: why);
     }
 
-    // The wording for an X-close, shared by the opener and the tests.
+    // The wording for an X-close.
     public const string PromptClosedUnanswered = "the Waiting Events window was closed without an answer";
 
     // unanswered: why nobody chose (every listed event is then dropped, with that
@@ -632,7 +622,7 @@ public sealed class EventManager : IDisposable
     {
         if (_choiceSince is not { } since) return;
         List<ScheduledEvent> offered = _offered ?? new List<ScheduledEvent>();
-        DateTimeOffset now = Now();
+        DateTimeOffset now = _now();
         _choiceSince = null;
         _offered = null;
         int dropped = 0, kept = 0;
@@ -705,7 +695,7 @@ public sealed class EventManager : IDisposable
     // what it goes back to.
     public string RunSummary => _run is not { } r
         ? "(none)"
-        : $"'{Label(r.Event)}' {r.Step} for {(Now() - r.StartedAt).TotalSeconds:0}s"
+        : $"'{Label(r.Event)}' {r.Step} for {(_now() - r.StartedAt).TotalSeconds:0}s"
           + (r.Laps > 0 ? $", {r.Laps} lap(s)" : "")
           + (r.OnThenWalk ? "" : $"; then {r.Event.ResolvedThen}")
           + (r.Resume is { } plan ? $"; resume target {plan.Describe()}" : "")
@@ -717,14 +707,14 @@ public sealed class EventManager : IDisposable
     // Said on the run and on the queue while the master switch holds them, so a
     // report of "my event never finished" shows why.
     private string HeldNote => _heldSince is { } since
-        ? $"; held by the master switch for {(Now() - since).TotalSeconds:0}s, clocks stopped"
+        ? $"; held by the master switch for {(_now() - since).TotalSeconds:0}s, clocks stopped"
           + (_whenSwitchBackOn.Count > 0 ? $", {_whenSwitchBackOn.Count} completion(s) kept for when it is back on" : "")
         : "";
 
     // For the bug report: the events waiting behind the running one, oldest first.
     public string QueueSummary => _queue.Count == 0
         ? "(empty)"
-        : string.Join(", ", _queue.Select(q => $"'{Label(q.Event)}' (waiting {(Now() - q.At).TotalSeconds:0}s)")) + HeldNote
+        : string.Join(", ", _queue.Select(q => $"'{Label(q.Event)}' (waiting {(_now() - q.At).TotalSeconds:0}s)")) + HeldNote
           + (_choiceSince is null
               ? ""
               : $"; waiting for your choice (held {_queue.Max(q => q.HeldBySwitch).TotalMinutes:0} min by the master switch)");
@@ -751,9 +741,8 @@ public sealed class EventManager : IDisposable
         if (e.Disabled) return false;
         // Master switch — Settings → Events "Disable all events" gate.
         // Per-character; checked here so the scheduler doesn't have to
-        // worry about it and tests using the parameterless ctor (no
-        // profile) keep firing.
-        if (_profile?.Current?.EventsGloballyDisabled == true) return false;
+        // worry about it. With no profile loaded, events keep firing.
+        if (_profile.Current?.EventsGloballyDisabled == true) return false;
         // Events are the user's own automation: with the master switch off this
         // firing is skipped, not put off and not queued (user, 2026-10-09). Every
         // trigger kind comes through here, a Logoff event included, so one check
@@ -823,7 +812,7 @@ public sealed class EventManager : IDisposable
         {
             int at = 0;
             while (at < _queue.Count && IsLogoffType(_queue[at].Event)) at++;
-            _queue.Insert(at, new QueuedEvent(e, Now()));
+            _queue.Insert(at, new QueuedEvent(e, _now()));
             _log?.Info("Events",
                 $"Logoff event '{Label(e)}' queued ahead of the others, behind {behind}; {_queue.Count} waiting.");
             return true;
@@ -839,7 +828,7 @@ public sealed class EventManager : IDisposable
                 _log?.Debug("Events", $"Event '{Label(e)}' dropped again — the queue is still full.");
             return false;
         }
-        _queue.Add(new QueuedEvent(e, Now()));
+        _queue.Add(new QueuedEvent(e, _now()));
         _log?.Info("Events", $"Event '{Label(e)}' queued behind {behind}; {_queue.Count} waiting.");
         return true;
     }
@@ -866,7 +855,7 @@ public sealed class EventManager : IDisposable
         if (HoldsForMasterSwitch()) return;
         // Nor while the user is being asked which of them to run.
         if (_choiceSince is not null) return;
-        DateTimeOffset now = Now();
+        DateTimeOffset now = _now();
         for (int i = _queue.Count - 1; i >= 0; i--)
         {
             if (now - _queue[i].At <= MaxQueueWait) continue;
@@ -905,12 +894,12 @@ public sealed class EventManager : IDisposable
             RemoveQueuedAt(0);
             if (!Events.Contains(next.Event))
                 _log?.Info("Events", $"Event '{Label(next.Event)}' dropped from the queue — it was removed or edited while it waited.");
-            else if (next.Event.Disabled || _profile?.Current?.EventsGloballyDisabled == true)
+            else if (next.Event.Disabled || _profile.Current?.EventsGloballyDisabled == true)
                 _log?.Info("Events", $"Event '{Label(next.Event)}' dropped from the queue — it was disabled while it waited.");
             else
             {
                 _log?.Info("Events",
-                    $"Event '{Label(next.Event)}' leaves the queue after {(Now() - next.At).TotalSeconds:0}s; {_queue.Count} still waiting.");
+                    $"Event '{Label(next.Event)}' leaves the queue after {(_now() - next.At).TotalSeconds:0}s; {_queue.Count} still waiting.");
                 return next.Event;
             }
         }
@@ -981,7 +970,7 @@ public sealed class EventManager : IDisposable
         }
         // Whatever the last event's Then was getting going is this run's to stop.
         _thenWatch = null;
-        EventRun run = new(e, origin ?? e, resume, depth, Now());
+        EventRun run = new(e, origin ?? e, resume, depth, _now());
         _run = run;
         _log?.Info("Events",
             $"Event '{Label(e)}' started: {e.ActionType}; then {e.ResolvedThen}"
@@ -1072,7 +1061,7 @@ public sealed class EventManager : IDisposable
                 if (!StartWalk(key, "event walk-to", e.WalkToEntersBossRoom == true)) return ActionStart.Failed;
                 // Already standing there: the walker finished inside WalkTo, while
                 // _driving hid its Finished from us.
-                return _walker!.State == WalkState.Idle ? ActionStart.Done : ActionStart.Running;
+                return _walker.State == WalkState.Idle ? ActionStart.Done : ActionStart.Running;
 
             case EventActionType.Loop:
                 if (FindLoop(e.LoopName) is null)
@@ -1280,7 +1269,7 @@ public sealed class EventManager : IDisposable
                 ScheduledEvent? next = FindEvent(e.ThenEventName);
                 if (next is null)
                     _log?.Warn("Events", $"Event '{label}': Then event '{e.ThenEventName}' doesn't exist.");
-                else if (next.Disabled || _profile?.Current?.EventsGloballyDisabled == true)
+                else if (next.Disabled || _profile.Current?.EventsGloballyDisabled == true)
                     _log?.Info("Events", $"Event '{label}': Then event '{Label(next)}' is disabled.");
                 else if (run.Depth + 1 > MaxChainDepth)
                     _log?.Warn("Events",
@@ -1367,7 +1356,7 @@ public sealed class EventManager : IDisposable
             ThenFailed(Label(e), $"the walk to {key.Map}/{key.Room}", _drivenFailure ?? "it wouldn't start");
             return false;
         }
-        if (_walker!.State == WalkState.Idle) return false;
+        if (_walker.State == WalkState.Idle) return false;
         run.OnThenWalk = true;
         run.WalkTarget = key;
         _run = run;
@@ -1435,8 +1424,8 @@ public sealed class EventManager : IDisposable
         _log?.Info("Events", $"Event '{label}' finished; {verb} {what}{step}{note}.");
         bool stillArriving = kind switch
         {
-            ThenWatchKind.Loop => _loopRunner?.State == LoopState.Approaching,
-            ThenWatchKind.Walk => _walker?.State == WalkState.Walking,
+            ThenWatchKind.Loop => _loopRunner.State == LoopState.Approaching,
+            ThenWatchKind.Walk => _walker.State == WalkState.Walking,
             _ => false,
         };
         LastThenSummary = $"'{label}' → {what}: {(stillArriving ? "started" : "under way")} {Stamp()}";
@@ -1458,7 +1447,7 @@ public sealed class EventManager : IDisposable
         LastThenSummary = $"'{watch.EventLabel}' → {watch.What}: under way {Stamp()}";
     }
 
-    private string Stamp() => Now().ToLocalTime().ToString("HH:mm:ss");
+    private string Stamp() => _now().ToLocalTime().ToString("HH:mm:ss");
 
     // ----- Engine starts ----------------------------------------------
 
@@ -1468,7 +1457,6 @@ public sealed class EventManager : IDisposable
     private bool StartWalk(RoomKey key, string reason, bool enterBossRoom)
     {
         _drivenFailure = null;
-        if (_walker is null) return false;
         _driving = true;
         try
         {
@@ -1485,7 +1473,6 @@ public sealed class EventManager : IDisposable
     private bool StartLoop(string? name, string reason)
     {
         _drivenFailure = null;
-        if (_loopRunner is null) return false;
         if (FindLoop(name) is not { } saved)
         {
             _drivenFailure = $"no saved loop is named '{name}'";
@@ -1509,7 +1496,6 @@ public sealed class EventManager : IDisposable
     private bool StartAutoLair(string? name, string reason)
     {
         _drivenFailure = null;
-        if (_autoLair is null) return false;
         if (FindSetup(name) is not { } setup)
         {
             _drivenFailure = $"no saved auto-lair setup is named '{name}'";
@@ -1583,7 +1569,7 @@ public sealed class EventManager : IDisposable
                 // this run's room starting is the run's; what the detour's walks
                 // come to is the detour's business, and the user's Stop arrives by
                 // NoteUserStop.
-                if (w.Kind == WalkEventKind.Started && Equals(_walker?.Journey?.Destination, run.WalkTarget)) Resumed(run);
+                if (w.Kind == WalkEventKind.Started && Equals(_walker.Journey?.Destination, run.WalkTarget)) Resumed(run);
             }
             else if (w.Kind == WalkEventKind.Stopped)
             {
@@ -1638,7 +1624,7 @@ public sealed class EventManager : IDisposable
                 }
                 else if (l.Kind == LoopEventKind.Started && run.Suspended)
                 {
-                    if (string.Equals(_loopRunner?.CurrentLoop?.Name, run.Event.LoopName, StringComparison.OrdinalIgnoreCase))
+                    if (string.Equals(_loopRunner.CurrentLoop?.Name, run.Event.LoopName, StringComparison.OrdinalIgnoreCase))
                         Resumed(run);
                     else
                         Abort(run, "another loop was started while its own was away");
@@ -1658,7 +1644,7 @@ public sealed class EventManager : IDisposable
         if (run.Action == EventActionType.AutoLair)
         {
             if (active) Resumed(run);
-            else if (_autoLair?.StoppedForResume == true) Suspend(run, "its auto-lair was stopped by something that brings it back");
+            else if (_autoLair.StoppedForResume) Suspend(run, "its auto-lair was stopped by something that brings it back");
             else Abort(run, "its auto-lair was stopped");
         }
         else if (run.Action is EventActionType.Wait or EventActionType.RestUp && active)
@@ -1753,8 +1739,8 @@ public sealed class EventManager : IDisposable
         _driving = true;
         try
         {
-            if (run.Event.ActionType == EventActionType.Loop) _loopRunner?.Stop("event stop-after");
-            else _autoLair?.Stop("event stop-after");
+            if (run.Event.ActionType == EventActionType.Loop) _loopRunner.Stop("event stop-after");
+            else _autoLair.Stop("event stop-after");
         }
         finally { _driving = false; }
         // Posted: a lap rule is met inside the loop runner's own raise.
@@ -1775,7 +1761,7 @@ public sealed class EventManager : IDisposable
         DropExpired();
         if (run.Suspended && SuspendedTooLong(run)) return;
         ScheduledEvent e = run.Event;
-        TimeSpan elapsed = Now() - run.StartedAt;
+        TimeSpan elapsed = _now() - run.StartedAt;
         switch (run.Action)
         {
             case EventActionType.Wait:
@@ -1813,8 +1799,8 @@ public sealed class EventManager : IDisposable
             run.IdleSince = null;
             return false;
         }
-        run.IdleSince ??= Now();
-        if (Now() - run.IdleSince < SuspendedIdleLimit) return false;
+        run.IdleSince ??= _now();
+        if (_now() - run.IdleSince < SuspendedIdleLimit) return false;
         int dropped = _queue.Count;
         string minutes = SuspendedIdleLimit.TotalMinutes.ToString("0");
         _log?.Warn("Events",
@@ -1829,7 +1815,7 @@ public sealed class EventManager : IDisposable
     private void StartTicker()
     {
         if (_ticker is not null) return;
-        // No UI dispatcher (unit tests): tests call Tick themselves.
+        // No UI dispatcher: nothing to pump, callers tick by hand.
         if (Avalonia.Application.Current is null) return;
         _ticker = new Avalonia.Threading.DispatcherTimer { Interval = RunTickInterval };
         _ticker.Tick += (_, _) => Tick();
@@ -1843,8 +1829,7 @@ public sealed class EventManager : IDisposable
     }
 
     // A Command action's text split into the lines it sends, by the same rule macros,
-    // triggers and aliases use. Internal so tests can assert the contract without
-    // firing a real event end-to-end.
+    // triggers and aliases use.
     internal static IEnumerable<string> SplitCommand(string text) =>
         MacroStore.SplitCommandSteps(text);
 
@@ -1865,7 +1850,7 @@ public sealed class EventManager : IDisposable
         }
         if (anyChanged)
         {
-            _profile?.Save();
+            _profile.Save();
             AutoDisabledChanged?.Invoke();
         }
     }
@@ -1876,7 +1861,7 @@ public sealed class EventManager : IDisposable
     private void AutoDisable(ScheduledEvent e, string reason)
     {
         AutoDisableInternal(e, reason);
-        _profile?.Save();
+        _profile.Save();
         AutoDisabledChanged?.Invoke();
     }
 
@@ -1931,7 +1916,7 @@ public sealed class EventManager : IDisposable
         if (converted)
         {
             _log?.Info("Events", "Converted this character's events to the Then format (a walk-to goes back, anything else stops).");
-            _profile?.Save();
+            _profile.Save();
         }
         ReconcileTargets();
     }
@@ -2021,7 +2006,6 @@ public sealed class EventManager : IDisposable
             switch (plan)
             {
                 case EventResumePlan.Loop l:
-                    if (_loopRunner is null) return EngineStart.Refused;
                     // By name: the catalogue's copy of a loop the run holds is a new object
                     // once another client has edited the file.
                     if (_loopRunner.State is not LoopState.Idle
@@ -2030,7 +2014,6 @@ public sealed class EventManager : IDisposable
                     EngineSupersede.StopOthers(_walker, _loopRunner, _autoLair, SupersedeKeep.Loop, "event resume");
                     return StartedLoop(_loopRunner, l.SavedLoop) ? EngineStart.Started : EngineStart.Refused;
                 case EventResumePlan.AutoLair al:
-                    if (_autoLair is null) return EngineStart.Refused;
                     if (_autoLair.IsActive) return EngineStart.StillRunning;
                     EngineSupersede.StopOthers(_walker, _loopRunner, _autoLair, SupersedeKeep.Lair, "event resume");
                     if (al.OffARun)
@@ -2046,7 +2029,6 @@ public sealed class EventManager : IDisposable
                     }
                     return _autoLair.Start() ? EngineStart.Started : EngineStart.Refused;
                 case EventResumePlan.Walker w:
-                    if (_walker is null) return EngineStart.Refused;
                     if (_walker.State == WalkState.Walking && Equals(_walker.Journey?.Destination, w.Destination))
                         return EngineStart.StillRunning;
                     EngineSupersede.StopOthers(_walker, _loopRunner, _autoLair, SupersedeKeep.Walker, "event resume");
@@ -2058,8 +2040,7 @@ public sealed class EventManager : IDisposable
     }
 
     // What was running when an event took over — the Resume target. Discriminated
-    // across the three engine types SnapshotCurrentActivity distinguishes. Internal
-    // so tests can pattern-match the snapshot.
+    // across the three engine types SnapshotCurrentActivity distinguishes.
     internal abstract record EventResumePlan
     {
         public abstract string Describe();

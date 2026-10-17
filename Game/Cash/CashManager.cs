@@ -22,11 +22,9 @@ namespace MudPlay.Game.Cash;
 //     in-flight delta (60s timeout) projects pickups already dispatched but not
 //     yet confirmed so multi-coin batches and quick re-displays can't
 //     over-collect.
-//   - CashPickedUp / CashDropped → tally update. Held per-currency counts
-//     exposed via HeldCoin feed the stash-room and discard paths.
 //   - AutoDeposit trigger. The gates read the authoritative
-//     InventorySnapshot.Currency (the 'i'-seeded, delta-tracked holdings — not
-//     the local pickup tally): wealth gate against TotalCopperValue (the game's
+//     InventorySnapshot.Currency (the 'i'-seeded, delta-tracked holdings):
+//     wealth gate against TotalCopperValue (the game's
 //     Wealth: line), coin gate against TotalCoinCount. Either crossing fires
 //     AutoDepositRequested once per crossing, but only when a bank / stash
 //     location (BankRoomKey) is configured — no location, no reroute
@@ -59,7 +57,7 @@ public sealed class CashManager : IDisposable
     private readonly Func<bool> _isPeekSuppressed;
     // Defers an action one dispatch tick. Used so a room-survey ("You notice ...")
     // collect decision is made AFTER the room's later "Also here:" line has been
-    // parsed and the combat gate is current. Default runs synchronously (tests).
+    // parsed and the combat gate is current. Default runs synchronously.
     private readonly Action<Action> _post;
     private readonly LogService? _log;
     private readonly CurrencyNaming _naming;
@@ -94,7 +92,6 @@ public sealed class CashManager : IDisposable
     private Action<byte[]>? _wireSender;
     private Game.Inventory.AcquisitionGate? _gate;
     private Game.Inventory.RoomRedisplayCoordinator? _redisplay;
-    private readonly Dictionary<string, long> _held = new(StringComparer.OrdinalIgnoreCase);
 
     // Collect-after-combat. When CashSettings.CollectAfterCombatFinished is set (the
     // shared Cash + Items timing toggle) and the room still holds engageable
@@ -154,11 +151,10 @@ public sealed class CashManager : IDisposable
     private bool GetWentUnanswered(string currency) =>
         _unansweredGets.TryGetValue(currency, out (DateTime SentAt, int Retries) get)
         && get.Retries < MaxGetRetries
-        && UnansweredClock() - get.SentAt >= GetAnswerTime
+        && _unansweredClock() - get.SentAt >= GetAnswerTime
         && (get.SentAt - _deathStallAt).Duration() <= DeathStallReach;
 
-    // Test seam for the unanswered-get timing.
-    internal Func<DateTime> UnansweredClock { get; set; } = static () => DateTime.UtcNow;
+    private readonly Func<DateTime> _unansweredClock;
 
     // When a monster last died casting a silent spell that leaves the room unable
     // to act for a moment (FireTempDeathResponse). The coin get goes out on the
@@ -166,7 +162,7 @@ public sealed class CashManager : IDisposable
     private DateTime _deathStallAt = DateTime.MinValue;
     private static readonly TimeSpan DeathStallReach = TimeSpan.FromSeconds(5);
 
-    public void NoteDeathStall() => _deathStallAt = UnansweredClock();
+    public void NoteDeathStall() => _deathStallAt = _unansweredClock();
 
     // A coin get is out that the game has not answered with a pickup line.
     public bool HasUnansweredGet => _unansweredGets.Count > 0;
@@ -175,7 +171,7 @@ public sealed class CashManager : IDisposable
     {
         int retries = _unansweredGets.TryGetValue(currency, out (DateTime SentAt, int Retries) earlier)
             ? earlier.Retries + 1 : 0;
-        _unansweredGets[currency] = (UnansweredClock(), retries);
+        _unansweredGets[currency] = (_unansweredClock(), retries);
     }
 
     // Record a collect of `count` of this currency this visit, keeping the high mark.
@@ -190,9 +186,9 @@ public sealed class CashManager : IDisposable
     // release the deferred-hold if the re-displayed room turned out to hold no cash;
     // a successful collect re-arms the gate's own settle window before this elapses.
     private DispatcherTimer? _resurveyReleaseTimer;
-    // Look round-trip hold. Overridable in tests; production waits long enough for
+    // Look round-trip hold. Long enough for
     // the room re-display to arrive and drive the collect.
-    internal int ResurveyReleaseMs { get; set; } = 1500;
+    private const int ResurveyReleaseMs = 1500;
 
     private bool _autoDepositFiredThisCrossing;
     // When a fired gate crossing can't complete a deposit (aborted reroute) the
@@ -201,16 +197,13 @@ public sealed class CashManager : IDisposable
     // inventory line. See NotifyAutoDepositAborted.
     private DateTime _autoDepositRetryNotBefore;
     private const int AutoDepositRetryCooldownMs = 60_000;
-    // Clock behind the retry cooldown. Overridable in tests so the re-arm path
-    // can be exercised without a real 60-second wait; production reads the wall
-    // clock.
-    internal Func<DateTime> AutoDepositClock { get; set; } = static () => DateTime.UtcNow;
+    private readonly Func<DateTime> _autoDepositClock;
 
     // True while standing in a marked stash room with a loop / lair running. Coin
     // auto-collect is suppressed there so a search's "You notice …" survey can't
     // re-expose and re-grab the pile the pass-through stash just hid (report
     // paradigm-20260819-121516). Wired by AppServices to AutoDeposit; defaults to
-    // never-suppress so tests and non-looping play are unaffected.
+    // never-suppress.
     internal Func<bool> SuppressCollectInStashRoom { get; set; } = static () => false;
 
     // A ceiling on the coin VALUE the collect funnel may still take, in copper, for an
@@ -307,10 +300,6 @@ public sealed class CashManager : IDisposable
     private static readonly string[] SlotCurrencyNames =
         { "copper", "silver", "gold", "platinum", "runic" };
 
-    // Fires whenever a CashOnGround line resolves the per-currency policy
-    // decision. Args: currency, count, decided action.
-    public event Action<string, int, CashPolicy>? CashDispatched;
-
     // Fires once when the authoritative held wealth crosses
     // AutoDepositIfWealthExceeds or the held coin count crosses
     // AutoDepositIfCoinsExceed — provided a bank / stash location is configured.
@@ -342,8 +331,12 @@ public sealed class CashManager : IDisposable
         LogService? log = null,
         CurrencyNaming? naming = null,
         Func<string, bool>? isKnownItem = null,
-        Action<Action>? post = null)
+        Action<Action>? post = null,
+        Func<DateTime>? unansweredClock = null,
+        Func<DateTime>? autoDepositClock = null)
     {
+        _autoDepositClock = autoDepositClock ?? (() => DateTime.UtcNow);
+        _unansweredClock = unansweredClock ?? (() => DateTime.UtcNow);
         ArgumentNullException.ThrowIfNull(router);
         ArgumentNullException.ThrowIfNull(readSettings);
         ArgumentNullException.ThrowIfNull(isEnabled);
@@ -353,21 +346,21 @@ public sealed class CashManager : IDisposable
         _collectAfterCombatFinished = collectAfterCombatFinished;
         _hasEngageableHostiles = hasEngageableHostiles;
         _isEnabled = isEnabled;
-        // Resolves the per-realm runic word; unbound (tests) falls back to stock
+        // Resolves the per-realm runic word; unbound, it falls back to stock
         // "runic" so the stable-realm behaviour is unchanged.
         _naming = naming ?? new CurrencyNaming();
         // No snapshot bound (or before an `i` parse) → the encumbrance gate
         // is inert and collection runs the full-pickup path.
         _getSnapshot = getSnapshot ?? (static () => InventorySnapshot.Empty);
-        // Null when unbound (tests) → never a peek. A `look <dir>` peek renders
+        // Null when unbound → never a peek. A `look <dir>` peek renders
         // a full room display, so gate the "You notice" collect path on it.
         _isPeekSuppressed = isPeekSuppressed ?? (static () => false);
         // Resolves a survey entry against the active item table (true when it's a
         // real Items.json record). Injected so TryParseCashEntry can settle the
-        // "2 gold key" ambiguity; null (tests / no game data) leaves the
+        // "2 gold key" ambiguity; null (no game data) leaves the
         // count+denomination heuristic standing alone.
         _isKnownItem = isKnownItem;
-        // Unbound (tests) runs inline; production wires Dispatcher.UIThread.Post so
+        // Unbound runs inline; AppServices wires Dispatcher.UIThread.Post so
         // the room-survey collect decision lands after the room-display batch settles.
         _post = post ?? (a => a());
         _log = log;
@@ -378,10 +371,8 @@ public sealed class CashManager : IDisposable
         _dropRefusedSub = router.Subscribe(KnownPatterns.CashDropRefused, OnDropRefused);
         _trainedSub = router.Subscribe(KnownPatterns.TrainAttainLevel, OnTrained);
         _trainedNextSub = router.Subscribe(KnownPatterns.TrainAttainNextLevel, OnTrained);
-        // `hide N <coin>` is the stash-room verb — same tally semantics
-        // as drop. The item-hide path (UserHides) leaves coin-shaped hides
-        // to this one, so without this subscription the held tally would
-        // go stale and AutoDeposit would misfire on phantom wealth.
+        // `hide N <coin>` is the stash-room verb, answered like a drop. The
+        // item-hide path (UserHides) leaves coin-shaped hides to this one.
         _hiddenSub   = router.Subscribe(KnownPatterns.CashHidden,    OnCashHidden);
         _noticeSub   = router.Subscribe(KnownPatterns.YouNoticeRoom, OnYouNoticeRoom);
         _killDropSub = router.Subscribe(KnownPatterns.CashFromKill,  OnCashFromKill);
@@ -407,28 +398,18 @@ public sealed class CashManager : IDisposable
 
     // Bind the shared room-redisplay coordinator so the combat-clear re-display
     // coalesces with the item engine's post-kill re-look (one Enter, not two).
-    // Optional — unbound (tests) the engine sends its own Enter as before.
+    // Optional — unbound, the engine sends its own Enter.
     public void SetRoomRedisplay(Game.Inventory.RoomRedisplayCoordinator coordinator)
     {
         ArgumentNullException.ThrowIfNull(coordinator);
         _redisplay = coordinator;
     }
 
-    // Current held count of currency as observed via CashPickedUp / CashDropped
-    // lines since engine start. Resets on app close; not persisted (the wealth
-    // display is authoritative; tracked here for the auto-deposit threshold).
-    public long HeldCoin(string currency)
-    {
-        return _held.TryGetValue(currency, out long count) ? count : 0;
-    }
-
-    // Reset held counts (called on profile load to drop the prior character's
-    // tallies). Also clears the in-flight coin projection so a pending get/drop
-    // from the prior session can't skew the new character's first gate
-    // evaluation.
+    // Called on profile load: re-arms the auto-deposit gate and clears the
+    // in-flight coin projection so a pending get/drop from the prior session
+    // can't skew the new character's first gate evaluation.
     public void ResetTallies()
     {
-        _held.Clear();
         _autoDepositFiredThisCrossing = false;
         _autoDepositRetryNotBefore = default;
         Array.Clear(_inFlightCoinDelta, 0, _inFlightCoinDelta.Length);
@@ -459,11 +440,10 @@ public sealed class CashManager : IDisposable
     // "drop <amount> <type>" (the MajorMUD syntax for currency drops).
     //
     // Holdings come from the authoritative InventorySnapshot.Currency alone —
-    // the 'i'-seeded, delta-tracked truth. Not the local pickup tally (_held): it
-    // only counts coin observed via CashPickedUp / CashDropped this session, so it
-    // misses a carried-over balance and never learns of coin spent, banked or
-    // miscounted — maxing it in kept dropping 2182 copper after an `i` showed 671
-    // (report paradigm-20260929-183240). A fresh pickup still drops promptly: the
+    // the 'i'-seeded, delta-tracked truth. A count of the coin seen picked up and
+    // dropped this session misses a carried-over balance and never learns of coin
+    // spent, banked or miscounted — maxing it in kept dropping 2182 copper after
+    // an `i` showed 671 (report paradigm-20260929-183240). A fresh pickup still drops promptly: the
     // inventory change it causes re-runs this audit (OnInventoryChanged).
     //
     // One drop per currency at a time: until the server answers it (dropped, or
@@ -489,7 +469,7 @@ public sealed class CashManager : IDisposable
         AuditDenominationForDiscard(settings, "gold",     snap.Gold);
         AuditDenominationForDiscard(settings, "platinum", snap.Platinum);
         // Wire runic word so the emitted `drop N <word>` matches what the server
-        // accepts; ResolvePolicy/HeldCoin recognise it via _naming.IsRunic.
+        // accepts; ResolvePolicy recognises it via _naming.IsRunic.
         AuditDenominationForDiscard(settings, _naming.RunicName, snap.Runic);
     }
 
@@ -520,7 +500,6 @@ public sealed class CashManager : IDisposable
         _log?.Info(LogCategory,
             $"on-ground currency={currency} count={count} policy={policy}");
         NoteSurveyed(currency, count);
-        CashDispatched?.Invoke(currency, count, policy);
 
         switch (policy)
         {
@@ -572,7 +551,6 @@ public sealed class CashManager : IDisposable
 
         _log?.Info(LogCategory,
             $"corpse-drop currency={currency} count={count} policy={policy}");
-        CashDispatched?.Invoke(currency, count, policy);
 
         if (policy == CashPolicy.Collect)
         {
@@ -597,7 +575,6 @@ public sealed class CashManager : IDisposable
         (string? currency, int count) = ParseCashLine(m);
         if (currency is null) return;
 
-        AdjustHeld(currency, count);
         _unansweredGets.Remove(currency);
         CoinCollected?.Invoke(currency, count);
         // Confirm our pending `get` — drain the matching in-flight delta so
@@ -620,7 +597,6 @@ public sealed class CashManager : IDisposable
         // As for a hide: "You dropped 3 iron crown." is an item, not coin.
         if (!IsCashWord(currency)) return;
 
-        AdjustHeld(currency, -count);
         DecayInFlight(currency, -count);
         ClearDropSent(currency);
         CheckAutoDeposit();
@@ -645,7 +621,7 @@ public sealed class CashManager : IDisposable
 
     private bool _purseStale;
 
-    // One `i` per cooldown: its fresh counts replace whatever the running tally held.
+    // One `i` per cooldown: its fresh counts replace the stale ones.
     private bool ReReadInventory(string why)
     {
         DateTime now = DateTime.UtcNow;
@@ -658,9 +634,8 @@ public sealed class CashManager : IDisposable
 
     private void ClearDropSent(string currency) => _dropSentAt.Remove(_naming.Canonicalize(currency));
 
-    // Stash-room confirmation handler — tally identically to drop. The hide wire
-    // shape is what stash-room visits use to dump excess coin / items; without
-    // this the auto-deposit threshold drifts stale after a stash run.
+    // Stash-room confirmation handler — answered like a drop. The hide wire shape
+    // is what stash-room visits use to dump excess coin / items.
     private void OnCashHidden(MatchResult m)
     {
         (string? currency, int count) = ParseCashLine(m);
@@ -670,7 +645,6 @@ public sealed class CashManager : IDisposable
         if (!IsCashWord(currency)) return;
 
         _log?.Debug(LogCategory, $"hidden currency={currency} count={count}");
-        AdjustHeld(currency, -count);
         DecayInFlight(currency, -count);
         CheckAutoDeposit();
         CoinHidden?.Invoke(currency, count);
@@ -758,7 +732,6 @@ public sealed class CashManager : IDisposable
             _log?.Info(LogCategory,
                 $"you-notice cash currency={currency} count={count} policy={policy}");
             NoteSurveyed(currency!, count);
-            CashDispatched?.Invoke(currency!, count, policy);
 
             if (policy == CashPolicy.Collect)
                 CollectOrDeferRoomSurvey(count, currency!);
@@ -1248,7 +1221,7 @@ public sealed class CashManager : IDisposable
     // crowns"). The item-table tiebreaker settles it (shared with
     // GroundItemTracker.IsCashEntry, the same fix): an entry that resolves to a
     // real Items.json record is never cash. Currency isn't in the item table, so a
-    // true coin pile won't resolve. Unwired (tests) the heuristic stands alone.
+    // true coin pile won't resolve. Unwired, the heuristic stands alone.
     private bool TryParseCashEntry(string raw, out string? currency, out int count)
     {
         currency = null;
@@ -1320,14 +1293,6 @@ public sealed class CashManager : IDisposable
         };
     }
 
-    private void AdjustHeld(string currency, int delta)
-    {
-        if (!_held.TryGetValue(currency, out long current)) current = 0;
-        long next = current + delta;
-        if (next < 0) next = 0;
-        _held[currency] = next;
-    }
-
     // Re-evaluate the auto-deposit gates against the latest authoritative
     // InventorySnapshot. Wired to InventoryManager.Changed so a wealth swing the
     // CashManager's own patterns never observe — a buy or sell — still arms the
@@ -1355,7 +1320,7 @@ public sealed class CashManager : IDisposable
     public void NotifyAutoDepositAborted()
     {
         _autoDepositFiredThisCrossing = false;
-        _autoDepositRetryNotBefore = AutoDepositClock().AddMilliseconds(AutoDepositRetryCooldownMs);
+        _autoDepositRetryNotBefore = _autoDepositClock().AddMilliseconds(AutoDepositRetryCooldownMs);
         _log?.Debug(LogCategory,
             $"auto-deposit re-armed after aborted reroute (retry held {AutoDepositRetryCooldownMs / 1000}s)");
     }
@@ -1401,8 +1366,7 @@ public sealed class CashManager : IDisposable
 
         // Authoritative holdings: wealth gate against the game's "Wealth:"
         // value (TotalCopperValue), coin gate against the raw coin count —
-        // not the local pickup tally, which never sees the `i`-seeded
-        // starting balance or buy / sell conversions.
+        // the `i`-seeded balance, buy / sell conversions included.
         CurrencyHoldings held = _getSnapshot().Currency;
         long wealthValue = held.TotalCopperValue;
         long coinCount = held.TotalCoinCount;
@@ -1429,7 +1393,7 @@ public sealed class CashManager : IDisposable
             // A recent reroute aborted without depositing; hold off re-firing
             // until the cooldown elapses so an unreachable bank can't thrash the
             // movement engine on every inventory line.
-            if (AutoDepositClock() < _autoDepositRetryNotBefore)
+            if (_autoDepositClock() < _autoDepositRetryNotBefore)
             {
                 _log?.Debug(LogCategory,
                     $"auto-deposit held: retry cooldown after an aborted reroute "

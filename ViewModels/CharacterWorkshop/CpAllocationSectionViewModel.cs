@@ -651,8 +651,8 @@ public sealed partial class CpAllocationSectionViewModel : WorkshopSectionViewMo
     // or below the character's current level AND the raw-base baseline meets every one of
     // its target stats (the CP for that level has actually been allocated). Both halves
     // matter: the level guard keeps a future level whose stats happen to be met already,
-    // and the stats guard keeps a level that's been reached but not yet allocated. Pure so
-    // this prune decision (it deletes persisted plan rows) can be pinned by tests.
+    // and the stats guard keeps a level that's been reached but not yet allocated. Pure, since
+    // this prune decision deletes persisted plan rows.
     internal static bool IsRowTrained(CpPlanEntry row, CpPlanEntry baseline, int currentLevel)
         => row.Level <= currentLevel
            && baseline.Strength  >= row.Strength

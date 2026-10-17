@@ -8,9 +8,16 @@ namespace MudPlay.Tests;
 
 public sealed class SysRoomStatusParserTests
 {
-    private static (SysRoomStatusParser parser, List<SysRoomStatus> captured) NewParser()
+    // The clock the SysRoomStatusParser reads: the real one unless a test sets its own.
+    private Func<DateTime> _parserNow = () => DateTime.UtcNow;
+
+    // The game's output, fed the way the client receives it.
+    private readonly ServerFeed _feed = new();
+
+    private (SysRoomStatusParser parser, List<SysRoomStatus> captured) NewParser()
     {
-        SysRoomStatusParser parser = new();
+        SysRoomStatusParser parser = new(now: () => _parserNow());
+        parser.AttachLineExtractor(_feed.Lines);
         List<SysRoomStatus> captured = new();
         parser.StatusParsed += captured.Add;
         return (parser, captured);
@@ -37,11 +44,11 @@ public sealed class SysRoomStatusParserTests
         "(0) 264(0) 905(0) 419(0) 422(0) 896(0)",
     };
 
-    private static SysRoomStatus ParseLive(SysRoomStatusParser parser, List<SysRoomStatus> captured)
+    private SysRoomStatus ParseLive(SysRoomStatusParser parser, List<SysRoomStatus> captured)
     {
         Arm(parser);
-        foreach (string line in LiveCapture) parser.FeedTestLine(line);
-        parser.FeedTestLine("[HP=899/MA=573]:", isPromptLine: true);
+        foreach (string line in LiveCapture) _feed.Line(line);
+        _feed.Line("[HP=899/MA=573]:");
         return Assert.Single(captured);
     }
 
@@ -117,9 +124,9 @@ public sealed class SysRoomStatusParserTests
         (SysRoomStatusParser parser, List<SysRoomStatus> captured) = NewParser();
 
         Arm(parser);
-        parser.FeedTestLine("Room 12  Map: 3");
-        parser.FeedTestLine("Monsters: 314(0) 315(0)");
-        parser.FeedTestLine("[HP=100]:", isPromptLine: true);
+        _feed.Line("Room 12  Map: 3");
+        _feed.Line("Monsters: 314(0) 315(0)");
+        _feed.Line("[HP=100]:");
 
         SysRoomStatus s = Assert.Single(captured);
         Assert.Equal("314(0) 315(0)", s.MonstersRaw);
@@ -133,8 +140,8 @@ public sealed class SysRoomStatusParserTests
         // so a chat line echoing a room header must never relocate the player.
         (SysRoomStatusParser parser, List<SysRoomStatus> captured) = NewParser();
 
-        foreach (string line in LiveCapture) parser.FeedTestLine(line);
-        parser.FeedTestLine("[HP=899/MA=573]:", isPromptLine: true);
+        foreach (string line in LiveCapture) _feed.Line(line);
+        _feed.Line("[HP=899/MA=573]:");
 
         Assert.Empty(captured);
     }
@@ -151,8 +158,8 @@ public sealed class SysRoomStatusParserTests
         (SysRoomStatusParser parser, List<SysRoomStatus> captured) = NewParser();
 
         Arm(parser, command);
-        parser.FeedTestLine("Room 12  Map: 3");
-        parser.FeedTestLine("[HP=100]:", isPromptLine: true);
+        _feed.Line("Room 12  Map: 3");
+        _feed.Line("[HP=100]:");
 
         Assert.Single(captured);
     }
@@ -168,8 +175,8 @@ public sealed class SysRoomStatusParserTests
         (SysRoomStatusParser parser, List<SysRoomStatus> captured) = NewParser();
 
         Arm(parser, command);
-        parser.FeedTestLine("Room 12  Map: 3");
-        parser.FeedTestLine("[HP=100]:", isPromptLine: true);
+        _feed.Line("Room 12  Map: 3");
+        _feed.Line("[HP=100]:");
 
         Assert.Empty(captured);
     }
@@ -180,11 +187,11 @@ public sealed class SysRoomStatusParserTests
         (SysRoomStatusParser parser, List<SysRoomStatus> captured) = NewParser();
 
         Arm(parser);
-        parser.FeedTestLine("Room 12  Map: 3");
-        parser.FeedTestLine("Items: 100(0) 101(0)");
-        parser.FeedTestLine("Bob gossips: got 999(9) of them!");
-        parser.FeedTestLine("Hidden items: 200(0)");
-        parser.FeedTestLine("[HP=100]:", isPromptLine: true);
+        _feed.Line("Room 12  Map: 3");
+        _feed.Line("Items: 100(0) 101(0)");
+        _feed.Line("Bob gossips: got 999(9) of them!");
+        _feed.Line("Hidden items: 200(0)");
+        _feed.Line("[HP=100]:");
 
         SysRoomStatus s = Assert.Single(captured);
         Assert.Equal(new[] { 100, 101 }, s.Items.Select(i => i.ItemId));
@@ -199,9 +206,9 @@ public sealed class SysRoomStatusParserTests
         (SysRoomStatusParser parser, List<SysRoomStatus> captured) = NewParser();
 
         Arm(parser);
-        parser.FeedTestLine("Room 4001  Map: 7");
-        parser.FeedTestLine("Monsters: None");
-        parser.FeedTestLine("[HP=100]:", isPromptLine: true);
+        _feed.Line("Room 4001  Map: 7");
+        _feed.Line("Monsters: None");
+        _feed.Line("[HP=100]:");
 
         SysRoomStatus s = Assert.Single(captured);
         Assert.Equal(new RoomKey(7, 4001), s.Room);
@@ -215,10 +222,10 @@ public sealed class SysRoomStatusParserTests
         (SysRoomStatusParser parser, List<SysRoomStatus> captured) = NewParser();
 
         Arm(parser);
-        parser.FeedTestLine("Room 4001  Map: 7");
-        parser.FeedTestLine("Items: None");
-        parser.FeedTestLine("Hidden items: None");
-        parser.FeedTestLine("[HP=100]:", isPromptLine: true);
+        _feed.Line("Room 4001  Map: 7");
+        _feed.Line("Items: None");
+        _feed.Line("Hidden items: None");
+        _feed.Line("[HP=100]:");
 
         SysRoomStatus s = Assert.Single(captured);
         Assert.Empty(s.Items);
@@ -233,8 +240,8 @@ public sealed class SysRoomStatusParserTests
         (SysRoomStatusParser parser, List<SysRoomStatus> captured) = NewParser();
 
         Arm(parser);
-        parser.FeedTestLine("Command not recognized.");
-        parser.FeedTestLine("[HP=100]:", isPromptLine: true);
+        _feed.Line("Command not recognized.");
+        _feed.Line("[HP=100]:");
 
         Assert.Empty(captured);
     }
@@ -246,11 +253,11 @@ public sealed class SysRoomStatusParserTests
         (SysRoomStatusParser parser, List<SysRoomStatus> captured) = NewParser();
 
         Arm(parser);
-        parser.FeedTestLine("Room 12  Map: 3");
-        parser.FeedTestLine("Items: 100(0)");
-        parser.FeedTestLine("Room 13  Map: 3");
-        parser.FeedTestLine("Items: 101(0)");
-        parser.FeedTestLine("[HP=100]:", isPromptLine: true);
+        _feed.Line("Room 12  Map: 3");
+        _feed.Line("Items: 100(0)");
+        _feed.Line("Room 13  Map: 3");
+        _feed.Line("Items: 101(0)");
+        _feed.Line("[HP=100]:");
 
         Assert.Equal(2, captured.Count);
         Assert.Equal(new RoomKey(3, 12), captured[0].Room);
@@ -268,13 +275,13 @@ public sealed class SysRoomStatusParserTests
         (SysRoomStatusParser parser, List<SysRoomStatus> captured) = NewParser();
 
         Arm(parser);
-        parser.FeedTestLine("You speed up.");
-        parser.FeedTestLine("[HP=639/MA=268]:", isPromptLine: true);
-        parser.FeedTestLine("Room 3551  Map: 1");
-        parser.FeedTestLine("Monsters: None");
-        parser.FeedTestLine("Items: None");
-        parser.FeedTestLine("Hidden items: None");
-        parser.FeedTestLine("[HP=639/MA=268]:", isPromptLine: true);
+        _feed.Line("You speed up.");
+        _feed.Line("[HP=639/MA=268]:");
+        _feed.Line("Room 3551  Map: 1");
+        _feed.Line("Monsters: None");
+        _feed.Line("Items: None");
+        _feed.Line("Hidden items: None");
+        _feed.Line("[HP=639/MA=268]:");
 
         SysRoomStatus s = Assert.Single(captured);
         Assert.Equal(new RoomKey(1, 3551), s.Room);
@@ -290,9 +297,9 @@ public sealed class SysRoomStatusParserTests
         (SysRoomStatusParser parser, List<SysRoomStatus> captured) = NewParser();
 
         Arm(parser);
-        parser.FeedTestLine("Room 3551  Map: 1");
-        parser.FeedTestLine("Items: 736(0) 172(0) 172(0)");
-        parser.FeedTestLine("[HP=639/MA=268]:", isPromptLine: true);
+        _feed.Line("Room 3551  Map: 1");
+        _feed.Line("Items: 736(0) 172(0) 172(0)");
+        _feed.Line("[HP=639/MA=268]:");
 
         SysRoomStatus s = Assert.Single(captured);
         Assert.Equal(new[] { 736, 172, 172 }, s.Items.Select(i => i.ItemId));
@@ -307,9 +314,9 @@ public sealed class SysRoomStatusParserTests
         (SysRoomStatusParser parser, List<SysRoomStatus> captured) = NewParser();
 
         Arm(parser);
-        parser.FeedTestLine("Room 3551  Map: 1");
-        parser.FeedTestLine("Items: 902(1)");
-        parser.FeedTestLine("[HP=639/MA=268]:", isPromptLine: true);
+        _feed.Line("Room 3551  Map: 1");
+        _feed.Line("Items: 902(1)");
+        _feed.Line("[HP=639/MA=268]:");
 
         SysRoomStatus s = Assert.Single(captured);
         Assert.Equal(2, Assert.Single(s.Items).Count);
@@ -324,14 +331,14 @@ public sealed class SysRoomStatusParserTests
         (SysRoomStatusParser parser, List<SysRoomStatus> captured) = NewParser();
 
         Arm(parser);
-        parser.FeedTestLine("Room 224  Map: 1");
-        parser.FeedTestLine("Specific Monster: 784-Mayor Godfrey [1/1]Last Killed:  00:00:00 (RG: 2)");
-        parser.FeedTestLine("Patrollable");
-        parser.FeedTestLine("Monsters: 2951");
-        parser.FeedTestLine("Items: 796(0) 29(0)");
-        parser.FeedTestLine("Hidden items: 185(0)");
-        parser.FeedTestLine("Placed items: 796 29");
-        parser.FeedTestLine("[HP=639/MA=268]:", isPromptLine: true);
+        _feed.Line("Room 224  Map: 1");
+        _feed.Line("Specific Monster: 784-Mayor Godfrey [1/1]Last Killed:  00:00:00 (RG: 2)");
+        _feed.Line("Patrollable");
+        _feed.Line("Monsters: 2951");
+        _feed.Line("Items: 796(0) 29(0)");
+        _feed.Line("Hidden items: 185(0)");
+        _feed.Line("Placed items: 796 29");
+        _feed.Line("[HP=639/MA=268]:");
 
         SysRoomStatus s = Assert.Single(captured);
         Assert.Equal(new[] { 796, 29 }, s.Items.Select(i => i.ItemId));
@@ -346,15 +353,15 @@ public sealed class SysRoomStatusParserTests
         (SysRoomStatusParser parser, List<SysRoomStatus> captured) = NewParser();
 
         Arm(parser);
-        parser.FeedTestLine("Room 1182  Map: 7");
-        parser.FeedTestLine("Min: 10 Max: 19 Group: Group 21 by Number: 0");
-        parser.FeedTestLine("Room Max: 3  Current: 2  Last Killed: 19:34:00 Delay: 5");
-        parser.FeedTestLine("Controlling Room: 1176");
-        parser.FeedTestLine("Current Area: Max: 160  Current: 133");
-        parser.FeedTestLine("Monsters: 4510 8407");
-        parser.FeedTestLine("Items: None");
-        parser.FeedTestLine("Hidden items: 192(0)");
-        parser.FeedTestLine("[HP=639/MA=268]:", isPromptLine: true);
+        _feed.Line("Room 1182  Map: 7");
+        _feed.Line("Min: 10 Max: 19 Group: Group 21 by Number: 0");
+        _feed.Line("Room Max: 3  Current: 2  Last Killed: 19:34:00 Delay: 5");
+        _feed.Line("Controlling Room: 1176");
+        _feed.Line("Current Area: Max: 160  Current: 133");
+        _feed.Line("Monsters: 4510 8407");
+        _feed.Line("Items: None");
+        _feed.Line("Hidden items: 192(0)");
+        _feed.Line("[HP=639/MA=268]:");
 
         SysRoomStatus s = Assert.Single(captured);
         Assert.Equal(new RoomKey(7, 1182), s.Room);
@@ -368,12 +375,12 @@ public sealed class SysRoomStatusParserTests
     {
         (SysRoomStatusParser parser, List<SysRoomStatus> captured) = NewParser();
         DateTime now = new(2026, 9, 2, 12, 0, 0, DateTimeKind.Utc);
-        parser.NowProvider = () => now;
+        _parserNow = () => now;
 
         Arm(parser);
         now = now.AddSeconds(30);
-        parser.FeedTestLine("Room 12  Map: 3");
-        parser.FeedTestLine("[HP=100]:", isPromptLine: true);
+        _feed.Line("Room 12  Map: 3");
+        _feed.Line("[HP=100]:");
 
         Assert.Empty(captured);
     }

@@ -10,11 +10,9 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Spells tab dialog behaviour: the default-selected tab (player-castable
-/// spells open on User Definitions; room/item/monster spells open on Game
-/// Data) and the plain-English "Effect" summary row.
-/// </summary>
+// Spells tab dialog behaviour: the default-selected tab (player-castable
+// spells open on User Definitions; room/item/monster spells open on Game
+// Data) and the plain-English "Effect" summary row.
 public sealed class SpellsGameDataTabTests : IDisposable
 {
     private readonly string _root;
@@ -93,9 +91,7 @@ public sealed class SpellsGameDataTabTests : IDisposable
         Seed("Spells", "[{\"Number\":50,\"Name\":\"zap\",\"MinBase\":10,\"MaxBase\":20," +
                        "\"MaxInc\":2,\"MaxIncLVLs\":1,\"Cap\":20,\"Abil-0\":1,\"AbilVal-0\":0}]");
         _cache.SwitchSet("v1.11p");
-
-        var vm = new SpellsSectionViewModel(_cache);
-        IReadOnlyList<GameDataInfoRow> rows = vm.BuildSpellInfoRowsForTests(50);
+        IReadOnlyList<GameDataInfoRow> rows = new SpellInfoRowsBuilder(_cache).Build(50);
 
         Assert.DoesNotContain(rows, r => r.Label == "Effect");
         Assert.DoesNotContain(rows, r => r.Label == "Level Scaling");
@@ -119,9 +115,7 @@ public sealed class SpellsGameDataTabTests : IDisposable
                       "{\"Number\":691,\"Name\":\"wooden skiff\"}," +
                       "{\"Number\":1181,\"Name\":\"silverbark canoe\"}]");
         _cache.SwitchSet("v1.11p");
-
-        var vm = new SpellsSectionViewModel(_cache);
-        IReadOnlyList<GameDataInfoRow> rows = vm.BuildSpellInfoRowsForTests(753);
+        IReadOnlyList<GameDataInfoRow> rows = new SpellInfoRowsBuilder(_cache).Build(753);
 
         GameDataInfoRow avoided = rows.First(r => r.Label == "Avoided by carrying (failitem)");
         Assert.Equal("log raft [#690], wooden skiff [#691], silverbark canoe [#1181]", avoided.Value);
@@ -143,9 +137,7 @@ public sealed class SpellsGameDataTabTests : IDisposable
         Seed("Monsters", "[{\"Number\":877,\"Name\":\"dark treant\"}]");
         Seed("Items", "[{\"Number\":185,\"Name\":\"manhole\"}]");
         _cache.SwitchSet("v1.11p");
-
-        var vm = new SpellsSectionViewModel(_cache);
-        IReadOnlyList<GameDataInfoRow> rows = vm.BuildSpellInfoRowsForTests(1040);
+        IReadOnlyList<GameDataInfoRow> rows = new SpellInfoRowsBuilder(_cache).Build(1040);
 
         Assert.Equal("dark treant [#877]", rows.First(r => r.Label == "Summons").Value);
         Assert.Equal("manhole [#185]", rows.First(r => r.Label == "Avoided by carrying (failitem)").Value);
@@ -162,9 +154,7 @@ public sealed class SpellsGameDataTabTests : IDisposable
         Seed("TBInfo", "[{\"Number\":3000,\"Action\":\"checkitem 690 5:giveitem 700:message 9\"}]");
         Seed("Items", "[{\"Number\":690,\"Name\":\"log raft\"}]");
         _cache.SwitchSet("v1.11p");
-
-        var vm = new SpellsSectionViewModel(_cache);
-        IReadOnlyList<GameDataInfoRow> rows = vm.BuildSpellInfoRowsForTests(760);
+        IReadOnlyList<GameDataInfoRow> rows = new SpellInfoRowsBuilder(_cache).Build(760);
 
         Assert.DoesNotContain(rows, r => r.Label is "Avoided by carrying (failitem)" or "Requires carrying (checkitem)");
     }
@@ -179,7 +169,7 @@ public sealed class SpellsGameDataTabTests : IDisposable
         Seed("Monsters", "[{\"Number\":877,\"Name\":\"dark treant\"}]");
         _cache.SwitchSet("v1.11p");
 
-        IReadOnlyList<GameDataInfoRow> rows = new SpellsSectionViewModel(_cache).BuildSpellInfoRowsForTests(800);
+        IReadOnlyList<GameDataInfoRow> rows = new SpellInfoRowsBuilder(_cache).Build(800);
 
         GameDataInfoRow castBy = rows.First(r => r.Label == "Cast By");
         Assert.Contains("dark treant", castBy.Value);
@@ -194,7 +184,7 @@ public sealed class SpellsGameDataTabTests : IDisposable
         Seed("Spells", "[{\"Number\":801,\"Name\":\"sea 2\",\"Casted By\":\"Room 17/1418, Room 17/1419, +\"}]");
         _cache.SwitchSet("v1.11p");
 
-        IReadOnlyList<GameDataInfoRow> rows = new SpellsSectionViewModel(_cache).BuildSpellInfoRowsForTests(801);
+        IReadOnlyList<GameDataInfoRow> rows = new SpellInfoRowsBuilder(_cache).Build(801);
         Assert.DoesNotContain(rows, r => r.Label == "Cast By");
     }
 
@@ -207,7 +197,7 @@ public sealed class SpellsGameDataTabTests : IDisposable
         Seed("Rooms", rooms);
         _cache.SwitchSet("v1.11p");
 
-        IReadOnlyList<GameDataInfoRow> rows = new SpellsSectionViewModel(_cache).BuildSpellInfoRowsForTests(802);
+        IReadOnlyList<GameDataInfoRow> rows = new SpellInfoRowsBuilder(_cache).Build(802);
 
         GameDataInfoRow cir = rows.First(r => r.Label.StartsWith("Cast in rooms"));
         Assert.Equal("Cast in rooms (25)", cir.Label);

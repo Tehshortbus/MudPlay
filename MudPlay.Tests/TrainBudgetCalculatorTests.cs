@@ -4,16 +4,14 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// PR 10.8 — coverage for <see cref="TrainBudgetCalculator"/>, the pure banked-exp
-/// budgeter behind auto-train / Train Now. Pins the boundary the coordinator relies
-/// on: a level sitting exactly on its exp threshold is trainable (the <c>&lt;</c> vs
-/// <c>&lt;=</c> the loop hinges on), the cap clamps the scan, and the reserve buffer
-/// carves the trainable count down (and clamps at zero). The Train Now CP-only
-/// reconcile fires precisely when <see cref="TrainBudgetCalculator.LevelsToTrain"/>
-/// is 0 yet CP is still applicable, so the reserve-covered → 0 cases below also pin
-/// that gate's banked-exp side.
-/// </summary>
+// coverage for TrainBudgetCalculator, the pure banked-exp
+// budgeter behind auto-train / Train Now. Pins the boundary the coordinator relies
+// on: a level sitting exactly on its exp threshold is trainable (the < vs
+// <= the loop hinges on), the cap clamps the scan, and the reserve buffer
+// carves the trainable count down (and clamps at zero). The Train Now CP-only
+// reconcile fires precisely when TrainBudgetCalculator.LevelsToTrain
+// is 0 yet CP is still applicable, so the reserve-covered → 0 cases below also pin
+// that gate's banked-exp side.
 public sealed class TrainBudgetCalculatorTests
 {
     private const int Chart = 200;

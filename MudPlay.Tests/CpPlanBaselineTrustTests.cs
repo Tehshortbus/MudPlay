@@ -10,7 +10,6 @@ using MudPlay.Game.Train;
 using MudPlay.Models.GameData;
 using MudPlay.Models.Profile;
 using MudPlay.Services;
-using MudPlay.Terminal;
 using MudPlay.ViewModels.CharacterWorkshop;
 using Xunit;
 
@@ -21,6 +20,9 @@ namespace MudPlay.Tests;
 // accounted for, and on Stock one with no mark at all.
 public sealed class CpPlanBaselineTrustTests : IDisposable
 {
+    // The game's output, fed the way the client receives it.
+    private readonly ServerFeed _feed = new();
+
     private const int Green = 2, Cyan = 6, Red = 1;
 
     private readonly string _root;
@@ -33,6 +35,7 @@ public sealed class CpPlanBaselineTrustTests : IDisposable
     {
         _root = Path.Combine(Path.GetTempPath(), "mudplay-cptrust-" + Guid.NewGuid().ToString("N"));
         _parser = new StatParser(_stats);
+        _parser.AttachLineExtractor(_feed.Lines);
     }
 
     public void Dispose()
@@ -66,28 +69,20 @@ public sealed class CpPlanBaselineTrustTests : IDisposable
 
     private void Feed(params (string Text, int Colour)[] runs)
     {
-        var text = new StringBuilder();
-        var attrs = new List<CellAttributes>();
-        foreach ((string run, int colour) in runs)
-        {
-            text.Append(run);
-            for (int i = 0; i < run.Length; i++)
-                attrs.Add(CellAttributes.Default.WithForeground(TerminalColor.Indexed(colour)));
-        }
-        _parser.FeedTestLine(text.ToString(), attributes: attrs.ToArray());
+        _feed.Coloured(runs.Select(r => (r.Text, r.Colour, Bold: false)));
     }
 
     private void FeedStat(string str, int strColour, string agl, int aglColour, string? effect = null)
     {
-        _parser.TestArm();
+        _parser.ObserveOutbound(Encoding.Latin1.GetBytes("stat\r"));
         Feed(("Name: ", Green), ("Someone Somewhere              ", Cyan), ("Lives/CP: ", Green), ("    9/26", Cyan));
         Feed(("Race: ", Green), ("Half-Orc    ", Cyan), ("Exp: ", Green), ("125379954       ", Cyan), ("Perception: ", Green), ("    50", Cyan));
         Feed(("Class: ", Green), ("Mystic     ", Cyan), ("Level: ", Green), ("31            ", Cyan), ("Stealth: ", Green), ("      107", Cyan));
         Feed(("Strength: ", Green), (str.PadRight(7), strColour), ("Agility:", Green), (agl.PadRight(12), aglColour), ("Tracking:     ", Green), ("   0", Cyan));
         Feed(("Intellect: ", Green), ("40     ", Cyan), ("Health:  ", Green), ("60          ", Cyan), ("Martial Arts: ", Green), ("  97", Cyan));
         Feed(("Willpower: ", Green), ("30     ", Cyan), ("Charm:   ", Green), ("30          ", Cyan), ("MagicRes: ", Green), ("      47", Cyan));
-        if (effect is not null) _parser.FeedTestLine(effect);
-        _parser.FeedTestLine("[HP=318/KAI=14]:", isPromptLine: true);
+        if (effect is not null) _feed.Line(effect);
+        _feed.Line("[HP=318/KAI=14]:");
     }
 
     private CharacterPlanContext Resolve((GameDataCache GameData, ListedEffectCatalog Effects) set) =>

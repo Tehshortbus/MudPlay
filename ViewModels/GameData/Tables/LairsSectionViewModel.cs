@@ -36,8 +36,6 @@ public sealed class LairsSectionViewModel : JsonTableSectionViewModel
         "AvgDodge",
     };
 
-    public override string SearchKeyColumn => "GroupIndex";
-
     public override IEnumerable<string> SearchableLabels => new[]
     {
         Title, "lair", "group", "respawn", "mob",

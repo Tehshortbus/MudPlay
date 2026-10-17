@@ -113,8 +113,6 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
             "SpellImmu", "Animal", "NonLiving", "CastsSpells", "HasLoot",
         };
 
-    public override string SearchKeyColumn => "Name";
-
     public override IEnumerable<string> SearchableLabels => new[]
     {
         Title, "monster", "mob", "enemy", "creature", "lair", "regen", "respawn",
@@ -280,7 +278,7 @@ public sealed class MonstersSectionViewModel : JsonTableSectionViewModel, IEdita
             (r.Get("Landmass") ?? string.Empty, r.Get("Region") ?? string.Empty, r.Get("Area") ?? string.Empty)));
 
     // Capture the room graph's immutable per-monster lair-size snapshot (built from
-    // each room's lair tag). Empty when no graph is wired (e.g. tests) — the lair
+    // each room's lair tag). Empty when no graph is wired — the lair
     // columns then render blank.
     private void BuildLairIndex()
         => _lairIndex = _roomGraph?.LairSizeByMonster

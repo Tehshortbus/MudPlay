@@ -4,17 +4,15 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Pins <see cref="CombatSpellChooser"/> — the per-round combat-spell decision
-/// unit. <see cref="CombatSpellChooser.Choose"/> resolves the round's <b>combat
-/// action</b>: backstab gate → attack (multi-attack while qualified → normal →
-/// alternate → weapon). Debuffing is an <b>in-between action</b> resolved
-/// separately by <see cref="CombatSpellChooser.ChooseDebuff"/> (area
-/// once-per-room XOR single once-per-target), so the two are pinned
-/// independently. Mana gating
-/// (<see cref="ThresholdMode.Percentage"/> vs <see cref="ThresholdMode.Absolute"/>)
-/// and per-room cast caps are exercised per branch.
-/// </summary>
+// Pins CombatSpellChooser — the per-round combat-spell decision
+// unit. CombatSpellChooser.Choose resolves the round's combat
+// action: backstab gate → attack (multi-attack while qualified → normal →
+// alternate → weapon). Debuffing is an in-between action resolved
+// separately by CombatSpellChooser.ChooseDebuff (area
+// once-per-room XOR single once-per-target), so the two are pinned
+// independently. Mana gating
+// (ThresholdMode.Percentage vs ThresholdMode.Absolute)
+// and per-room cast caps are exercised per branch.
 public sealed class CombatSpellChooserTests
 {
     private static CombatSpellSlot Slot(

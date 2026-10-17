@@ -1,11 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Reflection;
 using MudPlay.Game.Conditions;
 using MudPlay.Models.GameData;
 using MudPlay.Services;
-using MudPlay.Terminal;
 using Xunit;
 
 namespace MudPlay.Tests;
@@ -16,6 +14,9 @@ namespace MudPlay.Tests;
 // globe set Blinded and had the party asked for a cure.
 public sealed class GlobeOfDarknessSeedTests : IDisposable
 {
+    // The game's output, fed the way the client receives it.
+    private readonly ServerFeed _feed = new();
+
     private readonly string _dir;
 
     public GlobeOfDarknessSeedTests()
@@ -35,19 +36,14 @@ public sealed class GlobeOfDarknessSeedTests : IDisposable
         foreach (MessageRecord r in JsonStore.Load<List<MessageRecord>>(Path.Combine(_dir, seedFile)) ?? new())
             store.Messages.Add(r);
         var tracker = new ConditionTracker(store);
+        tracker.AttachLineExtractor(_feed.Lines);
         List<MessageRecord> seen = new();
         tracker.ConditionApplied += seen.Add;
         applied = seen;
         return tracker;
     }
 
-    private static void Feed(ConditionTracker tracker, string text) =>
-        typeof(ConditionTracker)
-            .GetMethod("OnLine", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .Invoke(tracker, new object[]
-            {
-                new LineExtractor.EmittedLine(text, Array.Empty<CellAttributes>(), DateTimeOffset.UtcNow, IsPromptLine: false),
-            });
+    private void Feed(string text) => _feed.Line(text);
 
     [Theory]
     [InlineData("Messages.paradigm.seed.json")]
@@ -56,16 +52,16 @@ public sealed class GlobeOfDarknessSeedTests : IDisposable
     {
         using ConditionTracker tracker = TrackerOver(seedFile, out List<MessageRecord> applied);
 
-        Feed(tracker, "The thin nanati shadow makes a clutching gesture!");
-        Feed(tracker, "A bubble of pure darkness appears and begins to expand!");
-        Feed(tracker, "You are enveloped in darkness!");
+        Feed("The thin nanati shadow makes a clutching gesture!");
+        Feed("A bubble of pure darkness appears and begins to expand!");
+        Feed("You are enveloped in darkness!");
 
         Assert.False(tracker.IsBlinded);
         Assert.Contains(applied, r => r.Name == "globe of darkness");
         Assert.DoesNotContain(applied, r => r.Name == "blind globe");
 
-        Feed(tracker, "The unnatural darkness lifts.");
-        Assert.DoesNotContain(applied, tracker.IsActive);
+        Feed("The unnatural darkness lifts.");
+        Assert.DoesNotContain(applied, r => tracker.IsActiveByName(r.Name));
     }
 
     [Theory]
@@ -75,7 +71,7 @@ public sealed class GlobeOfDarknessSeedTests : IDisposable
     {
         using ConditionTracker tracker = TrackerOver(seedFile, out _);
 
-        Feed(tracker, "You are enveloped in darkness!");
+        Feed("You are enveloped in darkness!");
 
         Assert.True(tracker.IsBlinded);
     }

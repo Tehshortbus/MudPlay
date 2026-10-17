@@ -155,9 +155,6 @@ public sealed partial class HealthSectionViewModel : SettingsSectionViewModel
         TryGetDeathFloor,
         TryGetGameData()) { }
 
-    // Standalone session for the parameterless (design-time) path.
-    public HealthSectionViewModel() : this(CreateStandaloneSession()) { }
-
     public HealthSectionViewModel(CombatProfileStagingSession session, ProfileService profile,
         Game.PlayerState? state = null, Func<int>? readDeathFloor = null, GameDataCache? gameData = null)
     {
@@ -221,10 +218,6 @@ public sealed partial class HealthSectionViewModel : SettingsSectionViewModel
         LoadHealthBoxesFrom(_session.Active.Health);
         _suppressDirty = false;
     }
-
-    private static CombatProfileStagingSession CreateStandaloneSession() =>
-        new(AppServices.Current.CombatProfiles, AppServices.Current.Profile,
-            () => AppServices.Current.Profile.Current?.Equipment);
 
     // The active profile's Health folded from / loaded into the boxes — the shared
     // session's CaptureRequested / Load handlers. Mutates in place; the Combat tab

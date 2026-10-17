@@ -3,14 +3,12 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// <see cref="CurrencyNaming"/> is the runtime source-of-truth for the per-BBS
-/// runic word. It normalises the configured name (trim + lower, blank → stock
-/// "runic"), recognises both the renamed word AND the stock word as runic
-/// (<see cref="CurrencyNaming.IsRunic"/>), and canonicalises any word back to
-/// "runic" for the value ladder (<see cref="CurrencyNaming.Canonicalize"/>).
-/// Refresh re-reads the configured name so a BBS pin takes effect live.
-/// </summary>
+// CurrencyNaming is the runtime source of truth for the realm's runic word
+// (RunicCurrencyName). It normalises the configured name (trim + lower, blank →
+// stock "runic"), recognises both the renamed word and the stock word as runic
+// (IsRunic), and canonicalises any word back to "runic" for the value ladder
+// (Canonicalize). Refresh re-reads the configured name so a realm change takes
+// effect live.
 public sealed class CurrencyNamingTests
 {
     [Fact]

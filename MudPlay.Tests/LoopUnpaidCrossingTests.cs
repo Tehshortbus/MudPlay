@@ -2,7 +2,6 @@ using System.Text;
 using MudPlay.Game.Inventory;
 using MudPlay.Game.Map;
 using MudPlay.Services;
-using MudPlay.Terminal;
 using Xunit;
 
 namespace MudPlay.Tests;
@@ -85,6 +84,8 @@ public sealed class LoopUnpaidCrossingTests : IDisposable
         public required RoomTracker Tracker { get; init; }
         public required LoopRunner Runner { get; init; }
         public required MovementRefusalDetector Detector { get; init; }
+        // The game's output, fed the way the client receives it.
+        public required ServerFeed Feed { get; init; }
         public MovementFilter? Filter { get; init; }
         public List<string> Sent { get; } = new();
         public List<LoopEvent> Events { get; } = new();
@@ -126,9 +127,9 @@ public sealed class LoopUnpaidCrossingTests : IDisposable
         MovementFilter? filter = otherFilter is null ? new MovementFilter(new ProfileService()) : null;
         LoopRunner runner = new(tracker, new MovementCoordinator(), graph: graph, bfs: new BfsMapper(graph),
             filter: otherFilter ?? filter, postToUi: act => act());
-        runner.RecoveryAttemptSpacingForTests = TimeSpan.Zero;
-        MovementRefusalDetector detector = new(new LineExtractor(new TerminalEmulator(80, 25)), tracker);
-        Rig rig = new() { Tracker = tracker, Runner = runner, Detector = detector, Filter = filter, Purse = purse };
+        ServerFeed feed = new();
+        MovementRefusalDetector detector = new(feed.Lines, tracker);
+        Rig rig = new() { Tracker = tracker, Runner = runner, Detector = detector, Feed = feed, Filter = filter, Purse = purse };
         if (filter is not null)
         {
             filter.WealthProvider = () => rig.Purse;
@@ -217,7 +218,7 @@ public sealed class LoopUnpaidCrossingTests : IDisposable
         Assert.True(rig.Runner.Start(LoopOf(Bailey, Road)));
         Assert.Equal(new[] { "e" }, rig.Sent);
 
-        rig.Detector.FeedTestLine(Refusal);
+        rig.Feed.Line(Refusal);
         Assert.Equal(LoopState.Recovering, rig.Runner.State);    // the reroute waits for the read
         Assert.Equal(1, rig.InventoryAsked);
 
@@ -241,7 +242,7 @@ public sealed class LoopUnpaidCrossingTests : IDisposable
         Rig rig = NewRig(TollPurseDoubtTests.TollTheOnlyWayJson, Plenty);
         rig.Tracker.SetLocated(Bailey);
         Assert.True(rig.Runner.Start(LoopOf(Bailey, Road)));
-        rig.Detector.FeedTestLine(Refusal);
+        rig.Feed.Line(Refusal);
 
         rig.AnswerBound!();
 
@@ -258,7 +259,7 @@ public sealed class LoopUnpaidCrossingTests : IDisposable
         rig.Tracker.SetLocated(Bailey);
         Assert.True(rig.Runner.Start(LoopOf(Bailey, Road)));
 
-        rig.Detector.FeedTestLine(Refusal);
+        rig.Feed.Line(Refusal);
         rig.AnswerInventory(0);
 
         Assert.Equal(new[] { "e" }, rig.Sent);
@@ -279,7 +280,7 @@ public sealed class LoopUnpaidCrossingTests : IDisposable
         Assert.True(rig.Runner.Start(LoopOf(bailey, road, far)));
         Assert.Equal(new[] { "e" }, rig.Sent);
 
-        rig.Detector.FeedTestLine(Refusal);
+        rig.Feed.Line(Refusal);
         rig.AnswerInventory(200);
 
         Assert.Equal(new[] { "e", "n" }, rig.Sent);         // round A; B stays on the circuit
@@ -296,7 +297,7 @@ public sealed class LoopUnpaidCrossingTests : IDisposable
         RoomKey bailey = new(1, 1), road = new(1, 2);
         rig.Tracker.SetLocated(bailey);
         Assert.True(rig.Runner.Start(LoopOf(bailey, road)));
-        rig.Detector.FeedTestLine(Refusal);
+        rig.Feed.Line(Refusal);
 
         rig.Runner.Stop("test");
         rig.AnswerInventory(0);
@@ -339,7 +340,7 @@ public sealed class LoopUnpaidCrossingTests : IDisposable
         Assert.True(rig.Runner.Start(LoopOf(Bailey, Road)));
 
         rig.Purse = 0;
-        rig.Detector.FeedTestLine(Refusal);
+        rig.Feed.Line(Refusal);
 
         Assert.Equal(new[] { "e" }, rig.Sent);
         Assert.Equal(LoopState.Idle, rig.Runner.State);
@@ -357,7 +358,7 @@ public sealed class LoopUnpaidCrossingTests : IDisposable
         Assert.True(rig.Runner.Start(LoopOf(new RoomKey(1, 1), Bailey, Road, new RoomKey(1, 4))));
         Assert.Equal(new[] { "e" }, rig.Sent);
 
-        rig.Detector.FeedTestLine(Refusal);
+        rig.Feed.Line(Refusal);
         rig.AnswerInventory(200);
 
         Assert.Equal(new[] { "e" }, rig.Sent);
@@ -378,7 +379,7 @@ public sealed class LoopUnpaidCrossingTests : IDisposable
         Assert.True(rig.Runner.Start(LoopOf(bailey, road)));
         Assert.Equal(new[] { "e" }, rig.Sent);
 
-        rig.Detector.FeedTestLine(Refusal);
+        rig.Feed.Line(Refusal);
         rig.AnswerInventory(200);
 
         Assert.Equal(new[] { "e", "n" }, rig.Sent);

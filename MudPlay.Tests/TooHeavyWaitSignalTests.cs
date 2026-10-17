@@ -1,4 +1,3 @@
-using System.Reflection;
 using System.Text;
 using MudPlay.Game;
 using MudPlay.Game.Inventory;
@@ -22,21 +21,24 @@ public sealed class TooHeavyWaitSignalTests
         public PartyState Party { get; } = new();
         public PartyRestSync Rest { get; }
         public InventoryManager Inv { get; } = new(log: null);
-        public LineExtractor Lines { get; } = new(new TerminalEmulator(80, 24));
+        // The game's output, fed the way the client receives it.
+        public ServerFeed Server { get; } = new();
         public MovementCoordinator Coordinator { get; } = new();
         public TooHeavyWaitSignal Signal { get; }
+        // What Signal put on the wire, through the sender the client binds.
+        public List<byte[]> SignalWire { get; } = new();
         public bool Held => Coordinator.AssertedGates.Contains(MovementCoordinator.TooHeavyGate);
-        public int InventoryReads => Signal.LastSentForTests.Count(b => Encoding.Latin1.GetString(b) == "i\r");
+        public int InventoryReads => SignalWire.Count(b => Encoding.Latin1.GetString(b) == "i\r");
         public List<string> RestWire { get; } = new();
 
         public Harness()
         {
             DefaultPatterns.Seed(Router);
-            Inv.AttachLineExtractor(Lines);
+            Inv.AttachLineExtractor(Server.Lines);
             Rest = new PartyRestSync(Party);
             Rest.SetWireSender(b => RestWire.Add(Encoding.Latin1.GetString(b)));
             Signal = new TooHeavyWaitSignal(Router, Inv, Rest, Coordinator);
-            Signal.SetWireSender(_ => { });
+            Signal.SetWireSender(SignalWire.Add);
             Party.IsInParty = true;
             Party.LeaderName = "Boss";
         }
@@ -46,16 +48,13 @@ public sealed class TooHeavyWaitSignalTests
 
         public void Inventory(int cur, int max)
         {
-            FieldInfo? field = typeof(LineExtractor).GetField("LineEmitted", BindingFlags.Instance | BindingFlags.NonPublic);
-            if (field?.GetValue(Lines) is not Action<LineExtractor.EmittedLine> handler) return;
-            foreach (string line in new[]
+            Server.Rows(new[]
             {
                 "You are carrying 5 copper farthings.",
                 "You have no keys.",
                 "Wealth:    5 copper farthings",
                 $"Encumbrance:    {cur}/{max}  -  Heavy  [{cur * 100 / max}%]",
-            })
-                handler(new LineExtractor.EmittedLine(line, Array.Empty<CellAttributes>(), DateTimeOffset.UtcNow, IsPromptLine: false));
+            });
         }
 
         public void Dispose()
@@ -74,7 +73,7 @@ public sealed class TooHeavyWaitSignalTests
 
         Assert.Equal("/Boss @wait (too heavy to move)\r", h.RestWire[^1]);
         Assert.True(h.Signal.IsTooHeavy);
-        Assert.Contains(h.Signal.LastSentForTests, b => Encoding.Latin1.GetString(b) == "i\r");
+        Assert.Contains(h.SignalWire, b => Encoding.Latin1.GetString(b) == "i\r");
     }
 
     [Fact]

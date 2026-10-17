@@ -34,8 +34,7 @@ public readonly record struct TrainFundingResult(bool Funded, long ShortfallCopp
 // standing where it actually is. A stash that comes up empty simply becomes a
 // re-plan whose best remaining option is the bank — no special case, no walk home.
 //
-// Walker and wire are reached through delegates so the FSM is unit-testable without
-// a map or a line stream, matching PathItemShopRouter.
+// Walker and wire are reached through delegates, matching PathItemShopRouter.
 public sealed class TrainFundingRouter
 {
     private const string LogCategory = "AutoTrain";

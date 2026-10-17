@@ -24,8 +24,7 @@ namespace MudPlay.Services;
 //     a set that isn't the active one. A copy or move of the loop library alone
 //     replaces none of a set's data and names nothing.
 // The manager itself only touches the filesystem + GameDataCache;
-// settings/profile writes are the caller's job via the injected callbacks, which
-// keeps it unit-testable against an isolated set folder.
+// settings/profile writes are the caller's job via the injected callbacks.
 public sealed class GameDataSetManager
 {
     private readonly GameDataCache _cache;

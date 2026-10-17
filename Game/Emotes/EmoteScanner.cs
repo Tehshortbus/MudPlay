@@ -16,7 +16,7 @@ public readonly record struct EmoteSegment(
 // (":lol:") resolve case-insensitively; classic emoticons (":)") match case-sensitively
 // but only when whitespace-bounded, so "8:00" or a smiley inside a word doesn't trip.
 // A ":name:" that isn't in the catalog stays literal text. The compiled regex is built
-// once per catalog. Pure + unit-tested; the view never parses the string itself.
+// once per catalog. Pure; the view never parses the string itself.
 public sealed class EmoteScanner
 {
     private readonly EmoteCatalog _catalog;

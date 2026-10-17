@@ -23,7 +23,7 @@ public sealed class ItemMdbViewBuilder
     private readonly int _charm;   // resolved: playerCharm > 0 ? playerCharm : 50
     private readonly Func<int, int, bool> _isRoomBlacklisted;
 
-    // isRoomBlacklisted defaults to the realm's room blacklist; a test passes its own.
+    // isRoomBlacklisted defaults to the realm's room blacklist.
     public ItemMdbViewBuilder(GameDataCache cache, int playerCharm, Func<int, int, bool>? isRoomBlacklisted = null)
     {
         _cache = cache;

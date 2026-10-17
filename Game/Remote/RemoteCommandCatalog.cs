@@ -355,8 +355,4 @@ public static class RemoteCommandCatalog
         if (key[0] != '@') key = "@" + key;
         return Help.TryGetValue(key, out help);
     }
-
-    // Total number of documented commands in the catalog. Useful for tests that
-    // pin "every wiki command is mapped".
-    public static int Count => Map.Count;
 }

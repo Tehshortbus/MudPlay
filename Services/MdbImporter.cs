@@ -28,12 +28,6 @@ public sealed class MdbImporter
     // Single-line status text — connection / table being read / completion.
     public event Action<string>? OnStatusChanged;
 
-    // Overall progress — fires once per table with (tablesDone, tablesTotal).
-    public event Action<int, int>? OnProgressChanged;
-
-    // Per-table row progress — fires at ~5% increments with (tableName, rowsDone, rowsTotal).
-    public event Action<string, int, int>? OnRowProgress;
-
     // Non-fatal per-table errors. The importer continues with the next table.
     public event Action<string>? OnError;
 
@@ -41,23 +35,6 @@ public sealed class MdbImporter
     {
         Directory.CreateDirectory(GameDataRoot);
     }
-
-    // Imported subfolders under GameDataRoot, alphabetical.
-    public IReadOnlyList<string> GetGameDataFolders()
-    {
-        if (!Directory.Exists(GameDataRoot)) return Array.Empty<string>();
-        return Directory.GetDirectories(GameDataRoot)
-            .Select(Path.GetFileName)
-            .Where(static n => !string.IsNullOrEmpty(n)
-                               && !n.Equals(AppPaths.RefusedName, StringComparison.OrdinalIgnoreCase))
-            .Select(static n => n!)
-            .OrderBy(static n => n, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-    }
-
-    // Absolute path of an imported subfolder by name.
-    public string GetSubfolderPath(string folderName)
-        => Path.Combine(GameDataRoot, folderName);
 
     // ----- Import entry point ----------------------------------------------
 
@@ -138,7 +115,6 @@ public sealed class MdbImporter
             _roomCommandItems = 0;
             List<string> imported = new();
             List<string> skipped = new();
-            OnProgressChanged?.Invoke(0, tables.Count);
 
             foreach (string tableName in tables)
             {
@@ -176,7 +152,6 @@ public sealed class MdbImporter
                 }
 
                 tablesDone++;
-                OnProgressChanged?.Invoke(tablesDone, tables.Count);
             }
 
             if (imported.Count == 0)
@@ -303,7 +278,6 @@ public sealed class MdbImporter
                 if (percent >= lastReportedPercent + 5)
                 {
                     lastReportedPercent = percent;
-                    OnRowProgress?.Invoke(tableName, rowsDone, totalRows);
                 }
             }
         }
@@ -333,7 +307,7 @@ public sealed class MdbImporter
     }
 
     // Round-trip check for a just-written table file: true when it re-parses as
-    // JSON. Internal so a test can exercise it without a real MDB.
+    // JSON.
     internal static bool TableJsonParses(string filePath)
     {
         try

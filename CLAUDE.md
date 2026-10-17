@@ -27,7 +27,7 @@ The phased implementation plan is **complete** — the app is at **1.0.0** and i
   3. Replace the current-version block at the top of `README.md` (between the `<!-- current-version:start -->` / `<!-- current-version:end -->` markers) so it mirrors the new top CHANGELOG entry — a `> **Version <x.y.z>**` header line, then the same terse bullets. The `- bug reports addressed:` line is a bookkeeping tail for the CHANGELOG; leave it out of the README mirror.
 
   These three moves are part of Definition of Done — a PR that changes behavior but leaves the version, changelog, or README block stale is incomplete.
-- **Code-review gate per PR** (in addition to Definition of Done below): scan the diff for dead code, stale comments, function placement against the folder layout, duplication of existing helpers, thread-safety, and PR-size discipline.
+- **Code-review gate per PR** (in addition to Definition of Done below): scan the diff for dead code, stale comments, function placement against the folder layout, duplication of existing helpers, thread-safety, and PR-size discipline. New tests drive the real paths (see Tests), and no `…ForTests` member appears in production.
   - **Feature reachability, not just dead code.** Dead-code scans only catch *unreferenced* symbols — they miss a feature that's been *half-disconnected*: its code is still referenced (so not "dead"), but a rework removed the entry point that let a human reach it. When a PR **removes or reworks an entry point** (menu item, button, window section, command binding, tab, right-click affordance), verify the feature it fronts is still **reachable and usable end-to-end** afterward — or is explicitly parked with a note. Flag "half-wired" surfaces: symbols still referenced but no longer reachable by a user, and empty-state traps (an affordance that only appears once content already exists, so the first item can never be created). This is the gap that stranded GOTO-favourites management for a long time.
 - **Push every commit to the open PR — but confirm it's still open first.** Before pushing follow-up work onto a branch with an existing PR, check the PR hasn't already merged (`gh pr view <n> --json state`). A merged PR means the branch is dead: new commits pushed to it strand outside `main`, so carry them to a fresh branch + PR instead. When the PR is confirmed open, every commit landed before it merges goes straight up — never accumulate local commits the user has to ask about. After each commit (or batch of related commits), `git push` so the PR on GitHub matches local HEAD. If the PR description's scope goes stale because of the new commits, refresh it via `gh pr edit` in the same push.
 - **Reproduce from a bug report.** Users capture client state via the in-app **Bug Report** (menu-bar button or terminal right-click → *Bug report…*), which writes a Markdown snapshot to their Desktop that they attach to a GitHub issue. When fixing a reported bug, start from that capture — its Holds and waits / Commands sent / Warnings and errors / Movement / Player / Settings / Program-log / Scrollback sections pin the failing state at the moment of the problem. For an "it just sat there" or "why did it send that" report, start with Holds and waits and Commands sent. **Read every timestamped section newest-first: the report is captured right after the problem, so the incident lives at the END of any section that carries timestamps (Scrollback, Program-log, Movement, death history, and the like) — start at the latest timestamps and work back toward the earliest.** Entries near the top are old context, not the failure; never judge a report "not a bug / working as designed" off an early cycle — confirm against the last events. (The program log covers several minutes and is the longer window; warnings and errors have their own section that is never trimmed; cross-reference the timestamped sections by their shared clock.)
@@ -128,7 +128,7 @@ Top-level folders, each with one responsibility (no catch-all `Util/` / `Common/
 - **`Controls/`** — Avalonia custom controls (`TerminalControl.cs`); cell rendering + macro-key interception.
 - **`Views/`** — XAML windows (all modeless).
 - **`ViewModels/`** — MVVM presentation glue (CommunityToolkit.Mvvm source-gen).
-- **`Services/`** — cross-cutting infrastructure: the POCO `AppServices` holder, profile/settings I/O, `SettingsResolver` (4-tier merge), `MessageRouter`, `DialogService`, log/debug writers, panel framework, importers, `GameDataCache`.
+- **`Services/`** — cross-cutting infrastructure: the POCO `AppServices` holder, profile/settings I/O, `SettingsResolver` (4-tier merge), `MessageRouter`, `DialogService`, log/debug writers, importers, `GameDataCache`.
 - **`Game/`** — the MUD-domain layer (combat, party, map/navigation, spells, inventory, macros, events, remote commands), grouped by subsystem subfolder.
 - **`Models/`** — DTOs: `Profile/` (per-character) and `Settings/` (global).
 - **`Assets/`** — fonts, embedded resources.
@@ -245,7 +245,7 @@ This is descriptive, not aspirational. Match what's there:
 - **No speculative abstractions** for "future BBSes" or "other transports." Three similar lines is fine. Extract on the fourth, when you can see the shape.
 - **No backwards-compat shims** for code that hasn't shipped externally. Just change it. Renames are free; ceremony is not.
 - **No silent error swallowing.** If a Telnet/ANSI sequence is malformed, clamp or skip it explicitly and (where appropriate) surface it via the existing `Log` event or `StatusText`. An empty `catch {}` needs a one-line comment justifying it (see the `await _readLoop.ConfigureAwait(false)` shutdown path in `TelnetClient` — that one is intentional).
-- **No new top-level folders without reason.** Current layout — `Terminal/`, `Net/`, `Controls/`, `Views/`, `ViewModels/`, `Assets/`, `Services/`, `Game/`, `Models/` — covers the responsibilities. `Services/` holds cross-cutting infrastructure (POCO service holder, profile/settings I/O, settings resolver, message bus, dialog spawner, log/debug writers, panel framework, importers, game-data cache, owner attribute); `Game/` holds the MUD-domain layer (combat, party, map, spells, inventory, macros, events, etc., grouped by subsystem subfolder); `Models/` holds DTOs (`Profile/` per-character settings, `Settings/` global settings). New code goes in the folder whose name already fits.
+- **No new top-level folders without reason.** Current layout — `Terminal/`, `Net/`, `Controls/`, `Views/`, `ViewModels/`, `Assets/`, `Services/`, `Game/`, `Models/` — covers the responsibilities. `Services/` holds cross-cutting infrastructure (POCO service holder, profile/settings I/O, settings resolver, message bus, dialog spawner, log/debug writers, importers, game-data cache, owner attribute); `Game/` holds the MUD-domain layer (combat, party, map, spells, inventory, macros, events, etc., grouped by subsystem subfolder); `Models/` holds DTOs (`Profile/` per-character settings, `Settings/` global settings). New code goes in the folder whose name already fits.
 - **Don't refactor on the side.** A bug fix or feature stays focused. If you spot something worth cleaning up, mention it; don't bundle it.
 - **No duplication of existing functions.** Before adding a helper, search for an existing one. If a similar function exists, reuse it. Duplicating is allowed only when absolutely necessary, and requires a one-line `// why` comment on the duplicate.
 - **Function placement matches the folder layout.** Parsing logic in `Terminal/`, network protocol in `Net/`, MUD-domain logic in `Game/`, presentation glue in `ViewModels/`, XAML windows in `Views/`, custom controls in `Controls/`, infrastructure in `Services/`. Domain logic must not leak into views or controls.
@@ -266,6 +266,7 @@ Before reporting a change as complete:
 - [ ] No new top-level folders. No new dependencies without flagging the choice to the user.
 - [ ] Version history updated: `<Version>` bumped, `CHANGELOG.md` gets a new top entry, and the README current-version block mirrors it (see Versioning under Workflow).
 - [ ] Help compendium current: if the change adds a feature, alters user-facing behavior, or wires up a previously non-functional setting, `Assets/Help/guide.md` reflects the current program state (see the Help-compendium audit under Architecture rules).
+- [ ] `MudPlay.Tests/TEST_CHECKLIST.md` matches the tests in the diff: every added, removed, renamed or repurposed test file has its entry updated.
 
 ## Tests
 
@@ -276,6 +277,15 @@ Test scope philosophy:
 - Don't chase coverage numbers. A test that just exercises the type system without finding bugs is dead weight.
 - UI rendering, view-model bindings, and Avalonia plumbing are not unit-tested — smoke-tested via `dotnet run`.
 - Add a test the first time a class shows behavior worth pinning down. Don't write tests speculatively.
+
+The test checklist:
+- `MudPlay.Tests/TEST_CHECKLIST.md` is the record of every test file: one entry per file with what it covers, what it checks and why. Adding, removing, renaming or repurposing a test updates its entry in the same change.
+- Every entry names the client behaviour it protects. A test that can't name one is deleted, not added.
+
+Real paths only:
+- Tests drive the client's real input and output paths: game output as bytes through `ServerFeed` (a `TerminalEmulator` + `LineExtractor`), chat through `ChatLines` and the router, the wire through each engine's `SetWireSender`, and time through injected schedulers (`ManualTimers`) and clocks (`ManualClock` or an optional `now` parameter). Profiles start the way the client starts them (`TestProfiles`).
+- Never a test-only hook: no `…ForTests` member, test-only constructor, reflection into private members, or copy of production logic inside the test. A seam production still carries for a test is named, with its reason, in the checklist entry of the file that uses it.
+- A test that deletes folders through the app's stores calls `ScratchRoot.Require()` first, and the suite runs with `MUDPLAY_DATA_ROOT` set to a scratch folder.
 
 ## What this file is not
 

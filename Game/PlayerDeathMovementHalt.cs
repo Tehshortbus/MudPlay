@@ -1,4 +1,3 @@
-using Avalonia.Threading;
 using MudPlay.Game.Combat;
 using MudPlay.Game.Map;
 using MudPlay.Services;
@@ -50,7 +49,9 @@ public sealed class PlayerDeathMovementHalt : IDisposable
     // as a fallback (not immediately) so it lands after the death teleport settles —
     // a CR sent mid-sequence could re-display the pre-teleport room and mis-anchor.
     private static readonly TimeSpan ResyncDelay = TimeSpan.FromSeconds(2.5);
-    private readonly DispatcherTimer _resyncTimer;
+    private IDisposable? _resyncTimer;
+    // Arms one tick after the delay; disposing what it returns cancels it.
+    private readonly Func<TimeSpan, Action, IDisposable> _schedule;
     private Action<byte[]>? _wireResync;
 
     // Full-stops every movement engine (walk-to, loop, auto-lair) on death.
@@ -62,16 +63,16 @@ public sealed class PlayerDeathMovementHalt : IDisposable
     public PlayerDeathMovementHalt(
         RoomTracker tracker,
         MovementCoordinator coordinator,
-        LogService? log = null)
+        LogService? log = null,
+        Func<TimeSpan, Action, IDisposable>? schedule = null)
     {
+        _schedule = schedule ?? DispatcherTicks.Once;
         ArgumentNullException.ThrowIfNull(tracker);
         ArgumentNullException.ThrowIfNull(coordinator);
         _tracker = tracker;
         _coordinator = coordinator;
         _log = log;
 
-        _resyncTimer = new DispatcherTimer { Interval = ResyncDelay };
-        _resyncTimer.Tick += (_, _) => FireGraveyardResync();
 
         _tracker.PlayerDeathObserved += OnPlayerDied;
         _tracker.PlayerDeathInferred += StopEngines;
@@ -101,8 +102,8 @@ public sealed class PlayerDeathMovementHalt : IDisposable
 
         // Arm the graveyard-resync fallback: if the respawn room display hasn't
         // landed us within ResyncDelay, force it with a CR (see the field comment).
-        _resyncTimer.Stop();
-        _resyncTimer.Start();
+        _resyncTimer?.Dispose();
+        _resyncTimer = _schedule(ResyncDelay, FireGraveyardResync);
     }
 
     // Clean stop, same as the Navigation Stop button: full-stop every engine (which
@@ -133,7 +134,8 @@ public sealed class PlayerDeathMovementHalt : IDisposable
     // anchored is a no-op.
     private void FireGraveyardResync()
     {
-        _resyncTimer.Stop();
+        _resyncTimer?.Dispose();
+        _resyncTimer = null;
         if (_tracker.State.Confidence is not (RoomConfidence.PendingRespawn or RoomConfidence.Lost))
             return;
         if (_wireResync is null) return;
@@ -145,15 +147,12 @@ public sealed class PlayerDeathMovementHalt : IDisposable
             "Post-death graveyard resync — sent CR to re-observe the respawn room.");
     }
 
-    // Test seam — fire the resync deterministically (DispatcherTimer doesn't tick
-    // under headless xUnit).
-    internal void FireGraveyardResyncForTests() => FireGraveyardResync();
-
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
-        _resyncTimer.Stop();
+        _resyncTimer?.Dispose();
+        _resyncTimer = null;
         _tracker.PlayerDeathObserved -= OnPlayerDied;
         _tracker.PlayerDeathInferred -= StopEngines;
     }

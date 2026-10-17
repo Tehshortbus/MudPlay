@@ -482,7 +482,8 @@ public sealed class ItemSourceIndexTests : IDisposable
 
     // The reported case: `touch statue` in 8/461 summons the obsidian statue, which
     // drops the gate key at 100% — the whole chain is deterministic, so it's
-    // routable (report paradigm-20260911-010954).
+    // routable (report paradigm-20260911-010954). Synonyms conjure the same
+    // monster in the same room, so "move statue" collapses into the one row.
     [Fact]
     public void SummonDrops_IndexesGuaranteedDropFromRoomCommand()
     {
@@ -508,12 +509,6 @@ public sealed class ItemSourceIndexTests : IDisposable
     [Fact]
     public void SummonDrops_ExcludesNonGuaranteedDropFromRoomCommand()
         => Assert.Empty(NewIndex(NewCache()).SummonDropsOf(28));
-
-    // Synonyms conjure the same monster in the same room; one routable source is
-    // enough, so "move statue" doesn't produce a duplicate row.
-    [Fact]
-    public void SummonDrops_CollapsesSynonymCommands()
-        => Assert.Single(NewIndex(NewCache()).SummonDropsOf(26));
 
     [Fact]
     public void SummonDrops_ClearedOnSetChange()
@@ -584,5 +579,4 @@ public sealed class ItemSourceIndexTests : IDisposable
         Assert.Empty(index.GiversOf(22));
         Assert.Empty(index.SummonDropsOf(26));
     }
-
 }

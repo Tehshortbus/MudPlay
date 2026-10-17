@@ -92,16 +92,6 @@ public static class AppPaths
     // in a run. Generated, never user data: deleting the folder just regenerates it.
     public static string SoundsDir { get; }
 
-    // App-shipped fallback defaults, alongside the executable. Read-only at
-    // runtime; populated by the build pipeline.
-    public static string DefaultsDir { get; }
-
-    // Production-build starter pack (e.g., the pre-converted v1.11p MDB).
-    // Returns the path when present (release artifact); null in dev builds.
-    // First-run logic copies this into GameDataRoot when non-null and the
-    // game-data root is empty.
-    public static string? BundledDataDir { get; }
-
     static AppPaths()
     {
         // Pointer file lives at the platform's "config" location — separate from
@@ -168,13 +158,6 @@ public static class AppPaths
         LogsDir            = Path.Combine(DataRoot, "Logs");
         EmotesDir          = Path.Combine(DataRoot, "Emotes");
         SoundsDir          = Path.Combine(DataRoot, "Sounds");
-
-        string exeDir = AppContext.BaseDirectory;
-        DefaultsDir = Path.Combine(exeDir, "Defaults");
-
-        // bundled-data ships with release artifacts only; absence == dev build.
-        string candidate = Path.Combine(exeDir, "bundled-data");
-        BundledDataDir = Directory.Exists(candidate) ? candidate : null;
 
         Directory.CreateDirectory(DataRoot);
         Directory.CreateDirectory(GameDataRoot);
@@ -278,7 +261,6 @@ public static class AppPaths
 
     // Recursively copy every file under src that dst doesn't already have; files
     // already in dst are left untouched. Returns how many files were copied.
-    // internal so the migration's non-destructive contract can be unit-tested.
     internal static int CopyMissing(string src, string dst)
     {
         Directory.CreateDirectory(dst);
@@ -898,6 +880,6 @@ public enum DataRootSource
     // User-relocated; AppPaths.PointerFile points here.
     PointerFile,
 
-    // MUDPLAY_DATA_ROOT env var override (tests / CI).
+    // MUDPLAY_DATA_ROOT env var override (CI).
     EnvironmentVariable,
 }

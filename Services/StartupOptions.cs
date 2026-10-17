@@ -10,7 +10,7 @@ namespace MudPlay.Services;
 // spawned by Program.Main). The chosen profile for THIS instance is stashed in
 // RequestedProfileToken and consumed by the AppServices startup-profile block.
 //
-// The parse/resolve helpers are pure (no state) so they're unit-tested; the
+// The parse/resolve helpers are pure (no state); the
 // static properties carry the parsed result across to AppServices at startup.
 public static class StartupOptions
 {

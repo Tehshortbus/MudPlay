@@ -8,30 +8,19 @@ namespace MudPlay.Tests;
 
 public sealed class LoopBuilderSessionTests : IDisposable
 {
-    private readonly string _bbs;
-    private readonly string _setName;
-
-    public LoopBuilderSessionTests()
-    {
-        string suffix = Guid.NewGuid().ToString("N").Substring(0, 12);
-        _bbs = "test-" + suffix;
-        _setName = "test-set-" + suffix;
-    }
+    private readonly string _setName = "test-set-" + Guid.NewGuid().ToString("N").Substring(0, 12);
 
     public void Dispose()
     {
-        try
+        foreach (string set in new[] { _setName, _setName + "-other" })
         {
-            string bbsFolder = AppPaths.BbsFolder(_bbs);
-            if (Directory.Exists(bbsFolder)) Directory.Delete(bbsFolder, recursive: true);
+            try
+            {
+                string setFolder = AppPaths.GameDataSetDir(set);
+                if (Directory.Exists(setFolder)) Directory.Delete(setFolder, recursive: true);
+            }
+            catch { /* best-effort */ }
         }
-        catch { /* best-effort */ }
-        try
-        {
-            string setFolder = Path.Combine(AppPaths.GameDataRoot, _setName);
-            if (Directory.Exists(setFolder)) Directory.Delete(setFolder, recursive: true);
-        }
-        catch { /* best-effort */ }
     }
 
     private const string GraphJson = """
@@ -83,7 +72,7 @@ public sealed class LoopBuilderSessionTests : IDisposable
         graph.OnActiveSetChanged(_setName);
         BfsMapper bfs = new(graph);
         LoopManager loops = new(bfs, graph);
-        loops.LoadAll(_bbs);
+        loops.LoadAll(_setName);
         return (new LoopBuilderSessionViewModel(loops, graph), loops);
     }
 
@@ -264,17 +253,15 @@ public sealed class LoopBuilderSessionTests : IDisposable
     }
 
     [Fact]
-    public void RemoveLastClick_PopsAndRecomputes()
+    public void RemoveClickAt_TheLast_PopsAndRecomputes()
     {
         // Schema v2: every expansion closes the loop. Two clicks
         // 1→2 expand to N (1→2) + S (2→1, closing) = 2 steps.
-        // After RemoveLastClick we drop back to 1 click which can't
-        // form a cycle, so ExpandedStepCount returns 0.
         (LoopBuilderSessionViewModel s, _) = NewSession();
         s.AddClick(new RoomKey(1, 1));
         s.AddClick(new RoomKey(1, 2));
         s.AddClick(new RoomKey(1, 3));
-        s.RemoveLastClick();
+        s.RemoveClickAt(2);
         Assert.Equal(2, s.Clicks.Count);
         Assert.Equal(2, s.ExpandedStepCount);    // N to 2, S closing back to 1
     }
@@ -365,18 +352,6 @@ public sealed class LoopBuilderSessionTests : IDisposable
     }
 
     [Fact]
-    public void AllExpansionsClose_SinceLoopsAreCircular()
-    {
-        // No CloseLoop toggle anymore — every saved loop closes by
-        // definition (schema v2). 1 → 3 click sequence produces
-        // N + N (1→2→3) plus closing S + S (3→2→1) = 4 steps.
-        (LoopBuilderSessionViewModel s, _) = NewSession();
-        s.AddClick(new RoomKey(1, 1));
-        s.AddClick(new RoomKey(1, 3));
-        Assert.Equal(4, s.ExpandedStepCount);
-    }
-
-    [Fact]
     public void UnreachableSegment_SurfacedAndBlocksSave()
     {
         // Two disconnected components: 1/1 ↔ 1/2 and 9/1 (isolated).
@@ -401,12 +376,11 @@ public sealed class LoopBuilderSessionTests : IDisposable
         File.WriteAllText(Path.Combine(setRoot, "Rooms.json"), DisconnectedGraph);
         GameDataCache cache = new();
         cache.SwitchSet(_setName);
-        cache.Reload();
         RoomGraphManager graph = new(cache);
         graph.OnActiveSetChanged(_setName);
         BfsMapper bfs = new(graph);
         LoopManager loops = new(bfs, graph);
-        loops.LoadAll(_bbs);
+        loops.LoadAll(_setName);
         LoopBuilderSessionViewModel s = new(loops, graph);
 
         s.AddClick(new RoomKey(1, 1));
@@ -429,11 +403,11 @@ public sealed class LoopBuilderSessionTests : IDisposable
         Assert.True(s.CanSave);
         Assert.False(s.DropIfBuiltOnOtherGameData(out _));
 
-        string other = _bbs + "-other";
+        string other = _setName + "-other";
         loops.LoadAll(other);
 
         Assert.True(s.DropIfBuiltOnOtherGameData(out string? builtOn));
-        Assert.Equal(_bbs, builtOn);
+        Assert.Equal(_setName, builtOn);
         Assert.False(s.HasClicks);
         Assert.False(s.CanSave);
         Assert.Null(s.PreviewedRoomKeys);
@@ -457,7 +431,7 @@ public sealed class LoopBuilderSessionTests : IDisposable
         s.AddClick(new RoomKey(1, 1));
         s.AddClick(new RoomKey(1, 3));
 
-        loops.LoadAll(_bbs);
+        loops.LoadAll(_setName);
 
         Assert.False(s.DropIfBuiltOnOtherGameData(out _));
         Assert.True(s.HasClicks);

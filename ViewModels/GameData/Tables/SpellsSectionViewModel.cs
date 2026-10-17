@@ -65,8 +65,6 @@ public sealed class SpellsSectionViewModel : JsonTableSectionViewModel, IEditabl
     // they're plain seed records.
     private const string SeedColumn = "Seed";
 
-    public override string SearchKeyColumn => "Name";
-
     public override IEnumerable<string> SearchableLabels => new[]
     {
         Title, "spell", "magery", "mana", "cast", "level", "code", "short", "target",
@@ -348,11 +346,6 @@ public sealed class SpellsSectionViewModel : JsonTableSectionViewModel, IEditabl
         _messages.Save();
     }
 
-
-    // Test seam — exercises BuildSpellInfoRows (the dialog's Game Data tab content) without
-    // standing up a dialog.
-    internal IReadOnlyList<GameDataInfoRow> BuildSpellInfoRowsForTests(int spellNumber)
-        => BuildSpellInfoRows(spellNumber);
 
     // The spell's Game Data tab content lives in the shared SpellInfoRowsBuilder now, so the
     // same record opens by Number from outside the browser (Room Info → SpellRecordDialogService)

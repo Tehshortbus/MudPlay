@@ -26,7 +26,7 @@ public sealed class MacroStore
         if (profile.Current is { } current) LoadFrom(current);
     }
 
-    // Parameterless ctor for tests / in-memory scenarios — no profile persistence.
+    // In-memory store — no profile persistence.
     public MacroStore() { }
 
     // Insert a new macro and persist. No duplicate-key check here — call FindMatch first.

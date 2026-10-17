@@ -438,7 +438,7 @@ public sealed record MessageEditResult(
 // One row of a spell/item's read-only Game Data tab: a Label and its Value text.
 // Links, when present, are the clickable record references rendered in place of
 // the plain Value (Value still holds the same names as text — the fallback the
-// template shows when there are no links, and what tests read).
+// template shows when there are no links).
 public sealed record GameDataInfoRow(
     string Label,
     string Value,

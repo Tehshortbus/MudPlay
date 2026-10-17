@@ -6,12 +6,10 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// PR 10.7 — <see cref="CpPlanCalculator"/> walks the planned levels from a
-/// raw-base baseline, computing each level's CP spend, the running CP balance,
-/// and race-max clamping. Pins the cost math, clamping, cumulative carryover,
-/// and the overspend trim (edited cell first, else most-raised).
-/// </summary>
+// CpPlanCalculator walks the planned levels from a
+// raw-base baseline, computing each level's CP spend, the running CP balance,
+// and race-max clamping. Pins the cost math, clamping, cumulative carryover,
+// and the overspend trim (edited cell first, else most-raised).
 public sealed class CpPlanCalculatorTests
 {
     private static CpPlanEntry Uniform(int level, int value) =>

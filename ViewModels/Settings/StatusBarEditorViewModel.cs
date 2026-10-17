@@ -17,7 +17,7 @@ public sealed partial class StatusBarEditorViewModel : ObservableObject, IDispos
     public ObservableCollection<StatusBarRowEditor> Rows { get; } = new();
 
     // The bar as it would look with the edits so far. Null when nothing can draw
-    // it (no main window, as in tests).
+    // it (no main window).
     public StatusBarViewModel? Preview { get; }
     public bool HasPreview => Preview is not null;
 

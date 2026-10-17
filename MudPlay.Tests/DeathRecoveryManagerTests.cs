@@ -31,11 +31,13 @@ public sealed partial class DeathRecoveryManagerTests
         private readonly GameDataCache _cache;
         private readonly string _graphJson;
         private readonly MessageRouter _router;
-        public ProfileService Profile { get; } = new();
+        public ProfileService Profile { get; } = TestProfiles.Service();
         public RoomTracker Tracker { get; }
         public DeathLineWatcher Watcher { get; }
         public GroundItemTracker Ground { get; }
         public DeathRecoveryManager Recovery { get; }
+        // The game's output as the client receives it, stamped on the harness clock.
+        public ServerFeed Feed { get; }
         public List<string> Sent { get; } = new();
         public InventorySnapshot Snapshot { get; set; } = InventorySnapshot.Empty;
         // The clock the room tracker and recovery stamp what they see on, and the
@@ -120,6 +122,8 @@ public sealed partial class DeathRecoveryManagerTests
             Watcher = new DeathLineWatcher(_router, log);
             Ground = new GroundItemTracker(_router, new CurrencyNaming());
             Recovery = new DeathRecoveryManager(Watcher, Profile, Tracker, log, now: Now);
+            Feed = new ServerFeed(clock: Now);
+            Recovery.AttachLineExtractor(Feed.Lines);
             Recovery.AttachGroundItems(Ground);
             Recovery.SetWireSender(b => Sent.Add(Encoding.Latin1.GetString(b).TrimEnd('\r')));
             Recovery.AttachInventorySnapshot(() => Snapshot);
@@ -171,7 +175,7 @@ public sealed partial class DeathRecoveryManagerTests
                 _engines.Add(timers);
             }
 
-            Profile.LoadBlank();
+            Profile.LoadDefaultProfile();
             Profile.Current!.Name = characterName;
             Tracker.Hydrate(Profile.Current!);
         }
@@ -241,7 +245,7 @@ public sealed partial class DeathRecoveryManagerTests
         Assert.DoesNotContain(h.Sent, s => s.StartsWith("get ")); // NOT the old per-item get spam
         Assert.Equal(DeathRecoveryStatus.Partial, h.Latest.Status);
 
-        h.Recovery.FeedTestLine("You have recovered the corpse of Ermias.");
+        h.Feed.Line("You have recovered the corpse of Ermias.");
         Assert.Equal(DeathRecoveryStatus.Recovered, h.Latest.Status);
     }
 
@@ -278,7 +282,7 @@ public sealed partial class DeathRecoveryManagerTests
         h.EnterGates();
 
         Assert.Contains("recover corpse Ermias", h.Sent);
-        h.Recovery.FeedTestLine("You have recovered the corpse of Ermias.");
+        h.Feed.Line("You have recovered the corpse of Ermias.");
         Assert.Equal(DeathRecoveryStatus.Recovered, h.Latest.Status);
     }
 
@@ -351,7 +355,7 @@ public sealed partial class DeathRecoveryManagerTests
         Assert.Equal(DeathRecoveryStatus.Partial, h.Latest.Status);
 
         // The user recovers manually; we key off the confirmation line either way.
-        h.Recovery.FeedTestLine("You have recovered the corpse of Ermias.");
+        h.Feed.Line("You have recovered the corpse of Ermias.");
         Assert.Equal(DeathRecoveryStatus.Recovered, h.Latest.Status);
     }
 
@@ -367,7 +371,7 @@ public sealed partial class DeathRecoveryManagerTests
         h.EnterGates();
         Assert.Contains("recover corpse Ermias", h.Sent);
 
-        h.Recovery.FeedTestLine("You have recovered the corpse of Ermias.");
+        h.Feed.Line("You have recovered the corpse of Ermias.");
         Assert.Contains("wear plate mail", h.Sent);        // armour → wear, after the corpse is back
         Assert.Equal(DeathRecoveryStatus.Recovered, h.Latest.Status);
     }
@@ -389,7 +393,7 @@ public sealed partial class DeathRecoveryManagerTests
         h.EnterGates();
         h.Sent.Clear();
 
-        h.Recovery.FeedTestLine("You have recovered the corpse of Ermias.");   // by hand
+        h.Feed.Line("You have recovered the corpse of Ermias.");   // by hand
 
         Assert.Empty(h.Sent);
         Assert.Equal(2, h.Recovery.HeldReequipCount);
@@ -415,7 +419,7 @@ public sealed partial class DeathRecoveryManagerTests
         }, Array.Empty<string>());
         h.Recovery.AutoEquip = true;
         h.EnterGates();
-        h.Recovery.FeedTestLine("You have recovered the corpse of Ermias.");
+        h.Feed.Line("You have recovered the corpse of Ermias.");
         h.Sent.Clear();
 
         // The user put the armour back on themselves while Auto-All was off.
@@ -435,7 +439,7 @@ public sealed partial class DeathRecoveryManagerTests
         Die(h, new[] { new EquippedItem("plate mail", "Torso") }, Array.Empty<string>());
         h.Recovery.AutoEquip = true;
         h.EnterGates();
-        h.Recovery.FeedTestLine("You have recovered the corpse of Ermias.");
+        h.Feed.Line("You have recovered the corpse of Ermias.");
         Assert.Equal(1, h.Recovery.HeldReequipCount);
 
         h.Tracker.NoteDeath(1, "You now have 1 lives remaining.");
@@ -532,7 +536,7 @@ public sealed partial class DeathRecoveryManagerTests
 
         h.FeedSurvey("corpse of Ermias");
         h.EnterGates();
-        h.Recovery.FeedTestLine("You have recovered the corpse of Ermias.");
+        h.Feed.Line("You have recovered the corpse of Ermias.");
 
         Assert.Contains("eq platinum mace", h.Sent);
         Assert.DoesNotContain("hold platinum mace", h.Sent);
@@ -659,7 +663,7 @@ public sealed partial class DeathRecoveryManagerTests
         Assert.Contains("recover corpse Ermias", h.Sent);  // recovery itself is unchanged (safe)
 
         h.Sent.Clear();
-        h.Recovery.FeedTestLine("You have recovered the corpse of Ermias.");
+        h.Feed.Line("You have recovered the corpse of Ermias.");
         Assert.Empty(h.Sent);                              // NOT fired all at once — paced
         Assert.True(h.GateHeld);                           // walker held while pieces pend
 
@@ -691,7 +695,7 @@ public sealed partial class DeathRecoveryManagerTests
         h.FeedSurvey("corpse of Ermias");
         h.EnterGates();
         h.Sent.Clear();
-        h.Recovery.FeedTestLine("You have recovered the corpse of Ermias.");
+        h.Feed.Line("You have recovered the corpse of Ermias.");
 
         Assert.Equal(new[] { "eq platinum mace", "wear plate mail" }, h.Sent.ToArray());
         Assert.False(h.GateHeld);                          // no gate when there's no fight to pace against
@@ -719,10 +723,10 @@ public sealed partial class DeathRecoveryManagerTests
         Assert.Equal(DeathRecoveryStatus.Partial, h.Latest.Status);
 
         h.Sent.Clear();
-        h.Recovery.FeedTestLine("You took a platinum mace.");
-        h.Recovery.FeedTestLine("You took a plate mail.");
+        h.Feed.Line("You took a platinum mace.");
+        h.Feed.Line("You took a plate mail.");
         Assert.Equal(DeathRecoveryStatus.Partial, h.Latest.Status);   // torch still out → not done
-        h.Recovery.FeedTestLine("You took a torch.");
+        h.Feed.Line("You took a torch.");
 
         Assert.Equal(DeathRecoveryStatus.Recovered, h.Latest.Status);
         // Worn gear re-equipped once the whole pile is back — weapon first (no hostile → all at once).
@@ -747,7 +751,7 @@ public sealed partial class DeathRecoveryManagerTests
 
         Assert.Contains("get iron sword", h.Sent);
         Assert.DoesNotContain("get steel helm", h.Sent);   // absent → never `get`-spammed
-        h.Recovery.FeedTestLine("You took an iron sword.");
+        h.Feed.Line("You took an iron sword.");
         Assert.Equal(DeathRecoveryStatus.Partial, h.Latest.Status);   // helm still out → Partial
     }
 
@@ -766,10 +770,10 @@ public sealed partial class DeathRecoveryManagerTests
         Assert.Equal(3, h.Sent.Count(s => s == "get torch"));
         Assert.DoesNotContain(h.Sent, s => s.Contains("get 3 torch"));
 
-        h.Recovery.FeedTestLine("You took torch.");
-        h.Recovery.FeedTestLine("You took torch.");
+        h.Feed.Line("You took torch.");
+        h.Feed.Line("You took torch.");
         Assert.NotEqual(DeathRecoveryStatus.Recovered, h.Latest.Status);   // one still out
-        h.Recovery.FeedTestLine("You took torch.");
+        h.Feed.Line("You took torch.");
         Assert.Equal(DeathRecoveryStatus.Recovered, h.Latest.Status);
     }
 
@@ -787,7 +791,7 @@ public sealed partial class DeathRecoveryManagerTests
 
         // The get confirmation is redrawn onto the prompt row (IsPromptLine=true) —
         // recovery must still count it (else the pile never finalises).
-        h.Recovery.FeedTestLine("You took torch.", isPromptLine: true);
+        h.Feed.Raw("[HP=100/MA=50]:get torch\u001b[79D\u001b[KYou took torch.\r\n");
         Assert.Equal(DeathRecoveryStatus.Recovered, h.Latest.Status);
     }
 
@@ -810,7 +814,7 @@ public sealed partial class DeathRecoveryManagerTests
         Assert.Contains("get iron sword", h.Sent);
         Assert.DoesNotContain(h.Sent, s => s.Contains("gold"));   // coins never `get`-ed
 
-        h.Recovery.FeedTestLine("You took an iron sword.");        // sword back; only coins left
+        h.Feed.Line("You took an iron sword.");        // sword back; only coins left
         Assert.Equal(DeathRecoveryStatus.Recovered, h.Latest.Status);
     }
 
@@ -829,7 +833,7 @@ public sealed partial class DeathRecoveryManagerTests
 
         h.FeedSurvey("an iron sword");         // helm spilled to a neighbour, sword is here
         h.EnterGates();
-        h.Recovery.FeedTestLine("You took an iron sword.");
+        h.Feed.Line("You took an iron sword.");
         h.Sent.Clear();
         h.Heartbeat();                         // settle the grab (StockSettleTicks = 2)
         h.Heartbeat();
@@ -852,7 +856,7 @@ public sealed partial class DeathRecoveryManagerTests
         h.EnterGates();                        // in the death room, Auto-Recover off
         Assert.True(h.Recovery.RecoverNow(h.Latest));
         h.FeedSurvey("an iron sword");         // the re-look's survey — helm spilled
-        h.Recovery.FeedTestLine("You took an iron sword.");
+        h.Feed.Line("You took an iron sword.");
         h.Sent.Clear();
         h.Heartbeat();                         // settle → sweep the exits
         h.Heartbeat();
@@ -877,7 +881,7 @@ public sealed partial class DeathRecoveryManagerTests
         h.FeedSurvey("a steel helm");                 // our overflow is on this floor
         Assert.Contains("get steel helm", h.Sent);    // grabbed in-stride, no detour
 
-        h.Recovery.FeedTestLine("You took a steel helm.");
+        h.Feed.Line("You took a steel helm.");
         Assert.Equal(DeathRecoveryStatus.Recovered, h.Latest.Status);
         Assert.Contains("wear steel helm", h.Sent);   // recovered gear re-worn
     }
@@ -898,8 +902,8 @@ public sealed partial class DeathRecoveryManagerTests
         h.Snapshot = h.SnapWith(
             new[] { new EquippedItem("iron sword", "Weapon Hand"), new EquippedItem("steel helm", "Head") },
             Array.Empty<string>());
-        h.Recovery.FeedTestLine("You have been killed!");
-        h.Recovery.FeedTestLine("Your steel helm has returned to its rightful place.");
+        h.Feed.Line("You have been killed!");
+        h.Feed.Line("Your steel helm has returned to its rightful place.");
         h.Tracker.NoteDeath(2, "You have 2 lives left.");
         h.Recovery.AutoRecover = true;
 
@@ -908,7 +912,7 @@ public sealed partial class DeathRecoveryManagerTests
         h.FeedSurvey("an iron sword");
         h.EnterGates();
         Assert.DoesNotContain("get steel helm", h.Sent);
-        h.Recovery.FeedTestLine("You took an iron sword.");
+        h.Feed.Line("You took an iron sword.");
 
         Assert.Equal(DeathRecoveryStatus.Recovered, h.Latest.Status);   // the helm isn't waited for
     }
@@ -919,7 +923,7 @@ public sealed partial class DeathRecoveryManagerTests
         using GraphHarness h = new();   // Paradigm
         h.EnterGates();
         h.Snapshot = h.SnapWith(new[] { new EquippedItem("steel helm", "Head") }, Array.Empty<string>());
-        h.Recovery.FeedTestLine("Your steel helm has returned to its rightful place.");
+        h.Feed.Line("Your steel helm has returned to its rightful place.");
         h.Tracker.NoteDeath(2, "You have 2 lives left.");
 
         Assert.Null(h.Latest.ReturnedItems);
@@ -945,7 +949,7 @@ public sealed partial class DeathRecoveryManagerTests
         h.EnterGates();
         Assert.Equal(new[] { "iron sword" }, h.Latest.UnrecoveredItems);
         Assert.DoesNotContain("get signet ring", h.Sent);
-        h.Recovery.FeedTestLine("You took an iron sword.");
+        h.Feed.Line("You took an iron sword.");
 
         Assert.Equal(DeathRecoveryStatus.Recovered, h.Latest.Status);
         Assert.Contains("wear signet ring", h.Sent);
@@ -960,14 +964,14 @@ public sealed partial class DeathRecoveryManagerTests
         using GraphHarness h = new() { Paradigm = false };
         h.EnterGates();
         h.Snapshot = h.SnapWith(Array.Empty<EquippedItem>(), new[] { "3 torch" });
-        h.Recovery.FeedTestLine("Your torch has returned to its rightful place.");
+        h.Feed.Line("Your torch has returned to its rightful place.");
         h.Tracker.NoteDeath(2, "You have 2 lives left.");
         h.Recovery.AutoRecover = true;
 
         h.FeedSurvey("a torch");
         h.EnterGates();
         Assert.Equal(new[] { "torch", "torch" }, h.Latest.UnrecoveredItems);
-        h.Recovery.FeedTestLine("You took torch.");
+        h.Feed.Line("You took torch.");
         Assert.Equal(new[] { "torch" }, h.Latest.UnrecoveredItems);
 
         h.Tracker.NoteRoomObserved(Obs3());
@@ -1001,7 +1005,7 @@ public sealed partial class DeathRecoveryManagerTests
         h.Recovery.AutoRecover = true;
         h.FeedSurvey("an iron sword");
         h.EnterGates();
-        h.Recovery.FeedTestLine("You took an iron sword.");
+        h.Feed.Line("You took an iron sword.");
         Assert.Equal(new[] { "steel helm" }, h.Latest.UnrecoveredItems);
 
         h.Tracker.NoteRoomObserved(Obs3());   // leave

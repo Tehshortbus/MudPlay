@@ -29,6 +29,8 @@ public sealed class RoomSpellCounterWearTests
         public EquipmentSettings Sets { get; } = new();
         public MovementCoordinator Coordinator { get; } = new();
         public EquipmentManager Gear { get; }
+        // What Gear put on the wire, through the sender the client binds.
+        public List<byte[]> GearWire { get; } = new();
         public RoomSpellCounterWear Wear { get; }
         public LogService Log { get; } = new();
         public List<string> Info { get; } = new();
@@ -81,6 +83,7 @@ public sealed class RoomSpellCounterWearTests
                 writeCombat: _ => { },
                 resolveItemSlot: name => _items.TryGetValue(name, out var item) ? item.Slot : null,
                 log: Log);
+            Gear.SetWireSender(GearWire.Add);
             Gear.SetGearHold(() => SneakKept);
             Gear.SetSendGateProbe(() => SendGateLocked);
             Wear = new RoomSpellCounterWear(
@@ -117,7 +120,7 @@ public sealed class RoomSpellCounterWearTests
         private InventorySnapshot Snapshot() => new(
             CurrencyHoldings.Empty, EncumbranceReading.Empty, Worn.ToList(), Pack.ToList(), DateTimeOffset.UtcNow);
 
-        public List<string> Sent => Gear.LastSentForTests
+        public List<string> Sent => GearWire
             .Select(b => Encoding.Latin1.GetString(b).TrimEnd('\r')).ToList();
 
         public bool Held => Coordinator.IsGateAsserted(MovementCoordinator.CounterWearGate);

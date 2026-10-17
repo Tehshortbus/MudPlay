@@ -48,9 +48,6 @@ public sealed class SpellBookItemRowViewModel
     // crozier).
     public string ManaText => _item.CostsMana ? $"{_item.ManaCost} mana" : "free";
 
-    // True when using the item draws mana (drives the mana-label emphasis).
-    public bool CostsMana => _item.CostsMana;
-
     // Hover text spelling out the charges indicator.
     public string ChargesTip => _item.Unlimited
         ? "Unlimited uses"

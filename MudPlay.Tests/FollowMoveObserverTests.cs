@@ -7,14 +7,12 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// <see cref="FollowMoveObserver"/> keeps a dragged party follower located.
-/// The fixture is three identically-named "Forest" rooms — the same trap the
-/// live capture hit (a whole zone of "Darkwood Forest" rooms) — where the only
-/// thing that can tell 1/2 from 1/3 is which direction the leader dragged us.
-/// Without the drag line the tracker can't choose and stalls in Suspect; with
-/// it, the direction resolves the landing room and the follower stays Confirmed.
-/// </summary>
+// FollowMoveObserver keeps a dragged party follower located.
+// The fixture is three identically-named "Forest" rooms — the same trap the
+// live capture hit (a whole zone of "Darkwood Forest" rooms) — where the only
+// thing that can tell 1/2 from 1/3 is which direction the leader dragged us.
+// Without the drag line the tracker can't choose and stalls in Suspect; with
+// it, the direction resolves the landing room and the follower stays Confirmed.
 public sealed class FollowMoveObserverTests : IDisposable
 {
     private readonly string _root;

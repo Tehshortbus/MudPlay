@@ -16,7 +16,7 @@ public enum BossGrabKind { None, Monster, Item }
 // table, in drop-slot order, skipping ids that don't resolve to a name in the active
 // set. There's no bulk "get all" verb in MajorMUD, so each item is its own line. The
 // drop percentages are ignored on purpose — "every item it COULD have dropped". Pure
-// (no game-data / send dependency) so it's unit-tested off a fake catalog + namer.
+// (no game-data / send dependency): the caller supplies the catalog and namer.
 public static class BossGrabAllCommands
 {
     // Classify a boss from whether its name resolves to a monster and/or an item.

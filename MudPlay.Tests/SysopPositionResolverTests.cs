@@ -41,10 +41,14 @@ public sealed class SysopPositionResolverTests : IDisposable
     private sealed class Harness : IDisposable
     {
         public SysRoomStatusParser Parser { get; } = new();
+        // The game's output, fed the way the client receives it.
+        public ServerFeed Feed { get; } = new();
         public SysStatusProbe Probe { get; }
         public SysopPositionResolver Resolver { get; }
         public RoomTracker Tracker { get; }
         public List<string> Sent { get; } = new();
+        // The wait for movement to settle before a queued locate.
+        public ManualTimers Deferral { get; } = new();
         public List<RoomKey> Resolved { get; } = new();
         public int Failures { get; private set; }
         public bool CapabilityEnabled { get; set; } = true;
@@ -57,6 +61,7 @@ public sealed class SysopPositionResolverTests : IDisposable
 
         public Harness(string root)
         {
+            Parser.AttachLineExtractor(Feed.Lines);
             Directory.CreateDirectory(Path.Combine(root, "alpha"));
             File.WriteAllText(Path.Combine(root, "alpha", "Rooms.json"), GraphJson);
             GameDataCache cache = new(root);
@@ -65,15 +70,12 @@ public sealed class SysopPositionResolverTests : IDisposable
             graph.OnActiveSetChanged("alpha");
             Tracker = new RoomTracker(graph);
 
-            Probe = new SysStatusProbe(Parser, () => CapabilityEnabled)
+            // Only a test can fire the timeout, so no wall clock is involved.
+            Probe = new SysStatusProbe(Parser, () => CapabilityEnabled, delay: _ =>
             {
-                // Only a test can fire the timeout, so no wall clock is involved.
-                DelayProvider = _ =>
-                {
-                    _currentDelay = new TaskCompletionSource();
-                    return _currentDelay.Task;
-                },
-            };
+                _currentDelay = new TaskCompletionSource();
+                return _currentDelay.Task;
+            });
             Probe.SetWireSender(bytes =>
             {
                 Sent.Add(Encoding.Latin1.GetString(bytes));
@@ -85,7 +87,7 @@ public sealed class SysopPositionResolverTests : IDisposable
                 suppressed: () => Suppressed,
                 log: null,
                 post: _posted.Add,
-                useTimer: false);
+                schedule: Deferral.Arm);
             Resolver.PositionResolved += Resolved.Add;
             Resolver.LocateFailed += () => Failures++;
         }
@@ -93,9 +95,9 @@ public sealed class SysopPositionResolverTests : IDisposable
         public void ReplyWithRoom(int map, int room)
         {
             int before = Resolved.Count + Failures;
-            Parser.FeedTestLine($"Room {room}  Map: {map}");
-            Parser.FeedTestLine("Monsters: None");
-            Parser.FeedTestLine("[HP=100]:", isPromptLine: true);
+            Feed.Line($"Room {room}  Map: {map}");
+            Feed.Line("Monsters: None");
+            Feed.Line("[HP=100]:");
             FinishTheProbe();
             Assert.Equal(before + 1, Resolved.Count + Failures);
         }
@@ -240,7 +242,7 @@ public sealed class SysopPositionResolverTests : IDisposable
         h.Tracker.NoteMoveSent(Direction.N);
 
         Assert.True(h.Resolver.TryRequestLocate("test"));
-        h.Resolver.FireDeferralExpiryForTests();
+        h.Deferral.RunAll();
 
         Assert.Equal(1, h.Failures);
         Assert.Empty(h.Sent);

@@ -83,7 +83,7 @@ public sealed class CombatLineClassifier : IDisposable
         Seen(line.Text, recorded);
     }
 
-    // Pure classification (unit-tested directly). Only lines inside a combat window
+    // Pure classification. Only lines inside a combat window
     // classify; outside, everything is None.
     public static CombatLineKind Classify(string text, TerminalColor fg, bool bold, bool inWindow)
     {

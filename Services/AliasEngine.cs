@@ -28,7 +28,7 @@ namespace MudPlay.Services;
 // runtime check is needed.
 public sealed class AliasEngine
 {
-    private readonly ProfileService? _profile;
+    private readonly ProfileService _profile;
 
     // The loaded character's aliases — empty when no profile is active.
     public ObservableCollection<Alias> Aliases { get; } = new();
@@ -43,9 +43,6 @@ public sealed class AliasEngine
         if (profile.Current is { } current) LoadFrom(current);
     }
 
-    // Parameterless ctor for tests / in-memory scenarios — no profile persistence.
-    public AliasEngine() { }
-
     // ----- CRUD ----------------------------------------------------------
 
     // Insert a new alias and persist.
@@ -53,7 +50,7 @@ public sealed class AliasEngine
     {
         ArgumentNullException.ThrowIfNull(alias);
         Aliases.Add(alias);
-        _profile?.Save();
+        _profile.Save();
     }
 
     // Replace an existing alias by reference. Persists. false when the original isn't in the list.
@@ -64,7 +61,7 @@ public sealed class AliasEngine
         int index = Aliases.IndexOf(original);
         if (index < 0) return false;
         Aliases[index] = updated;
-        _profile?.Save();
+        _profile.Save();
         return true;
     }
 
@@ -73,7 +70,7 @@ public sealed class AliasEngine
     {
         ArgumentNullException.ThrowIfNull(alias);
         bool removed = Aliases.Remove(alias);
-        if (removed) _profile?.Save();
+        if (removed) _profile.Save();
         return removed;
     }
 

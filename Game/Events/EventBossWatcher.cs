@@ -26,13 +26,14 @@ public sealed class EventBossWatcher
     // (event, kill time) pairs already fired, so one kill fires an event once.
     private readonly HashSet<(ScheduledEvent Event, DateTimeOffset Killed)> _fired = new();
 
-    // Clock seam for tests.
-    internal Func<DateTimeOffset> Now { get; set; } = () => DateTimeOffset.UtcNow;
+    private readonly Func<DateTimeOffset> _now;
 
     public EventBossWatcher(
         EventManager events, BossStore bosses, BossTimerStore timers, GameDataCache gameData,
-        Func<RealmType> realm, Func<bool> inGame, LogService? log = null)
+        Func<RealmType> realm, Func<bool> inGame, LogService? log = null,
+        Func<DateTimeOffset>? now = null)
     {
+        _now = now ?? (() => DateTimeOffset.UtcNow);
         ArgumentNullException.ThrowIfNull(events);
         ArgumentNullException.ThrowIfNull(bosses);
         ArgumentNullException.ThrowIfNull(timers);
@@ -52,7 +53,7 @@ public sealed class EventBossWatcher
     public void Evaluate()
     {
         if (!_inGame()) return;
-        DateTimeOffset now = Now();
+        DateTimeOffset now = _now();
         foreach (ScheduledEvent e in BossEvents())
         {
             if (e.BossMoment == EventBossMoment.Killed) continue;
@@ -84,7 +85,7 @@ public sealed class EventBossWatcher
     {
         if (e.TriggerType != EventTriggerType.Boss || e.BossMoment == EventBossMoment.Killed) return null;
         if (FindBoss(e.BossName) is not { } def || FireAt(e, def) is not { } at) return null;
-        return at > Now() ? at.LocalDateTime : null;
+        return at > _now() ? at.LocalDateTime : null;
     }
 
     // Whether a loop / auto-lair's stop-after boss moment has come (a timed one; a
@@ -94,7 +95,7 @@ public sealed class EventBossWatcher
         => e.StopBossMoment is { } moment && moment != EventBossMoment.Killed
            && FindBoss(e.StopBossName) is { } def
            && FireAt(def, moment, e.StopBossWindowFraction, e.StopBossLeadMinutes) is { } at
-           && Now() >= at;
+           && _now() >= at;
 
     internal DateTimeOffset? FireAt(ScheduledEvent e, BossDef def)
         => FireAt(def, e.BossMoment, e.BossWindowFraction, e.BossLeadMinutes);

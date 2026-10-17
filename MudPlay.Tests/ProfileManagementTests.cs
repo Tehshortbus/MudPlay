@@ -42,7 +42,7 @@ public sealed class ProfileManagementTests : IDisposable
     [Fact]
     public void CreateProfile_WritesFile_LeavesCurrentNull_ThrowsOnClashAndBlank()
     {
-        var svc = new ProfileService();
+        var svc = TestProfiles.Service();
         svc.CreateProfile(_bbsA, "Alice");
 
         Assert.True(File.Exists(AppPaths.CharacterProfileFile(_bbsA, "Alice")));
@@ -55,7 +55,7 @@ public sealed class ProfileManagementTests : IDisposable
     [Fact]
     public void DeleteProfile_NonCurrent_RemovesFolder_KeepsCurrent()
     {
-        var svc = new ProfileService();
+        var svc = TestProfiles.Service();
         svc.CreateProfile(_bbsA, "Keep");
         svc.CreateProfile(_bbsA, "Doomed");
         svc.Load(_bbsA, "Keep");
@@ -70,7 +70,7 @@ public sealed class ProfileManagementTests : IDisposable
     [Fact]
     public void DeleteProfile_Current_FallsBackToDefault_WithoutResurrecting()
     {
-        var svc = new ProfileService();
+        var svc = TestProfiles.Service();
         svc.CreateProfile(_bbsA, "Solo");
         svc.Load(_bbsA, "Solo");
 
@@ -90,7 +90,7 @@ public sealed class ProfileManagementTests : IDisposable
     [Fact]
     public void CopyProfile_DuplicatesFolder_RewritesName_KeepsSource()
     {
-        var svc = new ProfileService();
+        var svc = TestProfiles.Service();
         svc.CreateProfile(_bbsA, "Main");
         File.WriteAllText(Path.Combine(AppPaths.ProfileFolder(_bbsA, "Main"), "items_overrides.set.json"), "{}");
         File.WriteAllText(AppPaths.CharacterProfileFile(_bbsA, "Main") + ".bak", "{}");
@@ -110,7 +110,7 @@ public sealed class ProfileManagementTests : IDisposable
     [Fact]
     public void CopyProfile_DropsReadState_MarksCopyUnverified()
     {
-        var svc = new ProfileService();
+        var svc = TestProfiles.Service();
         svc.CreateProfile(_bbsA, "Priest60");
         string sourcePath = AppPaths.CharacterProfileFile(_bbsA, "Priest60");
         CharacterProfile source = JsonStore.Load<CharacterProfile>(sourcePath)!;
@@ -149,7 +149,7 @@ public sealed class ProfileManagementTests : IDisposable
     [Fact]
     public void LoadDefaultProfile_OnBbs_PinsTheDraft_WithoutNamingIt()
     {
-        var svc = new ProfileService();
+        var svc = TestProfiles.Service();
 
         svc.LoadDefaultProfile(_bbsB);
 
@@ -160,7 +160,7 @@ public sealed class ProfileManagementTests : IDisposable
     [Fact]
     public void MoveProfile_SameBbsRename_NonCurrent_MovesFolder_RewritesName()
     {
-        var svc = new ProfileService();
+        var svc = TestProfiles.Service();
         svc.CreateProfile(_bbsA, "OldName");
 
         svc.MoveProfile(_bbsA, "OldName", _bbsA, "NewName");
@@ -173,7 +173,7 @@ public sealed class ProfileManagementTests : IDisposable
     [Fact]
     public void MoveProfile_DifferentBbs_Assign_MovesFolder()
     {
-        var svc = new ProfileService();
+        var svc = TestProfiles.Service();
         svc.CreateProfile(_bbsA, "Wanderer");
 
         svc.MoveProfile(_bbsA, "Wanderer", _bbsB, "Wanderer");
@@ -185,7 +185,7 @@ public sealed class ProfileManagementTests : IDisposable
     [Fact]
     public void MoveProfile_Current_ReHomes_UpdatesLoadedIdentity()
     {
-        var svc = new ProfileService();
+        var svc = TestProfiles.Service();
         svc.CreateProfile(_bbsA, "Live");
         svc.Load(_bbsA, "Live");
 
@@ -200,7 +200,7 @@ public sealed class ProfileManagementTests : IDisposable
     [Fact]
     public void MoveProfile_ThrowsOnDestinationClash()
     {
-        var svc = new ProfileService();
+        var svc = TestProfiles.Service();
         svc.CreateProfile(_bbsA, "One");
         svc.CreateProfile(_bbsB, "One");
 
@@ -212,7 +212,7 @@ public sealed class ProfileManagementTests : IDisposable
     [Fact]
     public void ProfileRenamed_TellsThePairTheLoadedProfileHad_WhenItIsRenamedOrMoved()
     {
-        var svc = new ProfileService();
+        var svc = TestProfiles.Service();
         svc.CreateProfile(_bbsA, "first");
         svc.Load(_bbsA, "first");
         var had = new List<(string? Bbs, string? Name)>();
@@ -229,8 +229,8 @@ public sealed class ProfileManagementTests : IDisposable
     [Fact]
     public void ProfileRenamed_Tells_WhenTheDefaultProfileIsGivenAName()
     {
-        var svc = new ProfileService();
-        svc.LoadBlank();
+        var svc = TestProfiles.Service();
+        svc.LoadDefaultProfile();
         var had = new List<(string? Bbs, string? Name)>();
         svc.ProfileRenamed += (bbs, name) => had.Add((bbs, name));
 
@@ -245,7 +245,7 @@ public sealed class ProfileManagementTests : IDisposable
     [Fact]
     public void ProfileRenamed_IsNotForALoad_ASaveUnderTheSameName_OrAProfileThatIsNotLoaded()
     {
-        var svc = new ProfileService();
+        var svc = TestProfiles.Service();
         svc.CreateProfile(_bbsA, "loaded");
         svc.CreateProfile(_bbsA, "other");
         int told = 0;
@@ -264,7 +264,7 @@ public sealed class ProfileManagementTests : IDisposable
     [Fact]
     public void SaveAsFromANamedProfile_LeavesThatProfileInPlace_WhereARenameDoesNot()
     {
-        var svc = new ProfileService();
+        var svc = TestProfiles.Service();
         svc.CreateProfile(_bbsA, "original");
         svc.Load(_bbsA, "original");
         var copies = new List<bool>();
@@ -283,7 +283,7 @@ public sealed class ProfileManagementTests : IDisposable
     {
         // Where they aren't, the destination "already exists" and there is no such rename.
         if (Directory.Exists(AppPaths.BbsFolder(_bbsA.ToUpperInvariant()))) return;
-        var svc = new ProfileService();
+        var svc = TestProfiles.Service();
         svc.CreateProfile(_bbsA, "walker");
         svc.Load(_bbsA, "walker");
         var told = new List<(string? Name, bool Copy)>();
@@ -300,7 +300,7 @@ public sealed class ProfileManagementTests : IDisposable
     [Fact]
     public void AStoredProfileMovedOrRenamed_TellsWhereItWasAndIs_AndTheLoadedOneOnlyThroughProfileRenamed()
     {
-        var svc = new ProfileService();
+        var svc = TestProfiles.Service();
         svc.CreateProfile(_bbsA, "loaded");
         svc.CreateProfile(_bbsA, "stored");
         svc.Load(_bbsA, "loaded");
@@ -321,7 +321,7 @@ public sealed class ProfileManagementTests : IDisposable
     [Fact]
     public void ADeletedProfile_LoadedOrNot_TellsWhichItWas_AndACopyTellsNothing()
     {
-        var svc = new ProfileService();
+        var svc = TestProfiles.Service();
         svc.CreateProfile(_bbsA, "loaded");
         svc.CreateProfile(_bbsA, "stored");
         svc.Load(_bbsA, "loaded");
@@ -345,7 +345,7 @@ public sealed class ProfileManagementTests : IDisposable
     public void ARenamedBbs_TellsOfTheLoadedProfileFirst_ThenOfTheBbs_AndARemovedOneIsToldWhenNotified()
     {
         var store = new BbsProfileStore();
-        var svc = new ProfileService();
+        var svc = TestProfiles.Service();
         svc.CreateProfile(_bbsA, "loaded");
         svc.CreateProfile(_bbsA, "stored");
         svc.Load(_bbsA, "loaded");

@@ -47,9 +47,7 @@ public readonly record struct MonsterDropSpawn(
 // need's own lifecycle (post / resolve) stays owned by PathItemDemandTracker;
 // this router only reacts.
 //
-// Inventory / graph / walker / confirm are reached through delegates so the
-// FSM stays unit-testable without a live line stream, room graph, dispatcher,
-// and dialog. Each delegate has one production binding in AppServices.
+// Inventory / graph / walker / confirm are reached through delegates. Each delegate has one production binding in AppServices.
 public sealed class MonsterDropRouter
 {
     private const string LogCategory = "AutoSearch";
@@ -284,8 +282,8 @@ public sealed class MonsterDropRouter
         => SelectNearestSpawn(_dropSpawnsForItem(itemId), _distancesFrom(cur), out best, out bestDistance);
 
     // Nearest reachable spawn among candidates by the given distance map; ties
-    // break on the higher drop chance, then room-key order — deterministic for
-    // tests. Static + internal so AppServices can resolve the picker's "dropped
+    // break on the higher drop chance, then room-key order, so the pick is
+    // deterministic. Static + internal so AppServices can resolve the picker's "dropped
     // by <monster>" tail to the exact spawn a reroute would target.
     internal static bool SelectNearestSpawn(
         IReadOnlyList<MonsterDropSpawn> candidates,

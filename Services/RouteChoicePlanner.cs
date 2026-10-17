@@ -6,7 +6,7 @@ namespace MudPlay.Services;
 
 // The kind of acquirable gate a direct route crosses. Drives the requirement
 // phrasing in the route picker (a raft to carry, a ticket, a door key, a hazard
-// counter item) and lets the planner's tests assert classification.
+// counter item).
 public enum RouteRequirementKind
 {
     CarryItem,          // (Item: N) — a raft / held item that must be in hand.
@@ -20,12 +20,6 @@ public enum RouteRequirementKind
 // HazardProtection it's the any-of counter set (hold at least one).
 public sealed record RouteRequirement(RouteRequirementKind Kind, IReadOnlyList<int> ItemIds)
 {
-    // True when this gate merely unlocks a SHORTER route — the crosser can reach the
-    // destination without it (an optional shortcut, not a hard requirement). Never
-    // auto-obtained: a shortcut item may have no reliable source (e.g. a monster drop
-    // that may be dead), so fetching it could strand the walk with nothing gained.
-    public bool Optional { get; init; }
-
     // True when the crosser ALREADY carries this gate's item. Surfaced (rather than
     // silently dropped as "not blocked") so the requirement list is complete — the
     // route genuinely crosses this gate, the crosser just already satisfies it.
@@ -225,7 +219,7 @@ public static class RouteChoicePlanner
         // Optional memoized provider for the plain default route (gates + avoids on,
         // teleports allowed). Several forks compute the SAME route; the caller passes
         // one memoized closure so the full-graph BFS runs once instead of per fork.
-        // Null → compute it here (tests / standalone callers).
+        // Null → compute it here (standalone callers).
         Func<IReadOnlyList<Direction>?>? baseRoute = null)
     {
         ArgumentNullException.ThrowIfNull(bfs);
@@ -1239,7 +1233,7 @@ public static class RouteChoicePlanner
             if (req.Kind is RouteRequirementKind.HazardProtection) continue;
             // Never source an optional shortcut item (may be unsourceable) or one the
             // crosser already carries.
-            if (req.Optional || req.Carried) continue;
+            if (req.Carried) continue;
             foreach (int id in req.ItemIds)
             {
                 if (id <= 0 || ids.Contains(id)) continue;

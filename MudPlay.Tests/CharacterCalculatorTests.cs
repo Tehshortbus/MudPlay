@@ -4,11 +4,9 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Realm-branch coverage for <see cref="CharacterCalculator"/> — the formulas
-/// compile-time checking can't validate. Asserts the Stock vs ParaMUD
-/// divergences (CP-cost cap, regen divisors) plus the shared CP/HP/mana math.
-/// </summary>
+// Realm-branch coverage for CharacterCalculator — the formulas
+// compile-time checking can't validate. Asserts the Stock vs ParaMUD
+// divergences (CP-cost cap, regen divisors) plus the shared CP/HP/mana math.
 public sealed class CharacterCalculatorTests
 {
     // ----- CP --------------------------------------------------------------
@@ -29,15 +27,6 @@ public sealed class CharacterCalculatorTests
     public void CalcCpGainedAtLevel_MatchesStepFormula(int level, int expected)
     {
         Assert.Equal(expected, CharacterCalculator.CalcCpGainedAtLevel(level));
-    }
-
-    [Fact]
-    public void CalcTotalCpAtLevel_SumsTrainingGains_PlusBaseCp()
-    {
-        // Levels 2..10 each give 10 → 90, plus baseCP 5.
-        Assert.Equal(95, CharacterCalculator.CalcTotalCpAtLevel(10, baseCP: 5));
-        // A level-10 Kang (BaseCP 100) spending nothing has 190 CP total.
-        Assert.Equal(190, CharacterCalculator.CalcTotalCpAtLevel(10, baseCP: 100));
     }
 
     [Fact]

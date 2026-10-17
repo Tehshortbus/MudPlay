@@ -337,14 +337,4 @@ public sealed class SoldiersQuartersGridLostRepro : IDisposable
         tracker.NoteMoveSent(dir, when);
         tracker.NoteRoomObserved(Obs(landedRoom), when.AddMilliseconds(100));
     }
-
-    private static Direction[] ParseMoves(string s) =>
-        s.Select(c => c switch
-        {
-            's' => Direction.S,
-            'n' => Direction.N,
-            'e' => Direction.E,
-            'w' => Direction.W,
-            _ => throw new ArgumentException($"bad move '{c}'"),
-        }).ToArray();
 }

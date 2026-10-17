@@ -10,15 +10,12 @@ namespace MudPlay.Game.Map;
 //
 // Some rooms can't be placed on the 2D plane without colliding with an
 // earlier-visited neighbour (MajorMUD allows non-Euclidean room layouts — N
-// then S doesn't always return to the same coord). Those rooms land in OffGrid;
-// the map UI renders them in a secondary lane with a connector back to
-// whichever already-placed room they exit from. The off-grid set is empty for
-// grid-clean neighbourhoods.
+// then S doesn't always return to the same coord). Those rooms are dropped and
+// the exit to them is drawn as a stub (BfsMapper.BuildLayout).
 public sealed record RoomLayout(
     RoomKey Origin,
     IReadOnlyDictionary<RoomKey, (int X, int Y)> Positions,
     IReadOnlyDictionary<RoomKey, VerticalHint> VerticalHints,
-    IReadOnlyList<RoomKey> OffGrid,
     IReadOnlyDictionary<(int X, int Y), RoomKey> CoordToRoom,
     IReadOnlyDictionary<(int X, int Y), IReadOnlySet<Direction>> EdgesFromCoord,
     IReadOnlyDictionary<(int X, int Y), IReadOnlySet<Direction>> TrapEdgesFromCoord,

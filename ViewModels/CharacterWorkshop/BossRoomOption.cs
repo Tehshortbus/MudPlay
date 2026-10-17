@@ -11,8 +11,7 @@ namespace MudPlay.ViewModels.CharacterWorkshop;
 public sealed record BossRoomOption(RoomKey Key, string Display, int? Distance);
 
 // Builds the nearest→furthest room list the picker shows for a multi-room boss.
-// Pure: the caller supplies the distance and name lookups, so this is unit-tested
-// without a live map. Reachable rooms come first (ordered by hop count), then any
+// Pure: the caller supplies the distance and name lookups. Reachable rooms come first (ordered by hop count), then any
 // unreachable ones (ordered by map/room) so a boss whose rooms you can't currently
 // path to still lists them rather than vanishing.
 public static class BossGotoRooms

@@ -43,6 +43,8 @@ public sealed class PathItemSummonRouterTests
 
     private sealed class Harness
     {
+        // The router's timeout timers.
+        public readonly ManualTimers Timers = new();
         public readonly Dictionary<int, List<SummonSource>> Sources = new();
         public readonly Dictionary<(RoomKey From, RoomKey To), int> Dist = new();
         public readonly Dictionary<int, int> Carried = new();
@@ -78,7 +80,7 @@ public sealed class PathItemSummonRouterTests
                 walkTo: Walks.Add,
                 post: a => a(),                            // synchronous in tests
                 log: null,
-                detourTimeout: TimeSpan.FromHours(1));     // real timer never fires mid-test
+                schedule: Timers.Arm);
             r.SetWireSender(_sent.Add);
             return r;
         }
@@ -247,7 +249,7 @@ public sealed class PathItemSummonRouterTests
         r.OnNeedPosted(PathNeed(GateKey));
         r.OnWalkEvent(Finished(GateRoom));
 
-        r.OnTimeout();
+        h.Timers.RunAll();
 
         Assert.False(r.DetourActive);
         Assert.Equal(Dest, h.Walks[^1]);
@@ -262,7 +264,7 @@ public sealed class PathItemSummonRouterTests
         r.OnWalkEvent(Finished(GateRoom));
         r.OnMonsterDied(Died());
 
-        r.OnTimeout();
+        h.Timers.RunAll();
 
         Assert.False(r.DetourActive);
         Assert.Equal(Dest, h.Walks[^1]);
@@ -336,7 +338,7 @@ public sealed class PathItemSummonRouterTests
         PathItemSummonRouter r = h.Build();
         r.OnNeedPosted(PathNeed(GateKey));
 
-        r.OnTimeout();
+        h.Timers.RunAll();
 
         Assert.False(r.DetourActive);
     }

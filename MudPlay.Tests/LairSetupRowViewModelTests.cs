@@ -4,10 +4,8 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// PR 7.20 — LairSetupRowViewModel formats the right-rail row labels.
-/// Pure display logic; no graph, no manager.
-/// </summary>
+// LairSetupRowViewModel formats the right-rail row labels.
+// Pure display logic; no graph, no manager.
 public sealed class LairSetupRowViewModelTests
 {
     [Fact]

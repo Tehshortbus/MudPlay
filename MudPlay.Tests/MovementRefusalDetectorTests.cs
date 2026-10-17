@@ -2,13 +2,15 @@ using System;
 using System.IO;
 using MudPlay.Game.Map;
 using MudPlay.Services;
-using MudPlay.Terminal;
 using Xunit;
 
 namespace MudPlay.Tests;
 
 public sealed class MovementRefusalDetectorTests : IDisposable
 {
+    // The game's output, fed the way the client receives it.
+    private readonly ServerFeed _feed = new();
+
     private readonly string _root;
 
     public MovementRefusalDetectorTests()
@@ -46,8 +48,7 @@ public sealed class MovementRefusalDetectorTests : IDisposable
         RoomGraphManager graph = new(cache);
         graph.OnActiveSetChanged("alpha");
         RoomTracker tracker = new(graph);
-        LineExtractor lines = new(new TerminalEmulator(80, 25));
-        MovementRefusalDetector detector = new(lines, tracker, null, isConfuseFumble, isActiveHoldLine);
+        MovementRefusalDetector detector = new(_feed.Lines, tracker, null, isConfuseFumble, isActiveHoldLine);
         return (tracker, detector);
     }
 
@@ -110,7 +111,7 @@ public sealed class MovementRefusalDetectorTests : IDisposable
         (RoomTracker tracker, MovementRefusalDetector detector) = NewDetector();
         SetupPending(tracker);
 
-        detector.FeedTestLine(line);
+        _feed.Line(line);
 
         Assert.Equal(RoomConfidence.Confirmed, tracker.State.Confidence);
         Assert.Equal(new RoomKey(1, 1), tracker.State.CurrentRoom!.Key);
@@ -122,7 +123,7 @@ public sealed class MovementRefusalDetectorTests : IDisposable
         (RoomTracker tracker, MovementRefusalDetector detector) = NewDetector();
         SetupPending(tracker);
 
-        detector.FeedTestLine("The goblin growls at you.");
+        _feed.Line("The goblin growls at you.");
 
         Assert.Equal(RoomConfidence.Pending, tracker.State.Confidence);
     }
@@ -144,7 +145,7 @@ public sealed class MovementRefusalDetectorTests : IDisposable
         tracker.NoteMoveSent(Direction.N, sent);
         Assert.Equal(RoomConfidence.Pending, tracker.State.Confidence);
 
-        detector.FeedTestLine(line, sent.AddMilliseconds(300));
+        _feed.Line(line, sent.AddMilliseconds(300));
 
         Assert.Equal(RoomConfidence.Confirmed, tracker.State.Confidence);
         Assert.Equal(new RoomKey(1, 1), tracker.State.CurrentRoom!.Key);
@@ -161,7 +162,7 @@ public sealed class MovementRefusalDetectorTests : IDisposable
         tracker.SetLocated(new RoomKey(1, 1), sent);
         tracker.NoteMoveSent(Direction.N, sent);
 
-        detector.FeedTestLine("You are typing too quickly - command ignored.", sent.AddSeconds(5));
+        _feed.Line("You are typing too quickly - command ignored.", sent.AddSeconds(5));
 
         Assert.Equal(RoomConfidence.Pending, tracker.State.Confidence);
     }
@@ -173,7 +174,7 @@ public sealed class MovementRefusalDetectorTests : IDisposable
         (RoomTracker tracker, MovementRefusalDetector detector) = NewDetector();
         tracker.SetLocated(new RoomKey(1, 1));
 
-        detector.FeedTestLine("You are typing too quickly - command ignored.");
+        _feed.Line("You are typing too quickly - command ignored.");
 
         Assert.Equal(RoomConfidence.Confirmed, tracker.State.Confidence);
         Assert.Equal(new RoomKey(1, 1), tracker.State.CurrentRoom!.Key);
@@ -188,7 +189,7 @@ public sealed class MovementRefusalDetectorTests : IDisposable
         (RoomTracker tracker, MovementRefusalDetector detector) = NewDetector();
         SetupPending(tracker);
 
-        detector.FeedTestLine("Why don't you slow down for a few seconds?");
+        _feed.Line("Why don't you slow down for a few seconds?");
 
         Assert.Equal(RoomConfidence.Pending, tracker.State.Confidence);
     }
@@ -206,7 +207,7 @@ public sealed class MovementRefusalDetectorTests : IDisposable
         (RoomTracker tracker, MovementRefusalDetector detector) = NewDetector(IsTestConfuseFumble);
         SetupPending(tracker);
 
-        detector.FeedTestLine(line);
+        _feed.Line(line);
 
         Assert.Equal(RoomConfidence.Confirmed, tracker.State.Confidence);
         Assert.Equal(new RoomKey(1, 1), tracker.State.CurrentRoom!.Key);
@@ -222,7 +223,7 @@ public sealed class MovementRefusalDetectorTests : IDisposable
             isActiveHoldLine: t => t.Trim() == "You are too scared to flee!");
         SetupPending(tracker);
 
-        detector.FeedTestLine("You are too scared to flee!");
+        _feed.Line("You are too scared to flee!");
 
         Assert.Equal(RoomConfidence.Confirmed, tracker.State.Confidence);
         Assert.Equal(new RoomKey(1, 1), tracker.State.CurrentRoom!.Key);
@@ -238,7 +239,7 @@ public sealed class MovementRefusalDetectorTests : IDisposable
         int blocked = 0;
         tracker.MoveBlocked += () => blocked++;
 
-        detector.FeedTestLine("You are too scared to flee!");
+        _feed.Line("You are too scared to flee!");
 
         Assert.Equal(0, blocked);
         Assert.Equal(RoomConfidence.Confirmed, tracker.State.Confidence);
@@ -251,7 +252,7 @@ public sealed class MovementRefusalDetectorTests : IDisposable
         (RoomTracker tracker, MovementRefusalDetector detector) = NewDetector();
         SetupPending(tracker);
 
-        detector.FeedTestLine("You can't seem to move anywhere!");
+        _feed.Line("You can't seem to move anywhere!");
 
         Assert.Equal(RoomConfidence.Confirmed, tracker.State.Confidence);
     }
@@ -264,7 +265,7 @@ public sealed class MovementRefusalDetectorTests : IDisposable
         (RoomTracker tracker, MovementRefusalDetector detector) = NewDetector();
         SetupPending(tracker);
 
-        detector.FeedTestLine("You fumble in confusion!");
+        _feed.Line("You fumble in confusion!");
 
         Assert.Equal(RoomConfidence.Pending, tracker.State.Confidence);
     }
@@ -278,7 +279,7 @@ public sealed class MovementRefusalDetectorTests : IDisposable
         (RoomTracker tracker, MovementRefusalDetector detector) = NewDetector(IsTestConfuseFumble);
         SetupPending(tracker);
 
-        detector.FeedTestLine("You are in convulsions!");
+        _feed.Line("You are in convulsions!");
 
         Assert.Equal(RoomConfidence.Pending, tracker.State.Confidence);
     }
@@ -291,7 +292,7 @@ public sealed class MovementRefusalDetectorTests : IDisposable
 
         // Anchored patterns mean a quote inside a chat-prefixed line
         // doesn't false-trigger.
-        detector.FeedTestLine("[Gossip] Bob: I told him 'You can't go that way.' lol");
+        _feed.Line("[Gossip] Bob: I told him 'You can't go that way.' lol");
 
         Assert.Equal(RoomConfidence.Pending, tracker.State.Confidence);
     }
@@ -313,7 +314,7 @@ public sealed class MovementRefusalDetectorTests : IDisposable
         (RoomTracker tracker, MovementRefusalDetector detector) = NewDetector();
         SetupPending(tracker);
 
-        detector.FeedTestLine(line);
+        _feed.Line(line);
 
         Assert.Equal(RoomConfidence.Confirmed, tracker.State.Confidence);
         Assert.Equal(new RoomKey(1, 1), tracker.State.CurrentRoom!.Key);
@@ -327,8 +328,8 @@ public sealed class MovementRefusalDetectorTests : IDisposable
         (RoomTracker tracker, MovementRefusalDetector detector) = NewDetector();
         SetupPending(tracker);
 
-        detector.FeedTestLine("You have progressed too far for this room.");
-        detector.FeedTestLine("You are not permitted in that room!");
+        _feed.Line("You have progressed too far for this room.");
+        _feed.Line("You are not permitted in that room!");
 
         Assert.Equal(RoomConfidence.Confirmed, tracker.State.Confidence);
         Assert.False(tracker.HasQueuedMoves);
@@ -346,7 +347,7 @@ public sealed class MovementRefusalDetectorTests : IDisposable
         tracker.SetLocated(new RoomKey(1, 1));
         tracker.NoteMoveSent("touch altar", cardinal: Direction.N);
 
-        detector.FeedTestLine(line);
+        _feed.Line(line);
 
         Assert.Equal(RoomConfidence.Confirmed, tracker.State.Confidence);
         Assert.Equal(new RoomKey(1, 1), tracker.State.CurrentRoom!.Key);
@@ -360,7 +361,7 @@ public sealed class MovementRefusalDetectorTests : IDisposable
         (RoomTracker tracker, MovementRefusalDetector detector) = NewDetector();
         SetupPending(tracker);
 
-        detector.FeedTestLine("You do not have that.");
+        _feed.Line("You do not have that.");
 
         Assert.Equal(RoomConfidence.Pending, tracker.State.Confidence);
     }
@@ -375,7 +376,7 @@ public sealed class MovementRefusalDetectorTests : IDisposable
         tracker.SetLocated(new RoomKey(1, 1), sent);
         tracker.NoteMoveSent("touch altar", cardinal: Direction.N, whenUtc: sent);
 
-        detector.FeedTestLine("You cannot do that right now!", sent.AddSeconds(5));
+        _feed.Line("You cannot do that right now!", sent.AddSeconds(5));
 
         Assert.Equal(RoomConfidence.Pending, tracker.State.Confidence);
     }
@@ -391,7 +392,7 @@ public sealed class MovementRefusalDetectorTests : IDisposable
         tracker.SetLocated(new RoomKey(1, 1));
         tracker.NoteMoveSent("jump roof", cardinal: Direction.N);
 
-        detector.FeedTestLine(line);
+        _feed.Line(line);
 
         Assert.Equal(RoomConfidence.Suspect, tracker.State.Confidence);
         Assert.False(tracker.HasQueuedMoves);
@@ -403,7 +404,7 @@ public sealed class MovementRefusalDetectorTests : IDisposable
         (RoomTracker tracker, MovementRefusalDetector detector) = NewDetector();
         tracker.SetLocated(new RoomKey(1, 1));   // Located, not Pending
 
-        detector.FeedTestLine("You can't go that way.");
+        _feed.Line("You can't go that way.");
 
         Assert.Equal(RoomConfidence.Confirmed, tracker.State.Confidence);
     }
@@ -424,7 +425,7 @@ public sealed class MovementRefusalDetectorTests : IDisposable
         Assert.Contains(Direction.N, tracker.State.OpenDoorDirections!);
 
         tracker.NoteMoveSent(Direction.N);
-        detector.FeedTestLine("The door is closed!");
+        _feed.Line("The door is closed!");
 
         Assert.Null(tracker.State.OpenDoorDirections);   // only entry cleared
         Assert.Equal(RoomConfidence.Confirmed, tracker.State.Confidence);
@@ -443,7 +444,7 @@ public sealed class MovementRefusalDetectorTests : IDisposable
             new HashSet<Direction> { Direction.N }));
 
         tracker.NoteMoveSent(Direction.N);
-        detector.FeedTestLine("You are too encumbered to move.");
+        _feed.Line("You are too encumbered to move.");
 
         Assert.Contains(Direction.N, tracker.State.OpenDoorDirections!);
     }
@@ -464,7 +465,7 @@ public sealed class MovementRefusalDetectorTests : IDisposable
         Assert.Contains(Direction.N, tracker.State.OpenDoorDirections!);
 
         tracker.NoteMoveSent(Direction.N);
-        detector.FeedTestLine("The door to the north just closed.");
+        _feed.Line("The door to the north just closed.");
 
         Assert.Null(tracker.State.OpenDoorDirections);
         Assert.Equal(RoomConfidence.Confirmed, tracker.State.Confidence);
@@ -483,7 +484,7 @@ public sealed class MovementRefusalDetectorTests : IDisposable
             new HashSet<Direction> { Direction.N }));
 
         tracker.NoteMoveSent(Direction.N);   // heading north
-        detector.FeedTestLine("The door to the south just closed.");
+        _feed.Line("The door to the south just closed.");
 
         Assert.Contains(Direction.N, tracker.State.OpenDoorDirections!);
         Assert.Equal(RoomConfidence.Pending, tracker.State.Confidence);
@@ -503,7 +504,7 @@ public sealed class MovementRefusalDetectorTests : IDisposable
             new HashSet<Direction> { Direction.N }));
         Assert.Contains(Direction.N, tracker.State.OpenDoorDirections!);
 
-        detector.FeedTestLine("The door to the north just closed.");
+        _feed.Line("The door to the north just closed.");
 
         Assert.Null(tracker.State.OpenDoorDirections);
         Assert.Equal(RoomConfidence.Confirmed, tracker.State.Confidence);
@@ -522,16 +523,16 @@ public sealed class MovementRefusalDetectorTests : IDisposable
             null,
             new HashSet<Direction> { Direction.N, Direction.E }));
 
-        detector.FeedTestLine("The door to the north just opened.");
+        _feed.Line("The door to the north just opened.");
         Assert.Contains(Direction.N, tracker.State.OpenDoorDirections!);
 
-        detector.FeedTestLine("You see Bob close the door to the north.");
+        _feed.Line("You see Bob close the door to the north.");
         Assert.Null(tracker.State.OpenDoorDirections);
 
-        detector.FeedTestLine("You see Bob open the gate to the east.");
+        _feed.Line("You see Bob open the gate to the east.");
         Assert.Contains(Direction.E, tracker.State.OpenDoorDirections!);
 
-        detector.FeedTestLine("The gate to the east just locked!");
+        _feed.Line("The gate to the east just locked!");
         Assert.Null(tracker.State.OpenDoorDirections);
     }
 
@@ -544,10 +545,10 @@ public sealed class MovementRefusalDetectorTests : IDisposable
         tracker.SetLocated(new RoomKey(1, 1));
         tracker.NoteRoomObserved(new RoomObservation("Origin", new HashSet<Direction> { Direction.N }));
 
-        detector.FeedTestLine("The exit to the west just opened!");
+        _feed.Line("The exit to the west just opened!");
         Assert.Contains(Direction.W, tracker.ShownOpenExits()!);
 
-        detector.FeedTestLine("The exit to the west just closed!");
+        _feed.Line("The exit to the west just closed!");
         Assert.DoesNotContain(Direction.W, tracker.ShownOpenExits()!);
     }
 }

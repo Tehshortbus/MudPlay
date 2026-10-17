@@ -11,13 +11,11 @@ namespace MudPlay.Tests;
 
 public sealed class PartyLevelProbeTests
 {
-    /// <summary>
-    /// Mirrors <see cref="PartyInventoryProbeTests"/>: the probe is wired to a
-    /// real <see cref="ChatRouter"/> so replies flow through the same
-    /// classification path production uses, a <see cref="PartyBroadcaster"/>
-    /// whose wire is captured, and a captured <c>armWindow</c> seam so tests
-    /// fire the reply window deterministically.
-    /// </summary>
+    // Mirrors PartyInventoryProbeTests: the probe is wired to a
+    // real ChatRouter so replies flow through the same
+    // classification path production uses, a PartyBroadcaster
+    // whose wire is captured, and a captured armWindow seam so tests
+    // fire the reply window deterministically.
     private sealed class Harness
     {
         public readonly MessageRouter Router;
@@ -78,7 +76,7 @@ public sealed class PartyLevelProbeTests
         PartyLevelProbe.PartyLevelResult r = await h.Probe.QueryAsync();
 
         Assert.Equal(0, r.Expected);
-        Assert.False(r.AnyReplied);
+        Assert.Equal(0, r.Replied);
         Assert.Empty(h.Wire);   // no broadcast fired
     }
 
@@ -109,7 +107,7 @@ public sealed class PartyLevelProbeTests
         Task<PartyLevelProbe.PartyLevelResult> q = h.Probe.QueryAsync();
         h.FireWindows();                                  // window elapses with no reply
         PartyLevelProbe.PartyLevelResult r = await q;
-        Assert.False(r.AnyReplied);                       // probe saw nothing in time
+        Assert.Equal(0, r.Replied);                       // probe saw nothing in time
 
         // The reply lands after the window — the exact level is still recorded
         // (the previous code dropped it, leaving level gates stuck on the band).
@@ -178,7 +176,7 @@ public sealed class PartyLevelProbeTests
         Assert.Equal(2, r.Replied);
         Assert.Equal(42, r.LevelsByMember["Bob"]);
         Assert.Equal(12, r.LevelsByMember["Al"]);
-        Assert.True(r.AnyReplied);
+        Assert.True(r.Replied > 0);
     }
 
     [Fact]
@@ -381,6 +379,6 @@ public sealed class PartyLevelProbeTests
 
         PartyLevelProbe.PartyLevelResult r = await task;
         Assert.Equal(0, r.Expected);
-        Assert.False(r.AnyReplied);
+        Assert.Equal(0, r.Replied);
     }
 }

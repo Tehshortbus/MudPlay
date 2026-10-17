@@ -29,13 +29,13 @@ public sealed class EquipmentManager
     private readonly Action<CombatSettings> _writeCombat;
     // Resolves whether a weapon name is two-handed (Items.WeaponType 2H). Injected
     // so the actuator stays game-data-free; null ⇒ never two-handed (one-handed
-    // off-hand behaviour, the safe default for tests).
+    // off-hand behaviour).
     private readonly Func<string?, bool> _isTwoHanded;
     // Inventory-fallback resolvers (game-data-aware, injected to keep the actuator
     // game-data-free like _isTwoHanded). _resolveItemSlot maps a carried item name
     // to the physical EquipmentSlot it fills (null ⇒ not wearable gear);
     // _canEquipItem gates it against the live character's level / class / alignment.
-    // Both null in tests / before game data is wired, which disables the fallback —
+    // Both null before game data is wired, which disables the fallback —
     // the manual apply paths then fall back to the set-only worn diff.
     private readonly Func<string, EquipmentSlot?>? _resolveItemSlot;
     private readonly Func<string, bool>? _canEquipItem;
@@ -43,7 +43,7 @@ public sealed class EquipmentManager
     // EXISTS in game data but the live character can't wear it (alignment /
     // level / class). Distinct from _canEquipItem, which also returns false for
     // an unknown item — an unknown name must NOT be block-flagged (it just isn't
-    // queued). Null in tests / before game data is wired disables the block
+    // queued). Null before game data is wired disables the block
     // machinery entirely.
     private readonly Func<string, bool>? _isEquipRestricted;
     private readonly LogService? _log;
@@ -57,8 +57,8 @@ public sealed class EquipmentManager
     private Func<bool>? _combatOwnsWeaponSlot;
 
     // True on Paradigm (where a full-pair eq/wear evicts SLOT 1), false on Stock
-    // (evicts SLOT 2) — see ComposePairedSlotCommands. Null before wiring / in tests
-    // ⇒ Paradigm behaviour (the historical default the set-only tests exercise).
+    // (evicts SLOT 2) — see ComposePairedSlotCommands. Null before wiring
+    // ⇒ Paradigm behaviour.
     private Func<bool>? _paradigmPairedEviction;
 
     // Thrash guard: a gear set that keeps producing commands without converging (a
@@ -221,9 +221,6 @@ public sealed class EquipmentManager
     // Bind the combat weapon-ownership probe (CombatManager.IsWeaponOverrideActive).
     // Wired post-construction to break the manager ↔ combat-engine build cycle.
     public void SetCombatWeaponOwnershipProbe(Func<bool> probe) => _combatOwnsWeaponSlot = probe;
-
-    // Every buffer the engine has pushed to the wire, for tests.
-    internal IReadOnlyList<byte[]> LastSentForTests => _wire.LastSentForTests;
 
     // ----- @equip <set> ----------------------------------------------------
 
@@ -1050,7 +1047,7 @@ public sealed class EquipmentManager
         return ComposePairedSlotCommands(set, snap.EquippedItems, wears, ParadigmPairedEviction);
     }
 
-    // ----- pure apply logic (unit-tested directly) ------------------------
+    // ----- pure apply logic -------------------------------------------------
 
     // The ordered wear commands for a set's physical slots whose item isn't
     // already worn. Virtual slots are excluded (handled by ApplyVirtualSlots);

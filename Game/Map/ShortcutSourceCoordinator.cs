@@ -19,8 +19,7 @@ namespace MudPlay.Game.Map;
 // means no hostile to fight, so the room is settled immediately, the get finds
 // nothing, and the live-filter walk falls back to the long route with no waiting.
 //
-// Delegate-injected (walker / combat / inventory / send / scheduler) so the FSM is
-// unit-testable without a live line stream. Each delegate has one binding in
+// Delegate-injected (walker / combat / inventory / send / scheduler). Each delegate has one binding in
 // AppServices.
 public sealed class ShortcutSourceCoordinator
 {
@@ -84,13 +83,6 @@ public sealed class ShortcutSourceCoordinator
         _schedule = schedule;
         _log = log;
     }
-
-    public bool Active => _phase != Phase.Idle;
-
-    // Can this shortcut item be attempted — does it resolve to a source room? The
-    // card only offers "go get it" when true; otherwise the shortcut is a dead end
-    // and the picker shows it as unobtainable.
-    public bool CanAttempt(int shortcutItemId) => _resolveSource(shortcutItemId) is not null;
 
     // Begin the walk-to-source → obtain → shortcut-or-long flow. Returns false when
     // the item has no resolvable source (caller falls back to the long route).

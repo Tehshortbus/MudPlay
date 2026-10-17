@@ -67,11 +67,7 @@ public sealed class StatlineReconciler : IDisposable
     // retries when a send doesn't take. Default 2 s.
     public TimeSpan RetryDelay { get; set; } = TimeSpan.FromSeconds(2);
 
-    // Test seam — override the clock so tests don't have to sleep.
-    public Func<DateTime> NowProvider { get; set; } = static () => DateTime.UtcNow;
-
-    // Test seam — every buffer the engine has asked to write to the wire.
-    internal List<byte[]> LastSentForTests => _wire.LastSentForTests;
+    private readonly Func<DateTime> _now;
 
     // Raised when IsFlagged flips either way. Fires on the prompt scanner's
     // thread, from inside its Append.
@@ -111,8 +107,9 @@ public sealed class StatlineReconciler : IDisposable
     // The editor's statline command as it stands now.
     public string? DesiredCommand => _desiredProvider();
 
-    public StatlineReconciler(WirePromptScanner scanner, LogService? log = null)
+    public StatlineReconciler(WirePromptScanner scanner, LogService? log = null, Func<DateTime>? now = null)
     {
+        _now = now ?? (() => DateTime.UtcNow);
         ArgumentNullException.ThrowIfNull(scanner);
         _scanner = scanner;
         _log = log;
@@ -205,7 +202,7 @@ public sealed class StatlineReconciler : IDisposable
         // Pace resends: collapse the in-flight stale-prompt burst and space out
         // retries while the server catches up. The run keeps counting, so the
         // next unmatched prompt past the delay acts.
-        if (NowProvider() - _lastSendUtc < RetryDelay) return;
+        if (_now() - _lastSendUtc < RetryDelay) return;
 
         string? desired = _desiredProvider();
         if (!_mismatchLogged)
@@ -228,7 +225,7 @@ public sealed class StatlineReconciler : IDisposable
         _wire.Send($"set statline {wire}");
         _retries++;
         _consecutiveMismatches = 0;
-        _lastSendUtc = NowProvider();
+        _lastSendUtc = _now();
         _log?.Log(LogSeverity.Info, "Statline",
             $"Reset the game's statline to Settings -> Statline - sent `set statline {wire}` (attempt {_retries}/{MaxRetries}).");
     }

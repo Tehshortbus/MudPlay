@@ -3,12 +3,8 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// PR 9.0a sub-G — <see cref="UnknownEntityFixDialogViewModel"/>'s
-/// three-button outcome paths. The dialog itself collects intent; the
-/// PR 9.0b classifier commits the result. Pinning the contract here
-/// makes the eventual classifier wiring deterministic.
-/// </summary>
+// UnknownEntityFixDialogViewModel's three-button outcome paths. The dialog
+// collects intent; the classifier commits the result.
 public sealed class UnknownEntityFixDialogViewModelTests
 {
     [Fact]

@@ -48,7 +48,7 @@ public sealed class ShortcutSourceCoordinatorTests
         ShortcutSourceCoordinator c = h.Build();
 
         Assert.True(c.TryBegin(815, new RoomKey(8, 1699)));
-        Assert.True(c.Active);
+        Assert.NotNull(c.DescribePending());
         Assert.Equal(new[] { new RoomKey(2, 50) }, h.WalkedToSource);
     }
 
@@ -59,18 +59,8 @@ public sealed class ShortcutSourceCoordinatorTests
         ShortcutSourceCoordinator c = h.Build();
 
         Assert.False(c.TryBegin(815, new RoomKey(8, 1699)));
-        Assert.False(c.Active);
+        Assert.Null(c.DescribePending());
         Assert.Empty(h.WalkedToSource);
-    }
-
-    [Fact]
-    public void CanAttempt_TracksSourceResolution()
-    {
-        var h = new Harness();
-        ShortcutSourceCoordinator c = h.Build();
-        Assert.True(c.CanAttempt(815));
-        h.Source = null;
-        Assert.False(c.CanAttempt(815));
     }
 
     [Fact]
@@ -88,7 +78,7 @@ public sealed class ShortcutSourceCoordinatorTests
         h.FireScheduled();
 
         Assert.Equal(new[] { new RoomKey(8, 1699) }, h.LiveWalkedToDest);
-        Assert.False(c.Active);
+        Assert.Null(c.DescribePending());
     }
 
     [Fact]
@@ -114,7 +104,7 @@ public sealed class ShortcutSourceCoordinatorTests
 
         c.OnWalkEvent(Finished(new RoomKey(2, 50)));   // arrived, but a hostile is up
         Assert.Empty(h.Gets);                          // not settled — no grab yet
-        Assert.True(c.Active);
+        Assert.NotNull(c.DescribePending());
 
         // A lull in the fight (combat flag drops) but a hostile still stands — not settled.
         h.InCombat = false;
@@ -143,7 +133,7 @@ public sealed class ShortcutSourceCoordinatorTests
         c.OnInventoryChanged();
 
         Assert.Equal(new[] { new RoomKey(8, 1699) }, h.LiveWalkedToDest);
-        Assert.False(c.Active);
+        Assert.Null(c.DescribePending());
     }
 
     [Fact]
@@ -157,7 +147,7 @@ public sealed class ShortcutSourceCoordinatorTests
 
         Assert.Equal(new[] { new RoomKey(8, 1699) }, h.LiveWalkedToDest);
         Assert.Empty(h.Gets);
-        Assert.False(c.Active);
+        Assert.Null(c.DescribePending());
     }
 
     [Fact]
@@ -170,7 +160,7 @@ public sealed class ShortcutSourceCoordinatorTests
 
         c.OnWalkEvent(Started());   // user drove somewhere
 
-        Assert.False(c.Active);
+        Assert.Null(c.DescribePending());
         h.Hostiles = false;
         c.OnCombatStateChanged();   // no effect — abandoned
         Assert.Empty(h.LiveWalkedToDest);
@@ -217,11 +207,11 @@ public sealed class ShortcutSourceCoordinatorTests
         ShortcutSourceCoordinator c = h.Build();
         c.TryBegin(815, new RoomKey(8, 1699));
         c.OnWalkEvent(Finished(new RoomKey(2, 50)));
-        Assert.True(c.Active);
+        Assert.NotNull(c.DescribePending());
 
         c.OnWalkEvent(new WalkEvent(WalkEventKind.Stopped, "user stop", new RoomKey(8, 1699)));
 
-        Assert.False(c.Active);
+        Assert.Null(c.DescribePending());
         h.Hostiles = false;
         c.OnCombatStateChanged();
         h.FireScheduled();

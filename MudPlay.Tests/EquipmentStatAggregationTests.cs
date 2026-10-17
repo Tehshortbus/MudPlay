@@ -10,12 +10,10 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// <see cref="CharacterCalculator.AggregateEquipmentStats"/> folds every worn
-/// item's base AC/DR + <c>Abil-0..19</c> bonuses against a game-data
-/// <c>Items</c> table. These tests seed an isolated set, build worn-item lists,
-/// and assert the totals + per-stat tooltip sources match the MMUD ability map.
-/// </summary>
+// CharacterCalculator.AggregateEquipmentStats folds every worn
+// item's base AC/DR + Abil-0..19 bonuses against a game-data
+// Items table. These tests seed an isolated set, build worn-item lists,
+// and assert the totals + per-stat tooltip sources match the MMUD ability map.
 public sealed class EquipmentStatAggregationTests : IDisposable
 {
     private readonly string _root;

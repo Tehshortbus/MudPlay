@@ -5,22 +5,18 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// IL-scans the compiled MudPlay assembly for every field marked with
-/// <see cref="Services.OwnerAttribute"/> and asserts that no method
-/// outside the declaring type or the declared owner type writes the
-/// field via <c>stfld</c>. If a future PR accidentally adds a second
-/// writer (e.g. by exposing internal accessors or via reflection-style
-/// patterns), this test fails and the violation surfaces in CI.
-/// </summary>
-/// <remarks>
-/// Why <c>stfld</c> in particular: the C# compiler only emits <c>stfld</c>
-/// against a private field from inside its declaring type, so the test's
-/// real value is a guard against future tricks (internal helpers in the
-/// same assembly, code-generated mutators) that would silently bypass
-/// the property setter. The property setter itself <i>does</i> emit
-/// <c>stfld</c> — but it lives in the declaring type, which we allow.
-/// </remarks>
+// IL-scans the compiled MudPlay assembly for every field marked with
+// Services.OwnerAttribute and asserts that no method
+// outside the declaring type or the declared owner type writes the
+// field via stfld. If a future PR accidentally adds a second
+// writer (e.g. by exposing internal accessors or via reflection-style
+// patterns), this test fails and the violation surfaces in CI.
+// Why stfld in particular: the C# compiler only emits stfld
+// against a private field from inside its declaring type, so the test's
+// real value is a guard against future tricks (internal helpers in the
+// same assembly, code-generated mutators) that would silently bypass
+// the property setter. The property setter itself does emit
+// stfld — but it lives in the declaring type, which we allow.
 public sealed class SingleWriterInvariantTests
 {
     [Fact]

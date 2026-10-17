@@ -13,12 +13,9 @@ namespace MudPlay.Tests;
 // so the first board's username / password / logon steps were dropped silently
 // while its host and port — staged per board — were kept.
 //
-// These run against the real data root (the suite doesn't redirect
-// MUDPLAY_DATA_ROOT), so the two BBS records are named with a "!mudplay-test-"
-// prefix that sorts ahead of any real board — keeping the VM's auto-selection off
-// the user's own records — and are deleted again in a finally. The character is a
-// LoadBlank draft, which keeps credentials in memory and makes Save a no-op, so
-// no character profile is touched on disk.
+// The two BBS records are saved under the scratch data root and deleted again in a
+// finally. The character is the unnamed default-profile draft, which keeps credentials in memory
+// and makes Save a no-op, so no character profile is touched on disk.
 [Collection(BbsSectionCollection.Name)]
 public sealed class BbsSectionCredentialStagingTests
 {
@@ -96,17 +93,18 @@ public sealed class BbsSectionCredentialStagingTests
 
         public static Fixture Create()
         {
-            // "!" sorts ahead of every plausible real BBS name, so the VM's
-            // fallback selection lands on a test record instead of one of the
-            // user's — which also keeps Apply's write-back off their files.
-            string a = $"!mudplay-test-a-{Guid.NewGuid():N}";
-            string b = $"!mudplay-test-b-{Guid.NewGuid():N}";
+            ScratchRoot.Require();
+            string a = $"mudplay-test-a-{Guid.NewGuid():N}";
+            string b = $"mudplay-test-b-{Guid.NewGuid():N}";
             BbsProfileStore store = new();
             store.Save(new BbsProfile { Name = a, Host = "a.example", Port = 23 });
             store.Save(new BbsProfile { Name = b, Host = "b.example", Port = 23 });
 
-            ProfileService profile = new();
-            profile.LoadBlank();
+            // Started on board A, so the view model opens on this test's board: one
+            // it opened on would be written back on Apply, and another test's board,
+            // deleted by its owner meanwhile, would be made again.
+            ProfileService profile = TestProfiles.Service();
+            profile.LoadDefaultProfile(onBbs: a);
 
             PasswordProtector passwords = new();
             return new Fixture

@@ -7,7 +7,7 @@ namespace MudPlay.Services.Update;
 // backup for rollback), relaunches, and cleans up. On success it removes the staged
 // download, the rollback backup, AND itself — no update leftovers survive in temp.
 //
-// Pure string generation so the scripts can be unit-tested without running them.
+// Pure string generation.
 // Every path is passed as a positional argument (never interpolated into the body)
 // so a path with spaces can't break the script.
 public static class SwapScriptBuilder

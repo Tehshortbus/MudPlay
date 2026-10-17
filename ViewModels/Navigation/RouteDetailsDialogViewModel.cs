@@ -23,7 +23,7 @@ namespace MudPlay.ViewModels.Navigation;
 // through the persist callback the launcher supplies.
 public sealed partial class RouteDetailsDialogViewModel : ObservableObject, IDialogViewModel<bool?>
 {
-    // (enabled, greenMax%, yellowMax%) → write the Global-tier delta. Null in tests.
+    // (enabled, greenMax%, yellowMax%) → write the Global-tier delta.
     private readonly Action<bool, int, int>? _persist;
     private bool _suppressPersist;
 
@@ -55,12 +55,6 @@ public sealed partial class RouteDetailsDialogViewModel : ObservableObject, IDia
     // the user's preferred wording.
     public string BandLegend =>
         $"green ≤ {GreenMax:0}%      yellow ≤ {YellowMax:0}%      red > {YellowMax:0}%";
-
-    public RouteDetailsDialogViewModel(string title, IReadOnlyList<RouteDetailRow> rows)
-        : this(title, rows, false,
-            MonsterHitColorSettings.DefaultGreenMax, MonsterHitColorSettings.DefaultYellowMax, null)
-    {
-    }
 
     public RouteDetailsDialogViewModel(
         string title, IReadOnlyList<RouteDetailRow> rows,

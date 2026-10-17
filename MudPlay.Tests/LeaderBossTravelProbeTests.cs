@@ -19,10 +19,13 @@ public sealed class LeaderBossTravelProbeTests
         public MessageRouter Router { get; } = new();
         public PathReplyTracker Replies { get; }
         public LeaderBossTravelProbe Probe { get; }
+        // What Probe put on the wire, through the sender the client binds.
+        public List<byte[]> ProbeWire { get; } = new();
         public List<bool> Answers { get; } = new();
         public string? Leader { get; set; } = "Raijin";
         public bool StillNeeded { get; set; } = true;
-        public List<TimeSpan> Scheduled { get; } = new();
+        // The wait for the leader's answer.
+        public ManualTimers Timers { get; } = new();
 
         public Harness()
         {
@@ -33,18 +36,17 @@ public sealed class LeaderBossTravelProbeTests
                 headsToBoss: r => r.Destination == Boss,
                 isBossRoom: k => k == Boss,
                 stillNeeded: () => StillNeeded,
-                schedule: (delay, _) => { Scheduled.Add(delay); return new Handle(); });
+                schedule: Timers.Arm);
+            Probe.SetWireSender(ProbeWire.Add);
             Probe.Resolved += Answers.Add;
         }
 
-        public string LastSent => Encoding.Latin1.GetString(Probe.LastSentForTests[^1]);
+        public string LastSent => Encoding.Latin1.GetString(ProbeWire[^1]);
 
         public void Line(string text) =>
             Router.Dispatch(new LineExtractor.EmittedLine(text, [], DateTimeOffset.UtcNow, false));
 
         public void Dispose() { Probe.Dispose(); Replies.Dispose(); }
-
-        private sealed class Handle : IDisposable { public void Dispose() { } }
     }
 
     [Fact]
@@ -59,7 +61,7 @@ public sealed class LeaderBossTravelProbeTests
         Assert.Equal(new[] { true }, h.Answers);
         // Nothing more is asked until the next boss room.
         h.Probe.NoteMoved();
-        Assert.Single(h.Probe.LastSentForTests);
+        Assert.Single(h.ProbeWire);
     }
 
     [Fact]
@@ -80,15 +82,14 @@ public sealed class LeaderBossTravelProbeTests
     {
         using Harness h = new();
         h.Probe.Ask();
-        Assert.Equal(LeaderBossTravelProbe.ReplyTimeout, h.Scheduled[^1]);
+        Assert.Equal(LeaderBossTravelProbe.ReplyTimeout, h.Timers.PendingDelays[^1]);
 
-        h.Probe.OnTimeout();
+        h.Timers.RunDue(LeaderBossTravelProbe.ReplyTimeout);
         Assert.Empty(h.Answers);
-        Assert.True(h.Probe.WaitingForLeaderToMove);
 
         h.Probe.NoteMoved();
-        Assert.Equal(2, h.Probe.LastSentForTests.Count);
-        h.Probe.OnTimeout();
+        Assert.Equal(2, h.ProbeWire.Count);
+        h.Timers.RunDue(LeaderBossTravelProbe.ReplyTimeout);
 
         Assert.Equal(new[] { false }, h.Answers);
     }
@@ -98,7 +99,7 @@ public sealed class LeaderBossTravelProbeTests
     {
         using Harness h = new();
         h.Probe.Ask();
-        h.Probe.OnTimeout();
+        h.Timers.RunDue(LeaderBossTravelProbe.ReplyTimeout);
         h.Probe.NoteMoved();
 
         h.Line("Raijin telepaths: {walking to 6/1249; Dark Road (map 6, room 1200); step 1/40}");
@@ -111,7 +112,7 @@ public sealed class LeaderBossTravelProbeTests
     {
         using Harness h = new() { Leader = null };
         Assert.False(h.Probe.Ask());
-        Assert.Empty(h.Probe.LastSentForTests);
+        Assert.Empty(h.ProbeWire);
     }
 
     [Fact]
@@ -134,10 +135,9 @@ public sealed class LeaderBossTravelProbeTests
         h.Probe.Ask();
         h.Line("Raijin telepaths: {not moving}");
         Assert.Empty(h.Answers);
-        Assert.True(h.Probe.WaitingForLeaderToMove);
 
         h.Probe.NoteMoved();
-        Assert.Equal(2, h.Probe.LastSentForTests.Count);
+        Assert.Equal(2, h.ProbeWire.Count);
         h.Line("Raijin telepaths: {walking to 6/1249; Dark Road (map 6, room 1200); step 1/40}");
 
         Assert.Equal(new[] { true }, h.Answers);
@@ -153,7 +153,6 @@ public sealed class LeaderBossTravelProbeTests
         h.Line("Raijin telepaths: {not moving}");
 
         Assert.Equal(new[] { false }, h.Answers);
-        Assert.False(h.Probe.WaitingForLeaderToMove);
     }
 
     [Fact]
@@ -172,6 +171,6 @@ public sealed class LeaderBossTravelProbeTests
     {
         using Harness h = new();
         h.Probe.NoteMoved();
-        Assert.Empty(h.Probe.LastSentForTests);
+        Assert.Empty(h.ProbeWire);
     }
 }

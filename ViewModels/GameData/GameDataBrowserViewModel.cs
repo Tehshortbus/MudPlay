@@ -69,9 +69,6 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject, IDispos
     // self-caching per set (only GameDataCache needed, so no injection).
     private readonly QuestFlagIndex _questFlags;
 
-    public GameDataBrowserViewModel(GameDataCache gameData, string? initialSectionId = null)
-        : this(gameData, triggers: null, aliases: null, players: null, macros: null, messages: null, messageCandidates: null, flavorPrefixes: null, monsterOverlaySeed: null, itemOverlaySeed: null, resolver: null, dialogs: null, keybindings: null, profile: null, roomGraph: null, playerStats: null, itemSources: null, initialSectionId: initialSectionId) { }
-
     public GameDataBrowserViewModel(
         GameDataCache gameData,
         TriggerEngine? triggers,
@@ -241,21 +238,14 @@ public sealed partial class GameDataBrowserViewModel : ObservableObject, IDispos
         // Items and the quest-flag → source index.
         Sections.Add(new UnobtainableSectionViewModel(_gameData, _resolver, _roomGraph));
         Sections.Add(new QuestFlagsSectionViewModel(_questFlags, _gameData, _dialogs));
-
-        // Hook every section's NavigationRequested event so cross-section
-        // jumps (e.g. Shops → Rooms double-click) can route through the
-        // browser. Wire LAST so every section is in Sections first.
-        foreach (GameDataSectionViewModel section in Sections)
-            section.NavigationRequested += OnNavigationRequested;
     }
 
     // External entry point (e.g. the Item Finder's row double-click) to jump the browser
-    // to a specific record in a table section. Shares the same activate-then-defer routing
-    // as an in-browser cross-section navigation.
+    // to a specific record in a table section.
     public void NavigateToRecord(string targetSectionId, Func<Tables.GameDataRow, bool> rowSelector)
         => OnNavigationRequested(new NavigationRequest(targetSectionId, rowSelector));
 
-    // Route a section's NavigationRequested event to the named target: activate the
+    // Route a navigation to the named target: activate the
     // target tab, then defer the row-selection one dispatcher tick so the DataGrid has a
     // chance to swap views before we touch SelectedItem. The target's SelectRowMatching
     // queues the predicate when called before the rows materialise.

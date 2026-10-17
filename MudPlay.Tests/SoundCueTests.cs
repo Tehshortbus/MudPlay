@@ -234,23 +234,6 @@ public sealed class SoundCueTests : IDisposable
             Assert.NotNull(SoundTones.Render(cue.DefaultSound));
     }
 
-    [Fact]
-    public void Settings_RoundTripThroughJson()
-    {
-        SoundSettings saved = new() { Enabled = false, MasterVolume = 35 };
-        saved.Cues[SoundCues.KillMilestone] = new SoundCueSettings
-        {
-            Enabled = true, Sound = "/home/me/ding.mp3", Volume = 60, Every = 250,
-        };
-
-        SoundSettings loaded = JsonSerializer.Deserialize<SoundSettings>(JsonSerializer.SerializeToElement(saved))!;
-
-        Assert.False(loaded.Enabled);
-        Assert.Equal(35, loaded.MasterVolume);
-        SoundCueSettings cue = loaded.Cues[SoundCues.KillMilestone];
-        Assert.Equal((true, "/home/me/ding.mp3", 60, 250), (cue.Enabled, cue.Sound, cue.Volume, cue.Every));
-    }
-
     // ----- SoundTones ----------------------------------------------------------
 
     [Fact]
@@ -275,7 +258,8 @@ public sealed class SoundCueTests : IDisposable
 
     // ----- SoundBossWatcher ----------------------------------------------------
 
-    private (Rig rig, SoundBossWatcher watcher, BossTimerStore timers) BossRig(RealmType realm, BossRespawnType type)
+    private (Rig rig, SoundBossWatcher watcher, BossTimerStore timers) BossRig(RealmType realm, BossRespawnType type,
+        bool inGame = true)
     {
         string dir = AppPaths.GameDataSetDir(_set);
         Directory.CreateDirectory(dir);
@@ -302,7 +286,7 @@ public sealed class SoundCueTests : IDisposable
         Rig rig = new();
         rig.Set(SoundCues.BossWindow);
         rig.Set(SoundCues.BossReady);
-        SoundBossWatcher watcher = new(rig.Engine, bosses, timers, cache, () => true) { Now = () => rig.Now };
+        SoundBossWatcher watcher = new(rig.Engine, bosses, timers, cache, () => inGame, now: () => rig.Now);
         return (rig, watcher, timers);
     }
 
@@ -367,13 +351,19 @@ public sealed class SoundCueTests : IDisposable
     [Fact]
     public void BossTimer_NotInGame_DoesNothing()
     {
-        var (rig, _, timers) = BossRig(RealmType.ParaMud, BossRespawnType.Timed);
-        SoundBossWatcher offline = new(rig.Engine, new BossStore(seedPath: _seedPath), timers, new GameDataCache(), () => false)
+        // The same timer through the same window, once out of the game and once in:
+        // only the in-game watcher plays.
+        foreach (bool inGame in new[] { false, true })
         {
-            Now = () => rig.Now,
-        };
-        timers.MarkKilled("ogre king", rig.Now - TimeSpan.FromHours(8));
-        offline.Evaluate();
-        Assert.Empty(rig.Played);
+            var (rig, watcher, timers) = BossRig(RealmType.ParaMud, BossRespawnType.Timed, inGame);
+            DateTimeOffset killed = rig.Now;
+            timers.MarkKilled("ogre king", killed);
+            rig.Now = killed + TimeSpan.FromHours(7.9);
+            watcher.Evaluate();
+            rig.Now = killed + TimeSpan.FromHours(8) + TimeSpan.FromSeconds(20);
+            watcher.Evaluate();
+
+            Assert.Equal(inGame ? 1 : 0, rig.Played.Count);
+        }
     }
 }

@@ -132,7 +132,7 @@ public sealed class TrapDisarmManager : IDisposable
         _stats.Traps <= 0
         && AbilityNames.ClassOrRaceGrantsTraps(_gameData, _stats.Class, _stats.Race);
 
-    // Current state — exposed for tests + diagnostics.
+    // Current state, for diagnostics.
     public State CurrentState => _state;
 
     // Current request's direction, or null when idle.
@@ -161,8 +161,8 @@ public sealed class TrapDisarmManager : IDisposable
         return text.Length == 0 ? "(none)" : text;
     }
 
-    // scheduleDelay runs the reply watchdog on the router's thread; tests leave it
-    // null and drive replies synchronously.
+    // scheduleDelay runs the reply watchdog on the router's thread; null leaves
+    // the wait to the reply lines alone.
     public TrapDisarmManager(
         MessageRouter router, PlayerStats stats, GameDataCache gameData, LogService? log = null,
         Func<TimeSpan, Action, IDisposable>? scheduleDelay = null,
@@ -210,9 +210,6 @@ public sealed class TrapDisarmManager : IDisposable
 
     // The room the player stands in, which keys the remembered disarms.
     public void SetCurrentRoom(Func<RoomKey?> room) => _currentRoom = room;
-
-    // Test seam — bytes the manager asked to write to the wire.
-    internal List<byte[]> LastSentForTests => _wire.LastSentForTests;
 
     public void Dispose()
     {

@@ -3,12 +3,10 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Spot-check tests for <see cref="LookupEnums"/>: every formatter accepts
-/// a raw string from the game-data JSON, parses it, and returns the
-/// MMUD-Explorer-compatible label. Unknown codes surface as
-/// <c>Unknown(N)</c> so missing entries are visible rather than silent.
-/// </summary>
+// Spot-check tests for LookupEnums: every formatter accepts
+// a raw string from the game-data JSON, parses it, and returns the
+// game-data label. Unknown codes surface as
+// Unknown(N) so missing entries are visible rather than silent.
 public sealed class LookupEnumsTests
 {
     [Theory]
@@ -107,19 +105,4 @@ public sealed class LookupEnumsTests
     public void Format_NonNumeric_ReturnsInputUnchanged(string? raw)
         => Assert.Equal(raw, LookupEnums.FormatItemType(raw));
 
-    [Fact]
-    public void FormatAbilityCode_Zero_RendersAsEmpty()
-        => Assert.Equal(string.Empty, LookupEnums.FormatAbilityCode("0"));
-
-    [Fact]
-    public void FormatAbilityCode_Known_RendersName()
-        => Assert.Equal("AC", LookupEnums.FormatAbilityCode("2"));
-
-    [Fact]
-    public void FormatAbilityValue_Zero_RendersAsEmpty()
-        => Assert.Equal(string.Empty, LookupEnums.FormatAbilityValue("0"));
-
-    [Fact]
-    public void FormatAbilityValue_Nonzero_RendersUnchanged()
-        => Assert.Equal("15", LookupEnums.FormatAbilityValue("15"));
 }

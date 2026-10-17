@@ -27,8 +27,7 @@ namespace MudPlay.Game.Map;
 // (wired in AppServices).
 //
 // Inventory is reached through delegates rather than the concrete
-// InventoryManager / ItemNameStore so the post/resolve logic stays
-// unit-testable without a live line stream + game-data load. Each delegate has
+// InventoryManager / ItemNameStore. Each delegate has
 // exactly one production binding in AppServices.
 public sealed class PathItemDemandTracker
 {
@@ -49,8 +48,7 @@ public sealed class PathItemDemandTracker
     // (so the shop buys) but its en-route searching is governed by the master
     // auto-search toggle, not the forced-obtain flag: "auto-search is the driver of
     // `sea` while moving", so toggling it off stops the search and leaves the walk
-    // to the shop-buy fallback. Falls back to _isEnabled when not supplied
-    // (preserves the original coupling for tests that don't split them).
+    // to the shop-buy fallback. Falls back to _isEnabled when not supplied.
     private readonly Func<bool> _searchEnabled;
     // "Is a room search a plausible way to get this item?" — false for an item with
     // a deterministic source (a keyword give, a guaranteed summon), which the run

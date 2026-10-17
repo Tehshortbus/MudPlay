@@ -199,13 +199,8 @@ public sealed class GhSweepSortRegressionTests : IDisposable
             taken = true;
             _house.Floor[B].Remove("mace");
         });
-        // An empty floor prints no list; the wait for one runs out.
-        if (Sweep.Phase == GhSweepManager.SweepPhase.Sorting)
-        {
-            _house.FireDispatchSettleTimeout();
-            _house.PlayOn();
-        }
-
+        // The second read, the room display the look draws, lists nothing; the
+        // sweep settles on it without waiting anything out.
         Assert.Equal(GhSweepManager.SweepPhase.Idle, Sweep.Phase);
         Assert.Equal(1, _house.Sends("get 5 mace"));
         GhSweepItemFound left = Assert.Single(Sweep.LeftInPlace);

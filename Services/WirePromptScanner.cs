@@ -370,7 +370,8 @@ public sealed partial class WirePromptScanner
         PromptShapeUnmatched?.Invoke(tail.Length > MaxReportedPrompt ? tail[..MaxReportedPrompt] : tail);
     }
 
-    // Reset the scanner — drops carryover and any in-flight CSI escape.
+    // Drops carryover and any in-flight CSI escape. The client calls it when the
+    // link drops, so a row the old connection left half-sent starts nothing.
     public void Reset()
     {
         _buffer.Clear();

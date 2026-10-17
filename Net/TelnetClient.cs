@@ -69,8 +69,6 @@ public sealed class TelnetClient : IAsyncDisposable
     public DateTimeOffset LastDataReceived { get; private set; } = DateTimeOffset.MinValue;
 
 
-    public bool IsConnected => _tcp.Connected && _stream is not null;
-
     // Raised on the read-loop thread when display bytes arrive.
     public event Action<ReadOnlyMemory<byte>>? DataReceived;
     public event Action? Connected;

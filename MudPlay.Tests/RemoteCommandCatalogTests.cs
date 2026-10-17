@@ -4,13 +4,11 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Pins the bearfather wiki → PlayerRemoteControls mapping so a typo
-/// or a future "let's just change @hangup to AlterSettings" edit
-/// fails CI before it reaches a user's permissions grid. Sourced
-/// from https://kyau.net/wiki/MajorMUD:Remote_Commands — when the
-/// wiki adds a new command, add it here too.
-/// </summary>
+// Pins the bearfather wiki → PlayerRemoteControls mapping so a typo
+// or a future "let's just change @hangup to AlterSettings" edit
+// fails CI before it reaches a user's permissions grid. Sourced
+// from https://kyau.net/wiki/MajorMUD:Remote_Commands — when the
+// wiki adds a new command, add it here too.
 public sealed class RemoteCommandCatalogTests
 {
     // ===== Basic Commands =====
@@ -162,7 +160,7 @@ public sealed class RemoteCommandCatalogTests
         // @party is QueryHealthStatus tier so non-party callers with
         // that grant can use the no-args form as a status query. The
         // engine adds an @party-specific party-member fallback so the
-        // Phase 6 "base @party always allowed inside an active party"
+        // "base @party always allowed inside an active party"
         // rule still holds for members who lack an explicit grant.
         => Assert.Equal(PlayerRemoteControls.QueryHealthStatus, Lookup("@party"));
 
@@ -199,8 +197,8 @@ public sealed class RemoteCommandCatalogTests
         // @seen / @panic, and @home (mudop-only, won't-wire), and added
         // MudPlay-specific verbs (@help, @atkprio, @atkorder, @lair).
         // 56 is the current floor.
-        Assert.True(RemoteCommandCatalog.Count >= 56,
-            $"Catalog should hold at least 56 entries; has {RemoteCommandCatalog.Count}.");
+        Assert.True(RemoteCommandCatalog.Map.Count >= 56,
+            $"Catalog should hold at least 56 entries; has {RemoteCommandCatalog.Map.Count}.");
     }
 
     // ===== Per-command help (surfaced by @help <command>) =====

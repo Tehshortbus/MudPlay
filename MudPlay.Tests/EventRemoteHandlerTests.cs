@@ -24,6 +24,8 @@ public sealed class EventRemoteHandlerTests : IDisposable
     private const string Stranger = "Stranger";
 
     private readonly string _root;
+    private readonly string _loopSet = "test-remote-events-" + Path.GetRandomFileName();
+    // The BBS a test saves its character under.
     private readonly string _bbs = "test-remote-events-" + Path.GetRandomFileName();
 
     public EventRemoteHandlerTests()
@@ -36,6 +38,8 @@ public sealed class EventRemoteHandlerTests : IDisposable
     {
         try { Directory.Delete(_root, recursive: true); }
         catch { /* best-effort */ }
+        try { Directory.Delete(AppPaths.GameDataSetDir(_loopSet), recursive: true); }
+        catch { /* best-effort */ }
         try { Directory.Delete(AppPaths.BbsFolder(_bbs), recursive: true); }
         catch { /* best-effort */ }
     }
@@ -44,20 +48,24 @@ public sealed class EventRemoteHandlerTests : IDisposable
     {
         public required Harness H { get; init; }
         public required RemoteCommandManager Engine { get; init; }
+        // The router the engine's chat lines arrive through.
+        public required MessageRouter Router { get; init; }
+        // What Engine put on the wire, through the sender the client binds.
+        public List<byte[]> Wire { get; } = new();
         public required EventRemoteHandler Handler { get; init; }
         public bool MasterSwitchOff { get; set; }
 
         public EventManager Events => H.Events;
 
-        public List<string> Sent => Engine.LastSentForTests.Select(b => Encoding.Latin1.GetString(b)).ToList();
+        public List<string> Sent => Wire.Select(b => Encoding.Latin1.GetString(b)).ToList();
 
-        public void Tell(string sender, string message) => Engine.DispatchForTests(
-            new ChatLogEntry(Now, ChatChannel.TelepathIncoming, sender, message, $"{sender} telepaths: {message}"));
+        public void Tell(string sender, string message) =>
+            ChatLines.Hear(Router, ChatChannel.TelepathIncoming, sender, message);
 
         // One command from the trusted player, and the answers to it.
         public List<string> Ask(string message)
         {
-            Engine.LastSentForTests.Clear();
+            Wire.Clear();
             Tell(Friend, message);
             return Sent;
         }
@@ -73,10 +81,10 @@ public sealed class EventRemoteHandlerTests : IDisposable
     // Friend holds Alter settings; Stranger holds everything but.
     private Rig Build()
     {
-        Harness h = Harness.Create(_root, _bbs);
+        Harness h = Harness.Create(_root, _loopSet);
         MessageRouter router = new();
         DefaultPatterns.Seed(router);
-        PlayerDatabase players = new();
+        PlayerDatabase players = new(new ProfileService(), () => null);
         players.RecordObservation(Friend, null, null, null, null, null, null, Now);
         players.EditCustomization(Friend, new PlayerCustomization(RemoteControls: PlayerRemoteControls.AlterSettings));
         players.RecordObservation(Stranger, null, null, null, null, null, null, Now);
@@ -85,7 +93,8 @@ public sealed class EventRemoteHandlerTests : IDisposable
         RemoteCommandManager engine = new(new ChatRouter(router), new PartyState(), players);
         Rig? rig = null;
         engine.BlockedByMasterSwitch = _ => rig!.MasterSwitchOff;
-        rig = new Rig { H = h, Engine = engine, Handler = new EventRemoteHandler(engine, h.Events, h.Log) };
+        rig = new Rig { H = h, Engine = engine, Router = router, Handler = new EventRemoteHandler(engine, h.Events, h.Log) };
+        engine.SetWireSender(rig.Wire.Add);
         return rig;
     }
 
@@ -617,8 +626,8 @@ public sealed class EventRemoteHandlerTests : IDisposable
         using Rig r = Build();
         r.Events.Add(BankTrip("Bank run"));
 
-        r.Engine.DispatchForTests(new ChatLogEntry(Now, ChatChannel.Gangpath, Friend, "@events", $"{Friend} gangpaths: @events"));
-        r.Engine.DispatchForTests(new ChatLogEntry(Now, ChatChannel.Local, Friend, "@event bank run", $"{Friend} says: @event bank run"));
+        ChatLines.Hear(r.Router, ChatChannel.Gangpath, Friend, "@events");
+        ChatLines.Hear(r.Router, ChatChannel.Local, Friend, "@event bank run");
 
         Assert.Equal("bg {events: 1 Bank run on}\r", r.Sent[0]);
         Assert.StartsWith($">{Friend} {{event 'Bank run' is on", r.Sent[1]);

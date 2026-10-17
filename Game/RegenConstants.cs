@@ -1,8 +1,7 @@
 namespace MudPlay.Game;
 
-// Seed values for HP / MA regen tick intervals: the estimate a regen cycle starts
-// from until live observation refines the average. These are the
-// Stock engine's own tick intervals (30 s natural / 21 s rest / 15 s meditate —
+// Seed values for HP / MA regen tick intervals, the cycle lengths a regen cycle
+// starts with. These are the Stock engine's own tick intervals (30 s natural / 21 s rest / 15 s meditate —
 // GAME_MECHANICS "Rest and meditate tick timing"); ParaMud runs its own cadence, see
 // RealmRegenProfile.
 public static class RegenConstants
@@ -20,9 +19,4 @@ public static class RegenConstants
     // ignore HP / MA increases — the conservative artifact filter. Hard-coded
     // for now; Settings.Health may surface a knob.
     public static readonly TimeSpan ArtifactGraceWindow    = TimeSpan.FromSeconds(3);
-
-    // EWMA decay parameter — fraction of weight a fresh sample carries
-    // (versus the running average). 0.2 = recent samples count 20 % per
-    // observation. Empirically reasonable for "responsive but stable".
-    public const double EwmaAlpha = 0.2;
 }

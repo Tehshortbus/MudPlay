@@ -77,19 +77,6 @@ public sealed partial class LookParser : IDisposable
 
     public void Dispose() => _lines.LineEmitted -= OnLineEmitted;
 
-    // Test hook — drive plain text lines without spinning up a real
-    // LineExtractor. Each line is fed as a non-prompt EmittedLine; pass
-    // isPromptLine: true via FeedPromptLine to end the block.
-    internal void FeedTestLines(IEnumerable<string> lines, DateTime? nowUtc = null)
-    {
-        DateTime when = nowUtc ?? DateTime.UtcNow;
-        foreach (string text in lines)
-            HandleLine(text, isPromptLine: false, when);
-    }
-
-    internal void FeedPromptLine(string text, DateTime? nowUtc = null)
-        => HandleLine(text, isPromptLine: true, nowUtc ?? DateTime.UtcNow);
-
     private void OnLineEmitted(LineExtractor.EmittedLine line)
     {
         HandleLine(line.Text, line.IsPromptLine, line.Timestamp.UtcDateTime);

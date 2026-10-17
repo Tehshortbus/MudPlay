@@ -10,19 +10,17 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// PR 9.0b sub-B — <see cref="RoomEntityClassifier"/> Also-Here parsing,
-/// prefix-strip resolution against MonsterMessageStore, player lookup
-/// against PlayerDatabase, and the Unknown-entity Warn path with
-/// raw-line Context payload.
-/// </summary>
+// RoomEntityClassifier Also-Here parsing,
+// prefix-strip resolution against MonsterMessageStore, player lookup
+// against PlayerDatabase, and the Unknown-entity Warn path with
+// raw-line Context payload.
 public sealed class RoomEntityClassifierTests
 {
     private sealed class Harness : IDisposable
     {
         public MessageRouter Router { get; }
         public MonsterMessageStore Monsters { get; } = new();
-        public PlayerDatabase Players { get; } = new();
+        public PlayerDatabase Players { get; } = new(new ProfileService(), () => null);
         public LogService Log { get; } = new();
         public FlavorPrefixStore Prefixes { get; } = new();
         public RoomEntityClassifier Classifier { get; }
@@ -394,7 +392,7 @@ public sealed class RoomEntityClassifierTests
         MessageRouter router = new();
         DefaultPatterns.Seed(router);
         MonsterMessageStore monsters = new();
-        PlayerDatabase players = new();
+        PlayerDatabase players = new(new ProfileService(), () => null);
 
         using RoomEntityClassifier classifier = new(router, monsters, players, log: null);
 
@@ -622,9 +620,8 @@ public sealed class RoomEntityClassifierTests
     public void MonsterBeforePlayer_WhenBothNamesCollide()
     {
         // Edge case: a player and a monster happen to share a name.
-        // The classifier checks Monsters first (the design assumes
-        // shopkeepers / quest-givers can collide with real names, and
-        // the Phase 9 plan resolves monster first).
+        // The classifier checks Monsters first: shopkeepers / quest-givers
+        // can collide with real names, and monster wins.
         using Harness h = new();
         h.AddMonster(99, "Bob");
         h.AddPlayer("Bob");
@@ -780,9 +777,8 @@ public sealed class RoomEntityClassifierTests
     [Fact]
     public void RemoveDepartedEntity_LeavesPlayer_Untouched()
     {
-        // A departing player holds no combat gate, so a player's entry in Current is
-        // harmless — RemoveDepartedEntity is monster-kind only and must not drop the
-        // player, which would spuriously re-fire the observation.
+        // RemoveDepartedEntity is monster-kind only: a departed player is taken out
+        // by RemoveDepartedPlayer, so this call leaves Bob and fires nothing.
         using Harness h = new();
         h.AddPlayer("Bob");
         h.Feed("Also here: Bob.");
@@ -857,12 +853,10 @@ public sealed class RoomEntityClassifierTests
 
     // ----- Multi-line wrap (80-col server boundary) ------------------
 
-    /// <summary>
-    /// MajorMUD wraps occupant lists at the 80-col boundary mid-token,
-    /// so an Also Here line can span N rows until a period closes it.
-    /// The classifier buffers continuation rows via the LineExtractor
-    /// subscription and parses the joined text on close.
-    /// </summary>
+    // MajorMUD wraps occupant lists at the 80-col boundary mid-token,
+    // so an Also Here line can span N rows until a period closes it.
+    // The classifier buffers continuation rows via the LineExtractor
+    // subscription and parses the joined text on close.
     [Fact]
     public void Wrap_AcrossTwoLines_ParsesAllOccupants()
     {
@@ -874,12 +868,12 @@ public sealed class RoomEntityClassifierTests
         h.AddMonster(5, "kobold thief");
 
         // Attach the extractor so the wrap-buffer path is live.
-        Terminal.LineExtractor lines = new(new MudPlay.Terminal.TerminalEmulator(80, 24));
-        h.Classifier.AttachLineExtractor(lines);
+        ServerFeed feed = new();
+        h.Classifier.AttachLineExtractor(feed.Lines);
 
         // Feed wrapped rows in the order the server produces them.
-        FeedLine(lines, "Also here: angry giant rat, nasty carrion beast, giant rat, acid slime, short");
-        FeedLine(lines, "kobold thief.");
+        feed.Line("Also here: angry giant rat, nasty carrion beast, giant rat, acid slime, short");
+        feed.Line("kobold thief.");
 
         Assert.Single(h.Observations);
         RoomEntitiesObservation obs = h.Observations[0];
@@ -899,12 +893,12 @@ public sealed class RoomEntityClassifierTests
         h.AddMonster(2, "acid slime");
         h.AddMonster(3, "kobold thief");
 
-        Terminal.LineExtractor lines = new(new MudPlay.Terminal.TerminalEmulator(80, 24));
-        h.Classifier.AttachLineExtractor(lines);
+        ServerFeed feed = new();
+        h.Classifier.AttachLineExtractor(feed.Lines);
 
-        FeedLine(lines, "Also here: giant rat,");
-        FeedLine(lines, "acid slime,");
-        FeedLine(lines, "kobold thief.");
+        feed.Line("Also here: giant rat,");
+        feed.Line("acid slime,");
+        feed.Line("kobold thief.");
 
         Assert.Single(h.Observations);
         Assert.Equal(3, h.Observations[0].Entities.Count);
@@ -927,7 +921,7 @@ public sealed class RoomEntityClassifierTests
         private readonly string _root;
         public MessageRouter Router { get; }
         public MonsterMessageStore Monsters { get; } = new();
-        public PlayerDatabase Players { get; } = new();
+        public PlayerDatabase Players { get; } = new(new ProfileService(), () => null);
         public RoomTracker Tracker { get; }
         public RoomEntityClassifier Classifier { get; }
         public List<RoomEntitiesObservation> Observations { get; } = new();
@@ -1445,20 +1439,4 @@ public sealed class RoomEntityClassifierTests
         Assert.Equal("giant rat", h.Classifier.Current!.Value.Entities[0].ResolvedName);
     }
 
-    private static void FeedLine(Terminal.LineExtractor lines, string text)
-    {
-        // The classifier's LineEmitted subscription is what we want
-        // to exercise; reflect into the private event invoke since
-        // LineExtractor.LineEmitted isn't a public test hook.
-        System.Reflection.FieldInfo? field = typeof(Terminal.LineExtractor)
-            .GetField("LineEmitted",
-                System.Reflection.BindingFlags.Instance |
-                System.Reflection.BindingFlags.NonPublic);
-        if (field?.GetValue(lines) is Action<Terminal.LineExtractor.EmittedLine> handler)
-        {
-            handler(new Terminal.LineExtractor.EmittedLine(
-                text, Array.Empty<CellAttributes>(),
-                DateTimeOffset.UtcNow, IsPromptLine: false));
-        }
-    }
 }

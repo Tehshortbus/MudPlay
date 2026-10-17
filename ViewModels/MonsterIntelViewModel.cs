@@ -52,7 +52,7 @@ public sealed partial class MonsterIntelViewModel : ObservableObject, IDisposabl
     private string _questBonusSig = " ";   // impossible initial sig → first read resolves
 
     // Live read of the character's configured buff plan (Profile.Current.PartyBuffs)
-    // so the projected AC / DR assumes those buffs are up. Null in tests.
+    // so the projected AC / DR assumes those buffs are up.
     private readonly System.Func<Models.Profile.BuffSettings?>? _buffProvider;
     private readonly ItemMagicIndex? _itemMagic;
     private readonly MonsterObservationTracker? _observations;
@@ -802,11 +802,11 @@ public sealed partial class MonsterIntelViewModel : ObservableObject, IDisposabl
         foreach (AttackPickRow r in AttackOptions) r.PropertyChanged -= OnAttackOptionChanged;
         AttackOptions.Clear();
 
-        AttackOptions.Add(NewOption(BestKey, "Fastest of all my attacks", isSpell: false, basisOnly: true));
+        AttackOptions.Add(NewOption(BestKey, "Fastest of all my attacks", basisOnly: true));
         foreach (MudAttackType t in _usableMelee)
-            AttackOptions.Add(NewOption(MeleeKey(t), MeleeLabel(t), isSpell: false));
+            AttackOptions.Add(NewOption(MeleeKey(t), MeleeLabel(t)));
         foreach (PlayerAttackSpell s in _ownedAttackSpells)
-            AttackOptions.Add(NewOption(SpellKey(s.Short), s.Name, isSpell: true));
+            AttackOptions.Add(NewOption(SpellKey(s.Short), s.Name));
 
         if (!AttackOptions.Any(o => o.IsRoundsAttack))
         {
@@ -816,9 +816,9 @@ public sealed partial class MonsterIntelViewModel : ObservableObject, IDisposabl
         _buildingOptions = false;
     }
 
-    private AttackPickRow NewOption(string key, string label, bool isSpell, bool basisOnly = false)
+    private AttackPickRow NewOption(string key, string label, bool basisOnly = false)
     {
-        var row = new AttackPickRow(key, label, isSpell,
+        var row = new AttackPickRow(key, label,
             shown: !_hiddenAttackKeys.Contains(key), isRoundsAttack: key == _roundsAttackKey,
             basisOnly: basisOnly);
         row.PropertyChanged += OnAttackOptionChanged;

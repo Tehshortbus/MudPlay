@@ -21,7 +21,7 @@ public sealed class StashRoomManagerTests
     private sealed class Harness : IDisposable
     {
         public LogService Log { get; } = new();
-        public ProfileService Profile { get; } = new();
+        public ProfileService Profile { get; } = TestProfiles.Service();
         public StashRoomManager Stash { get; }
         public List<byte[]> Sent { get; } = new();
         public CashSettings CashSettings { get; set; } = new();
@@ -35,12 +35,11 @@ public sealed class StashRoomManagerTests
         public HashSet<string> AutoStashItems { get; } = new();
         // Min. to keep for a flagged item; absent = keep none.
         public Dictionary<string, int> KeepCounts { get; } = new();
-        public List<StashRoomManager.StashDispatch> Executed { get; } = new();
         public bool Paradigm { get; set; }
 
         public Harness()
         {
-            Profile.LoadBlank();
+            Profile.LoadDefaultProfile();
             Stash = new StashRoomManager(Profile,
                 readCash: () => CashSettings,
                 getSnapshot: () => Snapshot,
@@ -55,7 +54,6 @@ public sealed class StashRoomManagerTests
                 log: Log,
                 isParadigm: () => Paradigm);
             Stash.SetWireSender(b => Sent.Add(b));
-            Stash.StashExecuted += d => Executed.Add(d);
         }
 
         public void MarkRoomAsStash(int map, int room)
@@ -160,7 +158,6 @@ public sealed class StashRoomManagerTests
         Assert.Equal("hide 50 silver noble", lines[0]);
         Assert.Equal("hide 250 gold crown", lines[1]);
         Assert.Equal("hide 12 platinum piece", lines[2]);
-        Assert.Equal(3, h.Executed[0].Currencies.Count);
     }
 
     [Fact]
@@ -215,8 +212,6 @@ public sealed class StashRoomManagerTests
         h.Stash.ExecuteStash(new RoomKey(1, 42));
 
         Assert.Equal(new[] { "hide a torch" }, h.SentLines().ToList());   // item only, no coin
-        Assert.Empty(h.Executed[0].Currencies);
-        Assert.Equal(new[] { "a torch" }, h.Executed[0].Items);
     }
 
     [Fact]
@@ -272,7 +267,6 @@ public sealed class StashRoomManagerTests
         h.Stash.ExecuteStash(new RoomKey(1, 42));
 
         Assert.Equal("hide a torch", Assert.Single(h.SentLines()));
-        Assert.Equal(new[] { "a torch" }, h.Executed[0].Items);
     }
 
     [Fact]
@@ -303,8 +297,6 @@ public sealed class StashRoomManagerTests
         Assert.Contains("hide 500 gold crown", lines);
         Assert.Contains("hide a torch", lines);
         Assert.Contains("hide a rusty dagger", lines);
-        Assert.Single(h.Executed[0].Currencies);
-        Assert.Equal(2, h.Executed[0].Items.Count);
     }
 
     [Fact]
@@ -320,7 +312,6 @@ public sealed class StashRoomManagerTests
         h.Stash.ExecuteStash(new RoomKey(1, 42));
 
         Assert.Equal(3, h.Sent.Count);
-        Assert.Equal(3, h.Executed[0].Items.Count);
     }
 
     [Fact]
@@ -334,7 +325,6 @@ public sealed class StashRoomManagerTests
         h.Stash.ExecuteStash(new RoomKey(1, 42));
 
         Assert.Equal("hide 3 a torch", Assert.Single(h.SentLines()));
-        Assert.Equal(3, h.Executed[0].Items.Count);   // dispatched count preserved
     }
 
     // Paradigm's carried list shows a stack as one entry with its count in front.
@@ -349,7 +339,6 @@ public sealed class StashRoomManagerTests
         h.Stash.ExecuteStash(new RoomKey(1, 42));
 
         Assert.Equal("hide 9 green dragon hide", Assert.Single(h.SentLines()));
-        Assert.Equal(9, h.Executed[0].Items.Count);
     }
 
     // A flagged key is on the key ring, not in the pack, stacked the same way.
@@ -368,7 +357,6 @@ public sealed class StashRoomManagerTests
         h.Stash.ExecuteStash(new RoomKey(1, 42));
 
         Assert.Equal(new[] { "hide 2 black star key", "hide green metal key" }, h.SentLines().ToArray());
-        Assert.Equal(3, h.Executed[0].Items.Count);
     }
 
     // Min. to keep stays in hand; only the copies above it are stashed.
@@ -387,7 +375,6 @@ public sealed class StashRoomManagerTests
         h.Stash.ExecuteStash(new RoomKey(1, 42));
 
         Assert.Equal(new[] { "hide 5 green dragon hide", "hide torch" }, h.SentLines().ToArray());
-        Assert.Equal(6, h.Executed[0].Items.Count);
     }
 
     // A number that is part of the item's own name isn't a stack count.
@@ -402,23 +389,6 @@ public sealed class StashRoomManagerTests
         h.Stash.ExecuteStash(new RoomKey(1, 42));
 
         Assert.Equal("hide 4 10 foot pole", Assert.Single(h.SentLines()));
-    }
-
-    [Fact]
-    public void ItemsOnly_NoExcessCash_StillFiresEvent()
-    {
-        // No coin above keep, but a flagged item present — the event
-        // fires so transaction history records the item stash.
-        using Harness h = new();
-        h.MarkRoomAsStash(1, 42);
-        h.Snapshot = Coins(carried: new[] { "a torch" });
-        h.AutoStashItems.Add("a torch");
-
-        h.Stash.ExecuteStash(new RoomKey(1, 42));
-
-        Assert.Single(h.Executed);
-        Assert.Empty(h.Executed[0].Currencies);
-        Assert.Equal(new[] { "a torch" }, h.Executed[0].Items);
     }
 
     [Fact]

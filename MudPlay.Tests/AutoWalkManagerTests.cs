@@ -8,11 +8,9 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// PR 7.7 walker coverage — single-shot walk happy path, retry on
-/// blocked move, abort on desync, pause/resume via coordinator,
-/// destination-equals-source short-circuit, and superseding starts.
-/// </summary>
+// Walker coverage — single-shot walk happy path, retry on
+// blocked move, abort on desync, pause/resume via coordinator,
+// destination-equals-source short-circuit, and superseding starts.
 public sealed class AutoWalkManagerTests : IDisposable
 {
     private readonly string _root;
@@ -32,7 +30,6 @@ public sealed class AutoWalkManagerTests : IDisposable
     // ----- fixtures --------------------------------------------------
     //
     // 1/1 ──N── 1/2 ──N── 1/3
-    //
     private const string LineGraphJson = """
         [
           { "Map Number": 1, "Room Number": 1, "Name": "A",
@@ -112,6 +109,10 @@ public sealed class AutoWalkManagerTests : IDisposable
         ]
         """;
 
+    // Stall watchdogs armed and still to run.
+    private static int Watchdogs(Harness h) =>
+        h.WalkTimers.PendingDelays.Count(d => d == AutoWalkManager.StallWatchdogInterval);
+
     private sealed class Harness : IDisposable
     {
         public required RoomGraphManager Graph { get; init; }
@@ -123,6 +124,10 @@ public sealed class AutoWalkManagerTests : IDisposable
         public EngineRecoveryGate? Gate { get; init; }
         public List<byte[]> Sent { get; } = new();
         public List<WalkEvent> Events { get; } = new();
+        // The game's prompts, as the walker reads them.
+        public required WirePromptScanner Prompt { get; init; }
+        // The walker's timers: the stall watchdog, the voyage and the other waits.
+        public ManualTimers WalkTimers { get; } = new();
         public void Dispose() { /* nothing to dispose */ }
     }
 
@@ -146,7 +151,8 @@ public sealed class AutoWalkManagerTests : IDisposable
         RoomTracker tracker = new(graph);
         MovementCoordinator coord = new();
         EngineRecoveryGate? gate = wireRecovery ? new EngineRecoveryGate(graph, tracker) : null;
-        AutoWalkManager walker = new(graph, bfs, tracker, coord, recovery: gate);
+        WirePromptScanner prompt = new();
+        AutoWalkManager walker = new(graph, bfs, tracker, coord, promptScanner: prompt, recovery: gate);
         Harness h = new()
         {
             Graph = graph,
@@ -155,7 +161,9 @@ public sealed class AutoWalkManagerTests : IDisposable
             Coordinator = coord,
             Walker = walker,
             Gate = gate,
+            Prompt = prompt,
         };
+        walker.SetVoyageScheduler(h.WalkTimers.Arm);
         walker.SetWireSender(b => h.Sent.Add(b));
         walker.Event += evt => h.Events.Add(evt);
         return h;
@@ -311,7 +319,7 @@ public sealed class AutoWalkManagerTests : IDisposable
 
         // No confirming observation ever arrives — the move's landing went unrecognised.
         Assert.Equal(RoomConfidence.Pending, h.Tracker.State.Confidence);
-        h.Walker.FireStallWatchdogForTests();
+        h.WalkTimers.RunDue(AutoWalkManager.StallWatchdogInterval);
 
         Assert.NotNull(resyncReason);
     }
@@ -336,7 +344,7 @@ public sealed class AutoWalkManagerTests : IDisposable
             new HashSet<Direction> { Direction.S }));
         Assert.Equal(WalkState.Idle, h.Walker.State);
 
-        h.Walker.FireStallWatchdogForTests();
+        h.WalkTimers.RunDue(AutoWalkManager.StallWatchdogInterval);
 
         Assert.False(resynced);
     }
@@ -641,22 +649,6 @@ public sealed class AutoWalkManagerTests : IDisposable
     }
 
     [Fact]
-    public void WalkTo_LoudSupersede_RaisesStopped()
-    {
-        // The contrast: a genuine external walk (default supersede) still Stops
-        // loudly, so a driving reroute knows the user / another engine took over.
-        Harness h = NewHarness();
-        h.Tracker.SetLocated(new RoomKey(1, 1));
-        h.Walker.WalkTo(new RoomKey(1, 3));
-        Assert.Equal(WalkState.Walking, h.Walker.State);
-        h.Events.Clear();
-
-        h.Walker.WalkTo(new RoomKey(1, 2));
-
-        Assert.Contains(h.Events, e => e.Kind == WalkEventKind.Stopped);
-    }
-
-    [Fact]
     public void Walker_TrackerEntersLostMidStep_FailsCleanly()
     {
         // Lost clears the tracker's CurrentRoom — re-planning isn't
@@ -770,7 +762,7 @@ public sealed class AutoWalkManagerTests : IDisposable
             Assert.Equal(sentBefore, h.Sent.Count);
             Assert.False(health.IsFleeing);
             // No flee took the walk over: lifting the pause sends its next step.
-            h.Walker.Resume();
+            h.Coordinator.ClearGate(MovementCoordinator.UserGate);
             Assert.Equal(WalkState.Walking, h.Walker.State);
             Assert.Equal(sentBefore + 1, h.Sent.Count);
             return;
@@ -1236,21 +1228,19 @@ public sealed class AutoWalkManagerTests : IDisposable
     {
         Harness h = HeldSuspectAtAlbaRiver(out LocateAsks rm, out Action fightEnds);
         rm.Available = false;
-        int watchdogArms = 0;
-        h.Walker.SetVoyageScheduler((_, _) => { watchdogArms++; return new NoopDisposable(); });
 
         fightEnds();
 
         Assert.Equal(new[] { "nw", "nw" }, SentText(h));
-        Assert.Equal(1, watchdogArms);
+        Assert.Equal(1, Watchdogs(h));
         Assert.DoesNotContain(h.Events, e => e.Kind == WalkEventKind.Retrying);
 
         // The game refuses the move; from Suspect that changes nothing.
         h.Tracker.NoteMoveBlocked();
-        h.Walker.FireStallWatchdogForTests();
-        Assert.Equal(2, watchdogArms);
-        h.Walker.FireStallWatchdogForTests();
-        Assert.Equal(2, watchdogArms);
+        h.WalkTimers.RunDue(AutoWalkManager.StallWatchdogInterval);
+        Assert.Equal(1, Watchdogs(h));                      // one more wait
+        h.WalkTimers.RunDue(AutoWalkManager.StallWatchdogInterval);
+        Assert.Equal(0, Watchdogs(h));                      // and then it lets be
 
         Assert.Equal(WalkState.Walking, h.Walker.State);
         Assert.Equal(new[] { "nw", "nw" }, SentText(h));
@@ -1273,8 +1263,8 @@ public sealed class AutoWalkManagerTests : IDisposable
         Assert.Equal(RoomConfidence.Suspect, h.Tracker.State.Confidence);
 
         rm.Available = true;
-        h.Walker.FireStallWatchdogForTests();
-        h.Walker.FireStallWatchdogForTests();
+        h.WalkTimers.RunDue(AutoWalkManager.StallWatchdogInterval);
+        h.WalkTimers.RunDue(AutoWalkManager.StallWatchdogInterval);
 
         Assert.Single(rm.Asked);
         Assert.Equal(new[] { "nw", "nw" }, SentText(h));
@@ -1296,7 +1286,7 @@ public sealed class AutoWalkManagerTests : IDisposable
         Assert.Equal(new[] { "nw", "nw" }, SentText(h));
 
         h.Tracker.NoteMoveBlocked();
-        h.Walker.FireStallWatchdogForTests();
+        h.WalkTimers.RunDue(AutoWalkManager.StallWatchdogInterval);
 
         Assert.Equal(2, rm.Asked.Count);
         rm.Answer(h, new RoomKey(14, 3946));
@@ -1359,7 +1349,7 @@ public sealed class AutoWalkManagerTests : IDisposable
         cache.SwitchSet("alpha");
         MessageRouter router = new();
         MudPlay.Services.Patterns.DefaultPatterns.Seed(router);
-        using ParadigmPositionResolver resolver = new(router, h.Tracker, h.Gate!, cache, log: null, useTimer: false);
+        using ParadigmPositionResolver resolver = new(router, h.Tracker, h.Gate!, cache, log: null, schedule: new ManualTimers().Arm);
         List<byte[]> rmSent = new();
         resolver.SetWireSender(rmSent.Add);
         h.Tracker.SetLocated(new RoomKey(14, 3799));
@@ -1368,7 +1358,7 @@ public sealed class AutoWalkManagerTests : IDisposable
         h.Walker.WalkTo(new RoomKey(14, 3803));      // W, W
         Assert.Equal(new[] { "w" }, SentText(h));
 
-        resolver.FeedLocationForTests(14, 3799);
+        new ServerFeed(router).Line("Location: 14,3799");
 
         Assert.Equal(new[] { "w" }, SentText(h));
         Assert.Equal(RoomConfidence.Pending, h.Tracker.State.Confidence);
@@ -1574,6 +1564,9 @@ public sealed class AutoWalkManagerTests : IDisposable
         Assert.Contains(h.Events, e => e.Kind == WalkEventKind.Stopped);
     }
 
+    // A genuine external walk (the default supersede) Stops loudly, so a driving
+    // reroute knows the user / another engine took over; the contrast is
+    // WalkTo_SupersedeSilently_RedirectsWithoutStopped.
     [Fact]
     public void WalkTo_DuringActiveWalk_SupersedesPrior()
     {
@@ -1724,7 +1717,7 @@ public sealed class AutoWalkManagerTests : IDisposable
         public bool IsAvoided(RoomKey key) => Avoided.Contains(key);
     }
 
-    // ----- door-aware walks (PR 7.7b) -------------------------------
+    // ----- door-aware walks -----------------------------------------
 
     private const string DoorGraphJson = """
         [
@@ -2574,7 +2567,7 @@ public sealed class AutoWalkManagerTests : IDisposable
 
         // Step 2: the fire-and-forget prerequisite command.
         Assert.Equal("pull lever\r", Encoding.Latin1.GetString(h.Sent[^1]));
-        h.Walker.FirePromptForTests();
+        h.Prompt.Append(Encoding.Latin1.GetBytes("[HP=100]: "));
 
         // Step 3: w → 1/2 (walk back to the host room).
         Assert.Equal("w\r", Encoding.Latin1.GetString(h.Sent[^1]));
@@ -2632,7 +2625,7 @@ public sealed class AutoWalkManagerTests : IDisposable
         Assert.Empty(h.Sent);
     }
 
-    // ----- trapped exits (PR 7.22) -----------------------------------
+    // ----- trapped exits ---------------------------------------------
 
     private const string TrapGraphJson = """
         [
@@ -2761,24 +2754,10 @@ public sealed class AutoWalkManagerTests : IDisposable
         Assert.Empty(h.Sent);
     }
 
-    [Fact]
-    public void Walker_TrappedExit_WithoutEnqueuerBound_SendsMoveDirectly()
-    {
-        // No trap enqueuer wired — walker falls back to the regular
-        // path. This is the "until production wires TrapDisarmManager"
-        // safety net.
-        Harness h = NewHarness(TrapGraphJson);
-        h.Tracker.SetLocated(new RoomKey(1, 1));
-        h.Walker.WalkTo(new RoomKey(1, 2));
-
-        Assert.Single(h.Sent);
-        Assert.Equal("n\r", Encoding.Latin1.GetString(h.Sent[0]));
-    }
-
     // ----- unbound wire sender --------------------------------------
 
     [Fact]
-    public void NoWireSender_RecordsButSuppressesSend()
+    public void NoWireSender_SuppressesTheSendAndLogsIt()
     {
         Directory.CreateDirectory(Path.Combine(_root, "alpha"));
         File.WriteAllText(Path.Combine(_root, "alpha", "Rooms.json"), LineGraphJson);
@@ -2789,14 +2768,14 @@ public sealed class AutoWalkManagerTests : IDisposable
         BfsMapper bfs = new(graph);
         RoomTracker tracker = new(graph);
         MovementCoordinator coord = new();
-        AutoWalkManager walker = new(graph, bfs, tracker, coord);
+        LogService log = new();
+        AutoWalkManager walker = new(graph, bfs, tracker, coord, log: log);
 
         tracker.SetLocated(new RoomKey(1, 1));
         walker.WalkTo(new RoomKey(1, 3));
 
-        // LastSentForTests captures bytes even with no wire bound, so
-        // tests can validate the wire payload without a network.
-        Assert.Single(walker.LastSentForTests);
+        Assert.Contains(log.Snapshot(), e => e.Severity == LogSeverity.Warn
+            && e.Source == "Walker" && e.Message.StartsWith("wire sender not bound; suppressed", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -2914,6 +2893,9 @@ public sealed class AutoWalkManagerTests : IDisposable
         ]
         """;
 
+    // What the hazard-line walker put on the wire.
+    private readonly List<byte[]> _hazardWalkerSent = new();
+
     private (AutoWalkManager Walker, List<WalkEvent> Events, MovementFilter Filter) NewHazardLineWalker()
     {
         string set = Path.Combine(_root, "alpha");
@@ -2937,7 +2919,7 @@ public sealed class AutoWalkManagerTests : IDisposable
             RoomEntrySpellProbe = key => graph.GetRoom(key)?.Spell ?? 0,
         };
         AutoWalkManager walker = new(graph, bfs, tracker, new MovementCoordinator(), filter);
-        walker.SetWireSender(_ => { });
+        walker.SetWireSender(_hazardWalkerSent.Add);
         var events = new List<WalkEvent>();
         walker.Event += events.Add;
         tracker.SetLocated(new RoomKey(1, 1));
@@ -2954,7 +2936,7 @@ public sealed class AutoWalkManagerTests : IDisposable
         Assert.False(walker.WalkTo(new RoomKey(1, 3), planThroughAcquirableGates: true));
 
         Assert.Contains(events, e => e.Kind == WalkEventKind.Failed);
-        Assert.Empty(walker.LastSentForTests);
+        Assert.Empty(_hazardWalkerSent);
     }
 
     [Fact]
@@ -3101,42 +3083,6 @@ public sealed class AutoWalkManagerTests : IDisposable
     // ----- boss "stop before" ---------------------------------------
 
     [Fact]
-    public void WalkTo_StopBeforeBossRoom_HaltsOneRoomShort()
-    {
-        // 1/1 → 1/2 → 1/3, with 1/3 flagged "stop before". A walk to 1/3 must be
-        // re-pointed to 1/2 and finish there without ever stepping into 1/3.
-        Harness h = NewHarness();
-        h.Walker.SetBossStopRooms(() => new HashSet<RoomKey> { new(1, 3) });
-        h.Tracker.SetLocated(new RoomKey(1, 1));
-
-        h.Walker.WalkTo(new RoomKey(1, 3));
-        Assert.Single(h.Sent);
-        Assert.Equal("n\r", Encoding.Latin1.GetString(h.Sent[0]));   // first hop toward 1/2
-
-        // Arrive at 1/2 — the walk finishes here; no second N into 1/3.
-        h.Tracker.NoteRoomObserved(new RoomObservation("B",
-            new HashSet<Direction> { Direction.N, Direction.S }));
-
-        Assert.Equal(WalkState.Idle, h.Walker.State);
-        Assert.Single(h.Sent);
-        Assert.Contains(h.Events, e => e.Kind == WalkEventKind.Finished);
-    }
-
-    [Fact]
-    public void WalkTo_StopBeforeBossRoom_Adjacent_FinishesWithoutStepping()
-    {
-        // Standing next to the boss room (1/2, boss at 1/3): "one room short" is
-        // the source itself, so the walk finishes immediately with nothing sent.
-        Harness h = NewHarness();
-        h.Walker.SetBossStopRooms(() => new HashSet<RoomKey> { new(1, 3) });
-        h.Tracker.SetLocated(new RoomKey(1, 2));
-
-        Assert.True(h.Walker.WalkTo(new RoomKey(1, 3)));
-        Assert.Contains(h.Events, e => e.Kind == WalkEventKind.Finished);
-        Assert.Empty(h.Sent);
-    }
-
-    [Fact]
     public void WalkTo_NonFlaggedRoom_UnaffectedByStopBefore()
     {
         // A different room is flagged; the walk to 1/3 runs the full two hops.
@@ -3215,10 +3161,10 @@ public sealed class AutoWalkManagerTests : IDisposable
         Assert.Empty(h.Sent);
 
         acquiring = false;                           // orb in hand, need resolved
-        h.Walker.NudgeStalledStep();                 // any re-drive re-evaluates
+        // Re-issued, as the path-item routers do when their detour hands back.
         h.Walker.WalkTo(new RoomKey(1, 2));
 
-        Assert.NotEmpty(h.Sent);
+        Assert.Equal("n\r", System.Text.Encoding.Latin1.GetString(Assert.Single(h.Sent)));
     }
 
     // The party is asked who holds a route item when the walk announces its items,

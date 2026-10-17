@@ -4,12 +4,10 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// <see cref="WireFormatter"/> — raw vs stripped rendering of wire bytes for
-/// the Wire Inspector. Focus: the stripped pane drops CR markers, collapses
-/// the backspace overstrike MajorMUD uses to highlight an exit's first
-/// letter, and removes CSI escapes while keeping LF breaks.
-/// </summary>
+// WireFormatter — raw vs stripped rendering of wire bytes for
+// the Wire Inspector. Focus: the stripped pane drops CR markers, collapses
+// the backspace overstrike MajorMUD uses to highlight an exit's first
+// letter, and removes CSI escapes while keeping LF breaks.
 public sealed class WireFormatterTests
 {
     private static byte[] Latin1(string s) => Encoding.Latin1.GetBytes(s);

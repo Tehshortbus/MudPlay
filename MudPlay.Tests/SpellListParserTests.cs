@@ -8,15 +8,15 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Pins <see cref="SpellListParser"/> — the state machine that folds
-/// <c>spells</c> / <c>pow</c> output into <see cref="SpellbookState"/>'s
-/// obtained set. Format + matching are a faithful port of MMUD Explorer's
-/// <c>PasteSpells</c>; the harness reuses the synthetic Mage class + spell
-/// rows from <see cref="SpellbookStateTests"/>.
-/// </summary>
+// Pins SpellListParser — the state machine that folds
+// spells / pow output into SpellbookState's
+// obtained set. The harness reuses the synthetic Mage class + spell
+// rows from SpellbookStateTests.
 public sealed class SpellListParserTests : IDisposable
 {
+    // The game's output, fed the way the client receives it.
+    private readonly ServerFeed _feed = new();
+
     private readonly string _root;
 
     public SpellListParserTests()
@@ -66,8 +66,9 @@ public sealed class SpellListParserTests : IDisposable
     {
         SpellbookState book = NewBook();
         using SpellListParser parser = new(book);
+        parser.AttachLineExtractor(_feed.Lines);
 
-        parser.FeedTestLines(new[]
+        _feed.Rows(new[]
         {
             "You have the following spells:",
             "Level Mana Short Spell Name",
@@ -75,7 +76,7 @@ public sealed class SpellListParserTests : IDisposable
             "  5   10  high high arc",
         });
         Assert.Equal(0, book.ObtainedCount);   // not committed until block ends
-        parser.FeedTestLine("Mage> ", isPromptLine: true);
+        _feed.Prompt();
 
         Assert.True(book.IsObtained(100));
         Assert.True(book.IsObtained(101));
@@ -92,14 +93,15 @@ public sealed class SpellListParserTests : IDisposable
         // The parser now space-normalises the header before matching.
         SpellbookState book = NewBook();
         using SpellListParser parser = new(book);
+        parser.AttachLineExtractor(_feed.Lines);
 
-        parser.FeedTestLines(new[]
+        _feed.Rows(new[]
         {
             "Level   Mana   Short   Spell Name",   // extra column padding — rejected before the fix
             "  2    5  star starlight",
             "  5   10  high high arc",
         });
-        parser.FeedTestLine("Mage> ", isPromptLine: true);
+        _feed.Prompt();
 
         Assert.True(book.IsObtained(100));
         Assert.True(book.IsObtained(101));
@@ -113,19 +115,20 @@ public sealed class SpellListParserTests : IDisposable
         // an authoritative "no spells" — it must NOT overwrite a good spellbook.
         SpellbookState book = NewBook();
         using SpellListParser parser = new(book);
+        parser.AttachLineExtractor(_feed.Lines);
 
-        parser.FeedTestLines(new[]
+        _feed.Rows(new[]
         {
             "You have the following spells:",
             "Level Mana Short Spell Name",
             "  2    5  star starlight",
         });
-        parser.FeedTestLine("Mage> ", isPromptLine: true);
+        _feed.Prompt();
         Assert.Equal(1, book.ObtainedCount);
 
         // Header opens a block, then the prompt ends it with zero rows parsed.
-        parser.FeedTestLine("You have the following spells:");
-        parser.FeedTestLine("Mage> ", isPromptLine: true);
+        _feed.Line("You have the following spells:");
+        _feed.Prompt();
 
         Assert.Equal(1, book.ObtainedCount);   // unchanged, not wiped empty
         Assert.True(book.IsObtained(100));
@@ -136,14 +139,15 @@ public sealed class SpellListParserTests : IDisposable
     {
         SpellbookState book = NewBook();
         using SpellListParser parser = new(book);
+        parser.AttachLineExtractor(_feed.Lines);
 
         // No intro line — just the column header (some servers skip it).
-        parser.FeedTestLines(new[]
+        _feed.Rows(new[]
         {
             "Level Mana Short Spell Name",
             "  2    5  star starlight",
         });
-        parser.FeedTestLine("Mage> ", isPromptLine: true);
+        _feed.Prompt();
 
         Assert.True(book.IsObtained(100));
         Assert.Equal(1, book.ObtainedCount);
@@ -154,14 +158,15 @@ public sealed class SpellListParserTests : IDisposable
     {
         SpellbookState book = NewBook();
         using SpellListParser parser = new(book);
+        parser.AttachLineExtractor(_feed.Lines);
 
-        parser.FeedTestLines(new[]
+        _feed.Rows(new[]
         {
             "You have the following powers:",
             "Level Kai  Short Spell Name",
             "  2    0  star starlight",   // Kai column may be 0
         });
-        parser.FeedTestLine("Mage> ", isPromptLine: true);
+        _feed.Prompt();
 
         Assert.True(book.IsObtained(100));
     }
@@ -171,8 +176,9 @@ public sealed class SpellListParserTests : IDisposable
     {
         SpellbookState book = NewBook();
         using SpellListParser parser = new(book);
+        parser.AttachLineExtractor(_feed.Lines);
 
-        parser.FeedTestLines(new[]
+        _feed.Rows(new[]
         {
             "You have the following spells:",
             "Level Mana Short Spell Name",
@@ -189,8 +195,9 @@ public sealed class SpellListParserTests : IDisposable
     {
         SpellbookState book = NewBook();
         using SpellListParser parser = new(book);
+        parser.AttachLineExtractor(_feed.Lines);
 
-        parser.FeedTestLines(new[]
+        _feed.Rows(new[]
         {
             "You have the following spells:",
             "Level Mana Short Spell Name",
@@ -213,7 +220,8 @@ public sealed class SpellListParserTests : IDisposable
         Assert.Equal(1, book.ObtainedCount);
 
         using SpellListParser parser = new(book);
-        parser.FeedTestLine("You have no spells.");
+        parser.AttachLineExtractor(_feed.Lines);
+        _feed.Line("You have no spells.");
 
         Assert.Equal(0, book.ObtainedCount);
     }
@@ -225,7 +233,8 @@ public sealed class SpellListParserTests : IDisposable
         book.SetObtainedByNames(new[] { "starlight" });
 
         using SpellListParser parser = new(book);
-        parser.FeedTestLine("You have no powers.");
+        parser.AttachLineExtractor(_feed.Lines);
+        _feed.Line("You have no powers.");
 
         Assert.Equal(0, book.ObtainedCount);
     }
@@ -237,25 +246,26 @@ public sealed class SpellListParserTests : IDisposable
     {
         SpellbookState book = NewBook();
         using SpellListParser parser = new(book);
+        parser.AttachLineExtractor(_feed.Lines);
 
-        parser.FeedTestLines(new[]
+        _feed.Rows(new[]
         {
             "You have the following spells:",
             "Level Mana Short Spell Name",
             "  2    5  star starlight",
             "  5   10  high high arc",
         });
-        parser.FeedTestLine("Mage> ", isPromptLine: true);
+        _feed.Prompt();
         Assert.Equal(2, book.ObtainedCount);
 
         // A later `spells` run that no longer lists high arc removes it.
-        parser.FeedTestLines(new[]
+        _feed.Rows(new[]
         {
             "You have the following spells:",
             "Level Mana Short Spell Name",
             "  2    5  star starlight",
         });
-        parser.FeedTestLine("Mage> ", isPromptLine: true);
+        _feed.Prompt();
 
         Assert.True(book.IsObtained(100));
         Assert.False(book.IsObtained(101));
@@ -269,16 +279,17 @@ public sealed class SpellListParserTests : IDisposable
     {
         SpellbookState book = NewBook();
         using SpellListParser parser = new(book);
+        parser.AttachLineExtractor(_feed.Lines);
 
         // Lines before any header must not be mistaken for rows.
-        parser.FeedTestLines(new[]
+        _feed.Rows(new[]
         {
             "Bob gossips: 5 10 lol nice spell name",
             "You have the following spells:",
             "Level Mana Short Spell Name",
             "  2    5  star starlight",
         });
-        parser.FeedTestLine("Mage> ", isPromptLine: true);
+        _feed.Prompt();
 
         Assert.Equal(1, book.ObtainedCount);
         Assert.True(book.IsObtained(100));
@@ -289,14 +300,15 @@ public sealed class SpellListParserTests : IDisposable
     {
         SpellbookState book = NewBook();
         using SpellListParser parser = new(book);
+        parser.AttachLineExtractor(_feed.Lines);
 
-        parser.FeedTestLines(new[]
+        _feed.Rows(new[]
         {
             "You have the following spells:",
             "Level Mana Short Spell Name",
             "  5   10  high high arc",     // name spans two tokens
         });
-        parser.FeedTestLine("Mage> ", isPromptLine: true);
+        _feed.Prompt();
 
         Assert.True(book.IsObtained(101));
     }

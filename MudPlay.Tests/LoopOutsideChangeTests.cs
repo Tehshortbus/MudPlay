@@ -328,8 +328,12 @@ public sealed class LoopOutsideChangeTests : IDisposable
     {
         LoopManager mine = NewLoops();
         string sub = Path.Combine(Folder, "Elsewhere");
-        string current = "";
+        // A loop the watcher can find from the start, so it is known to be looking
+        // before the moves begin.
+        mine.Save(NewLoop("Seed"));
+        string current = "Seed";
         int missing = 0;
+        int samples = 0;
         using CancellationTokenSource stop = new();
         // Another client looking: the root first, then the sub-folder the loop moves
         // to, so a loop written there before it leaves the root is always found.
@@ -338,11 +342,13 @@ public sealed class LoopOutsideChangeTests : IDisposable
             while (!stop.IsCancellationRequested)
             {
                 string name = Volatile.Read(ref current);
-                if (name.Length == 0) continue;
                 if (!File.Exists(LoopPath(name)) && !File.Exists(Path.Combine(sub, name + LoopManager.LoopFileSuffix)))
                     Interlocked.Increment(ref missing);
+                Interlocked.Increment(ref samples);
             }
         });
+        Assert.True(SpinWait.SpinUntil(() => Volatile.Read(ref samples) > 0, TimeSpan.FromSeconds(10)));
+        int before = Volatile.Read(ref samples);
         for (int i = 0; i < 300; i++)
         {
             string name = "Mover" + i;
@@ -355,8 +361,9 @@ public sealed class LoopOutsideChangeTests : IDisposable
         stop.Cancel();
         await watcher;
 
+        Assert.True(samples > before);
         Assert.Equal(0, missing);
-        Assert.Equal(300, mine.Loops.Count);
+        Assert.Equal(301, mine.Loops.Count);
     }
 
     [Fact]

@@ -27,8 +27,8 @@ namespace MudPlay.Services;
 // for them at the moment (a later observation re-binds them automatically).
 public sealed class PlayerDatabase
 {
-    private readonly ProfileService? _profile;
-    private readonly Func<string?>? _activeRealmFolder;
+    private readonly ProfileService _profile;
+    private readonly Func<string?> _activeRealmFolder;
 
     // ----- Backing layers ------------------------------------------------
 
@@ -59,9 +59,6 @@ public sealed class PlayerDatabase
     public event Action<string>? ObservationRecorded;
 
     // ----- Construction --------------------------------------------------
-
-    // Parameterless ctor for tests and in-memory-only scenarios — no disk persistence.
-    public PlayerDatabase() { }
 
     // Production ctor. Subscribes to ProfileService's ProfileLoaded /
     // ProfileClosed / ProfileSaving / BbsPinApplied so both layers stay in sync
@@ -518,7 +515,7 @@ public sealed class PlayerDatabase
             _customizations[given] = customization;
 
         Rebuild();
-        _profile?.Save();
+        _profile.Save();
         return true;
     }
 
@@ -568,12 +565,8 @@ public sealed class PlayerDatabase
         _observations[given] = existing with { Relationship = relationship, PvpResponse = response };
         Rebuild();
         SaveObservations();
-        RelationshipChanged?.Invoke(given, relationship);
         return true;
     }
-
-    // Raised when a player's relationship or PvP response is set.
-    public event Action<string, PlayerRelationship>? RelationshipChanged;
 
     // Resolve a captured presence-line name (which may be an account name on
     // boards that key logon/logoff lines on the account rather than the
@@ -680,7 +673,7 @@ public sealed class PlayerDatabase
 
     private void OnSwap()
     {
-        _realmFolder = _activeRealmFolder?.Invoke();
+        _realmFolder = _activeRealmFolder();
 
         // Realm layer: load from disk if a realm resolves, else clear.
         // Files may have been written under the pre-bugfix layout — one
@@ -699,7 +692,7 @@ public sealed class PlayerDatabase
         // the last-iterated one (rare in practice — most users only
         // configure flags on characters they actually party with).
         _customizations.Clear();
-        CharacterProfile? profile = _profile?.Current;
+        CharacterProfile? profile = _profile.Current;
         if (profile?.PlayerCustomizations is { } pcs)
         {
             foreach ((string oldKey, PlayerCustomization c) in pcs)

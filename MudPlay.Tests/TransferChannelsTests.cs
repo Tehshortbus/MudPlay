@@ -329,6 +329,10 @@ public sealed class TransferChannelsTests
     private sealed class Engine
     {
         public RemoteCommandManager Commands { get; }
+        // The router the engine's chat lines arrive through.
+        public MessageRouter Router { get; }
+        // What Commands put on the wire, through the sender the client binds.
+        public List<byte[]> CommandsWire { get; } = new();
         public List<string> Ran { get; } = new();
         public LogService Log { get; } = new();
 
@@ -342,20 +346,23 @@ public sealed class TransferChannelsTests
         public Engine(bool warn = true, bool masterSwitchOff = false, bool broadcastOpen = true, bool everyCommand = false)
         {
             MessageRouter router = new();
+            Router = router;
             DefaultPatterns.Seed(router);
             PlayerDatabase players = _players;
             Grant("Friend");
             players.RecordObservation("Stranger", null, null, null, null, null, null, Now);
-            Commands = new RemoteCommandManager(new ChatRouter(router), Party, players, Log)
+            Commands = new RemoteCommandManager(new ChatRouter(router), Party, players, Log, now: () => Clock)
             {
                 WarnOnDenial = warn,
                 BlockedByMasterSwitch = _ => masterSwitchOff,
                 SelfNameProvider = () => "Us",
                 DisableBroadcastChannel = !broadcastOpen,
             };
-            Commands.Now = () => Clock;
-            // Stand-ins that answer as the real handlers do for a channel they use,
-            // and refuse as they do for one they don't.
+            Commands.SetWireSender(CommandsWire.Add);
+            // Stand-ins that answer for a channel the transfer uses and refuse for one
+            // it doesn't, so these tests pin how the engine routes an answer or a
+            // refusal back. The real handlers' own channel checks are pinned in
+            // RoombaQueryHandlerTests and LoopShareTests.
             Register("@timer", PlayerRemoteControls.QueryBossTimers, Transfer.TimerSync);
             Register("@roomba", PlayerRemoteControls.QueryItemLocation, Transfer.RoombaSync);
             Register("@loop", PlayerRemoteControls.MovePlayer, Transfer.LoopSend);
@@ -388,12 +395,12 @@ public sealed class TransferChannelsTests
                 else ctx.Refuse(TransferChannels.Refusal(transfer));
             });
 
-        public string[] Wire => Commands.LastSentForTests.Select(b => Encoding.Latin1.GetString(b)).ToArray();
+        public string[] Wire => CommandsWire.Select(b => Encoding.Latin1.GetString(b)).ToArray();
 
         // The party we are in: empty unless a test adds a member.
         public PartyState Party { get; } = new();
 
-        private readonly PlayerDatabase _players = new();
+        private readonly PlayerDatabase _players = new(new ProfileService(), () => null);
 
         // Give a player every permission.
         public void Grant(string name) => Grant(name, (PlayerRemoteControls)~0);
@@ -405,8 +412,8 @@ public sealed class TransferChannelsTests
         }
     }
 
-    private static ChatLogEntry Broadcast(string sender, string msg) =>
-        new(Now, ChatChannel.Broadcast, sender, msg, $"Broadcast from {sender} \"{msg}\"");
+    private static ChatLine Broadcast(string sender, string msg) =>
+        new(ChatChannel.Broadcast, sender, msg);
 
     // Timers may be asked for on the broadcast channel, and are answered there with
     // the channel's own speak verb.
@@ -415,7 +422,7 @@ public sealed class TransferChannelsTests
     {
         Engine e = new();
 
-        e.Commands.DispatchForTests(Broadcast("Friend", "@timer sync"));
+        ChatLines.Hear(e.Router, Broadcast("Friend", "@timer sync"));
 
         Assert.Equal(new[] { "@timer sync" }, e.Ran);
         Assert.Equal("br {data}\r", e.Wire.Single());
@@ -435,7 +442,7 @@ public sealed class TransferChannelsTests
     {
         Engine e = new();
 
-        e.Commands.DispatchForTests(Broadcast("Friend", line));
+        ChatLines.Hear(e.Router, Broadcast("Friend", line));
 
         Assert.StartsWith(command, Assert.Single(e.Ran));
         Assert.Equal(expected, e.Wire.Single());
@@ -453,8 +460,8 @@ public sealed class TransferChannelsTests
     {
         Engine e = new();
 
-        e.Commands.DispatchForTests(Broadcast("Friend", line));
-        e.Commands.DispatchForTests(Broadcast("Stranger", line));
+        ChatLines.Hear(e.Router, Broadcast("Friend", line));
+        ChatLines.Hear(e.Router, Broadcast("Stranger", line));
 
         Assert.Empty(e.Ran);
         Assert.Empty(e.Wire);
@@ -471,7 +478,7 @@ public sealed class TransferChannelsTests
     {
         Engine e = new();
 
-        e.Commands.DispatchForTests(Broadcast("Friend", line));
+        ChatLines.Hear(e.Router, Broadcast("Friend", line));
 
         Assert.Empty(e.Ran);
         Assert.Equal(expected, e.Wire.Single());
@@ -487,8 +494,8 @@ public sealed class TransferChannelsTests
         Engine e = new();
         e.Commands.StealthedProvider = () => true;
 
-        e.Commands.DispatchForTests(Broadcast("Friend", "&@health"));
-        e.Commands.DispatchForTests(new ChatLogEntry(Now, ChatChannel.Local, "Friend", "&@health", "raw"));
+        ChatLines.Hear(e.Router, Broadcast("Friend", "&@health"));
+        ChatLines.Hear(e.Router, new ChatLine(ChatChannel.Local, "Friend", "&@health"));
 
         Assert.Equal(new[] { "br @health\r", "/Friend @health\r" }, e.Wire);
     }
@@ -500,27 +507,27 @@ public sealed class TransferChannelsTests
     public void ARelayBackOnTheBroadcastChannel_IsHeldToTheUsualGates()
     {
         Engine denied = new();
-        denied.Commands.DispatchForTests(Broadcast("Stranger", "&@health"));
+        ChatLines.Hear(denied.Router, Broadcast("Stranger", "&@health"));
         Assert.Equal("br {command invalid or not allowed}\r", denied.Wire.Single());
 
         Engine deniedQuietly = new(warn: false);
-        deniedQuietly.Commands.DispatchForTests(Broadcast("Stranger", "&@health"));
+        ChatLines.Hear(deniedQuietly.Router, Broadcast("Stranger", "&@health"));
         Assert.Empty(deniedQuietly.Wire);
 
         Engine off = new(masterSwitchOff: true);
-        off.Commands.DispatchForTests(Broadcast("Friend", "&@health"));
+        ChatLines.Hear(off.Router, Broadcast("Friend", "&@health"));
         Assert.Empty(off.Wire);
 
         Engine ticked = new(broadcastOpen: false);
-        ticked.Commands.DispatchForTests(Broadcast("Friend", "&@health"));
-        ticked.Commands.DispatchForTests(Broadcast("Stranger", "&@health"));
+        ChatLines.Hear(ticked.Router, Broadcast("Friend", "&@health"));
+        ChatLines.Hear(ticked.Router, Broadcast("Stranger", "&@health"));
         Assert.Empty(ticked.Wire);
 
         Engine blocked = new(everyCommand: true);
         foreach (string line in new[] { "&@do reroll", "&@party set suicide", "&@health reroll" })
         {
             blocked.Clock += TimeSpan.FromMinutes(2);
-            blocked.Commands.DispatchForTests(Broadcast("Friend", line));
+            ChatLines.Hear(blocked.Router, Broadcast("Friend", line));
         }
         Assert.Empty(blocked.Wire);
         Assert.Empty(blocked.Ran);
@@ -535,9 +542,9 @@ public sealed class TransferChannelsTests
     {
         Engine e = new();
 
-        e.Commands.DispatchForTests(Broadcast("Friend", "&@health"));
-        e.Commands.DispatchForTests(Broadcast("Friend", "&@timer"));
-        e.Commands.DispatchForTests(Broadcast("Friend", "@health"));
+        ChatLines.Hear(e.Router, Broadcast("Friend", "&@health"));
+        ChatLines.Hear(e.Router, Broadcast("Friend", "&@timer"));
+        ChatLines.Hear(e.Router, Broadcast("Friend", "@health"));
 
         Assert.Equal("br @health\r", e.Wire.Single());
         Assert.Empty(e.Ran);
@@ -549,17 +556,17 @@ public sealed class TransferChannelsTests
         const int cap = BroadcastAnswerBudget.AnswersPerWindow;
         Engine full = new();
         for (int i = 0; i < cap + 2; i++)
-            full.Commands.DispatchForTests(Broadcast($"Passerby{i}", "&@health"));
+            ChatLines.Hear(full.Router, Broadcast($"Passerby{i}", "&@health"));
         Assert.Equal(cap, full.Wire.Length);
         Assert.All(full.Wire, line => Assert.Equal("br {command invalid or not allowed}\r", line));
-        full.Commands.DispatchForTests(Broadcast("Friend", "&@health"));
+        ChatLines.Hear(full.Router, Broadcast("Friend", "&@health"));
         Assert.Equal("br @health\r", full.Wire.Last());
 
         // The players who hold it have the same few between them.
         Engine granted = new();
         for (int i = 0; i <= cap; i++) granted.Grant($"Granted{i}");
         for (int i = 0; i <= cap; i++)
-            granted.Commands.DispatchForTests(Broadcast($"Granted{i}", "&@health"));
+            ChatLines.Hear(granted.Router, Broadcast($"Granted{i}", "&@health"));
         Assert.Equal(cap, granted.Wire.Length);
     }
 
@@ -575,15 +582,15 @@ public sealed class TransferChannelsTests
     {
         Engine e = new(everyCommand: true);
 
-        e.Commands.DispatchForTests(On(channel, "Friend", "&@dupe Stranger"));
-        e.Commands.DispatchForTests(On(channel, "Stranger", "&@dupe Friend"));
+        ChatLines.Hear(e.Router, On(channel, "Friend", "&@dupe Stranger"));
+        ChatLines.Hear(e.Router, On(channel, "Stranger", "&@dupe Friend"));
 
         Assert.Empty(e.Wire);
         Assert.Empty(e.Ran);
         Assert.Contains(DebugLines(e), l => l.StartsWith("Ignoring relay-back of @dupe from Friend:"));
 
         // Another command is relayed there as ever.
-        e.Commands.DispatchForTests(On(channel, "Friend", "&@health"));
+        ChatLines.Hear(e.Router, On(channel, "Friend", "&@health"));
         Assert.EndsWith("@health\r", e.Wire.Single());
     }
 
@@ -596,16 +603,16 @@ public sealed class TransferChannelsTests
         Engine e = new();
         e.Commands.SelfNameProvider = () => null;
 
-        e.Commands.DispatchForTests(Broadcast("Friend", "&@health"));
-        e.Commands.DispatchForTests(Broadcast("Stranger", "&@health"));
+        ChatLines.Hear(e.Router, Broadcast("Friend", "&@health"));
+        ChatLines.Hear(e.Router, Broadcast("Stranger", "&@health"));
         Assert.Empty(e.Wire);
         Assert.Contains(DebugLines(e), l => l.Contains("our own name is not known yet"));
 
-        e.Commands.DispatchForTests(On(RemoteChannel.Gangpath, "Friend", "&@health"));
+        ChatLines.Hear(e.Router, On(RemoteChannel.Gangpath, "Friend", "&@health"));
         Assert.Equal("bg @health\r", e.Wire.Single());
 
         // A command there is still read: only the relay waits for the name.
-        e.Commands.DispatchForTests(Broadcast("Friend", "@health"));
+        ChatLines.Hear(e.Router, Broadcast("Friend", "@health"));
         Assert.Equal("br {HP=1/1}\r", e.Wire.Last());
     }
 
@@ -628,7 +635,7 @@ public sealed class TransferChannelsTests
         {
             Engine e = new(warn: warn, everyCommand: true);
             e.Party.Members.Add(new PartyMember { Name = "Buddy" });
-            e.Commands.DispatchForTests(On(channel, sender, line));
+            ChatLines.Hear(e.Router, On(channel, sender, line));
             // Without the channel's own speak verb, to compare the two.
             return (e.Ran.ToArray(), e.Wire.Select(w => w[(w.IndexOf(' ') + 1)..]).ToArray());
         }
@@ -662,8 +669,8 @@ public sealed class TransferChannelsTests
         Engine e = new(masterSwitchOff: true, everyCommand: true);
         e.Party.Members.Add(new PartyMember { Name = "Buddy" });
 
-        e.Commands.DispatchForTests(Broadcast("Buddy", "@comeback"));
-        e.Commands.DispatchForTests(Broadcast("Buddy", "@ptrain ask"));
+        ChatLines.Hear(e.Router, Broadcast("Buddy", "@comeback"));
+        ChatLines.Hear(e.Router, Broadcast("Buddy", "@ptrain ask"));
 
         Assert.Empty(e.Ran);
         Assert.Empty(e.Wire);
@@ -676,11 +683,11 @@ public sealed class TransferChannelsTests
     public void OurOwnRelayedCommand_EchoedBackOnTheBroadcastChannel_IsNotRun()
     {
         Engine e = new();
-        e.Commands.DispatchForTests(Broadcast("Friend", "&@health"));
+        ChatLines.Hear(e.Router, Broadcast("Friend", "&@health"));
         Assert.Equal("br @health\r", e.Wire.Single());
 
-        e.Commands.DispatchForTests(Broadcast("Us", "@health"));
-        e.Commands.DispatchForTests(Broadcast("Us", "&@health"));
+        ChatLines.Hear(e.Router, Broadcast("Us", "@health"));
+        ChatLines.Hear(e.Router, Broadcast("Us", "&@health"));
 
         Assert.Empty(e.Ran);
         Assert.Single(e.Wire);
@@ -695,31 +702,31 @@ public sealed class TransferChannelsTests
     public void AnOrdinaryCommandOnTheBroadcastChannel_IsHeldToTheUsualGates()
     {
         Engine denied = new();
-        denied.Commands.DispatchForTests(Broadcast("Stranger", "@health"));
+        ChatLines.Hear(denied.Router, Broadcast("Stranger", "@health"));
         Assert.Empty(denied.Ran);
         Assert.Equal("br {command invalid or not allowed}\r", denied.Wire.Single());
         Assert.Contains(DebugLines(denied), l => l.StartsWith("Denied @health from Stranger on broadcast (lacks"));
 
         Engine deniedQuietly = new(warn: false);
-        deniedQuietly.Commands.DispatchForTests(Broadcast("Stranger", "@health"));
+        ChatLines.Hear(deniedQuietly.Router, Broadcast("Stranger", "@health"));
         Assert.Empty(deniedQuietly.Ran);
         Assert.Empty(deniedQuietly.Wire);
 
         Engine off = new(masterSwitchOff: true);
-        off.Commands.DispatchForTests(Broadcast("Friend", "@health"));
-        off.Commands.DispatchForTests(Broadcast("Stranger", "@health"));
+        ChatLines.Hear(off.Router, Broadcast("Friend", "@health"));
+        ChatLines.Hear(off.Router, Broadcast("Stranger", "@health"));
         Assert.Empty(off.Ran);
         Assert.Empty(off.Wire);
 
         Engine disallowed = new();
         disallowed.Commands.MasterDisable = true;
-        disallowed.Commands.DispatchForTests(Broadcast("Friend", "@health"));
+        ChatLines.Hear(disallowed.Router, Broadcast("Friend", "@health"));
         Assert.Empty(disallowed.Ran);
         Assert.Empty(disallowed.Wire);
 
         Engine ticked = new(broadcastOpen: false);
-        ticked.Commands.DispatchForTests(Broadcast("Friend", "@health"));
-        ticked.Commands.DispatchForTests(Broadcast("Stranger", "@health"));
+        ChatLines.Hear(ticked.Router, Broadcast("Friend", "@health"));
+        ChatLines.Hear(ticked.Router, Broadcast("Stranger", "@health"));
         Assert.Empty(ticked.Ran);
         Assert.Empty(ticked.Wire);
         Assert.Empty(ticked.Log.Snapshot());
@@ -737,9 +744,9 @@ public sealed class TransferChannelsTests
     {
         Engine e = new(everyCommand: true);
 
-        e.Commands.DispatchForTests(Broadcast("Friend", line));
+        ChatLines.Hear(e.Router, Broadcast("Friend", line));
         e.Clock += TimeSpan.FromMinutes(2);
-        e.Commands.DispatchForTests(Broadcast("Stranger", line));
+        ChatLines.Hear(e.Router, Broadcast("Stranger", line));
 
         Assert.Empty(e.Ran);
         Assert.Empty(e.Wire);
@@ -751,9 +758,9 @@ public sealed class TransferChannelsTests
     public void TheSuicideRules_AnswerOnTheBroadcastChannel_ByTheWarnSetting()
     {
         Engine e = new(everyCommand: true);
-        e.Commands.DispatchForTests(Broadcast("Friend", "@do suicide"));
+        ChatLines.Hear(e.Router, Broadcast("Friend", "@do suicide"));
         e.Clock += TimeSpan.FromMinutes(2);
-        e.Commands.DispatchForTests(Broadcast("Friend", "@suicide"));
+        ChatLines.Hear(e.Router, Broadcast("Friend", "@suicide"));
         Assert.Empty(e.Ran);
         Assert.Equal(new[]
         {
@@ -762,8 +769,8 @@ public sealed class TransferChannelsTests
         }, e.Wire);
 
         Engine quiet = new(warn: false, everyCommand: true);
-        quiet.Commands.DispatchForTests(Broadcast("Friend", "@do suicide"));
-        quiet.Commands.DispatchForTests(Broadcast("Friend", "@suicide"));
+        ChatLines.Hear(quiet.Router, Broadcast("Friend", "@do suicide"));
+        ChatLines.Hear(quiet.Router, Broadcast("Friend", "@suicide"));
         Assert.Empty(quiet.Ran);
         Assert.Empty(quiet.Wire);
     }
@@ -776,8 +783,8 @@ public sealed class TransferChannelsTests
         Engine e = new();
         e.Commands.StealthedProvider = () => true;
 
-        e.Commands.DispatchForTests(Broadcast("Friend", "@health"));
-        e.Commands.DispatchForTests(new ChatLogEntry(Now, ChatChannel.Local, "Friend", "@health", "raw"));
+        ChatLines.Hear(e.Router, Broadcast("Friend", "@health"));
+        ChatLines.Hear(e.Router, new ChatLine(ChatChannel.Local, "Friend", "@health"));
 
         Assert.Equal(new[] { "br {HP=1/1}\r", "/Friend {HP=1/1}\r" }, e.Wire);
     }
@@ -788,15 +795,15 @@ public sealed class TransferChannelsTests
     [InlineData("@roomba sync", "br {@roomba sync works by telepath or gangpath only}\r")]
     [InlineData("@loop send kings road", "br {@loop send works by telepath only}\r")]
     [InlineData("@loop send yes", "br {@loop send works by telepath only}\r")]
-    public void ATransferThatDoesNotUseTheBroadcastChannel_IsRefusedThere(string line, string expected)
+    public void ARefusalOfARequestHeardOnTheBroadcastChannel_GoesBackThere(string line, string expected)
     {
         Engine e = new();
-        e.Commands.DispatchForTests(Broadcast("Friend", line));
+        ChatLines.Hear(e.Router, Broadcast("Friend", line));
         Assert.Equal(expected, e.Wire.Single());
 
         // The refusal is a failure answer: the Warn setting silences it.
         Engine quiet = new(warn: false);
-        quiet.Commands.DispatchForTests(Broadcast("Friend", line));
+        ChatLines.Hear(quiet.Router, Broadcast("Friend", line));
         Assert.Empty(quiet.Wire);
     }
 
@@ -805,28 +812,28 @@ public sealed class TransferChannelsTests
     {
         // Our own line, echoed back to us with our name, is not a request.
         Engine echo = new();
-        echo.Commands.DispatchForTests(Broadcast("Us", "@timer sync"));
+        ChatLines.Hear(echo.Router, Broadcast("Us", "@timer sync"));
         Assert.Empty(echo.Ran);
 
         // A player without the permission gets the denial, by the Warn setting.
         Engine denied = new();
-        denied.Commands.DispatchForTests(Broadcast("Stranger", "@timer sync"));
+        ChatLines.Hear(denied.Router, Broadcast("Stranger", "@timer sync"));
         Assert.Empty(denied.Ran);
         Assert.Equal("br {command invalid or not allowed}\r", denied.Wire.Single());
         Engine deniedQuietly = new(warn: false);
-        deniedQuietly.Commands.DispatchForTests(Broadcast("Stranger", "@timer sync"));
+        ChatLines.Hear(deniedQuietly.Router, Broadcast("Stranger", "@timer sync"));
         Assert.Empty(deniedQuietly.Wire);
 
         // With the master switch off nothing is followed or answered.
         Engine off = new(masterSwitchOff: true);
-        off.Commands.DispatchForTests(Broadcast("Friend", "@timer sync"));
+        ChatLines.Hear(off.Router, Broadcast("Friend", "@timer sync"));
         Assert.Empty(off.Ran);
         Assert.Empty(off.Wire);
 
         // "Disallow all remote commands" covers it too.
         Engine disallowed = new();
         disallowed.Commands.MasterDisable = true;
-        disallowed.Commands.DispatchForTests(Broadcast("Friend", "@timer sync"));
+        ChatLines.Hear(disallowed.Router, Broadcast("Friend", "@timer sync"));
         Assert.Empty(disallowed.Ran);
     }
 
@@ -837,12 +844,12 @@ public sealed class TransferChannelsTests
     {
         MessageRouter router = new();
         DefaultPatterns.Seed(router);
-        Assert.True(new RemoteCommandManager(new ChatRouter(router), new PartyState(), new PlayerDatabase()).DisableBroadcastChannel);
+        Assert.True(new RemoteCommandManager(new ChatRouter(router), new PartyState(), new PlayerDatabase(new ProfileService(), () => null)).DisableBroadcastChannel);
 
         Engine e = new(broadcastOpen: false);
-        e.Commands.DispatchForTests(Broadcast("Friend", "@timer sync"));
-        e.Commands.DispatchForTests(Broadcast("Friend", "@roomba sync"));
-        e.Commands.DispatchForTests(Broadcast("Stranger", "@timer sync"));
+        ChatLines.Hear(e.Router, Broadcast("Friend", "@timer sync"));
+        ChatLines.Hear(e.Router, Broadcast("Friend", "@roomba sync"));
+        ChatLines.Hear(e.Router, Broadcast("Stranger", "@timer sync"));
 
         Assert.Empty(e.Ran);
         Assert.Empty(e.Wire);
@@ -874,13 +881,13 @@ public sealed class TransferChannelsTests
         foreach (string tail in tails)
         foreach (string line in new[] { word + tail, word + "!" + tail, "&" + word + tail })
         {
-            e.Commands.LastSentForTests.Clear();
+            e.CommandsWire.Clear();
             e.Ran.Clear();
             // Each line in a minute of its own: what is said there in one minute is
             // bounded, and that bound has its own tests.
             e.Clock += TimeSpan.FromMinutes(2);
 
-            e.Commands.DispatchForTests(Broadcast(sender, line));
+            ChatLines.Hear(e.Router, Broadcast(sender, line));
 
             (string[] expected, bool handlerRuns) = ExpectedOnBroadcast(sender, line, open, warn);
             Assert.True(expected.SequenceEqual(e.Wire),
@@ -954,11 +961,11 @@ public sealed class TransferChannelsTests
     {
         Engine e = new(everyCommand: true);
 
-        e.Commands.DispatchForTests(Broadcast("Friend", line));
+        ChatLines.Hear(e.Router, Broadcast("Friend", line));
         Assert.Equal(new[] { command }, e.Ran);
         Assert.Equal(new[] { "br {an answer}\r", "br {a refusal}\r" }, e.Wire);
 
-        e.Commands.DispatchForTests(Broadcast("Stranger", line));
+        ChatLines.Hear(e.Router, Broadcast("Stranger", line));
         Assert.Equal(new[] { command }, e.Ran);
         Assert.Equal("br {command invalid or not allowed}\r", e.Wire.Last());
     }
@@ -978,8 +985,8 @@ public sealed class TransferChannelsTests
 
         for (int i = 0; i < 30; i++)
         {
-            e.Commands.DispatchForTests(Broadcast("Stranger", "@timer sync"));
-            e.Commands.DispatchForTests(Broadcast("Stranger", $"@loop send loop {i}"));
+            ChatLines.Hear(e.Router, Broadcast("Stranger", "@timer sync"));
+            ChatLines.Hear(e.Router, Broadcast("Stranger", $"@loop send loop {i}"));
         }
 
         Assert.Equal("br {command invalid or not allowed}\r", e.Wire.Single());
@@ -987,13 +994,13 @@ public sealed class TransferChannelsTests
             l.Contains("from Stranger on the broadcast channel: they were answered there less than a minute ago")));
 
         e.Clock += TimeSpan.FromSeconds(59);
-        e.Commands.DispatchForTests(Broadcast("Stranger", "@timer sync"));
+        ChatLines.Hear(e.Router, Broadcast("Stranger", "@timer sync"));
         Assert.Single(e.Wire);
 
         // A minute after the answer, the next line is answered again.
         e.Clock += TimeSpan.FromSeconds(1);
-        e.Commands.DispatchForTests(Broadcast("Stranger", "@roomba sync"));
-        e.Commands.DispatchForTests(Broadcast("Stranger", "@roomba sync"));
+        ChatLines.Hear(e.Router, Broadcast("Stranger", "@roomba sync"));
+        ChatLines.Hear(e.Router, Broadcast("Stranger", "@roomba sync"));
         Assert.Equal(2, e.Wire.Length);
     }
 
@@ -1005,14 +1012,14 @@ public sealed class TransferChannelsTests
         Engine e = new();
 
         for (int i = 0; i < 30; i++)
-            e.Commands.DispatchForTests(Broadcast("Friend", "@roomba sync"));
+            ChatLines.Hear(e.Router, Broadcast("Friend", "@roomba sync"));
 
         Assert.Equal("br {@roomba sync works by telepath or gangpath only}\r", e.Wire.Single());
         Assert.Single(e.Ran);
 
         // The bound is the broadcast channel's alone.
-        e.Commands.DispatchForTests(new ChatLogEntry(Now, ChatChannel.Local, "Friend", "@roomba sync", "raw"));
-        e.Commands.DispatchForTests(new ChatLogEntry(Now, ChatChannel.Local, "Friend", "@roomba sync", "raw"));
+        ChatLines.Hear(e.Router, new ChatLine(ChatChannel.Local, "Friend", "@roomba sync"));
+        ChatLines.Hear(e.Router, new ChatLine(ChatChannel.Local, "Friend", "@roomba sync"));
         Assert.Equal(3, e.Wire.Length);
     }
 
@@ -1023,10 +1030,10 @@ public sealed class TransferChannelsTests
     {
         Engine e = new(warn: false);
 
-        e.Commands.DispatchForTests(Broadcast("Friend", "@roomba sync"));
+        ChatLines.Hear(e.Router, Broadcast("Friend", "@roomba sync"));
         Assert.Empty(e.Wire);
 
-        e.Commands.DispatchForTests(Broadcast("Friend", "@timer sync"));
+        ChatLines.Hear(e.Router, Broadcast("Friend", "@timer sync"));
         Assert.Equal("br {data}\r", e.Wire.Single());
     }
 
@@ -1038,9 +1045,9 @@ public sealed class TransferChannelsTests
     {
         Engine e = new(everyCommand: true);
 
-        e.Commands.DispatchForTests(Broadcast("Friend", "@health"));
-        e.Commands.DispatchForTests(Broadcast("Friend", "@stop"));
-        e.Commands.DispatchForTests(Broadcast("Friend", "@health"));
+        ChatLines.Hear(e.Router, Broadcast("Friend", "@health"));
+        ChatLines.Hear(e.Router, Broadcast("Friend", "@stop"));
+        ChatLines.Hear(e.Router, Broadcast("Friend", "@health"));
 
         Assert.Equal(new[] { "@health" }, e.Ran);
         Assert.Equal("br {HP=1/1}\r", e.Wire.Single());
@@ -1048,7 +1055,7 @@ public sealed class TransferChannelsTests
             "Passing over @stop from Friend on the broadcast channel: they were answered there less than a minute ago.");
 
         e.Clock += BroadcastAnswerBudget.Window;
-        e.Commands.DispatchForTests(Broadcast("Friend", "@stop"));
+        ChatLines.Hear(e.Router, Broadcast("Friend", "@stop"));
 
         Assert.Equal(new[] { "@health", "@stop" }, e.Ran);
         Assert.Equal(new[] { "br {HP=1/1}\r", "br {an answer}\r", "br {a refusal}\r" }, e.Wire);
@@ -1062,11 +1069,11 @@ public sealed class TransferChannelsTests
         const int cap = BroadcastAnswerBudget.AnswersPerWindow;
         Engine e = new();
         for (int i = 0; i < cap + 3; i++)
-            e.Commands.DispatchForTests(Broadcast($"Passerby{i}", "@health"));
+            ChatLines.Hear(e.Router, Broadcast($"Passerby{i}", "@health"));
         Assert.Equal(cap, e.Wire.Length);
         Assert.All(e.Wire, line => Assert.Equal("br {command invalid or not allowed}\r", line));
 
-        e.Commands.DispatchForTests(Broadcast("Friend", "@health"));
+        ChatLines.Hear(e.Router, Broadcast("Friend", "@health"));
 
         Assert.Equal(new[] { "@health" }, e.Ran);
         Assert.Equal("br {HP=1/1}\r", e.Wire.Last());
@@ -1083,22 +1090,22 @@ public sealed class TransferChannelsTests
         for (int i = 0; i <= cap; i++) e.Grant($"Granted{i}");
 
         for (int i = 0; i < cap; i++)
-            e.Commands.DispatchForTests(Broadcast($"Granted{i}", "@health"));
+            ChatLines.Hear(e.Router, Broadcast($"Granted{i}", "@health"));
         Assert.Equal(cap, e.Ran.Count);
 
-        e.Commands.DispatchForTests(Broadcast($"Granted{cap}", "@health"));
+        ChatLines.Hear(e.Router, Broadcast($"Granted{cap}", "@health"));
         Assert.Equal(cap, e.Ran.Count);
         Assert.Equal(cap, e.Wire.Length);
         Assert.Contains(DebugLines(e), l => l ==
             $"Passing over @health from Granted{cap} on the broadcast channel: {cap} answers were given there in the last minute.");
 
-        e.Commands.DispatchForTests(Broadcast("Stranger", "@health"));
+        ChatLines.Hear(e.Router, Broadcast("Stranger", "@health"));
         Assert.Equal("br {command invalid or not allowed}\r", e.Wire.Last());
         Assert.Equal(cap, e.Ran.Count);
 
         // A minute after the first of those answers, there is room for one more.
         e.Clock += BroadcastAnswerBudget.Window;
-        e.Commands.DispatchForTests(Broadcast($"Granted{cap}", "@health"));
+        ChatLines.Hear(e.Router, Broadcast($"Granted{cap}", "@health"));
         Assert.Equal(cap + 1, e.Ran.Count);
     }
 
@@ -1115,8 +1122,8 @@ public sealed class TransferChannelsTests
         Engine e = new();
         e.Grant("Half", PlayerRemoteControls.QueryHealthStatus);
 
-        e.Commands.DispatchForTests(Broadcast("Half", first));
-        e.Commands.DispatchForTests(Broadcast("Half", second));
+        ChatLines.Hear(e.Router, Broadcast("Half", first));
+        ChatLines.Hear(e.Router, Broadcast("Half", second));
 
         Assert.Equal(firstAnswer, e.Wire.Single());
         Assert.Equal(first == "@health" ? 1 : 0, e.Ran.Count);
@@ -1124,7 +1131,7 @@ public sealed class TransferChannelsTests
             $"Passing over {second} from Half on the broadcast channel: they were answered there less than a minute ago.");
 
         e.Clock += BroadcastAnswerBudget.Window;
-        e.Commands.DispatchForTests(Broadcast("Half", second));
+        ChatLines.Hear(e.Router, Broadcast("Half", second));
         Assert.Equal(2, e.Wire.Length);
         Assert.Single(e.Ran);
     }
@@ -1145,25 +1152,25 @@ public sealed class TransferChannelsTests
         foreach (string line in new[] { "&@suicide", "&@suicide!", "&@do suicide", "&@do br @suicide", "&@do /Friend \"suicide\"", "&@do suicideé" })
         {
             Engine e = new(everyCommand: true);
-            e.Commands.DispatchForTests(On(channel, "Friend", line));
+            ChatLines.Hear(e.Router, On(channel, "Friend", line));
             Assert.Equal($"{verb}{{suicide is not relayed}}\r", e.Wire.Single());
             Assert.Empty(e.Ran);
 
             Engine quiet = new(warn: false, everyCommand: true);
-            quiet.Commands.DispatchForTests(On(channel, "Friend", line));
+            ChatLines.Hear(quiet.Router, On(channel, "Friend", line));
             Assert.Empty(quiet.Wire);
 
             Engine stranger = new(everyCommand: true);
-            stranger.Commands.DispatchForTests(On(channel, "Stranger", line));
+            ChatLines.Hear(stranger.Router, On(channel, "Stranger", line));
             Assert.EndsWith("{command invalid or not allowed}\r", stranger.Wire.Single());
         }
 
         Engine other = new(everyCommand: true);
-        other.Commands.DispatchForTests(On(channel, "Friend", "&@hangup"));
+        ChatLines.Hear(other.Router, On(channel, "Friend", "&@hangup"));
         Assert.Equal($"{verb}@hangup\r", other.Wire.Single());
         // A word that only contains it is not the command.
         other.Clock += TimeSpan.FromMinutes(2);
-        other.Commands.DispatchForTests(On(channel, "Friend", "&@do say suicidal"));
+        ChatLines.Hear(other.Router, On(channel, "Friend", "&@do say suicidal"));
         Assert.Equal($"{verb}@do say suicidal\r", other.Wire.Last());
     }
 
@@ -1177,12 +1184,12 @@ public sealed class TransferChannelsTests
     public void ASilentBlock_IsLoggedAtDebugOnTheBroadcastChannel_AndAtInfoElsewhere(string line, string logged)
     {
         Engine onBroadcast = new(everyCommand: true);
-        onBroadcast.Commands.DispatchForTests(Broadcast("Stranger", line));
+        ChatLines.Hear(onBroadcast.Router, Broadcast("Stranger", line));
         LogEntry there = Assert.Single(onBroadcast.Log.Snapshot(), l => l.Message.StartsWith(logged));
         Assert.Equal(LogSeverity.Debug, there.Severity);
 
         Engine onSay = new(everyCommand: true);
-        onSay.Commands.DispatchForTests(On(RemoteChannel.Local, "Stranger", line));
+        ChatLines.Hear(onSay.Router, On(RemoteChannel.Local, "Stranger", line));
         LogEntry here = Assert.Single(onSay.Log.Snapshot(), l => l.Message.StartsWith(logged));
         Assert.Equal(LogSeverity.Info, here.Severity);
     }
@@ -1197,12 +1204,12 @@ public sealed class TransferChannelsTests
         for (int i = 0; i < cap; i++) e.Grant($"Granted{i}");
 
         for (int i = 0; i < cap; i++)
-            e.Commands.DispatchForTests(Broadcast($"Granted{i}", "@roomba sync"));
+            ChatLines.Hear(e.Router, Broadcast($"Granted{i}", "@roomba sync"));
         Assert.Equal(cap, e.Wire.Length);
 
         // The strangers' refusals are all still to be had.
         for (int i = 0; i < cap; i++)
-            e.Commands.DispatchForTests(Broadcast($"Passerby{i}", "@roomba sync"));
+            ChatLines.Hear(e.Router, Broadcast($"Passerby{i}", "@roomba sync"));
         Assert.Equal(2 * cap, e.Wire.Length);
     }
 
@@ -1223,7 +1230,7 @@ public sealed class TransferChannelsTests
             laterRefusal = ctx.Refusal;
         });
 
-        e.Commands.DispatchForTests(Broadcast("Friend", "@trap n"));
+        ChatLines.Hear(e.Router, Broadcast("Friend", "@trap n"));
         e.Clock += TimeSpan.FromSeconds(20);
         later!("disarmed");
         laterRefusal!("and one thing more");
@@ -1231,7 +1238,7 @@ public sealed class TransferChannelsTests
         Assert.Equal(new[] { "br {attempting}\r", "br {disarmed}\r", "br {and one thing more}\r" }, e.Wire);
         Assert.Equal(1, e.Commands.BroadcastAnswers().Remembered);
 
-        e.Commands.DispatchForTests(Broadcast("Friend", "@trap s"));
+        ChatLines.Hear(e.Router, Broadcast("Friend", "@trap s"));
         Assert.Single(e.Ran);
         Assert.Equal(3, e.Wire.Length);
     }
@@ -1245,10 +1252,10 @@ public sealed class TransferChannelsTests
         List<Action<string>> later = new();
         e.Commands.RegisterHandler("@goto", PlayerRemoteControls.MovePlayer, ctx => later.Add(ctx.Reply));
 
-        e.Commands.DispatchForTests(Broadcast("Friend", "@goto bank"));
+        ChatLines.Hear(e.Router, Broadcast("Friend", "@goto bank"));
         Assert.Empty(e.Wire);
         // Nothing was said, so nothing was used up: the same player's next command runs.
-        e.Commands.DispatchForTests(Broadcast("Friend", "@health"));
+        ChatLines.Hear(e.Router, Broadcast("Friend", "@health"));
         Assert.Equal("br {HP=1/1}\r", e.Wire.Single());
 
         // The first command's answer now comes inside the minute of the second's.
@@ -1274,7 +1281,7 @@ public sealed class TransferChannelsTests
 
         for (int i = 0; i < 50; i++)
         {
-            e.Commands.DispatchForTests(Broadcast($"Passerby{i}", "@timer sync"));
+            ChatLines.Hear(e.Router, Broadcast($"Passerby{i}", "@timer sync"));
             e.Clock += TimeSpan.FromSeconds(1);
         }
 
@@ -1285,18 +1292,18 @@ public sealed class TransferChannelsTests
         // Those were refusals, to players nobody granted anything. They are counted
         // apart from what is said to a player who holds the permission, so a
         // granted player's timers do not wait behind them.
-        e.Commands.DispatchForTests(Broadcast("Friend", "@timer sync"));
+        ChatLines.Hear(e.Router, Broadcast("Friend", "@timer sync"));
         Assert.Equal(new[] { "@timer sync" }, e.Ran);
         Assert.Equal("br {data}\r", e.Wire.Last());
 
         // The granted player's own minute still holds for them.
         e.Clock += TimeSpan.FromSeconds(10);
-        e.Commands.DispatchForTests(Broadcast("Friend", "@timer sync"));
+        ChatLines.Hear(e.Router, Broadcast("Friend", "@timer sync"));
         Assert.Single(e.Ran);
         Assert.Equal(cap + 1, e.Wire.Length);
 
         // A minute after the first of the refusals, there is room for one more.
-        e.Commands.DispatchForTests(Broadcast("Latecomer", "@timer sync"));
+        ChatLines.Hear(e.Router, Broadcast("Latecomer", "@timer sync"));
         Assert.Equal(cap + 2, e.Wire.Length);
         Assert.Equal("br {command invalid or not allowed}\r", e.Wire.Last());
         Assert.Equal(cap + 1, e.Commands.BroadcastAnswers().Remembered);
@@ -1308,8 +1315,8 @@ public sealed class TransferChannelsTests
     public void TheBugReport_CountsTheMinutesTurns_PermittedAndRefusedApart_WithNoNames()
     {
         Engine e = new();
-        e.Commands.DispatchForTests(Broadcast("Passerby", "@timer sync"));
-        e.Commands.DispatchForTests(Broadcast("Friend", "@timer sync"));
+        ChatLines.Hear(e.Router, Broadcast("Passerby", "@timer sync"));
+        ChatLines.Hear(e.Router, Broadcast("Friend", "@timer sync"));
 
         RemoteCommandManager.BroadcastAnswerCounts counts = e.Commands.BroadcastAnswers();
         Assert.Equal(new RemoteCommandManager.BroadcastAnswerCounts(Permitted: 1, Refused: 1, Remembered: 2), counts);
@@ -1346,11 +1353,11 @@ public sealed class TransferChannelsTests
 
     // ----- each transfer, each channel, through the engine -----------------
 
-    private static ChatLogEntry On(RemoteChannel channel, string sender, string msg) => channel switch
+    private static ChatLine On(RemoteChannel channel, string sender, string msg) => channel switch
     {
-        RemoteChannel.Telepath => new(Now, ChatChannel.TelepathIncoming, sender, msg, $"{sender} telepaths: {msg}"),
-        RemoteChannel.Gangpath => new(Now, ChatChannel.Gangpath, sender, msg, $"{sender} gangpaths: {msg}"),
-        RemoteChannel.Local => new(Now, ChatChannel.Local, sender, msg, $"{sender} says \"{msg}\""),
+        RemoteChannel.Telepath => new(ChatChannel.TelepathIncoming, sender, msg),
+        RemoteChannel.Gangpath => new(ChatChannel.Gangpath, sender, msg),
+        RemoteChannel.Local => new(ChatChannel.Local, sender, msg),
         _ => Broadcast(sender, msg),
     };
 
@@ -1365,11 +1372,11 @@ public sealed class TransferChannelsTests
     [InlineData("@timer sync", RemoteChannel.Gangpath, "bg {data}\r")]
     [InlineData("@timer sync", RemoteChannel.Local, ">Friend {data}\r")]
     [InlineData("@timer sync", RemoteChannel.Broadcast, "br {data}\r")]
-    public void EachTransferOnEachChannel_IsAnsweredOrRefusedOnThatChannel(string line, RemoteChannel channel, string expected)
+    public void AHandlersAnswerOrRefusal_GoesBackOnTheChannelTheRequestCameBy(string line, RemoteChannel channel, string expected)
     {
         Engine e = new();
 
-        e.Commands.DispatchForTests(On(channel, "Friend", line));
+        ChatLines.Hear(e.Router, On(channel, "Friend", line));
 
         Assert.Equal(expected, e.Wire.Single());
     }
@@ -1387,7 +1394,7 @@ public sealed class TransferChannelsTests
         e.Commands.DisableGangpathChannel = channel == RemoteChannel.Gangpath;
         e.Commands.DisableLocalChannel = channel == RemoteChannel.Local;
 
-        e.Commands.DispatchForTests(On(channel, "Friend", line));
+        ChatLines.Hear(e.Router, On(channel, "Friend", line));
 
         Assert.Empty(e.Ran);
         Assert.Empty(e.Wire);
@@ -1404,7 +1411,7 @@ public sealed class TransferChannelsTests
         Engine e = new();
         e.Commands.StealthedProvider = () => true;
 
-        e.Commands.DispatchForTests(On(RemoteChannel.Local, "Friend", line));
+        ChatLines.Hear(e.Router, On(RemoteChannel.Local, "Friend", line));
 
         Assert.Equal(expected, e.Wire.Single());
     }

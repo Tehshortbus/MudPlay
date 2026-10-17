@@ -92,9 +92,6 @@ public sealed class RemoteCommandManager : IDisposable
     private readonly HashSet<string> _ignored
         = new(StringComparer.OrdinalIgnoreCase);
     private Action<byte[]>? _wireSender;
-    // Test seam — last bytes the engine asked to write to the wire. Inspected by
-    // tests when no real sender is bound.
-    internal List<byte[]> LastSentForTests { get; } = new();
     private bool _disposed;
 
     // Live lives provider. Returns the current Lives count from the most recent
@@ -217,8 +214,10 @@ public sealed class RemoteCommandManager : IDisposable
         ChatRouter chat,
         PartyState party,
         PlayerDatabase players,
-        LogService? log = null)
+        LogService? log = null,
+        Func<DateTimeOffset>? now = null)
     {
+        _now = now ?? (() => DateTimeOffset.UtcNow);
         ArgumentNullException.ThrowIfNull(chat);
         ArgumentNullException.ThrowIfNull(party);
         ArgumentNullException.ThrowIfNull(players);
@@ -302,13 +301,6 @@ public sealed class RemoteCommandManager : IDisposable
         ArgumentException.ThrowIfNullOrWhiteSpace(prefix);
         return _prefixHandlers.TryRemove(prefix, out _);
     }
-
-    // Total handlers currently registered. Useful for tests and the LogService
-    // startup line.
-    public int HandlerCount => _handlers.Count;
-
-    // Test seam — drives the engine without going through ChatRouter.
-    internal void DispatchForTests(ChatLogEntry entry) => OnChatEntry(entry);
 
     // Outcome of TryInvokeLocal, so the caller can map a refusal to the right
     // status rather than guessing from a bool.
@@ -541,7 +533,7 @@ public sealed class RemoteCommandManager : IDisposable
                 && _handlers.TryGetValue(command, out Registration comeback)
                 && IsAuthorised(entry.Speaker, comeback.RequiredCategory, command))
                 _heldComebacks[entry.Speaker] =
-                    new HeldComeback(entry.Speaker, entry, Now(), IsActivePartyMember(entry.Speaker));
+                    new HeldComeback(entry.Speaker, entry, _now(), IsActivePartyMember(entry.Speaker));
             return;
         }
 
@@ -776,7 +768,7 @@ public sealed class RemoteCommandManager : IDisposable
         answer = null;
         if (channel != RemoteChannel.Broadcast) return true;
         BroadcastAnswerBudget budget = granted ? _broadcastAnswers : _broadcastRefusals;
-        if (WhyNotOnBroadcast(budget, speaker, Now()) is { } spent)
+        if (WhyNotOnBroadcast(budget, speaker, _now()) is { } spent)
         {
             _log?.Log(LogSeverity.Debug, "RemoteCmd",
                 $"Passing over {what} from {speaker} on the broadcast channel: {spent}.");
@@ -814,8 +806,7 @@ public sealed class RemoteCommandManager : IDisposable
     // than this is about a place the party has long left.
     public TimeSpan ComebackWindow { get; set; } = TimeSpan.FromMinutes(2);
 
-    // Clock seam for tests.
-    public Func<DateTimeOffset> Now { get; set; } = () => DateTimeOffset.UtcNow;
+    private readonly Func<DateTimeOffset> _now;
 
     // For the bug report: whose ask is kept.
     public IReadOnlyCollection<string> HeldComebackSenders => _heldComebacks.Keys.ToList();
@@ -856,7 +847,7 @@ public sealed class RemoteCommandManager : IDisposable
         _handlers.TryGetValue("@comeback", out Registration comeback);
         foreach ((string sender, ChatLogEntry entry, DateTimeOffset at, _) in held)
         {
-            TimeSpan age = Now() - at;
+            TimeSpan age = _now() - at;
             if (age > ComebackWindow)
             {
                 _log?.Log(LogSeverity.Info, "RemoteCmd",
@@ -1301,7 +1292,6 @@ public sealed class RemoteCommandManager : IDisposable
             _                      => payload,
         };
         byte[] bytes = Encoding.Latin1.GetBytes(wire + "\r");
-        LastSentForTests.Add(bytes);
         _wireSender?.Invoke(bytes);
     }
 
@@ -1332,7 +1322,7 @@ public sealed class RemoteCommandManager : IDisposable
     {
         if (answer is { Begun: true }) return true;
         BroadcastAnswerBudget budget = answer?.Budget ?? _broadcastRefusals;
-        DateTimeOffset now = Now();
+        DateTimeOffset now = _now();
         if (WhyNotOnBroadcast(budget, recipient, now) is { } spent)
         {
             _log?.Log(LogSeverity.Debug, "RemoteCmd",
@@ -1352,7 +1342,7 @@ public sealed class RemoteCommandManager : IDisposable
 
     public BroadcastAnswerCounts BroadcastAnswers()
     {
-        DateTimeOffset now = Now();
+        DateTimeOffset now = _now();
         return new(_broadcastAnswers.SpentAt(now), _broadcastRefusals.SpentAt(now),
             _broadcastAnswers.Remembered + _broadcastRefusals.Remembered);
     }

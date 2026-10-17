@@ -20,14 +20,14 @@ public sealed partial class MovementRefusalDetector : IDisposable
     // Recognizes a confusion-fumble wire line as a move-refusal, from game data rather
     // than a hardcoded regex: the fumble wordings ("You fumble in confusion!", plus a
     // spell's own wording like convulsions' "You convulse violently") live on Confused
-    // MessageRecords' ConfuseFumbleLine and are queried via ConditionTracker. Left null
-    // in tests that don't exercise the confusion path.
+    // MessageRecords' ConfuseFumbleLine and are queried via ConditionTracker. Null skips
+    // the confusion check.
     private readonly Func<string, bool>? _isConfuseFumbleLine;
 
     // Recognizes the line a hold we are under prints (ConditionTracker.IsActiveHoldLine).
     // Paradigm refuses a held character's move with the hold's own applied line, which
-    // differs per spell, so it comes from game data too. Left null in tests that don't
-    // exercise it.
+    // differs per spell, so it comes from game data too. Null skips
+    // the check.
     private readonly Func<string, bool>? _isActiveHoldLine;
 
     public MovementRefusalDetector(LineExtractor lines, RoomTracker tracker, LogService? log = null,
@@ -49,9 +49,6 @@ public sealed partial class MovementRefusalDetector : IDisposable
         _lines.LineEmitted -= OnLineEmitted;
         _tracker.CommandMoveRefused -= OnCommandMoveRefused;
     }
-
-    internal void FeedTestLine(string text, DateTimeOffset? when = null)
-        => HandleLine(text, when ?? DateTimeOffset.UtcNow);
 
     private void OnLineEmitted(LineExtractor.EmittedLine line)
     {

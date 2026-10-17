@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Text.Json;
 using MudPlay.Game.Calculators;
 using MudPlay.Models.Profile;
@@ -73,9 +72,6 @@ public sealed class LevelUpAnnouncer : IDisposable
     // Bind the gate-wrapped wire sender (set in MainWindowViewModel after telnet
     // connects).
     public void SetWireSender(Action<byte[]> sender) => _wire.Bind(sender);
-
-    // Test seam — every buffer the announcer pushed to the wire, in order.
-    internal List<byte[]> LastSentForTests => _wire.LastSentForTests;
 
     // A new character (or a profile close before a swap) — drop the baseline so the
     // next character re-seeds from its own banked exp rather than inheriting ours.

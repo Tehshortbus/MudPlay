@@ -69,11 +69,11 @@ public sealed class AutoGetItemsManager : IDisposable
 
     // True from a post-kill re-look until the room display it asked for arrives.
     // The walker is held meanwhile; the timer gives up on a display that never
-    // comes (a dark room prints no exits line). Overridable in tests.
+    // comes (a dark room prints no exits line).
     private bool _reLookHeld;
     public bool IsReLookHeld => _reLookHeld;
     private DispatcherTimer? _reLookRelease;
-    internal int ReLookReleaseMs { get; set; } = 1500;
+    private const int ReLookReleaseMs = 1500;
 
     private Terminal.LineExtractor? _lines;
     private string? _noticeBuffer;            // multi-line continuation
@@ -127,28 +127,28 @@ public sealed class AutoGetItemsManager : IDisposable
         ArgumentNullException.ThrowIfNull(collectAfterCombatFinished);
         ArgumentNullException.ThrowIfNull(hasEngageableHostiles);
         _resolve = resolve;
-        // Null when unbound (tests without a cap case) → nothing is ever held,
+        // Null when unbound → nothing is ever held,
         // so a MaxToGet cap can still fire off the first pickup. Live wiring
         // supplies the carried+worn+key-ring count.
         _heldCount = heldCount ?? (static _ => 0);
         _isEnabled = isEnabled;
         _collectAfterCombatFinished = collectAfterCombatFinished;
         _hasEngageableHostiles = hasEngageableHostiles;
-        // Unbound (tests) → Stock behaviour: one `get` per unit, never batched.
+        // Unbound → Stock behaviour: one `get` per unit, never batched.
         _isParadigm = isParadigm ?? (static () => false);
-        // Null when unbound (tests) → never a peek. A `look <dir>` peek renders a
+        // Null when unbound → never a peek. A `look <dir>` peek renders a
         // full "You notice" survey for the adjacent room; gate the get path on it
         // so we don't send get commands (and trigger the get→inventory→equip
         // chain) against a room the player never entered.
         _isPeekSuppressed = isPeekSuppressed ?? (static () => false);
-        // Null when unbound (tests) → Empty reading (MaxWeight 0) disables the
-        // encumbrance gate, so those cases collect ungated. Live wiring supplies
+        // Null when unbound → Empty reading (MaxWeight 0) disables the
+        // encumbrance gate, so the engine collects ungated. Live wiring supplies
         // the parsed InventorySnapshot.Encumbrance and the per-character item
         // bracket gates (the "Cash + Items" tab checkboxes).
         _encumbrance = encumbrance ?? (static () => EncumbranceReading.Empty);
         _itemEncGates = itemEncGates ?? (static () => (false, false, false, false));
         // (weight to free, item name) → whether coin was dropped to free it. Unbound
-        // (tests) → never.
+        // → never.
         _dropCoinForWeight = dropCoinForWeight ?? (static (_, _) => false);
         _log = log;
 
@@ -178,7 +178,7 @@ public sealed class AutoGetItemsManager : IDisposable
 
     // Bind the shared room-redisplay coordinator so the post-kill re-look
     // coalesces with Cash's combat-clear re-display (one Enter, not two). Optional
-    // — unbound (tests) the engine sends its own Enter as before.
+    // — unbound, the engine sends its own Enter.
     public void SetRoomRedisplay(RoomRedisplayCoordinator coordinator)
     {
         ArgumentNullException.ThrowIfNull(coordinator);

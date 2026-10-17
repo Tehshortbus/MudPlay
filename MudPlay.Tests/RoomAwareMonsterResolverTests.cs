@@ -70,7 +70,7 @@ public sealed class RoomAwareMonsterResolverTests : IDisposable
         Name = "Orc Barracks",
         Npc = npc,
         RawLairTag = lair,
-        Exits = Room.EmptyExits,
+        Exits = RoomExitSet.Empty,
     };
 
     [Fact]

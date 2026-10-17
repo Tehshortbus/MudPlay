@@ -139,9 +139,6 @@ public sealed class RoundDamageTracker : IDisposable
         get { lock (_ringLock) { return _ring.ToArray(); } }
     }
 
-    // Number of rounds closed since the last Reset.
-    public int RoundCount => _roundCounter;
-
     public RoundDamageTracker(
         MessageRouter router,
         PlayerState state,

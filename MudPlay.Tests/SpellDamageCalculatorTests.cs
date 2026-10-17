@@ -4,7 +4,7 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-// Pins the realm damage/resist math (Stock from the engine, Paradigm from MMUD-Explorer): level scaling of the range,
+// Pins the realm damage/resist math (Stock and Paradigm): level scaling of the range,
 // the magic-resist partial cut (code 17 "Damage(-MR)" only), the elemental
 // flat-percent cut, and the low-MR amplification.
 public sealed class SpellDamageCalculatorTests

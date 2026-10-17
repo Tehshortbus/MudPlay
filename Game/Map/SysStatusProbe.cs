@@ -45,8 +45,7 @@ public sealed class SysStatusProbe : IDisposable
     // Generous: the dump is several lines and a busy BBS can be slow.
     public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(6);
 
-    // Test seam — lets a test drive the timeout without real time.
-    public Func<TimeSpan, Task> DelayProvider { get; set; } = Task.Delay;
+    private readonly Func<TimeSpan, Task> _delay;
 
     // True while probing is switched off after a timeout. NOT permanent: a single
     // unanswered probe used to disable sysop status for the rest of the session,
@@ -74,16 +73,16 @@ public sealed class SysStatusProbe : IDisposable
     // Whether a probe would actually be sent right now.
     public bool Available => !_disposed && !AutoDisabled && _wireSender is not null && _capabilityEnabled();
 
-    // now is a test seam, like DelayProvider: the back-off window is measured
-    // against it, so a test can step past the window without waiting it out.
+    // The back-off window is measured against now; the wait for the block runs on delay.
     public SysStatusProbe(SysRoomStatusParser parser, Func<bool> capabilityEnabled,
-        Func<DateTimeOffset>? now = null, LogService? log = null)
+        Func<DateTimeOffset>? now = null, LogService? log = null, Func<TimeSpan, Task>? delay = null)
     {
         ArgumentNullException.ThrowIfNull(parser);
         ArgumentNullException.ThrowIfNull(capabilityEnabled);
         _parser = parser;
         _capabilityEnabled = capabilityEnabled;
         _now = now ?? (() => DateTimeOffset.UtcNow);
+        _delay = delay ?? Task.Delay;
         _log = log;
         _parser.StatusParsed += OnStatusParsed;
     }
@@ -135,7 +134,7 @@ public sealed class SysStatusProbe : IDisposable
         _log?.Log(LogSeverity.Info, LogCategory, $"Probing with `{StatusCommand}`.");
         _wireSender?.Invoke(Encoding.Latin1.GetBytes(StatusCommand + "\r\n"));
 
-        Task completed = await Task.WhenAny(tcs.Task, DelayProvider(Timeout)).ConfigureAwait(false);
+        Task completed = await Task.WhenAny(tcs.Task, _delay(Timeout)).ConfigureAwait(false);
         if (completed != tcs.Task)
         {
             _pending = null;

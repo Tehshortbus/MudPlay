@@ -7,7 +7,7 @@ namespace MudPlay.Tests;
 public sealed class BbsProfileFieldsTests
 {
     [Fact]
-    public void Defaults_MatchPhase4_5Spec()
+    public void Defaults_MatchSpec()
     {
         BbsProfile dto = new();
 

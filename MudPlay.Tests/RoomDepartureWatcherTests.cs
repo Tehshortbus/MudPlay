@@ -7,22 +7,20 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// <see cref="RoomDepartureWatcher"/> + the regex behind
-/// <see cref="KnownPatterns.RoomEntryDeparture"/>. A mid-room departure line
-/// ("The orc rogue walks out of the room to the above!") — most often a fleeing
-/// player dragging the engaged mob out — must drop that monster from
-/// <see cref="RoomEntityClassifier.Current"/> and re-fire the observation so the
-/// combat gate the mob held can clear. Covers article stripping, the with-article
-/// retry, and the no-op for a departing player.
-/// </summary>
+// RoomDepartureWatcher + the regex behind
+// KnownPatterns.RoomEntryDeparture. A mid-room departure line
+// ("The orc rogue walks out of the room to the above!") — most often a fleeing
+// player dragging the engaged mob out — must drop that monster from
+// RoomEntityClassifier.Current and re-fire the observation so the
+// combat gate the mob held can clear. Covers article stripping, the with-article
+// retry, and the no-op for a departing player.
 public sealed class RoomDepartureWatcherTests
 {
     private sealed class Harness : IDisposable
     {
         public MessageRouter Router { get; } = new();
         public MonsterMessageStore Monsters { get; } = new();
-        public PlayerDatabase Players { get; } = new();
+        public PlayerDatabase Players { get; } = new(new ProfileService(), () => null);
         public LogService Log { get; } = new();
         public RoomEntityClassifier Classifier { get; }
         public RoomDepartureWatcher Watcher { get; }
@@ -36,8 +34,7 @@ public sealed class RoomDepartureWatcherTests
             Classifier.EntitiesObserved += Observations.Add;
         }
 
-        public void AddMonster(int number, string name, bool allowNoPrefix = true,
-                               params string[] flavorPrefixes)
+        public void AddMonster(int number, string name)
         {
             Monsters.Messages.Add(new MonsterMessageRecord(
                 Id: $"M{number}",
@@ -197,7 +194,7 @@ public sealed class RoomDepartureWatcherTests
         // The lone "The …"-named monster: stripping "The " gives a bare miss, so the
         // watcher retries with the article intact to recover the stored name.
         using Harness h = new();
-        h.AddMonster(251, "The Eternal", allowNoPrefix: true);
+        h.AddMonster(251, "The Eternal");
 
         h.Feed("Also here: The Eternal.");
         Assert.Single(h.Observations[0].Entities);

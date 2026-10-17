@@ -8,8 +8,6 @@ namespace MudPlay.Services;
 //
 // Implementations:
 //   Patterns.RegexPattern  — full PCRE-like match with capture groups.
-//   Patterns.PrefixPattern — substring-startswith, no groups.
-//   Patterns.ExactPattern  — whole-line equality, no groups.
 public interface IMessagePattern
 {
     // Stable identifier (e.g. "chat.gossip", "combat.user-hits") — appears on

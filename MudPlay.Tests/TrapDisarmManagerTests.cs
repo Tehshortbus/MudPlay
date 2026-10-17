@@ -8,12 +8,10 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// State-machine + queue coverage for TrapDisarmManager. The handler-
-/// side authorisation + channel-aware denial live in TrapHandlerTests;
-/// these tests drive the manager directly via Enqueue + simulated
-/// inbound game messages.
-/// </summary>
+// State-machine + queue coverage for TrapDisarmManager. The handler-
+// side authorisation + channel-aware denial live in TrapHandlerTests;
+// these tests drive the manager directly via Enqueue + simulated
+// inbound game messages.
 public sealed class TrapDisarmManagerTests : IDisposable
 {
     private static readonly DateTimeOffset Now = new(2026, 6, 3, 0, 0, 0, TimeSpan.Zero);

@@ -144,7 +144,7 @@ public sealed class PeriodicDamageRoomSpellsTests : IDisposable
 
     private sealed class Tab
     {
-        public ProfileService Profile { get; } = new();
+        public ProfileService Profile { get; } = TestProfiles.Service();
         public List<PeriodicDamageRoomSpell> Listed { get; } = new() { MagmaHeat(), Fungus() };
         public string? ActiveSet { get; set; } = "one";
         public LogService Log { get; } = new();
@@ -163,7 +163,7 @@ public sealed class PeriodicDamageRoomSpellsTests : IDisposable
     public void Tab_StartsWithEveryTickSpellsTicked_AndTheRestClear()
     {
         Tab tab = new();
-        tab.Profile.LoadBlank();
+        tab.Profile.LoadDefaultProfile();
         using PeriodicDamageRoomSpellsSectionViewModel vm = tab.Open();
 
         Assert.True(vm.HasSpells);
@@ -180,7 +180,7 @@ public sealed class PeriodicDamageRoomSpellsTests : IDisposable
     public void Tab_StoresOnlyTheSpellsSetAwayFromTheDefault_AndSaysWhatChanged()
     {
         Tab tab = new();
-        tab.Profile.LoadBlank();
+        tab.Profile.LoadDefaultProfile();
         using PeriodicDamageRoomSpellsSectionViewModel vm = tab.Open();
 
         vm.Spells[0].BarsResting = false;   // magma heat: rest there anyway
@@ -211,7 +211,7 @@ public sealed class PeriodicDamageRoomSpellsTests : IDisposable
     public void Tab_ReadsTheStoredChoices_AndKeepsAnotherDataSetsEntries()
     {
         Tab tab = new();
-        CharacterProfile profile = tab.Profile.LoadBlank();
+        CharacterProfile profile = tab.Profile.LoadDefaultProfile();
         profile.Settings = new()
         {
             [PeriodicDamageRoomSpellSettings.TabKey] = JsonSerializer.SerializeToElement(
@@ -234,7 +234,7 @@ public sealed class PeriodicDamageRoomSpellsTests : IDisposable
     public void Tab_Discard_PutsTheBoxesBack()
     {
         Tab tab = new();
-        tab.Profile.LoadBlank();
+        tab.Profile.LoadDefaultProfile();
         using PeriodicDamageRoomSpellsSectionViewModel vm = tab.Open();
 
         vm.Spells[0].BarsResting = false;
@@ -260,13 +260,13 @@ public sealed class PeriodicDamageRoomSpellsTests : IDisposable
         // A profile, no game data.
         tab.Listed.Clear();
         tab.ActiveSet = null;
-        tab.Profile.LoadBlank();
+        tab.Profile.LoadDefaultProfile();
         Assert.False(vm.HasSpells);
         Assert.StartsWith("No game data is loaded", vm.EmptyReason);
 
         // Game data with no such spell.
         tab.ActiveSet = "one";
-        tab.Profile.LoadBlank();
+        tab.Profile.LoadDefaultProfile();
         Assert.Equal("The loaded game data has no room spell that does damage.", vm.EmptyReason);
     }
 
@@ -277,7 +277,7 @@ public sealed class PeriodicDamageRoomSpellsTests : IDisposable
         Directory.CreateDirectory(dir);
         GameDataCache cache = new(_root);
         Tab tab = new();
-        tab.Profile.LoadBlank();
+        tab.Profile.LoadDefaultProfile();
         using PeriodicDamageRoomSpellsSectionViewModel vm = new(tab.Profile, () => tab.Listed, () => tab.ActiveSet, _ => null, cache, tab.Log);
         vm.SelectedSpell = vm.Spells[0];
 
@@ -295,7 +295,7 @@ public sealed class PeriodicDamageRoomSpellsTests : IDisposable
         Directory.CreateDirectory(dir);
         GameDataCache cache = new(_root);
         Tab tab = new();
-        tab.Profile.LoadBlank();
+        tab.Profile.LoadDefaultProfile();
         using PeriodicDamageRoomSpellsSectionViewModel vm = new(tab.Profile, () => tab.Listed, () => tab.ActiveSet, _ => null, cache, tab.Log);
         vm.Spells[0].BarsResting = false;   // magma heat, not saved
         vm.Spells[1].BarsResting = true;    // fungus spell, not saved
@@ -317,11 +317,11 @@ public sealed class PeriodicDamageRoomSpellsTests : IDisposable
     {
         // As every Settings section does: the edits were the old character's.
         Tab tab = new();
-        tab.Profile.LoadBlank();
+        tab.Profile.LoadDefaultProfile();
         using PeriodicDamageRoomSpellsSectionViewModel vm = tab.Open();
         vm.Spells[0].BarsResting = false;
 
-        tab.Profile.LoadBlank();
+        tab.Profile.LoadDefaultProfile();
 
         Assert.True(vm.Spells[0].BarsResting);
         Assert.False(vm.IsDirty);
@@ -332,7 +332,7 @@ public sealed class PeriodicDamageRoomSpellsTests : IDisposable
     public void Tab_WearCounterBox_StartsTicked_IsSavedWithTheCharacter_AndSaysWhenItChanges()
     {
         Tab tab = new();
-        tab.Profile.LoadBlank();
+        tab.Profile.LoadDefaultProfile();
         using PeriodicDamageRoomSpellsSectionViewModel vm = tab.Open();
         Assert.True(vm.WearCounterBeforeEntering);
         Assert.True(PeriodicDamageRoomSpellsSectionViewModel.ReadOrDefault(null).WearCounterBeforeEntering);
@@ -371,7 +371,7 @@ public sealed class PeriodicDamageRoomSpellsTests : IDisposable
             },
             "gnomish fish-helm (worn)",
             new[] { NewRoom(6, 1139, "Underwater Passage", 512) }));
-        tab.Profile.LoadBlank();
+        tab.Profile.LoadDefaultProfile();
         using PeriodicDamageRoomSpellsSectionViewModel vm = new(
             tab.Profile, () => tab.Listed, () => tab.ActiveSet, _ => null, gameData: null, tab.Log,
             spellName: n => n == 513 ? "drowning" : n == 514 ? "drowned to death" : null);
@@ -387,7 +387,7 @@ public sealed class PeriodicDamageRoomSpellsTests : IDisposable
     {
         Tab tab = new();
         tab.Listed[0] = MagmaHeat(rooms: 30);
-        tab.Profile.LoadBlank();
+        tab.Profile.LoadDefaultProfile();
         using PeriodicDamageRoomSpellsSectionViewModel vm = tab.Open();
         Assert.Equal("Pick a spell above to list its rooms.", vm.RoomsTitle);
         Assert.Empty(vm.Areas);

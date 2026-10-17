@@ -39,15 +39,6 @@ public sealed class StashRoomManager : IDisposable
     // LogService category — appears as [StashRoom] rows per entry + dispatch.
     public const string LogCategory = "StashRoom";
 
-    // What a single stash dispatch put away: the room it happened in, the
-    // currency amounts hidden, and the canonical names of the items hidden. Either
-    // list may be empty (cash-only or items-only stash), but the event only fires
-    // when at least one is non-empty.
-    public sealed record StashDispatch(
-        RoomKey Room,
-        IReadOnlyList<(string Currency, long Amount)> Currencies,
-        IReadOnlyList<string> Items);
-
     // A carried entry flagged Auto-stash: its canonical name, and how many copies
     // stay in hand (Min. to keep when Must have minimum is set, else none), the
     // same floor Auto-sell and Auto-discard leave.
@@ -64,10 +55,6 @@ public sealed class StashRoomManager : IDisposable
 
     private Action<byte[]>? _wireSender;
     private bool _disposed;
-
-    // Fires after a successful stash dispatch. Carries the room key, the
-    // (currency, amount) pairs, and the item names that were sent.
-    public event Action<StashDispatch>? StashExecuted;
 
     public StashRoomManager(
         ProfileService profile,
@@ -89,10 +76,10 @@ public sealed class StashRoomManager : IDisposable
         _getSnapshot = getSnapshot;
         _resolveAutoStashItem = resolveAutoStashItem;
         _isEnabled = isEnabled;
-        // Unbound (tests) → Stock behaviour: one `hide` per item, never batched.
+        // Unbound → Stock behaviour: one `hide` per item, never batched.
         _isParadigm = isParadigm ?? (static () => false);
         _log = log;
-        // Resolves the per-realm runic word; unbound (tests) falls back to stock
+        // Resolves the per-realm runic word; unbound, it falls back to stock
         // "runic" so the stable-realm behaviour is unchanged.
         _naming = naming ?? new CurrencyNaming();
     }
@@ -143,17 +130,16 @@ public sealed class StashRoomManager : IDisposable
         // the stash plan passes a zero floor. Everything ⇒ no cap.
         long maxUnit = CurrencyHoldings.MaxUnitFor(cash.StashCoinCutoff);
 
-        List<(string Currency, long Amount)> dispatched = new();
+        int currenciesHidden = 0;
         foreach ((string denom, long count) in held.PlanOffloadAboveKeep(0, maxUnit))
         {
             // Hide names the coins by their full two-word noun, same as the
             // get / drop paths — a bare denomination adjective binds
             // ambiguously (MajorMUD hides a "silver" ring instead of silver
             // nobles), so WireNoun forces a currency match (and maps runic to
-            // the per-realm word). The dispatched record keeps the canonical
-            // denom key.
+            // the per-realm word).
             Send($"hide {count} {_naming.WireNoun(denom)}");
-            dispatched.Add((denom, count));
+            currenciesHidden++;
         }
 
         // Stash rooms hold items too (banks are cash-only). Hide every carried,
@@ -171,7 +157,7 @@ public sealed class StashRoomManager : IDisposable
             if (!toHide.ContainsKey(item.Name)) hideOrder.Add(item.Name);
             toHide[item.Name] = (toHide.GetValueOrDefault(item.Name).Held + CopiesIn(entry, item.Name), item.KeepCount);
         }
-        List<string> hiddenItems = new();
+        int itemsHidden = 0;
         foreach (string name in hideOrder)
         {
             (int copies, int keep) = toHide[name];
@@ -184,15 +170,14 @@ public sealed class StashRoomManager : IDisposable
             if (keep > 0)
                 _log?.Info(LogCategory, $"stash {count}x item={name} (holding {copies}, min to keep {keep})");
             CountedCommand.Emit(Send, "hide", count, name, _isParadigm());
-            for (int i = 0; i < count; i++) hiddenItems.Add(name);
+            itemsHidden += count;
         }
 
-        if (dispatched.Count > 0 || hiddenItems.Count > 0)
+        if (currenciesHidden > 0 || itemsHidden > 0)
         {
             _log?.Info(LogCategory,
                 $"stash dispatched room=({enteredRoom.Map},{enteredRoom.Room}) "
-                + $"currencies={dispatched.Count} items={hiddenItems.Count}");
-            StashExecuted?.Invoke(new StashDispatch(enteredRoom, dispatched, hiddenItems));
+                + $"currencies={currenciesHidden} items={itemsHidden}");
         }
     }
 

@@ -68,7 +68,7 @@ public sealed class GatePickSources
 
             bool isKey = req.Kind == RouteRequirementKind.DoorKey;
             bool wanted = pickFetches
-                && (req.Kind == RouteRequirementKind.HazardProtection ? flaggedAutoObtain(id) : !req.Optional);
+                && (req.Kind != RouteRequirementKind.HazardProtection || flaggedAutoObtain(id));
             GiveSource? source = wanted ? giver(id, isKey) : null;
             // A key only a trade yields is fetched when its trader can be reached;
             // otherwise the walk arranges nothing for it and the card must not say

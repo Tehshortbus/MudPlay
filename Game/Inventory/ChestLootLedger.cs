@@ -7,8 +7,7 @@ namespace MudPlay.Game.Inventory;
 // What the chests opened in one Chest Offload session gave, built one open at a
 // time: each open is diffed against the inventory read just before it, so items
 // already carried — or picked up between opens — never count as chest loot. Sales
-// and drops the game confirms take items back off. Service-free so it can be
-// unit-tested; the window feeds it the before/after carried lists.
+// and drops the game confirms take items back off. Service-free; the window feeds it the before/after carried lists.
 public sealed class ChestLootLedger
 {
     private readonly Dictionary<string, int> _loot = new(StringComparer.OrdinalIgnoreCase);

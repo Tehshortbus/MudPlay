@@ -5,16 +5,13 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Pins the per-character equip predicate behind the Equipment Manager's item
-/// search: the alignment-word → <see cref="AlignmentBucket"/> reduction and the
-/// level / class / alignment / weapon-type / armour-tier
-/// <see cref="ItemEquipFilter.CanEquip"/> gate (a faithful port of MMUD-Explorer's
-/// <c>ItemIsUsableByChar</c>). Each player dimension must degrade gracefully — an
-/// unknown level / class / alignment skips that filter rather than hiding gear — and
-/// a class grant (item <c>Abil-59</c> ClassOk, or a matching <c>ClassRest</c>) must
-/// bypass weapon / armour type gating while anti-magic still blocks magical gear.
-/// </summary>
+// Pins the per-character equip predicate behind the Equipment Manager's item
+// search: the alignment-word → AlignmentBucket reduction and the
+// level / class / alignment / weapon-type / armour-tier
+// ItemEquipFilter.CanEquip gate. Each player dimension must degrade gracefully — an
+// unknown level / class / alignment skips that filter rather than hiding gear — and
+// a class grant (item Abil-59 ClassOk, or a matching ClassRest) must
+// bypass weapon / armour type gating while anti-magic still blocks magical gear.
 public sealed class ItemEquipFilterTests
 {
     // A class profile with permissive weapon / armour tiers (All Weapons + max armour)

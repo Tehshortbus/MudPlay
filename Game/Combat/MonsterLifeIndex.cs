@@ -72,18 +72,6 @@ public sealed class MonsterLifeIndex
         };
     }
 
-    // Diagnostic reason a monster can't be drained ("nonliving" / "undead" /
-    // "nonliving+undead"), or null when it's drainable.
-    public string? DrainBlockReason(int monsterNumber)
-    {
-        if (monsterNumber < 0) return null;
-        if (!Build().TryGetValue(monsterNumber, out MonsterLife life)) return null;
-        if (life.NonLiving && life.Undead) return "nonliving+undead";
-        if (life.NonLiving) return "nonliving";
-        if (life.Undead) return "undead";
-        return null;
-    }
-
     private Dictionary<int, MonsterLife> Build()
     {
         if (_byNumber is { } cached) return cached;

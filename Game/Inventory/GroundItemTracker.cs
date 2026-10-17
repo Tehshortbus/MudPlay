@@ -53,8 +53,8 @@ public sealed class GroundItemTracker : IDisposable
 
     // isKnownItem resolves a survey entry against the active item table (true
     // when it names a real Items.json record). Injected so the cash filter can
-    // settle the "2 gold key" ambiguity below; null when no game data is wired
-    // (tests), where the count+denomination heuristic stands alone.
+    // settle the "2 gold key" ambiguity below; null when no game data is wired,
+    // where the count+denomination heuristic stands alone.
     // isRoomName says whether a line is the name of a room in the active set; null
     // when no map is wired, where no list can be shown to be a room display's.
     public GroundItemTracker(MessageRouter router, CurrencyNaming naming,
@@ -205,7 +205,7 @@ public sealed class GroundItemTracker : IDisposable
     // item table is wired (_isKnownItem), re-merge any adjacent pair whose
     // rejoined text resolves to a real item while neither half does alone —
     // the same known-item-overrides-heuristic pattern IsCashEntry already
-    // uses for the "2 gold key" ambiguity. Unwired (tests without game data)
+    // uses for the "2 gold key" ambiguity. Unwired (no game data)
     // the naive split stands alone, same as before.
     private IEnumerable<string> SplitEntries(string list)
     {
@@ -254,8 +254,8 @@ public sealed class GroundItemTracker : IDisposable
     // tiebreaker settles it (shared with CashManager.TryParseCashEntry, the same
     // heuristic + the same fix): an entry that resolves to a real Items.json
     // record is never cash. Currency isn't in the item table, so a genuine coin
-    // pile won't resolve and still reads as cash. Unwired (tests without game
-    // data) the heuristic stands alone and the "2 gold key" ambiguity resurfaces.
+    // pile won't resolve and still reads as cash. Unwired (no game data), the
+    // heuristic stands alone and the "2 gold key" ambiguity resurfaces.
     // Public so death recovery can tell whether a captured pile entry is currency
     // (coins are recovered as cash, not `get`-ed as items — a pile left holding only
     // coins still counts as fully recovered).

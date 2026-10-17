@@ -57,9 +57,6 @@ public sealed class TrainLearnParser : IDisposable
         if (_lines is not null) _lines.LineEmitted -= OnLineEmitted;
     }
 
-    // Test hook — feed a single line, optionally flagged as the prompt.
-    internal void FeedTestLine(string text, bool isPromptLine = false) => HandleLine(text, isPromptLine);
-
     private void OnLineEmitted(LineExtractor.EmittedLine line) => HandleLine(line.Text, line.IsPromptLine);
 
     private void HandleLine(string text, bool isPromptLine)

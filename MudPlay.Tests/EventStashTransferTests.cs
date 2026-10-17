@@ -15,7 +15,7 @@ public sealed class EventStashTransferTests
 {
     private sealed class Rig
     {
-        public readonly EventManager Manager = new();
+        public readonly EventManager Manager = EventEngineHarness.ManagerWithoutGameData();
         public readonly List<string> Sent = new();
         public readonly List<(RoomKey Stash, RoomKey Bank)> Started = new();
         public string? Refusal;

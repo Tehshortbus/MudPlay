@@ -8,7 +8,7 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-// GhItemLocationStore is BBS-tier (Data/BBS/{bbs}/roomba_items.json), fed by
+// GhItemLocationStore is realm-tier (roomba_items.json in the realm's folder), fed by
 // GhSweepManager's room-observation ledger and read by RoombaQueryHandler. It
 // tracks sightings per (item, room) — a gang house can stock the same item in
 // several rooms at once, and @roomba needs every one of them, not just
@@ -19,7 +19,7 @@ namespace MudPlay.Tests;
 // those load a tiny scratch game-data set (see NewPinnedStoreWithItems).
 public sealed class GhItemLocationStoreTests : IDisposable
 {
-    private readonly string _scratchBbs = "gh-items-test-" + Path.GetRandomFileName();
+    private readonly string _realm = Path.Combine(Path.GetTempPath(), "gh-items-test-" + Path.GetRandomFileName());
     private readonly string _gameDataRoot = Path.Combine(
         Path.GetTempPath(), "mudplay-gh-items-gamedata-" + Path.GetRandomFileName());
 
@@ -27,8 +27,7 @@ public sealed class GhItemLocationStoreTests : IDisposable
     {
         try
         {
-            string folder = AppPaths.BbsFolder(_scratchBbs);
-            if (Directory.Exists(folder)) Directory.Delete(folder, recursive: true);
+            if (Directory.Exists(_realm)) Directory.Delete(_realm, recursive: true);
         }
         catch { /* best-effort */ }
         try { Directory.Delete(_gameDataRoot, recursive: true); }
@@ -39,7 +38,7 @@ public sealed class GhItemLocationStoreTests : IDisposable
     {
         ItemNameStore itemNames = new(new GameDataCache());
         GhItemLocationStore store = new(itemNames);
-        store.OnRealmChanged(AppPaths.BbsFolder(_scratchBbs));
+        store.OnRealmChanged(_realm);
         return store;
     }
 
@@ -63,7 +62,7 @@ public sealed class GhItemLocationStoreTests : IDisposable
         itemNames.OnActiveSetChanged("alpha");
 
         GhItemLocationStore store = new(itemNames);
-        store.OnRealmChanged(AppPaths.BbsFolder(_scratchBbs));
+        store.OnRealmChanged(_realm);
         return (store, itemNames);
     }
 
@@ -193,7 +192,7 @@ public sealed class GhItemLocationStoreTests : IDisposable
     }
 
     [Fact]
-    public void RecordRoom_WithoutBbsPin_IsNoOp()
+    public void RecordRoom_WithoutARealm_IsNoOp()
     {
         ItemNameStore itemNames = new(new GameDataCache());
         GhItemLocationStore store = new(itemNames);   // no OnRealmChanged
@@ -204,7 +203,7 @@ public sealed class GhItemLocationStoreTests : IDisposable
     }
 
     [Fact]
-    public void Sightings_SurviveAcrossStoreInstances_ForTheSameBbs()
+    public void Sightings_SurviveAcrossStoreInstances_ForTheSameRealm()
     {
         GhItemLocationStore first = NewPinnedStore();
         first.RecordRoom(new RoomKey(1, 100), new[] { "torch" });
@@ -212,7 +211,7 @@ public sealed class GhItemLocationStoreTests : IDisposable
 
         ItemNameStore itemNames = new(new GameDataCache());
         GhItemLocationStore second = new(itemNames);
-        second.OnRealmChanged(AppPaths.BbsFolder(_scratchBbs));
+        second.OnRealmChanged(_realm);
 
         Assert.Equal(2, second.FindSightings("torch").Count);
     }

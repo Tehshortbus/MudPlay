@@ -7,33 +7,25 @@ namespace MudPlay.Tests;
 
 public sealed class LookParserTests
 {
+    // The game's output, fed the way the client receives it.
+    private readonly ServerFeed _feed = new();
+
     private static readonly DateTime Now = new(2026, 5, 30, 14, 0, 0, DateTimeKind.Utc);
 
-    private static LookParser Build(out PlayerDatabase db)
+    private LookParser Build(out PlayerDatabase db)
     {
-        db = new PlayerDatabase();
-        return new LookParser(
-            lines: new Terminal.LineExtractor(new Terminal.TerminalEmulator(80, 25)),
-            db:    db);
+        db = new PlayerDatabase(new ProfileService(), () => null);
+        return new LookParser(lines: _feed.Lines, db: db);
     }
 
-    /// <summary>
-    /// Verbatim "look mudplay" against Playpen BBS — equipped variant
-    /// from the user's session. Exercises: bracketed name header,
-    /// wrapped description sentence, race/class detection via the
-    /// longest-match token list (Dark-Elf beats Elf), the
-    /// `<item>   (<slot>)` row shape, and block termination on prompt.
-    /// </summary>
-    /// <summary>
-    /// The header does not always end at the "]". Stock LOOK appends an
-    /// optional red " -- Immortal !" and an optional " (&lt;gang&gt;)", and the
-    /// header pattern used to anchor straight to end-of-line — so a gang
-    /// member's look block was skipped entirely and RecordLook never fired.
-    /// On a realm where everyone is in a gang that meant NOBODY was ever
-    /// recorded, and TrapDelegationManager (which probes an unknown member's
-    /// race with `look &lt;member&gt;` and waits for this pipeline) re-probed on
-    /// every join — the "it keeps looking" loop.
-    /// </summary>
+    // The header does not always end at the "]". Stock LOOK appends an
+    // optional red " -- Immortal !" and an optional " (<gang>)", and the
+    // header pattern used to anchor straight to end-of-line — so a gang
+    // member's look block was skipped entirely and RecordLook never fired.
+    // On a realm where everyone is in a gang that meant NOBODY was ever
+    // recorded, and TrapDelegationManager (which probes an unknown member's
+    // race with `look <member>` and waits for this pipeline) re-probed on
+    // every join — the "it keeps looking" loop.
     [Theory]
     [InlineData("[ MudPlay WuzHere ]",                          null)]
     [InlineData("[ MudPlay WuzHere ] (Knights of Chaos)",       "Knights of Chaos")]
@@ -43,7 +35,7 @@ public sealed class LookParserTests
     public void ParsesHeaderSuffixes_RecordsLookAndGang(string header, string? gang)
     {
         LookParser p = Build(out PlayerDatabase db);
-        p.FeedTestLines(new[]
+        _feed.Rows(new[]
         {
             header,
             "MudPlay is a healthy, well built Dark-Elf Mystic with short black hair and black",
@@ -52,7 +44,7 @@ public sealed class LookParserTests
             "He is equipped with:",
             "quarterstaff                    (Weapon Hand)",
         }, Now);
-        p.FeedPromptLine("[HP=33]:", Now);
+        _feed.Line("[HP=33]:", Now);
 
         PlayerRecord r = Assert.Single(db.Players);
         Assert.Equal("MudPlay",  r.GivenName);
@@ -68,7 +60,7 @@ public sealed class LookParserTests
     public void RoundTotalsTable_IsNotALookResponse()
     {
         LookParser p = Build(out PlayerDatabase db);
-        p.FeedTestLines(new[]
+        _feed.Rows(new[]
         {
             "[Round 1 ----------------------------]",
             "[ Combatant             Dealt  Taken ]",
@@ -76,15 +68,13 @@ public sealed class LookParserTests
             "[ Thresh                   55      0 ]",
             "A Mage stands here.",
         }, Now);
-        p.FeedPromptLine("[HP=199/MA=230]:", Now);
+        _feed.Line("[HP=199/MA=230]:", Now);
 
         Assert.Empty(db.Players);
     }
 
-    /// <summary>
-    /// A look that carries no gang must not erase one a WHO row already
-    /// taught us — the suffix being absent means "not seen", not "none".
-    /// </summary>
+    // A look that carries no gang must not erase one a WHO row already
+    // taught us — the suffix being absent means "not seen", not "none".
     [Fact]
     public void LookWithoutGang_LeavesAKnownGangAlone()
     {
@@ -92,7 +82,7 @@ public sealed class LookParserTests
         db.RecordLook("MudPlay", race: null, @class: null,
             gang: "Knights of Chaos", equipment: null, nowUtc: Now);
 
-        p.FeedTestLines(new[]
+        _feed.Rows(new[]
         {
             "[ MudPlay ]",
             "MudPlay is a healthy, well built Dark-Elf Mystic with short black hair and black",
@@ -102,17 +92,15 @@ public sealed class LookParserTests
             "",
             "Nothing",
         }, Now);
-        p.FeedPromptLine("[HP=33]:", Now);
+        _feed.Line("[HP=33]:", Now);
 
         PlayerRecord r = Assert.Single(db.Players);
         Assert.Equal("Knights of Chaos", r.Gang);
         Assert.Equal("Dark-Elf", r.Race);
     }
 
-    /// <summary>
-    /// The strictness that keeps unrelated bracketed lines (chat tags, status
-    /// codes) from false-triggering has to survive the new optional suffixes.
-    /// </summary>
+    // The strictness that keeps unrelated bracketed lines (chat tags, status
+    // codes) from false-triggering has to survive the new optional suffixes.
     [Theory]
     [InlineData("[ Global ] Someone says hello")]
     [InlineData("[ MudPlay ] extra words")]
@@ -121,7 +109,7 @@ public sealed class LookParserTests
     public void NonHeaderBracketedLines_DoNotStartABlock(string line)
     {
         LookParser p = Build(out PlayerDatabase db);
-        p.FeedTestLines(new[]
+        _feed.Rows(new[]
         {
             line,
             "Someone is a healthy, well built Dark-Elf Mystic with short black hair.",
@@ -129,16 +117,21 @@ public sealed class LookParserTests
             "He is equipped with:",
             "quarterstaff                    (Weapon Hand)",
         }, Now);
-        p.FeedPromptLine("[HP=33]:", Now);
+        _feed.Line("[HP=33]:", Now);
 
         Assert.Empty(db.Players);
     }
 
+    // Verbatim "look mudplay" against Playpen BBS — equipped variant
+    // from the user's session. Exercises: bracketed name header,
+    // wrapped description sentence, race/class detection via the
+    // longest-match token list (Dark-Elf beats Elf), the
+    // `   (<slot>)` row shape, and block termination on prompt.
     [Fact]
     public void ParsesEquippedLook_RecordsRaceClassAndAllSlots()
     {
         LookParser p = Build(out PlayerDatabase db);
-        p.FeedTestLines(new[]
+        _feed.Rows(new[]
         {
             "[ MudPlay WuzHere ]",
             "MudPlay is a healthy, well built Dark-Elf Mystic with short black hair and black",
@@ -154,7 +147,7 @@ public sealed class LookParserTests
             "quarterstaff                    (Weapon Hand)",
         }, Now);
         // Prompt closes the block since we never see a blank-after-content.
-        p.FeedPromptLine("[HP=33]:", Now);
+        _feed.Line("[HP=33]:", Now);
 
         Assert.Single(db.Players);
         PlayerRecord r = db.Players[0];
@@ -173,16 +166,14 @@ public sealed class LookParserTests
         Assert.Contains(r.Equipment, e => e.SlotLabel == "Weapon Hand"  && e.ItemName == "quarterstaff");
     }
 
-    /// <summary>
-    /// Empty-loadout case: explicit "Nothing" line means the player
-    /// was equipped with nothing. Equipment list should be empty
-    /// (not null) so the dialog can show "(none)" rather than "—".
-    /// </summary>
+    // Empty-loadout case: explicit "Nothing" line means the player
+    // was equipped with nothing. Equipment list should be empty
+    // (not null) so the dialog can show "(none)" rather than "—".
     [Fact]
     public void ParsesEmptyLoadout_RecordsExplicitNothing()
     {
         LookParser p = Build(out PlayerDatabase db);
-        p.FeedTestLines(new[]
+        _feed.Rows(new[]
         {
             "[ MudPlay WuzHere ]",
             "MudPlay is a healthy, well built Dark-Elf Mystic with short black hair and black",
@@ -193,7 +184,7 @@ public sealed class LookParserTests
             "",
             "Nothing",
         }, Now);
-        p.FeedPromptLine("[HP=33]:", Now);
+        _feed.Line("[HP=33]:", Now);
 
         PlayerRecord r = db.Players[0];
         Assert.NotNull(r.Equipment);
@@ -204,14 +195,14 @@ public sealed class LookParserTests
     public void LongestRaceMatch_PicksDarkElf_OverElf()
     {
         LookParser p = Build(out PlayerDatabase db);
-        p.FeedTestLines(new[]
+        _feed.Rows(new[]
         {
             "[ Tester One ]",
             "Tester is a healthy, slim Dark-Elf Mage with green eyes.  She is unwounded.",
             "He is equipped with:",
             "Nothing",
         }, Now);
-        p.FeedPromptLine("[HP=99]:", Now);
+        _feed.Line("[HP=99]:", Now);
 
         Assert.Equal("Dark-Elf", db.Players[0].Race);
         Assert.Equal("Mage",     db.Players[0].Class);
@@ -221,14 +212,14 @@ public sealed class LookParserTests
     public void LongestRaceMatch_PicksHalfElf_OverElfOrHalf()
     {
         LookParser p = Build(out PlayerDatabase db);
-        p.FeedTestLines(new[]
+        _feed.Rows(new[]
         {
             "[ Beta Tester ]",
             "Beta is a wiry Half-Elf Druid with bright blue eyes.  She is unwounded.",
             "He is equipped with:",
             "Nothing",
         }, Now);
-        p.FeedPromptLine("[HP=99]:", Now);
+        _feed.Line("[HP=99]:", Now);
 
         Assert.Equal("Half-Elf", db.Players[0].Race);
         Assert.Equal("Druid",    db.Players[0].Class);
@@ -241,14 +232,14 @@ public sealed class LookParserTests
         // Pre-existing who row (alignment + title).
         db.RecordObservation("MudPlay WuzHere", null, null, "Neutral", "Apprentice", null, null, Now);
 
-        look.FeedTestLines(new[]
+        _feed.Rows(new[]
         {
             "[ MudPlay WuzHere ]",
             "MudPlay is a healthy, well built Dark-Elf Mystic with short black hair.",
             "He is equipped with:",
             "Nothing",
         }, Now);
-        look.FeedPromptLine("[HP=33]:", Now);
+        _feed.Line("[HP=33]:", Now);
 
         PlayerRecord r = db.Players[0];
         Assert.Equal("Dark-Elf", r.Race);          // from look
@@ -264,25 +255,25 @@ public sealed class LookParserTests
     {
         LookParser look = Build(out PlayerDatabase db);
         // First look: full block with equipment.
-        look.FeedTestLines(new[]
+        _feed.Rows(new[]
         {
             "[ MudPlay WuzHere ]",
             "MudPlay is a wiry Dark-Elf Mystic.",
             "He is equipped with:",
             "padded vest                     (Torso)",
         }, Now);
-        look.FeedPromptLine("[HP=33]:", Now);
+        _feed.Line("[HP=33]:", Now);
         Assert.NotNull(db.Players[0].Equipment);
         Assert.Single(db.Players[0].Equipment!);
 
         // Second look interrupted before equipment marker — prompt
         // arrives mid-description. Equipment should stay attached.
-        look.FeedTestLines(new[]
+        _feed.Rows(new[]
         {
             "[ MudPlay WuzHere ]",
             "MudPlay is a wiry Dark-Elf Mystic.",
         }, Now.AddSeconds(10));
-        look.FeedPromptLine("[HP=33]:", Now.AddSeconds(10));
+        _feed.Line("[HP=33]:", Now.AddSeconds(10));
 
         // Equipment slot still populated from the earlier complete look.
         Assert.NotNull(db.Players[0].Equipment);
@@ -293,14 +284,14 @@ public sealed class LookParserTests
     public void EquipmentLineRegex_HandlesTwoHandedSlotLabel()
     {
         LookParser p = Build(out PlayerDatabase db);
-        p.FeedTestLines(new[]
+        _feed.Rows(new[]
         {
             "[ Tester Two ]",
             "Tester is a wiry Human Warrior with stern eyes.",
             "He is equipped with:",
             "nexus spear                     (Two Handed)",
         }, Now);
-        p.FeedPromptLine("[HP=99]:", Now);
+        _feed.Line("[HP=99]:", Now);
 
         Assert.Equal("Two Handed", db.Players[0].Equipment![0].SlotLabel);
         Assert.Equal("nexus spear", db.Players[0].Equipment![0].ItemName);

@@ -9,15 +9,13 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// The tracker folds each party member's known level (exact, else title band)
-/// into the (Low, High) window <see cref="MovementFilter"/> reads, and tops up a
-/// member whose level is unknown or not from the current day via
-/// <c>WarmStaleLevels</c> when a route crosses a level gate. The on-partying
-/// @level refresh lives in PartyProbeManager, not here — so the tracker no longer
-/// auto-probes on roster change. Wired to a real probe + <see cref="PlayerDatabase"/>
-/// so the reply→persist→read loop is exercised end to end.
-/// </summary>
+// The tracker folds each party member's known level (exact, else title band)
+// into the (Low, High) window MovementFilter reads, and tops up a
+// member whose level is unknown or not from the current day via
+// WarmStaleLevels when a route crosses a level gate. The on-partying
+// @level refresh lives in PartyProbeManager, not here — so the tracker no longer
+// auto-probes on roster change. Wired to a real probe + PlayerDatabase
+// so the reply→persist→read loop is exercised end to end.
 public sealed class PartyLevelTrackerTests
 {
     private sealed class Harness
@@ -26,7 +24,7 @@ public sealed class PartyLevelTrackerTests
         public readonly ChatRouter Chat;
         public readonly PartyState State = new();
         public readonly PartyBroadcaster Broadcaster;
-        public readonly PlayerDatabase Players = new();
+        public readonly PlayerDatabase Players = new(new ProfileService(), () => null);
         public readonly List<byte[]> Wire = new();
         public readonly List<Action> Windows = new();
         public readonly PartyLevelProbe Probe;

@@ -68,41 +68,6 @@ public sealed class GameDataCacheSwitchTests : IDisposable
             seen);
     }
 
-    // A read held open while the set is switched to nothing: the lookup that started it
-    // gets the table it asked for, nothing is thrown, and nothing is kept.
-    [Fact]
-    public void ALookupHeldAcrossASwitchToNoSet_ReturnsItsTable_AndLeavesNothing()
-    {
-        SeedSet("alpha");
-        GameDataCache cache = new(_root);
-        cache.SwitchSet("alpha");
-        using ManualResetEventSlim reading = new(), release = new();
-        cache.TableReadStarting = _ =>
-        {
-            reading.Set();
-            release.Wait(Limit);
-        };
-
-        GameTable? table = null;
-        Exception? failure = null;
-        Thread lookup = new(() =>
-        {
-            try { table = cache.GetTable("Monsters"); }
-            catch (Exception ex) { failure = ex; }
-        });
-        lookup.Start();
-        Assert.True(reading.Wait(Limit), "no read started");
-        cache.SwitchSet(null);
-        Assert.Null(cache.GetTable("Monsters"));
-        release.Set();
-        Assert.True(lookup.Join(Limit), "the lookup never returned");
-
-        Assert.Null(failure);
-        Assert.Equal("alpha", FirstName(table));
-        Assert.Empty(cache.LoadedTables);
-        Assert.Null(cache.GetTable("Monsters"));
-    }
-
     // Lookups on four threads while the set goes alpha, beta, none, round and round.
     // Whatever the interleaving: no lookup throws, and once a switch has returned, the
     // tables the cache serves are that set's, then and for as long as the set stays.

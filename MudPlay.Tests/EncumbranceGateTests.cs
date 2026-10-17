@@ -24,6 +24,7 @@ public sealed class EncumbranceGateTests
     public void HeavyGate_StaysTighterThanNinety()
     {
         long heavy = EncumbranceGate.ComputeCapWeight(false, false, true, Enc, skipPast90: true);
-        Assert.Equal(EncumbranceGate.GateBoundaryCap(3840, EncumbranceGate.StockHeavyStartPct), heavy);
+        Assert.Equal(2572, heavy);
+        Assert.True(heavy < 3456);   // 90% of 3840
     }
 }

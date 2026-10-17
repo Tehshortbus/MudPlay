@@ -26,8 +26,6 @@ public sealed class InfoSectionViewModel : JsonTableSectionViewModel
         "UpdateURL",
     };
 
-    public override string SearchKeyColumn => "Dat File Version";
-
     public override IEnumerable<string> SearchableLabels => new[]
     {
         Title, "info", "version", "metadata", "realm",

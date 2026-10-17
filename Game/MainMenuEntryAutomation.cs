@@ -69,7 +69,9 @@ public sealed class MainMenuEntryAutomation : IDisposable
     // hangup-suppressed login can't be re-armed by later step progress. Cleared
     // when a menu line is handled (one auto-entry per login).
     private bool _entryAuthorized;
-    private Avalonia.Threading.DispatcherTimer? _startupTimer;
+    private IDisposable? _startupTimer;
+    // Arms one tick after the delay; disposing what it returns cancels it.
+    private readonly Func<TimeSpan, Action, IDisposable> _schedule;
     private int _startupIndex;
     private bool _awaitingFirstRoom;
 
@@ -83,8 +85,6 @@ public sealed class MainMenuEntryAutomation : IDisposable
     // Startup refresh sent once the first in-game room display confirms we
     // entered the realm. `stat` populates PlayerStats (Level + current Exp
     // included); `i` emits inventory text the InventoryManager parser consumes.
-    // Read-only so tests + settings UI can introspect the canonical sequence
-    // without rebuilding it.
     public static readonly IReadOnlyList<string> StartupSequence =
         new[] { "stat", "i" };
 
@@ -101,21 +101,20 @@ public sealed class MainMenuEntryAutomation : IDisposable
     // within about a second of entering the realm.
     public TimeSpan StartupStep { get; set; } = TimeSpan.FromMilliseconds(400);
 
-    // Test seam — override the clock so unit tests don't have to sleep.
-    public Func<DateTime> NowProvider { get; set; } = () => DateTime.UtcNow;
-
-    // Test seam — most recent bytes the engine asked to write to the wire.
-    internal List<byte[]> LastSentForTests => _wire.LastSentForTests;
+    private readonly Func<DateTime> _now;
 
     // True when armed AND inside the window.
-    public bool IsArmed => NowProvider() < _armedUntilUtc;
+    public bool IsArmed => _now() < _armedUntilUtc;
 
     public MainMenuEntryAutomation(
         MessageRouter router,
         GameCommands commands,
         HangupSignal hangup,
-        LogService? log = null)
+        LogService? log = null,
+        Func<TimeSpan, Action, IDisposable>? schedule = null,
+        Func<DateTime>? now = null)
     {
+        _now = now ?? (() => DateTime.UtcNow);
         ArgumentNullException.ThrowIfNull(router);
         ArgumentNullException.ThrowIfNull(commands);
         ArgumentNullException.ThrowIfNull(hangup);
@@ -123,6 +122,7 @@ public sealed class MainMenuEntryAutomation : IDisposable
         _commands = commands;
         _hangup = hangup;
         _log = log;
+        _schedule = schedule ?? DispatcherTicks.Once;
         _patternSub = _router.Subscribe(KnownPatterns.MainMenuEnterRealm, OnMainMenuLine);
         // Game-entry confirmation: the first "Obvious exits:" line after
         // an entry-command send proves we're actually in the realm and
@@ -163,7 +163,7 @@ public sealed class MainMenuEntryAutomation : IDisposable
             return;
         }
         _entryAuthorized = true;
-        _armedUntilUtc = NowProvider() + ArmWindow;
+        _armedUntilUtc = _now() + ArmWindow;
         // Log the arm so a reconnect capture shows auto-entry was actually
         // primed. Its ABSENCE is the tell that this login wasn't authorized
         // (hangup-suppressed) or the automator never started, so Arm was never
@@ -181,7 +181,7 @@ public sealed class MainMenuEntryAutomation : IDisposable
     public void KeepArmed()
     {
         if (_disposed || !_entryAuthorized) return;
-        _armedUntilUtc = NowProvider() + ArmWindow;
+        _armedUntilUtc = _now() + ArmWindow;
         _log?.Log(LogSeverity.Debug, "MainMenuEntry",
             "Re-armed auto-entry — login still progressing.");
     }
@@ -195,23 +195,13 @@ public sealed class MainMenuEntryAutomation : IDisposable
         StopStartupSequence();
     }
 
-    // Test seam — runs one pass of the startup-sequence timer without a real
-    // tick. Mirrors production: the timer only fires after StartStartupSequence
-    // sets it up (which only happens after a successful entry-command send), so
-    // a suppressed-entry / never-armed test path produces no startup commands.
-    internal void TickStartupSequenceForTests()
-    {
-        if (_startupTimer is null) return;
-        SendNextStartupCommand();
-    }
-
     private void OnMainMenuLine(MatchResult _)
     {
         // Tight latch check: must be armed AND inside the window.
         // Once the entry command is sent we close the latch so a
         // subsequent in-game line that happens to look like the menu
         // (gossip, telepath, room description) can't re-fire.
-        if (NowProvider() >= _armedUntilUtc) return;
+        if (_now() >= _armedUntilUtc) return;
         _armedUntilUtc = DateTime.MinValue;
         // One auto-entry per login: close authorization so a later KeepArmed
         // (a trailing step advancing, or a second menu line) can't re-open the
@@ -256,16 +246,19 @@ public sealed class MainMenuEntryAutomation : IDisposable
     {
         StopStartupSequence();
         _startupIndex = 0;
-        _startupTimer = new Avalonia.Threading.DispatcherTimer(
-            interval: StartupStep,
-            priority: Avalonia.Threading.DispatcherPriority.Background,
-            callback: (_, _) => SendNextStartupCommand());
-        _startupTimer.Start();
+        _startupTimer = _schedule(StartupStep, OnStartupTick);
+    }
+
+    // One step of the sequence: the next is armed before this one is sent.
+    private void OnStartupTick()
+    {
+        _startupTimer = _schedule(StartupStep, OnStartupTick);
+        SendNextStartupCommand();
     }
 
     private void StopStartupSequence()
     {
-        _startupTimer?.Stop();
+        _startupTimer?.Dispose();
         _startupTimer = null;
     }
 

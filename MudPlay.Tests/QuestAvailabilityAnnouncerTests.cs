@@ -18,7 +18,7 @@ public sealed class QuestAvailabilityAnnouncerTests
     {
         public PlayerStats Stats { get; } = new() { Level = 1 };
         public StatParser Parser { get; }
-        public ProfileService Profile { get; } = new();
+        public ProfileService Profile { get; } = TestProfiles.Service();
         public QuestAvailabilityAnnouncer Announcer { get; }
         public List<string> Announced { get; } = new();
         public int LoginLevel { get; set; }
@@ -32,7 +32,7 @@ public sealed class QuestAvailabilityAnnouncerTests
         {
             _quests = quests.ToList();
             Parser = new StatParser(Stats);
-            Profile.LoadBlank();   // Current set; AnnounceAvailableQuests defaults true
+            Profile.LoadDefaultProfile();   // Current set; AnnounceAvailableQuests defaults true
             Announcer = new QuestAvailabilityAnnouncer(
                 Parser, Profile,
                 currentLevel: () => LoginLevel,

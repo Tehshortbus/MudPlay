@@ -6,11 +6,9 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Regression coverage for <see cref="EngineRecoveryGate"/>'s terminal
-/// tier-3 failure path, where the aborting engine synchronously detaches
-/// the gate mid-call.
-/// </summary>
+// Regression coverage for EngineRecoveryGate's terminal
+// tier-3 failure path, where the aborting engine synchronously detaches
+// the gate mid-call.
 public sealed class EngineRecoveryGateTests : IDisposable
 {
     private readonly string _root;

@@ -1,26 +1,23 @@
-using System.Reflection;
 using MudPlay.Game;
 using MudPlay.Game.Inventory;
 using MudPlay.Models.Profile;
-using MudPlay.Terminal;
 using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Phase 9 PR 9.1 (cash slice) — <see cref="InventoryManager"/> parses the
-/// full <c>i</c> dump into a currency + numeric-encumbrance snapshot and
-/// patches it incrementally on coin pickups / drops / bank deposits /
-/// withdrawals. Currency ratios are MajorMUD-faithful (1 silver = 10 copper,
-/// 1 gold = 100, 1 platinum = 10000, 1 runic = 1000000) and coin weight
-/// follows the 3-coins-per-encumbrance-unit rule.
-/// </summary>
+// InventoryManager parses the
+// full i dump into a currency + numeric-encumbrance snapshot and
+// patches it incrementally on coin pickups / drops / bank deposits /
+// withdrawals. Currency ratios are MajorMUD-faithful (1 silver = 10 copper,
+// 1 gold = 100, 1 platinum = 10000, 1 runic = 1000000) and coin weight
+// follows the 3-coins-per-encumbrance-unit rule.
 public sealed class InventoryManagerTests
 {
     private sealed class Harness : IDisposable
     {
         public InventoryManager Inv { get; }
-        public LineExtractor Lines { get; }
+        // The game's output, fed the way the client receives it.
+        public ServerFeed Server { get; } = new();
         public int ChangedCount { get; private set; }
 
         public Harness(
@@ -33,22 +30,11 @@ public sealed class InventoryManagerTests
             Inv = new InventoryManager(
                 log: null, itemWeightResolver: itemWeight, slotResolver: slotResolver,
                 isItemRecordName: isItemRecordName, isKey: isKey, staysWhenSpent: staysWhenSpent);
-            Lines = new LineExtractor(new TerminalEmulator(80, 24));
-            Inv.AttachLineExtractor(Lines);
+            Inv.AttachLineExtractor(Server.Lines);
             Inv.Changed += () => ChangedCount++;
         }
 
-        public void Feed(string text)
-        {
-            FieldInfo? field = typeof(LineExtractor).GetField(
-                "LineEmitted", BindingFlags.Instance | BindingFlags.NonPublic);
-            if (field?.GetValue(Lines) is Action<LineExtractor.EmittedLine> handler)
-            {
-                handler(new LineExtractor.EmittedLine(
-                    text, Array.Empty<CellAttributes>(),
-                    DateTimeOffset.UtcNow, IsPromptLine: false));
-            }
-        }
+        public void Feed(string text) => Server.Line(text);
 
         public void Dispose() => Inv.Dispose();
     }
@@ -207,7 +193,6 @@ public sealed class InventoryManagerTests
         ReadiedLight light = snap.ReadiedLight!.Value;
         Assert.Equal("lantern", light.Name);
         Assert.Equal(239, light.Readied);
-        Assert.Equal(TimeSpan.FromSeconds(239 * 30), light.RemainingTime);
 
         // The lit light is not double-counted as a plain carried item; the
         // unworn pack still holds the quarterstaff-less bits (dagger).

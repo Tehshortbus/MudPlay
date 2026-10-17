@@ -19,6 +19,8 @@ public sealed class StatlineReconcilerTests
     {
         public WirePromptScanner Scanner { get; } = new();
         public StatlineReconciler Reconciler { get; }
+        // What Reconciler put on the wire, through the sender the client binds.
+        public List<byte[]> ReconcilerWire { get; } = new();
         public DateTime Now = new(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
         public int FlagChanges;
 
@@ -27,10 +29,10 @@ public sealed class StatlineReconcilerTests
             // Install the same pattern the editor command would compile to, so
             // the scanner's match / mismatch decision mirrors production.
             Scanner.InstallRegex(StatlinePromptRegexBuilder.Build(desired));
-            Reconciler = new StatlineReconciler(Scanner) { NowProvider = () => Now };
+            Reconciler = new StatlineReconciler(Scanner, now: () => Now);
             Reconciler.SetDesiredCommandProvider(() => desired);
             Reconciler.FlagChanged += () => FlagChanges++;
-            if (bind) Reconciler.SetWireSender(static _ => { });
+            if (bind) Reconciler.SetWireSender(ReconcilerWire.Add);
         }
 
         // Connect, then the first room display puts us in the game.
@@ -52,7 +54,7 @@ public sealed class StatlineReconcilerTests
         public void Advance(double seconds) => Now = Now.AddSeconds(seconds);
 
         public IReadOnlyList<string> Sent =>
-            Reconciler.LastSentForTests.Select(b => Encoding.Latin1.GetString(b)).ToList();
+            ReconcilerWire.Select(b => Encoding.Latin1.GetString(b)).ToList();
     }
 
     [Fact]

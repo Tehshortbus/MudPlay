@@ -12,6 +12,12 @@ namespace MudPlay.Tests;
 // can't be encoded in Latin-1 at all and arrived as `?`.
 public sealed class WireTextTests
 {
+    // The router each engine reads, which a test's chat lines go through.
+    private readonly Dictionary<RemoteCommandManager, MessageRouter> _routers = new();
+
+    // What the remote-command engine put on the wire, through the sender the client binds.
+    private readonly List<byte[]> _replies = new();
+
     private static readonly DateTime Now = new(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc);
 
     [Theory]
@@ -46,28 +52,30 @@ public sealed class WireTextTests
     {
         MessageRouter router = new();
         DefaultPatterns.Seed(router);
-        PlayerDatabase players = new();
+        PlayerDatabase players = new(new ProfileService(), () => null);
         players.RecordObservation("Friend", @class: null, race: null, alignment: null,
             title: null, gang: null, role: null, nowUtc: Now);
         players.EditCustomization("Friend", new PlayerCustomization(RemoteControls: PlayerRemoteControls.All));
         RemoteCommandManager engine = new(new ChatRouter(router), new PartyState(), players);
+        _routers[engine] = router;
+        engine.SetWireSender(_replies.Add);
         engine.RegisterHandler("@probe", PlayerRemoteControls.QueryVersion, ctx =>
         {
             ctx.Reply("King’s Road — 42 rooms · 3 lines");
             ctx.Refuse("needs ≥2 rooms");
         });
 
-        engine.DispatchForTests(new ChatLogEntry(Now, channel, "Friend", "@probe", "Friend: @probe"));
+        ChatLines.Hear(_routers[engine], new ChatLine(channel, "Friend", "@probe"));
 
-        Assert.Equal(2, engine.LastSentForTests.Count);
-        foreach (byte[] sent in engine.LastSentForTests)
+        Assert.Equal(2, _replies.Count);
+        foreach (byte[] sent in _replies)
         {
             Assert.All(sent, b => Assert.True(b is (byte)'\r' or (>= 0x20 and <= 0x7E)));
             string line = Encoding.Latin1.GetString(sent);
             Assert.DoesNotContain("?", line);
         }
-        Assert.Contains("King's Road - 42 rooms . 3 lines", Encoding.Latin1.GetString(engine.LastSentForTests[0]));
-        Assert.Contains("needs >=2 rooms", Encoding.Latin1.GetString(engine.LastSentForTests[1]));
+        Assert.Contains("King's Road - 42 rooms . 3 lines", Encoding.Latin1.GetString(_replies[0]));
+        Assert.Contains("needs >=2 rooms", Encoding.Latin1.GetString(_replies[1]));
     }
 
     // Every line @help can send is written in ASCII to begin with.

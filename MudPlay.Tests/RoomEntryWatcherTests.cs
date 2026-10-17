@@ -7,20 +7,18 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// PR 9.A — <see cref="RoomEntryWatcher"/> + the regex behind
-/// <see cref="KnownPatterns.RoomEntryArrival"/>. Covers article
-/// stripping, monster vs player lookup, colour-hint fallback for
-/// unknown names, direction capture, and the
-/// <see cref="RoomEntityClassifier.AppendArrivalEntity"/> roundtrip.
-/// </summary>
+// RoomEntryWatcher + the regex behind
+// KnownPatterns.RoomEntryArrival. Covers article
+// stripping, monster vs player lookup, colour-hint fallback for
+// unknown names, direction capture, and the
+// RoomEntityClassifier.AppendArrivalEntity roundtrip.
 public sealed class RoomEntryWatcherTests
 {
     private sealed class Harness : IDisposable
     {
         public MessageRouter Router { get; } = new();
         public MonsterMessageStore Monsters { get; } = new();
-        public PlayerDatabase Players { get; } = new();
+        public PlayerDatabase Players { get; } = new(new ProfileService(), () => null);
         public LogService Log { get; } = new();
         public RoomEntityClassifier Classifier { get; }
         public RoomEntryWatcher Watcher { get; }
@@ -38,13 +36,8 @@ public sealed class RoomEntryWatcherTests
             Log.EntryAdded += LogEntries.Add;
         }
 
-        public void AddMonster(int number, string name, bool killable = true,
-                               bool allowNoPrefix = true,
-                               params string[] flavorPrefixes)
+        public void AddMonster(int number, string name)
         {
-            string[] deathLines = killable
-                ? new[] { $"The {name} dies." }
-                : Array.Empty<string>();
             Monsters.Messages.Add(new MonsterMessageRecord(
                 Id: $"M{number}",
                 Name: name,
@@ -76,11 +69,9 @@ public sealed class RoomEntryWatcherTests
             Router.Dispatch(emitted);
         }
 
-        /// <summary>
-        /// Build a CellAttributes[] whose first non-space cell carries
-        /// the given foreground index. Used to inject the yellow /
-        /// red colour hint into the arrival line.
-        /// </summary>
+        // Build a CellAttributes[] whose first non-space cell carries
+        // the given foreground index. Used to inject the yellow /
+        // red colour hint into the arrival line.
         public CellAttributes[] AttrsWithFg(string text, int index)
         {
             CellAttributes[] arr = new CellAttributes[text.Length];
@@ -105,7 +96,7 @@ public sealed class RoomEntryWatcherTests
     public void KnownMonster_AddedAsMonster()
     {
         using Harness h = new();
-        h.AddMonster(1, "lashworm", allowNoPrefix: true, flavorPrefixes: "fierce");
+        h.AddMonster(1, "lashworm");   // "fierce" strips through the built-in prefix list
 
         h.Feed("A fierce lashworm crawls into the room from nowhere.");
 
@@ -431,9 +422,9 @@ public sealed class RoomEntryWatcherTests
     public void FlavoredArrival_ResolvesToBaseMonster()
     {
         // "A nasty giant rat crawls in" → article strip → "nasty giant
-        // rat" → prefix strip → "giant rat" matches monster.
+        // rat" → the built-in prefix strip → "giant rat" matches monster.
         using Harness h = new();
-        h.AddMonster(1, "giant rat", killable: true, allowNoPrefix: false, "nasty", "angry");
+        h.AddMonster(1, "giant rat");
 
         h.Feed("A nasty giant rat crawls into the room from nowhere.");
 
@@ -460,7 +451,7 @@ public sealed class RoomEntryWatcherTests
         // to a bare miss; the with-article retry recovers the record so
         // the monster number survives for a do-not-attack rule.
         using Harness h = new();
-        h.AddMonster(251, "The Eternal", allowNoPrefix: true);
+        h.AddMonster(251, "The Eternal");
 
         h.Feed("The Eternal floats into the room from nowhere.");
 

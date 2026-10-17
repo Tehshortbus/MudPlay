@@ -7,17 +7,12 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// PR 7.8 — LoopManager CRUD + builder helpers, working against an
-/// isolated XDG_DATA_HOME so the suite doesn't touch user data.
-/// </summary>
+// LoopManager CRUD + builder helpers, working against a per-test game-data set.
 public sealed class LoopManagerTests : IDisposable
 {
-    // AppPaths caches its roots at static-init time, so XDG_DATA_HOME
-    // can't be swapped between tests. We isolate via a per-test GUID
-    // suffix on the game-data set name (loops persist under the set's
-    // Loops/ folder); Dispose deletes it so nothing leaks into the
-    // user's real Data/ tree.
+    // AppPaths caches its roots at static-init time, so each test isolates by a
+    // GUID suffix on the game-data set name (loops persist under the set's Loops/
+    // folder); Dispose deletes the set folder.
     private readonly string _setName;
 
     public LoopManagerTests()
@@ -39,8 +34,6 @@ public sealed class LoopManagerTests : IDisposable
     // ----- fixture ---------------------------------------------------
 
     // 1/1 ──N── 1/2 ──N── 1/3 (linear strip for gap-fill).
-    // Active set lives in the same isolated XDG root so AppPaths
-    // resolves Data/game data/ + Data/BBS/ under it.
     private const string GraphJson = """
         [
           { "Map Number": 1, "Room Number": 1, "Name": "A",
@@ -60,10 +53,8 @@ public sealed class LoopManagerTests : IDisposable
 
     private LoopManager NewManager()
     {
-        // GameDataCache uses AppPaths.GameDataRoot under the XDG root —
-        // we can't sandbox it because AppPaths caches the root at
-        // static-init. Use the unique per-test set name so concurrent
-        // tests don't collide and Dispose can clean up cleanly.
+        // The unique per-test set name keeps concurrent tests apart and lets
+        // Dispose clean up.
         string setRoot = Path.Combine(AppPaths.GameDataRoot, _setName);
         Directory.CreateDirectory(setRoot);
         File.WriteAllText(Path.Combine(setRoot, "Rooms.json"), GraphJson);

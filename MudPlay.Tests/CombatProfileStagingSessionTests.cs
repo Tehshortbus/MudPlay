@@ -11,8 +11,8 @@ public sealed class CombatProfileStagingSessionTests
 {
     private static (ProfileService Profile, CombatProfileManager Mgr) Setup()
     {
-        ProfileService profile = new();
-        profile.LoadBlank();
+        ProfileService profile = TestProfiles.Service();
+        profile.LoadDefaultProfile();
         CharacterProfile p = profile.Current!;
         p.CombatProfiles = new CombatProfileSettings
         {

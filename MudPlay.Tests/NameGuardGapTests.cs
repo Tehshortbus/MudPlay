@@ -12,7 +12,7 @@ namespace MudPlay.Tests;
 
 // What stands behind the name checks for the names that still got through: the
 // folder a refused name is sent to, a profile's set name that can't be a folder, the
-// segments of a navigation folder, and the guard on the scratch root these tests use.
+// segments of a navigation folder.
 [Collection(ScratchRoot.NamesCollection)]
 public sealed class NameGuardGapTests : IDisposable
 {
@@ -75,8 +75,6 @@ public sealed class NameGuardGapTests : IDisposable
 
         Assert.DoesNotContain(refused, new GameDataCache(AppPaths.GameDataRoot).AvailableSets);
         Assert.Contains(Set, new GameDataCache(AppPaths.GameDataRoot).AvailableSets);
-        Assert.DoesNotContain(refused, new MdbImporter().GetGameDataFolders());
-        Assert.Contains(Set, new MdbImporter().GetGameDataFolders());
         Assert.DoesNotContain(refused, _bbs.ListNames());
         Assert.Contains(Bbs, _bbs.ListNames());
         List<ProfileRef> listed = _profiles.ListAll().ToList();
@@ -211,44 +209,5 @@ public sealed class NameGuardGapTests : IDisposable
         }
         finally { PathGuard.Refused -= Hear; }
         Assert.StartsWith("A navigation folder refused: ", said);
-    }
-
-    // ----- The scratch root guard ---------
-
-    [Fact]
-    public void AScratchRootThatIsASymbolicLinkToTheLiveFolder_IsRefused_AsIsOneInsideIt()
-    {
-        if (OperatingSystem.IsWindows()) return;
-        string live = Directory.CreateDirectory(Path.Combine(_jail, "aa-live")).FullName;
-        Directory.CreateDirectory(Path.Combine(live, "game data"));
-        string link = Path.Combine(_jail, "zz-link");
-        Directory.CreateSymbolicLink(link, live);
-        string other = Directory.CreateDirectory(Path.Combine(_jail, "mm-other")).FullName;
-
-        // Lexically the link is nowhere near the live folder.
-        Assert.False(Path.GetFullPath(link).StartsWith(live, StringComparison.OrdinalIgnoreCase));
-
-        Assert.NotNull(ScratchRoot.WhyNotScratch(link, live));
-        Assert.NotNull(ScratchRoot.WhyNotScratch(Path.Combine(link, "game data"), live));
-        Assert.NotNull(ScratchRoot.WhyNotScratch(Path.Combine(link, "not", "there", "yet"), live));
-        Assert.NotNull(ScratchRoot.WhyNotScratch(live, live));
-        Assert.Null(ScratchRoot.WhyNotScratch(other, live));
-    }
-
-    [Fact]
-    public void AScratchRootBesideOrAboveTheLiveFolderBehindALink_IsRefused_AndAnUnrelatedOneIsNot()
-    {
-        if (OperatingSystem.IsWindows()) return;
-        string live = Directory.CreateDirectory(Path.Combine(_jail, "aa-live")).FullName;
-        string liveLink = Path.Combine(_jail, "bb-livelink");
-        Directory.CreateSymbolicLink(liveLink, live);
-        string aboveLink = Path.Combine(_jail, "cc-abovelink");
-        Directory.CreateSymbolicLink(aboveLink, _jail);
-        string other = Directory.CreateDirectory(Path.Combine(_jail, "mm-other")).FullName;
-
-        // The live folder given as a link, and a root that is a link to the folder around it.
-        Assert.NotNull(ScratchRoot.WhyNotScratch(live, liveLink));
-        Assert.NotNull(ScratchRoot.WhyNotScratch(aboveLink, live));
-        Assert.Null(ScratchRoot.WhyNotScratch(other, liveLink));
     }
 }

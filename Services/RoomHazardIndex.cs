@@ -243,15 +243,8 @@ public sealed class RoomHazardIndex
     // Set the index was last built from, or null if empty.
     public string? ActiveSet { get; private set; }
 
-    // Number of distinct protectable room-entry spells indexed.
-    public int HazardCount => _hazardBySpell.Count;
-
     // Every indexed hazard, for a question about the set as a whole.
     public IReadOnlyCollection<RoomHazard> Hazards => _hazardBySpell.Values;
-
-    // Fires after every successful (re)load, including the transition to
-    // no-set-active.
-    public event Action? StoreReloaded;
 
     public RoomHazardIndex(GameDataCache cache, LogService? log = null)
     {
@@ -275,7 +268,6 @@ public sealed class RoomHazardIndex
         if (string.IsNullOrWhiteSpace(setName))
         {
             _log?.Info("RoomHazardIndex", "No active set; cleared.");
-            StoreReloaded?.Invoke();
             return;
         }
 
@@ -285,7 +277,6 @@ public sealed class RoomHazardIndex
         {
             _log?.Info("RoomHazardIndex",
                 $"Active set '{setName}' missing Rooms/Spells; empty.");
-            StoreReloaded?.Invoke();
             return;
         }
 
@@ -314,7 +305,6 @@ public sealed class RoomHazardIndex
         _log?.Info("RoomHazardIndex",
             $"Indexed {_hazardBySpell.Count} protectable room-entry hazard(s) from '{setName}'.");
 
-        StoreReloaded?.Invoke();
     }
 
     // Resolve one room-entry spell to a hazard, or null when it neither harms with

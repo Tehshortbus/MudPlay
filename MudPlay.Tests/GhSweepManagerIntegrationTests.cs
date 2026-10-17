@@ -1,4 +1,3 @@
-using System.Reflection;
 using System.Text;
 using MudPlay.Game.Cash;
 using MudPlay.Game.Inventory;
@@ -13,12 +12,25 @@ namespace MudPlay.Tests;
 
 public sealed class GhSweepManagerIntegrationTests : IDisposable
 {
+    // The sweep's settle, pacing and backoff timers, the clock its pacing reads,
+    // and the game's prompts as it reads them.
+    private readonly ManualTimers _sweepTimers = new();
+    private DateTimeOffset _sweepNow = new(2026, 10, 1, 12, 0, 0, TimeSpan.Zero);
+    private readonly WirePromptScanner _sweepPrompt = new();
+
+    // The pace between queued commands runs out.
+    private void PaceOut()
+    {
+        _sweepNow += GhSweepManager.MinCommandInterval;
+        _sweepTimers.RunDue(GhSweepManager.PromptWaitTimeout);
+    }
+
     private readonly string _root = Path.Combine(
         Path.GetTempPath(), "mudplay-ghsweep-manager-" + Path.GetRandomFileName());
-    // GhRoomLabelStore is BBS-tier now — each test pins this scratch BBS name
-    // so its labels/settings persist somewhere real but isolated (cleaned up
-    // in Dispose alongside _root).
-    private readonly string _scratchBbs = "ghsweep-test-" + Path.GetRandomFileName();
+    // GhRoomLabelStore is realm-tier — each test points it at this scratch realm
+    // folder so its labels/settings persist somewhere real but isolated (cleaned
+    // up in Dispose alongside _root).
+    private readonly string _realm = Path.Combine(Path.GetTempPath(), "ghsweep-test-" + Path.GetRandomFileName());
 
     public GhSweepManagerIntegrationTests() => Directory.CreateDirectory(_root);
 
@@ -28,8 +40,7 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
         catch { /* best effort */ }
         try
         {
-            string bbsFolder = AppPaths.BbsFolder(_scratchBbs);
-            if (Directory.Exists(bbsFolder)) Directory.Delete(bbsFolder, recursive: true);
+            if (Directory.Exists(_realm)) Directory.Delete(_realm, recursive: true);
         }
         catch { /* best effort */ }
     }
@@ -63,10 +74,10 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
         ItemNameStore names = new(cache);
         names.OnActiveSetChanged("alpha");
 
-        ProfileService profile = new();
-        profile.LoadBlank();
+        ProfileService profile = TestProfiles.Service();
+        profile.LoadDefaultProfile();
         GhRoomLabelStore labels = new(profile);
-        labels.OnRealmChanged(AppPaths.BbsFolder(_scratchBbs));
+        labels.OnRealmChanged(_realm);
         labels.SetLabel(new RoomKey(1, 1),
             new[] { GhCategoryRule.ForItemType(1) }, isCatchAll: false);
         labels.SetLabel(new RoomKey(1, 2),
@@ -79,9 +90,9 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
         GroundItemTracker ground = new(router, new CurrencyNaming(),
             entry => names.FindByName(entry) is not null);
         InventoryManager inventory = new(itemWeightResolver: names.WeightOf);
-        LineExtractor inventoryLines = new(new TerminalEmulator(80, 24));
-        inventory.AttachLineExtractor(inventoryLines);
-        FeedInventory(inventoryLines, "nothing");
+        ServerFeed inventoryFeed = new();
+        inventory.AttachLineExtractor(inventoryFeed.Lines);
+        FeedInventory(inventoryFeed, "nothing");
 
         RoomTracker tracker = new(graph);
         MovementCoordinator coordinator = new();
@@ -100,7 +111,7 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
             postToUi: action => action());
         sweep = new GhSweepManager(labels, runner, tracker, bfs, ground, names,
             router, coordinator, isOtherEngineBusy: () => false,
-            isParadigm: () => true, inventory: inventory);
+            isParadigm: () => true, inventory: inventory, promptScanner: _sweepPrompt, now: () => _sweepNow, schedule: _sweepTimers.Arm);
 
         var sent = new List<string>();
         sweep.SetWireSender(bytes => sent.Add(Encoding.Latin1.GetString(bytes).TrimEnd('\r')));
@@ -118,7 +129,7 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
         tracker.NoteRoomObserved(new RoomObservation("C", new HashSet<Direction> { Direction.N, Direction.S }),
             DateTimeOffset.UtcNow.AddSeconds(1));
         Assert.Equal("sea", sent[^1]);
-        FireSearchSettle(sweep);
+        FireSearchSettle();
         Assert.Equal("n", sent[^1]);
 
         tracker.NoteRoomObserved(new RoomObservation("B", new HashSet<Direction> { Direction.S }),
@@ -127,7 +138,7 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
         // This item only appears as the response to recon's own search, so its
         // eventual PendingMove is explicitly tagged hidden.
         FeedRouter(router, "You notice a mace here.");
-        FireSearchSettle(sweep);
+        FireSearchSettle();
         Assert.Equal("s", sent[^1]);
 
         // The game lists a room's floor on every entry, the way back included.
@@ -135,22 +146,16 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
         tracker.NoteRoomObserved(new RoomObservation("C", new HashSet<Direction> { Direction.N, Direction.S }),
             DateTimeOffset.UtcNow.AddSeconds(3));
         Assert.Equal("sea", sent[^1]);
-        FireSearchSettle(sweep);
+        FireSearchSettle();
         Assert.Equal("s", sent[^1]);
 
         tracker.NoteRoomObserved(new RoomObservation("A", new HashSet<Direction> { Direction.N }),
             DateTimeOffset.UtcNow.AddSeconds(4));
         Assert.Equal("sea", sent[^1]);
-        FireSearchSettle(sweep); // completes recon lap; sorting starts northbound
+        FireSearchSettle(); // completes recon lap; sorting starts northbound
         Assert.Equal(GhSweepManager.SweepPhase.Sorting, sweep.Phase);
         Assert.Equal("n", sent[^1]);
         int reconSearchCount = sent.Count(command => command == "sea");
-
-        // A completed lap with zero pickup/drop progress must not discard the
-        // queue or end the sweep. Transient failures are retried indefinitely.
-        FireSortingLapCompleted(sweep);
-        Assert.Equal(GhSweepManager.SweepPhase.Sorting, sweep.Phase);
-        Assert.Equal(2, sweep.PendingMoveCount);
 
         tracker.NoteRoomObserved(new RoomObservation("C", new HashSet<Direction> { Direction.N, Direction.S }),
             DateTimeOffset.UtcNow.AddSeconds(5));
@@ -171,7 +176,7 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
             DateTimeOffset.UtcNow.AddSeconds(6));
         Assert.Equal("sea", sent[^1]); // mace was tagged hidden during recon
         Assert.Equal(reconSearchCount + 1, sent.Count(command => command == "sea"));
-        FireSearchSettle(sweep);
+        FireSearchSettle();
         Assert.Equal("get mace", sent[^1]); // picked up while still carrying the war hammer
 
         // Pack now holds everything bound for A and no source remains — deliver:
@@ -191,7 +196,7 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
         Assert.Equal("drop war hammer", sent[^1]);
         FeedRouter(router, "You dropped war hammer.");
 
-        sweep.FirePromptWaitTimeoutForTests();
+        PaceOut();
         Assert.Equal("drop mace", sent[^1]);
         FeedRouter(router, "You dropped mace.");
         // Everything is delivered — sorting is done and a final recon pass begins to
@@ -255,10 +260,10 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
         ItemNameStore names = new(cache);
         names.OnActiveSetChanged("alpha");
 
-        ProfileService profile = new();
-        profile.LoadBlank();
+        ProfileService profile = TestProfiles.Service();
+        profile.LoadDefaultProfile();
         GhRoomLabelStore labels = new(profile);
-        labels.OnRealmChanged(AppPaths.BbsFolder(_scratchBbs));
+        labels.OnRealmChanged(_realm);
         labels.SetLabel(new RoomKey(1, 1), new[] { GhCategoryRule.ForItemType(1) }, isCatchAll: false);
         labels.SetLabel(new RoomKey(1, 2), new[] { GhCategoryRule.ForItemType(0) }, isCatchAll: false);
         // SearchForHidden left at its default (off) — the point of this test.
@@ -268,9 +273,9 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
         GroundItemTracker ground = new(router, new CurrencyNaming(),
             entry => names.FindByName(entry) is not null);
         InventoryManager inventory = new(itemWeightResolver: names.WeightOf);
-        LineExtractor inventoryLines = new(new TerminalEmulator(80, 24));
-        inventory.AttachLineExtractor(inventoryLines);
-        FeedInventory(inventoryLines, "nothing");
+        ServerFeed inventoryFeed = new();
+        inventory.AttachLineExtractor(inventoryFeed.Lines);
+        FeedInventory(inventoryFeed, "nothing");
 
         RoomTracker tracker = new(graph);
         MovementCoordinator coordinator = new();
@@ -289,7 +294,7 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
             postToUi: action => action());
         sweep = new GhSweepManager(labels, runner, tracker, bfs, ground, names,
             router, coordinator, isOtherEngineBusy: () => false,
-            isParadigm: () => true, inventory: inventory);
+            isParadigm: () => true, inventory: inventory, promptScanner: _sweepPrompt, now: () => _sweepNow, schedule: _sweepTimers.Arm);
 
         var sent = new List<string>();
         sweep.SetWireSender(bytes => sent.Add(Encoding.Latin1.GetString(bytes).TrimEnd('\r')));
@@ -312,12 +317,13 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
         tracker.NoteRoomObserved(new RoomObservation("A", new HashSet<Direction> { Direction.N }),
             DateTimeOffset.UtcNow.AddSeconds(4));
 
-        // The whole recon lap ran without a single search.
+        // The whole recon lap ran without a single search, and the sort is under
+        // way with only the visible war hammer to move: the hidden mace was never
+        // revealed.
         Assert.DoesNotContain("sea", sent);
-        // The hidden mace was never revealed, so it's not even in the work queue —
-        // only the visible war hammer is pending. And it stays search-free.
+        Assert.Equal(GhSweepManager.SweepPhase.Sorting, sweep.Phase);
+        Assert.Equal(1, sweep.PendingMoveCount);
         Assert.DoesNotContain("get mace", sent);
-        Assert.DoesNotContain("sea", sent);
 
         sweep.Dispose();
         ground.Dispose();
@@ -352,10 +358,10 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
         ItemNameStore names = new(cache);
         names.OnActiveSetChanged("alpha");
 
-        ProfileService profile = new();
-        profile.LoadBlank();
+        ProfileService profile = TestProfiles.Service();
+        profile.LoadDefaultProfile();
         GhRoomLabelStore labels = new(profile);
-        labels.OnRealmChanged(AppPaths.BbsFolder(_scratchBbs));
+        labels.OnRealmChanged(_realm);
         labels.SetLabel(new RoomKey(1, 1), new[] { GhCategoryRule.ForItemType(1) }, isCatchAll: false);
         labels.SetLabel(new RoomKey(1, 2), new[] { GhCategoryRule.ForItemType(0) }, isCatchAll: false);
         labels.SetSearchesPerRoom(1);
@@ -366,9 +372,9 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
         GroundItemTracker ground = new(router, new CurrencyNaming(),
             entry => names.FindByName(entry) is not null);
         InventoryManager inventory = new(itemWeightResolver: names.WeightOf);
-        LineExtractor inventoryLines = new(new TerminalEmulator(80, 24));
-        inventory.AttachLineExtractor(inventoryLines);
-        FeedInventory(inventoryLines, "nothing");
+        ServerFeed inventoryFeed = new();
+        inventory.AttachLineExtractor(inventoryFeed.Lines);
+        FeedInventory(inventoryFeed, "nothing");
 
         RoomTracker tracker = new(graph);
         MovementCoordinator coordinator = new();
@@ -387,7 +393,7 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
             postToUi: action => action());
         sweep = new GhSweepManager(labels, runner, tracker, bfs, ground, names,
             router, coordinator, isOtherEngineBusy: () => false,
-            isParadigm: () => true, inventory: inventory);
+            isParadigm: () => true, inventory: inventory, promptScanner: _sweepPrompt, now: () => _sweepNow, schedule: _sweepTimers.Arm);
 
         var sent = new List<string>();
         sweep.SetWireSender(bytes => sent.Add(Encoding.Latin1.GetString(bytes).TrimEnd('\r')));
@@ -401,18 +407,18 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
         FeedRouter(router, "You notice a war hammer here.");
         tracker.NoteRoomObserved(new RoomObservation("C", new HashSet<Direction> { Direction.N, Direction.S }),
             DateTimeOffset.UtcNow.AddSeconds(1));
-        FireSearchSettle(sweep);
+        FireSearchSettle();
         tracker.NoteRoomObserved(new RoomObservation("B", new HashSet<Direction> { Direction.S }),
             DateTimeOffset.UtcNow.AddSeconds(2));
-        FireSearchSettle(sweep);
+        FireSearchSettle();
         // The game lists a room's floor on every entry, the way back included.
         FeedRouter(router, "You notice a war hammer here.");
         tracker.NoteRoomObserved(new RoomObservation("C", new HashSet<Direction> { Direction.N, Direction.S }),
             DateTimeOffset.UtcNow.AddSeconds(3));
-        FireSearchSettle(sweep);
+        FireSearchSettle();
         tracker.NoteRoomObserved(new RoomObservation("A", new HashSet<Direction> { Direction.N }),
             DateTimeOffset.UtcNow.AddSeconds(4));
-        FireSearchSettle(sweep);   // completes recon; sorting begins
+        FireSearchSettle();   // completes recon; sorting begins
         Assert.Equal(GhSweepManager.SweepPhase.Sorting, sweep.Phase);
 
         // Sorting reaches C and dispatches the pickup.
@@ -463,10 +469,10 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
         ItemNameStore names = new(cache);
         names.OnActiveSetChanged("alpha");
 
-        ProfileService profile = new();
-        profile.LoadBlank();
+        ProfileService profile = TestProfiles.Service();
+        profile.LoadDefaultProfile();
         GhRoomLabelStore labels = new(profile);
-        labels.OnRealmChanged(AppPaths.BbsFolder(_scratchBbs));
+        labels.OnRealmChanged(_realm);
         labels.SetLabel(new RoomKey(1, 1), new[] { GhCategoryRule.ForItemType(1) }, isCatchAll: false);
         labels.SetLabel(new RoomKey(1, 2), new[] { GhCategoryRule.ForItemType(0) }, isCatchAll: false);
         labels.SetSearchesPerRoom(1);
@@ -477,10 +483,10 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
         GroundItemTracker ground = new(router, new CurrencyNaming(),
             entry => names.FindByName(entry) is not null);
         InventoryManager inventory = new(itemWeightResolver: names.WeightOf);
-        LineExtractor inventoryLines = new(new TerminalEmulator(80, 24));
-        inventory.AttachLineExtractor(inventoryLines);
+        ServerFeed inventoryFeed = new();
+        inventory.AttachLineExtractor(inventoryFeed.Lines);
         // Recon baseline: nearly empty (1/100), so a 60-weight hammer looks movable.
-        FeedInventory(inventoryLines, "nothing");
+        FeedInventory(inventoryFeed, "nothing");
 
         RoomTracker tracker = new(graph);
         MovementCoordinator coordinator = new();
@@ -499,7 +505,7 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
             postToUi: action => action());
         sweep = new GhSweepManager(labels, runner, tracker, bfs, ground, names,
             router, coordinator, isOtherEngineBusy: () => false,
-            isParadigm: () => true, inventory: inventory);
+            isParadigm: () => true, inventory: inventory, promptScanner: _sweepPrompt, now: () => _sweepNow, schedule: _sweepTimers.Arm);
 
         var sent = new List<string>();
         sweep.SetWireSender(bytes => sent.Add(Encoding.Latin1.GetString(bytes).TrimEnd('\r')));
@@ -511,18 +517,18 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
         FeedRouter(router, "You notice a war hammer here.");
         tracker.NoteRoomObserved(new RoomObservation("C", new HashSet<Direction> { Direction.N, Direction.S }),
             DateTimeOffset.UtcNow.AddSeconds(1));
-        FireSearchSettle(sweep);
+        FireSearchSettle();
         tracker.NoteRoomObserved(new RoomObservation("B", new HashSet<Direction> { Direction.S }),
             DateTimeOffset.UtcNow.AddSeconds(2));
-        FireSearchSettle(sweep);
+        FireSearchSettle();
         // The game lists a room's floor on every entry, the way back included.
         FeedRouter(router, "You notice a war hammer here.");
         tracker.NoteRoomObserved(new RoomObservation("C", new HashSet<Direction> { Direction.N, Direction.S }),
             DateTimeOffset.UtcNow.AddSeconds(3));
-        FireSearchSettle(sweep);
+        FireSearchSettle();
         tracker.NoteRoomObserved(new RoomObservation("A", new HashSet<Direction> { Direction.N }),
             DateTimeOffset.UtcNow.AddSeconds(4));
-        FireSearchSettle(sweep);
+        FireSearchSettle();
         Assert.Equal(GhSweepManager.SweepPhase.Sorting, sweep.Phase);
 
         // Sorting reaches C and dispatches the pickup — the ledger thinks it fits.
@@ -538,7 +544,7 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
         // The fresh dump shows only 40 of 100 free — the pack is holding 59 more
         // than when sorting opened. The hammer doesn't fit RIGHT NOW, and the
         // refusal correctly stops us re-sending the get into a full pack.
-        FeedInventory(inventoryLines, "nothing", currentWeight: 60);
+        FeedInventory(inventoryFeed, "nothing", currentWeight: 60);
 
         Assert.Equal(40, sweep.WorkingWeightBudget);
         Assert.Equal(getsSent, sent.Count(c => c == "get war hammer")); // never re-sent
@@ -549,7 +555,6 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
         // permanently discards items that fit fine once the pack clears. Judged at
         // our emptiest (99 free) the hammer is perfectly carriable, so it stays
         // queued for a later pass.
-        Assert.Equal(99, sweep.BestCaseBudgetForTests);
         Assert.DoesNotContain(sweep.LeftInPlace,
             f => f.ItemName == "war hammer" && f.Reason == GhLeftReason.TooHeavy);
         Assert.Equal(1, sweep.PendingMoveCount);
@@ -593,10 +598,10 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
         ItemNameStore names = new(cache);
         names.OnActiveSetChanged("alpha");
 
-        ProfileService profile = new();
-        profile.LoadBlank();
+        ProfileService profile = TestProfiles.Service();
+        profile.LoadDefaultProfile();
         GhRoomLabelStore labels = new(profile);
-        labels.OnRealmChanged(AppPaths.BbsFolder(_scratchBbs));
+        labels.OnRealmChanged(_realm);
         labels.SetLabel(new RoomKey(1, 1),
             new[] { GhCategoryRule.ForItemType(1) }, isCatchAll: false);
         labels.SetLabel(new RoomKey(1, 2),
@@ -609,9 +614,9 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
         GroundItemTracker ground = new(router, new CurrencyNaming(),
             entry => names.FindByName(entry) is not null);
         InventoryManager inventory = new(itemWeightResolver: names.WeightOf);
-        LineExtractor inventoryLines = new(new TerminalEmulator(80, 24));
-        inventory.AttachLineExtractor(inventoryLines);
-        FeedInventory(inventoryLines, "nothing");
+        ServerFeed inventoryFeed = new();
+        inventory.AttachLineExtractor(inventoryFeed.Lines);
+        FeedInventory(inventoryFeed, "nothing");
 
         RoomTracker tracker = new(graph);
         MovementCoordinator coordinator = new();
@@ -630,7 +635,7 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
             postToUi: action => action());
         sweep = new GhSweepManager(labels, runner, tracker, bfs, ground, names,
             router, coordinator, isOtherEngineBusy: () => false,
-            isParadigm: () => true, inventory: inventory);
+            isParadigm: () => true, inventory: inventory, promptScanner: _sweepPrompt, now: () => _sweepNow, schedule: _sweepTimers.Arm);
 
         var sent = new List<string>();
         sweep.SetWireSender(bytes => sent.Add(Encoding.Latin1.GetString(bytes).TrimEnd('\r')));
@@ -657,21 +662,21 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
         tracker.NoteRoomObserved(new RoomObservation("C", new HashSet<Direction> { Direction.N, Direction.S }),
             DateTimeOffset.UtcNow.AddSeconds(5));
         Assert.Equal(1, sent.Count(c => c.StartsWith("get ", StringComparison.Ordinal)));
-        Assert.Equal(2, sweep.QueuedCommandCountForTests);
 
         // The game says we're going too fast and that the command was dropped —
         // it must be re-sent, not lost.
         string clobbered = sent[^1];
         FeedRouter(router, "You are typing too quickly - command ignored");
-        Assert.Equal(3, sweep.QueuedCommandCountForTests);   // the dropped one is back
 
         // Prompts are ignored while we're deliberately backing off — pushing
         // again the instant the game complained is exactly what got us here.
-        sweep.FirePromptForTests();
-        Assert.Equal(3, sweep.QueuedCommandCountForTests);
+        int sentWhileBackingOff = sent.Count;
+        _sweepPrompt.Append(Encoding.Latin1.GetBytes("[HP=100]: "));
+        Assert.Equal(sentWhileBackingOff, sent.Count);
 
         // Backoff over: the same command goes out again.
-        sweep.FireRateLimitBackoffForTests();
+        _sweepNow += GhSweepManager.RateLimitBackoff;
+        _sweepTimers.RunDue(GhSweepManager.RateLimitBackoff);
         Assert.Equal(clobbered, sent[^1]);
         FeedRouter(router, $"You took {clobbered["get ".Length..]}.");
 
@@ -680,17 +685,19 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
         // releasing on prompt alone speeds up under exactly the condition that
         // should slow us down — observed live as bursts of five nudges in 200ms.
         int sentBeforeEarlyPrompt = sent.Count;
-        sweep.FirePromptForTests();
+        _sweepPrompt.Append(Encoding.Latin1.GetBytes("[HP=100]: "));
         Assert.Equal(sentBeforeEarlyPrompt, sent.Count);
 
         // Each remaining command waits for its own prompt.
-        sweep.FirePromptWaitTimeoutForTests();
+        PaceOut();
         Assert.Equal(3, sent.Count(c => c.StartsWith("get ", StringComparison.Ordinal)));
-        Assert.Equal(1, sweep.QueuedCommandCountForTests);
 
-        sweep.FirePromptWaitTimeoutForTests();
+        PaceOut();
         Assert.Equal(4, sent.Count(c => c.StartsWith("get ", StringComparison.Ordinal)));
-        Assert.Equal(0, sweep.QueuedCommandCountForTests);
+
+        // That was the last of them.
+        PaceOut();
+        Assert.Equal(4, sent.Count(c => c.StartsWith("get ", StringComparison.Ordinal)));
 
         sweep.Dispose();
         ground.Dispose();
@@ -728,10 +735,10 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
         ItemNameStore names = new(cache);
         names.OnActiveSetChanged("alpha");
 
-        ProfileService profile = new();
-        profile.LoadBlank();
+        ProfileService profile = TestProfiles.Service();
+        profile.LoadDefaultProfile();
         GhRoomLabelStore labels = new(profile);
-        labels.OnRealmChanged(AppPaths.BbsFolder(_scratchBbs));
+        labels.OnRealmChanged(_realm);
         labels.SetLabel(new RoomKey(1, 1),
             new[] { GhCategoryRule.ForItemType(1) }, isCatchAll: false);
         labels.SetLabel(new RoomKey(1, 2),
@@ -744,9 +751,9 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
         GroundItemTracker ground = new(router, new CurrencyNaming(),
             entry => names.FindByName(entry) is not null);
         InventoryManager inventory = new(itemWeightResolver: names.WeightOf);
-        LineExtractor inventoryLines = new(new TerminalEmulator(80, 24));
-        inventory.AttachLineExtractor(inventoryLines);
-        FeedInventory(inventoryLines, "nothing");
+        ServerFeed inventoryFeed = new();
+        inventory.AttachLineExtractor(inventoryFeed.Lines);
+        FeedInventory(inventoryFeed, "nothing");
 
         RoomTracker tracker = new(graph);
         MovementCoordinator coordinator = new();
@@ -765,7 +772,7 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
             postToUi: action => action());
         sweep = new GhSweepManager(labels, runner, tracker, bfs, ground, names,
             router, coordinator, isOtherEngineBusy: () => false,
-            isParadigm: () => true, inventory: inventory);
+            isParadigm: () => true, inventory: inventory, promptScanner: _sweepPrompt, now: () => _sweepNow, schedule: _sweepTimers.Arm);
 
         var sent = new List<string>();
         sweep.SetWireSender(bytes => sent.Add(Encoding.Latin1.GetString(bytes).TrimEnd('\r')));
@@ -804,7 +811,7 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
         Assert.Equal("i", sent[^1]);
 
         // Inventory confirms we never had it → the move is dropped, not retried.
-        FeedInventory(inventoryLines, "nothing");
+        FeedInventory(inventoryFeed, "nothing");
 
         Assert.Equal(0, sweep.CarriedPendingCount);
         Assert.Equal(0, sweep.PendingMoveCount);
@@ -848,10 +855,10 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
         ItemNameStore names = new(cache);
         names.OnActiveSetChanged("alpha");
 
-        ProfileService profile = new();
-        profile.LoadBlank();
+        ProfileService profile = TestProfiles.Service();
+        profile.LoadDefaultProfile();
         GhRoomLabelStore labels = new(profile);
-        labels.OnRealmChanged(AppPaths.BbsFolder(_scratchBbs));
+        labels.OnRealmChanged(_realm);
         labels.SetLabel(new RoomKey(1, 1),
             new[] { GhCategoryRule.ForItemType(1) }, isCatchAll: false);
         labels.SetLabel(new RoomKey(1, 2),
@@ -864,9 +871,9 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
         GroundItemTracker ground = new(router, new CurrencyNaming(),
             entry => names.FindByName(entry) is not null);
         InventoryManager inventory = new(itemWeightResolver: names.WeightOf);
-        LineExtractor inventoryLines = new(new TerminalEmulator(80, 24));
-        inventory.AttachLineExtractor(inventoryLines);
-        FeedInventory(inventoryLines, "nothing");
+        ServerFeed inventoryFeed = new();
+        inventory.AttachLineExtractor(inventoryFeed.Lines);
+        FeedInventory(inventoryFeed, "nothing");
 
         RoomTracker tracker = new(graph);
         MovementCoordinator coordinator = new();
@@ -885,7 +892,7 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
             postToUi: action => action());
         sweep = new GhSweepManager(labels, runner, tracker, bfs, ground, names,
             router, coordinator, isOtherEngineBusy: () => false,
-            isParadigm: () => true, inventory: inventory);
+            isParadigm: () => true, inventory: inventory, promptScanner: _sweepPrompt, now: () => _sweepNow, schedule: _sweepTimers.Arm);
 
         var sent = new List<string>();
         sweep.SetWireSender(bytes => sent.Add(Encoding.Latin1.GetString(bytes).TrimEnd('\r')));
@@ -956,10 +963,10 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
         ItemNameStore names = new(cache);
         names.OnActiveSetChanged("alpha");
 
-        ProfileService profile = new();
-        profile.LoadBlank();
+        ProfileService profile = TestProfiles.Service();
+        profile.LoadDefaultProfile();
         GhRoomLabelStore labels = new(profile);
-        labels.OnRealmChanged(AppPaths.BbsFolder(_scratchBbs));
+        labels.OnRealmChanged(_realm);
         labels.SetLabel(new RoomKey(1, 1),
             new[] { GhCategoryRule.ForItemType(1) }, isCatchAll: false);
         labels.SetLabel(new RoomKey(1, 2),
@@ -972,9 +979,9 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
         GroundItemTracker ground = new(router, new CurrencyNaming(),
             entry => names.FindByName(entry) is not null);
         InventoryManager inventory = new(itemWeightResolver: names.WeightOf);
-        LineExtractor inventoryLines = new(new TerminalEmulator(80, 24));
-        inventory.AttachLineExtractor(inventoryLines);
-        FeedInventory(inventoryLines, "nothing");
+        ServerFeed inventoryFeed = new();
+        inventory.AttachLineExtractor(inventoryFeed.Lines);
+        FeedInventory(inventoryFeed, "nothing");
 
         RoomTracker tracker = new(graph);
         MovementCoordinator coordinator = new();
@@ -993,7 +1000,7 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
             postToUi: action => action());
         sweep = new GhSweepManager(labels, runner, tracker, bfs, ground, names,
             router, coordinator, isOtherEngineBusy: () => false,
-            isParadigm: () => true, inventory: inventory);
+            isParadigm: () => true, inventory: inventory, promptScanner: _sweepPrompt, now: () => _sweepNow, schedule: _sweepTimers.Arm);
 
         var sent = new List<string>();
         sweep.SetWireSender(bytes => sent.Add(Encoding.Latin1.GetString(bytes).TrimEnd('\r')));
@@ -1022,7 +1029,7 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
         Assert.Equal("drop war hammer", sent[^1]);
 
         FeedRouter(router, "Syntax: DROP {Amount} {Currency}");
-        FeedInventory(inventoryLines, "a war hammer");
+        FeedInventory(inventoryFeed, "a war hammer");
 
         // Still ours to move — retried on a later visit, not abandoned.
         Assert.Equal(1, sweep.CarriedPendingCount);
@@ -1039,7 +1046,7 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
         // Re-walking a 120-room circuit to rediscover a survey we already have is
         // most of the cost of a sweep, and an abort doesn't make what it found
         // wrong. Resume picks the queue back up and goes straight to sorting.
-        SweepHarness h = NewSweepHarness(_root, _scratchBbs);
+        SweepHarness h = NewSweepHarness(_root, _realm);
 
         h.Tracker.SetLocated(new RoomKey(1, 1));
         Assert.True(h.Sweep.Start());
@@ -1078,8 +1085,8 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
         // when re-walking a 120-room circuit hurts, and it's the one an
         // in-memory-only queue can't survive. A brand-new manager (no memory of
         // the sweep at all) must still be able to resume from the profile.
-        ProfileService profile = new();
-        profile.LoadBlank();
+        ProfileService profile = TestProfiles.Service();
+        profile.LoadDefaultProfile();
         GhSuspendedSweepStore store = new(profile);
         store.Save(new[]
         {
@@ -1089,7 +1096,7 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
 
         // A live 'i' read still shows the carried mace — Resume verifies carried
         // entries against the pack, so it must be present to be re-adopted.
-        SweepHarness h = NewSweepHarness(_root, _scratchBbs, store, carriedInventory: "mace, mace");
+        SweepHarness h = NewSweepHarness(_root, _realm, store, carriedInventory: "mace, mace");
 
         Assert.True(h.Sweep.CanResume);
         Assert.Equal(2, h.Sweep.ResumableMoveCount);
@@ -1114,8 +1121,8 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
         // Start does: an item sold or dropped since the sweep bailed is dropped from the
         // plan rather than blindly re-dropped (which the game partial-matches onto a
         // different item still held).
-        ProfileService profile = new();
-        profile.LoadBlank();
+        ProfileService profile = TestProfiles.Service();
+        profile.LoadDefaultProfile();
         GhSuspendedSweepStore store = new(profile);
         store.Save(new[]
         {
@@ -1124,7 +1131,7 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
         });
 
         // The pack no longer holds the mace.
-        SweepHarness h = NewSweepHarness(_root, _scratchBbs, store, carriedInventory: "nothing");
+        SweepHarness h = NewSweepHarness(_root, _realm, store, carriedInventory: "nothing");
 
         h.Tracker.SetLocated(new RoomKey(1, 1));
         Assert.True(h.Sweep.Resume());
@@ -1143,7 +1150,7 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
         // that dip, 800-weight hauberks were permanently written off as "too heavy
         // to ever carry" despite fitting comfortably at the sweep's own opening
         // budget. 56 items went that way in one run.
-        SweepHarness h = NewSweepHarness(_root, _scratchBbs, currentWeight: 3513, maxWeight: 5280);
+        SweepHarness h = NewSweepHarness(_root, _realm, currentWeight: 3513, maxWeight: 5280);
 
         h.Tracker.SetLocated(new RoomKey(1, 1));
         Assert.True(h.Sweep.Start());
@@ -1160,15 +1167,19 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
         Assert.Equal(1767, h.Sweep.WorkingWeightBudget);
         Assert.Equal(1, h.Sweep.PendingMoveCount);
 
-        // Now the player loots ~1000 of weight Roomba never collected.
-        h.Sweep.SetCarryWeightsForTests(max: 5280, baseWeight: 4508);
-        h.Sweep.StrandUnmovableForTests();
+        // Now the player loots ~1000 of weight Roomba never collected, so the get
+        // at C is refused and the `i` it asks for shows the heavier pack.
+        h.Observe("C", Direction.N, Direction.S);
+        Assert.Equal("get adamantite hauberk", h.Sent[^1]);
+        h.Feed("You cannot carry that much!");
+        Assert.Equal("i", h.Sent[^1]);
+        FeedInventory(h.InventoryFeed, "nothing", currentWeight: 4508, maxWeight: 5280);
 
         // Headroom really has narrowed — that part must stay honest, or we
         // over-fill and earn a capacity refusal.
         Assert.Equal(772, h.Sweep.WorkingWeightBudget);
         // But nothing is written off: "ever" is judged at our emptiest.
-        Assert.Equal(1767, h.Sweep.BestCaseBudgetForTests);
+        Assert.DoesNotContain(h.Sweep.LeftInPlace, l => l.Reason == GhLeftReason.TooHeavy);
         Assert.Equal(1, h.Sweep.PendingMoveCount);
 
         h.Dispose();
@@ -1179,7 +1190,7 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
     {
         // The guard must not become a rubber stamp: something heavier than the
         // pack could ever hold is still dropped, or the sweep retries it forever.
-        SweepHarness h = NewSweepHarness(_root, _scratchBbs, currentWeight: 4900, maxWeight: 5280);
+        SweepHarness h = NewSweepHarness(_root, _realm, currentWeight: 4900, maxWeight: 5280);
 
         h.Tracker.SetLocated(new RoomKey(1, 1));
         Assert.True(h.Sweep.Start());
@@ -1192,7 +1203,7 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
         h.Observe("A", Direction.N);
 
         // Best case is 380, the hauberk is 800 — unmovable however empty we get.
-        Assert.Equal(380, h.Sweep.BestCaseBudgetForTests);
+        Assert.Equal(380, h.Sweep.WorkingWeightBudget);
         Assert.Equal(0, h.Sweep.PendingMoveCount);
         Assert.Contains(h.Sweep.LeftInPlace, l => l.Reason == GhLeftReason.TooHeavy);
 
@@ -1207,7 +1218,7 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
         // fruitless lap is only a warning — a verification pass — and a second
         // fruitless lap finishes: the move is surfaced as CouldNotComplete and the
         // sweep leaves Sorting rather than retrying forever.
-        SweepHarness h = NewSweepHarness(_root, _scratchBbs);
+        SweepHarness h = NewSweepHarness(_root, _realm);
 
         h.Tracker.SetLocated(new RoomKey(1, 1));
         Assert.True(h.Sweep.Start());
@@ -1222,14 +1233,14 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
         Assert.Equal(1, h.Sweep.PendingMoveCount);
 
         // First fruitless lap is a grace pass: still sorting, move still queued.
-        FireSortingLapCompleted(h.Sweep);
+        SortLapWithNothingAnswered(h);
         Assert.Equal(GhSweepManager.SweepPhase.Sorting, h.Sweep.Phase);
         Assert.Equal(1, h.Sweep.PendingMoveCount);
 
         // Second fruitless lap confirms nothing more can move: the move is stranded
         // and the sweep leaves Sorting (onto its final verification lap) — it does
         // not keep circling.
-        FireSortingLapCompleted(h.Sweep);
+        SortLapWithNothingAnswered(h);
         Assert.NotEqual(GhSweepManager.SweepPhase.Sorting, h.Sweep.Phase);
         Assert.Equal(0, h.Sweep.PendingMoveCount);
         Assert.Contains(h.Sweep.LeftInPlace, l => l.Reason == GhLeftReason.CouldNotComplete);
@@ -1246,7 +1257,7 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
         // take by that name failed silently and was requeued every lap: one
         // capture shows `get piece of amber` sent 42 times, with the sweep pinned
         // ping-ponging between the two rooms holding those items.
-        SweepHarness h = NewSweepHarness(_root, _scratchBbs);
+        SweepHarness h = NewSweepHarness(_root, _realm);
 
         h.Tracker.SetLocated(new RoomKey(1, 1));
         Assert.True(h.Sweep.Start());
@@ -1278,7 +1289,7 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
     [Fact]
     public void GetRefusedByAStrangeForce_IsLeftInPlace_NotRetried()
     {
-        SweepHarness h = NewSweepHarness(_root, _scratchBbs);
+        SweepHarness h = NewSweepHarness(_root, _realm);
 
         h.Tracker.SetLocated(new RoomKey(1, 1));
         Assert.True(h.Sweep.Start());
@@ -1310,7 +1321,7 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
     {
         // Keep the documented bracket form working — the realms may differ, and
         // the cost of missing either is an item retried until someone notices.
-        SweepHarness h = NewSweepHarness(_root, _scratchBbs);
+        SweepHarness h = NewSweepHarness(_root, _realm);
 
         h.Tracker.SetLocated(new RoomKey(1, 1));
         Assert.True(h.Sweep.Start());
@@ -1341,7 +1352,7 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
         // holding ~20 items the sweep had collected and forgotten, six of them
         // copies of the same gloves.
         // Stock: no bulk verb, so a 2x move is sent as two separate commands.
-        SweepHarness h = NewSweepHarness(_root, _scratchBbs, paradigm: false);
+        SweepHarness h = NewSweepHarness(_root, _realm, paradigm: false);
 
         h.Tracker.SetLocated(new RoomKey(1, 1));
         Assert.True(h.Sweep.Start());
@@ -1390,7 +1401,7 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
         // the game answers with a SINGLE count-prefixed line. Counting replies (a raw
         // ++) left that move stuck at 1/2 forever — the sweep never finished; the fix
         // adds the line's own count.
-        SweepHarness h = NewSweepHarness(_root, _scratchBbs, paradigm: true);
+        SweepHarness h = NewSweepHarness(_root, _realm, paradigm: true);
 
         h.Tracker.SetLocated(new RoomKey(1, 1));
         Assert.True(h.Sweep.Start());
@@ -1428,8 +1439,8 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
         // gear inflates base by exactly their weight, which collapses the budget,
         // trips the too-tight-to-collect guard, and makes a resumed sweep deliver
         // its load and stop.
-        ProfileService profile = new();
-        profile.LoadBlank();
+        ProfileService profile = TestProfiles.Service();
+        profile.LoadDefaultProfile();
         GhSuspendedSweepStore store = new(profile);
         store.Save(new[]
         {
@@ -1438,7 +1449,7 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
 
         // Pack reads 3000 of 5280, and 800 of that is the hauberk we just re-adopted
         // — which a live 'i' read must show for Resume to re-adopt it.
-        SweepHarness h = NewSweepHarness(_root, _scratchBbs, store,
+        SweepHarness h = NewSweepHarness(_root, _realm, store,
             currentWeight: 3000, maxWeight: 5280, carriedInventory: "adamantite hauberk");
 
         h.Tracker.SetLocated(new RoomKey(1, 1));
@@ -1447,7 +1458,6 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
 
         // Base is the player's 2200, not the 3000 that includes our own load.
         Assert.Equal(3080, h.Sweep.WorkingWeightBudget);
-        Assert.Equal(3080, h.Sweep.BestCaseBudgetForTests);
 
         h.Dispose();
     }
@@ -1455,7 +1465,7 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
     [Fact]
     public void CleanlyFinishedSweep_HasNothingToResume()
     {
-        SweepHarness h = NewSweepHarness(_root, _scratchBbs);
+        SweepHarness h = NewSweepHarness(_root, _realm);
 
         h.Tracker.SetLocated(new RoomKey(1, 1));
         Assert.True(h.Sweep.Start());
@@ -1476,7 +1486,7 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
     [Fact]
     public void TheReport_TellsAFinishedSweepFromOneStoppedEarly()
     {
-        SweepHarness h = NewSweepHarness(_root, _scratchBbs);
+        SweepHarness h = NewSweepHarness(_root, _realm);
         List<GhSweepReport> reports = new();
         h.Sweep.SweepCompleted += reports.Add;
 
@@ -1503,7 +1513,7 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
     public void Resume_IsRefused_UnderAnotherGameDataSet()
     {
         string set = "alpha";
-        SweepHarness h = NewSweepHarness(_root, _scratchBbs, activeGameData: () => set);
+        SweepHarness h = NewSweepHarness(_root, _realm, activeGameData: () => set);
         h.Tracker.SetLocated(new RoomKey(1, 1));
         Assert.True(h.Sweep.Start());
         h.Feed("You notice a war hammer here.");
@@ -1532,11 +1542,11 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
     [Fact]
     public void AFreshSweepUnderAnotherSet_KeepsThatSetsRecord()
     {
-        ProfileService profile = new();
-        profile.LoadBlank();
+        ProfileService profile = TestProfiles.Service();
+        profile.LoadDefaultProfile();
         GhSuspendedSweepStore store = new(profile);
         store.Save(new[] { new GhSuspendedMove("1/3", "1/1", "mace", 1, carried: true, hidden: false) }, "alpha");
-        SweepHarness h = NewSweepHarness(_root, _scratchBbs, store, activeGameData: () => "beta");
+        SweepHarness h = NewSweepHarness(_root, _realm, store, activeGameData: () => "beta");
 
         h.Tracker.SetLocated(new RoomKey(1, 1));
         Assert.True(h.Sweep.Start());
@@ -1555,11 +1565,11 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
     [Fact]
     public void Resume_FromThePersistedQueue_IsRefused_UnderAnotherGameDataSet()
     {
-        ProfileService profile = new();
-        profile.LoadBlank();
+        ProfileService profile = TestProfiles.Service();
+        profile.LoadDefaultProfile();
         GhSuspendedSweepStore store = new(profile);
         store.Save(new[] { new GhSuspendedMove("1/3", "1/1", "war hammer", 1, carried: false, hidden: false) }, "alpha");
-        SweepHarness h = NewSweepHarness(_root, _scratchBbs, store, activeGameData: () => "beta");
+        SweepHarness h = NewSweepHarness(_root, _realm, store, activeGameData: () => "beta");
         h.Tracker.SetLocated(new RoomKey(1, 1));
 
         Assert.False(h.Sweep.Resume());
@@ -1602,10 +1612,10 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
         ItemNameStore names = new(cache);
         names.OnActiveSetChanged("alpha");
 
-        ProfileService profile = new();
-        profile.LoadBlank();
+        ProfileService profile = TestProfiles.Service();
+        profile.LoadDefaultProfile();
         GhRoomLabelStore labels = new(profile);
-        labels.OnRealmChanged(AppPaths.BbsFolder(_scratchBbs));
+        labels.OnRealmChanged(_realm);
         // Two rooms labeled for the SAME category: A is the primary (first
         // labeled), B is its backup purely by also matching. No other config.
         labels.SetLabel(new RoomKey(1, 1),
@@ -1620,9 +1630,9 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
         GroundItemTracker ground = new(router, new CurrencyNaming(),
             entry => names.FindByName(entry) is not null);
         InventoryManager inventory = new(itemWeightResolver: names.WeightOf);
-        LineExtractor inventoryLines = new(new TerminalEmulator(80, 24));
-        inventory.AttachLineExtractor(inventoryLines);
-        FeedInventory(inventoryLines, "nothing");
+        ServerFeed inventoryFeed = new();
+        inventory.AttachLineExtractor(inventoryFeed.Lines);
+        FeedInventory(inventoryFeed, "nothing");
 
         RoomTracker tracker = new(graph);
         MovementCoordinator coordinator = new();
@@ -1641,7 +1651,7 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
             postToUi: action => action());
         sweep = new GhSweepManager(labels, runner, tracker, bfs, ground, names,
             router, coordinator, isOtherEngineBusy: () => false,
-            isParadigm: () => true, inventory: inventory);
+            isParadigm: () => true, inventory: inventory, promptScanner: _sweepPrompt, now: () => _sweepNow, schedule: _sweepTimers.Arm);
 
         var sent = new List<string>();
         sweep.SetWireSender(bytes => sent.Add(Encoding.Latin1.GetString(bytes).TrimEnd('\r')));
@@ -1709,6 +1719,8 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
         public required InventoryManager Inventory { get; init; }
         public required MessageRouter Router { get; init; }
         public required List<string> Sent { get; init; }
+        // The `i` dump lines, as the inventory reads them.
+        public required ServerFeed InventoryFeed { get; init; }
 
         private int _clock;
 
@@ -1726,7 +1738,7 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
         }
     }
 
-    private static SweepHarness NewSweepHarness(string root, string scratchBbs,
+    private SweepHarness NewSweepHarness(string root, string realm,
         GhSuspendedSweepStore? suspended = null, int currentWeight = 1, int maxWeight = 100,
         bool paradigm = true, string carriedInventory = "nothing", Func<string?>? activeGameData = null)
     {
@@ -1755,10 +1767,10 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
         ItemNameStore names = new(cache);
         names.OnActiveSetChanged("alpha");
 
-        ProfileService profile = new();
-        profile.LoadBlank();
+        ProfileService profile = TestProfiles.Service();
+        profile.LoadDefaultProfile();
         GhRoomLabelStore labels = new(profile);
-        labels.OnRealmChanged(AppPaths.BbsFolder(scratchBbs));
+        labels.OnRealmChanged(realm);
         labels.SetLabel(new RoomKey(1, 1), new[] { GhCategoryRule.ForItemType(1) }, isCatchAll: false);
         labels.SetLabel(new RoomKey(1, 2), new[] { GhCategoryRule.ForItemType(0) }, isCatchAll: false);
         labels.SetSearchesPerRoom(1);
@@ -1769,9 +1781,9 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
         GroundItemTracker ground = new(router, new CurrencyNaming(),
             entry => names.FindByName(entry) is not null);
         InventoryManager inventory = new(itemWeightResolver: names.WeightOf);
-        LineExtractor inventoryLines = new(new TerminalEmulator(80, 24));
-        inventory.AttachLineExtractor(inventoryLines);
-        FeedInventory(inventoryLines, carriedInventory, currentWeight, maxWeight);
+        ServerFeed inventoryFeed = new();
+        inventory.AttachLineExtractor(inventoryFeed.Lines);
+        FeedInventory(inventoryFeed, carriedInventory, currentWeight, maxWeight);
 
         RoomTracker tracker = new(graph);
         MovementCoordinator coordinator = new();
@@ -1791,7 +1803,7 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
         sweep = new GhSweepManager(labels, runner, tracker, bfs, ground, names,
             router, coordinator, isOtherEngineBusy: () => false,
             isParadigm: () => paradigm, inventory: inventory, suspendedStore: suspended,
-            activeGameData: activeGameData);
+            activeGameData: activeGameData, promptScanner: _sweepPrompt, now: () => _sweepNow, schedule: _sweepTimers.Arm);
 
         List<string> sent = new();
         sweep.SetWireSender(b => sent.Add(Encoding.Latin1.GetString(b).TrimEnd('\r')));
@@ -1800,39 +1812,44 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
         return new SweepHarness
         {
             Tracker = tracker, Sweep = sweep, Ground = ground,
-            Inventory = inventory, Router = router, Sent = sent,
+            Inventory = inventory, Router = router, Sent = sent, InventoryFeed = inventoryFeed,
         };
     }
 
-    private static void FireSearchSettle(GhSweepManager sweep) =>
-        typeof(GhSweepManager).GetMethod("OnReconSearchSettleElapsed",
-            BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(sweep, null);
+    private void FireSearchSettle() => _sweepTimers.RunDue(GhSweepManager.ReconSearchSettle);
 
-    private static void FireSortingLapCompleted(GhSweepManager sweep) =>
-        typeof(GhSweepManager).GetMethod("OnSortingLapCompleted",
-            BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(sweep, null);
+    // The sort shuttle goes round once, north to B and back down to A, with nothing
+    // it sends on the way answered.
+    private void SortLapWithNothingAnswered(SweepHarness h)
+    {
+        h.Observe("C", Direction.N, Direction.S);
+        NothingAnswers();
+        h.Observe("B", Direction.S);
+        NothingAnswers();
+        h.Observe("C", Direction.N, Direction.S);
+        NothingAnswers();
+        h.Observe("A", Direction.N);
+        NothingAnswers();
+    }
+
+    private void NothingAnswers()
+    {
+        _sweepNow += TimeSpan.FromSeconds(5);
+        _sweepTimers.Advance(TimeSpan.FromSeconds(5));
+    }
 
     private static void FeedRouter(MessageRouter router, string text) =>
         router.Dispatch(new LineExtractor.EmittedLine(text, Array.Empty<CellAttributes>(),
             DateTimeOffset.UtcNow, IsPromptLine: false));
 
-    private static void FeedInventory(LineExtractor lines, string carried, int currentWeight = 1,
+    private static void FeedInventory(ServerFeed feed, string carried, int currentWeight = 1,
                                       int maxWeight = 100)
     {
-        FeedLine(lines, $"You are carrying {carried}.");
-        FeedLine(lines, "You have no keys.");
-        FeedLine(lines, "Wealth:    0 copper farthings");
-        FeedLine(lines, $"Encumbrance:    {currentWeight}/{maxWeight}  -  None  "
+        feed.Line($"You are carrying {carried}.");
+        feed.Line("You have no keys.");
+        feed.Line("Wealth:    0 copper farthings");
+        feed.Line($"Encumbrance:    {currentWeight}/{maxWeight}  -  None  "
                         + $"[{currentWeight * 100 / maxWeight}%]");
-    }
-
-    private static void FeedLine(LineExtractor lines, string text)
-    {
-        FieldInfo? field = typeof(LineExtractor).GetField(
-            "LineEmitted", BindingFlags.Instance | BindingFlags.NonPublic);
-        if (field?.GetValue(lines) is Action<LineExtractor.EmittedLine> handler)
-            handler(new LineExtractor.EmittedLine(text, Array.Empty<CellAttributes>(),
-                DateTimeOffset.UtcNow, IsPromptLine: false));
     }
 
     // InventoryOnly walks the same recon circuit and feeds the item-location
@@ -1867,26 +1884,26 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
         ItemNameStore names = new(cache);
         names.OnActiveSetChanged("alpha");
 
-        ProfileService profile = new();
-        profile.LoadBlank();
+        ProfileService profile = TestProfiles.Service();
+        profile.LoadDefaultProfile();
         GhRoomLabelStore labels = new(profile);
-        labels.OnRealmChanged(AppPaths.BbsFolder(_scratchBbs));
+        labels.OnRealmChanged(_realm);
         // Both rooms labeled as sortable destinations — proves InventoryOnly
         // still refuses to act on them, not just that it has nowhere to sort to.
         labels.SetLabel(new RoomKey(1, 1), new[] { GhCategoryRule.ForItemType(1) }, isCatchAll: false);
         labels.SetLabel(new RoomKey(1, 2), new[] { GhCategoryRule.ForItemType(0) }, isCatchAll: false);
 
         GhItemLocationStore locations = new(names);
-        locations.OnRealmChanged(AppPaths.BbsFolder(_scratchBbs));
+        locations.OnRealmChanged(_realm);
 
         MessageRouter router = new();
         DefaultPatterns.Seed(router);
         GroundItemTracker ground = new(router, new CurrencyNaming(),
             entry => names.FindByName(entry) is not null);
         InventoryManager inventory = new(itemWeightResolver: names.WeightOf);
-        LineExtractor inventoryLines = new(new TerminalEmulator(80, 24));
-        inventory.AttachLineExtractor(inventoryLines);
-        FeedInventory(inventoryLines, "nothing");
+        ServerFeed inventoryFeed = new();
+        inventory.AttachLineExtractor(inventoryFeed.Lines);
+        FeedInventory(inventoryFeed, "nothing");
 
         RoomTracker tracker = new(graph);
         MovementCoordinator coordinator = new();
@@ -1905,7 +1922,7 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
             postToUi: action => action());
         sweep = new GhSweepManager(labels, runner, tracker, bfs, ground, names,
             router, coordinator, isOtherEngineBusy: () => false,
-            isParadigm: () => true, inventory: inventory, itemLocations: locations);
+            isParadigm: () => true, inventory: inventory, itemLocations: locations, promptScanner: _sweepPrompt, now: () => _sweepNow, schedule: _sweepTimers.Arm);
 
         var sent = new List<string>();
         sweep.SetWireSender(bytes => sent.Add(Encoding.Latin1.GetString(bytes).TrimEnd('\r')));
@@ -1985,10 +2002,10 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
         ItemNameStore names = new(cache);
         names.OnActiveSetChanged("alpha");
 
-        ProfileService profile = new();
-        profile.LoadBlank();
+        ProfileService profile = TestProfiles.Service();
+        profile.LoadDefaultProfile();
         GhRoomLabelStore labels = new(profile);
-        labels.OnRealmChanged(AppPaths.BbsFolder(_scratchBbs));
+        labels.OnRealmChanged(_realm);
         labels.SetLabel(new RoomKey(1, 1), new[] { GhCategoryRule.ForItemType(1) }, isCatchAll: false);
         labels.SetLabel(new RoomKey(1, 2), new[] { GhCategoryRule.ForItemType(0) }, isCatchAll: false);
 

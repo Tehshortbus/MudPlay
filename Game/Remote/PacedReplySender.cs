@@ -23,10 +23,8 @@ public sealed class PacedReplySender
     public static readonly TimeSpan PaceInterval = TimeSpan.FromMilliseconds(800);
     public static readonly TimeSpan ClobberBackoff = TimeSpan.FromSeconds(3);
 
-    // Runs an action after a delay. Production wires a UI-thread DispatcherTimer
-    // one-shot (see AppServices); the default runs inline so tests that only care
-    // about the reply CONTENT drain synchronously, and the sender's own pacing
-    // tests inject a manual scheduler they pump by hand.
+    // Runs an action after a delay. AppServices wires a UI-thread DispatcherTimer
+    // one-shot; the default runs inline.
     private readonly Action<TimeSpan, Action> _scheduleAfter;
     private readonly LogService? _log;
 

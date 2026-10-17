@@ -46,11 +46,11 @@ public sealed class MonsterDeathWatcher : IDisposable
     // Fires once per observed death. Subscribers run on the line-emitting thread.
     public event Action<MonsterDeathEvent>? MonsterDied;
 
-    // Test seam — overrides the wall clock for the exp / Combat-Off correlation window.
-    public Func<DateTimeOffset> NowProvider { get; set; } = () => DateTimeOffset.Now;
+    private readonly Func<DateTimeOffset> _now;
 
-    public MonsterDeathWatcher(MessageRouter router, LogService? log = null)
+    public MonsterDeathWatcher(MessageRouter router, LogService? log = null, Func<DateTimeOffset>? now = null)
     {
+        _now = now ?? (() => DateTimeOffset.Now);
         ArgumentNullException.ThrowIfNull(router);
         _log = log;
         _offProbe = new CommandOffProbe(router);
@@ -66,7 +66,7 @@ public sealed class MonsterDeathWatcher : IDisposable
     {
         if (m.Groups.Count == 0) return;
         if (!int.TryParse(m.Groups[0], out int exp)) return;
-        _lastExpAt = NowProvider();
+        _lastExpAt = _now();
         _lastExpAmount = exp;
     }
 
@@ -89,7 +89,7 @@ public sealed class MonsterDeathWatcher : IDisposable
             $"death — exp={experience} under a room spell; one of {roster.Count} kind(s) of monster the room listed");
         MonsterDied?.Invoke(new MonsterDeathEvent(
             ExperienceGained: experience,
-            At:               NowProvider(),
+            At:               _now(),
             RoomSpellRoster:  roster));
     }
 
@@ -99,7 +99,7 @@ public sealed class MonsterDeathWatcher : IDisposable
         if (!string.Equals(m.Groups[0], "Off", StringComparison.OrdinalIgnoreCase)) return;
         if (_lastExpAt is not { } expAt) return;
 
-        DateTimeOffset now = NowProvider();
+        DateTimeOffset now = _now();
         if (now - expAt > ExpToCombatOffWindow) return;
 
         // The exp is dropped with it: its kill's own Off would have come straight

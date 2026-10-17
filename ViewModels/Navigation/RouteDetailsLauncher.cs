@@ -29,7 +29,7 @@ public static class RouteDetailsLauncher
         PlayerDefenseProfile? def = services.LiveIncomingHitDefense();
         return CurrentRouteDetails.Build(
             services.RoomGraph, services.Bfs, services.Movement,
-            polyline, services.ItemNames.GetName,
+            polyline,
             key => MonsterLinks(services, key, def),
             services.HighlightWhereRoom,
             key => RoomHazard(services, key),

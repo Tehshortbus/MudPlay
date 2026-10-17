@@ -328,11 +328,11 @@ public sealed class AutoGetItemsManagerTests
         h.Flags["long sword"] = true;
         h.Flags["shield"] = true;
 
-        LineExtractor lines = new(new TerminalEmulator(80, 24));
-        h.Items.AttachLineExtractor(lines);
+        ServerFeed feed = new();
+        h.Items.AttachLineExtractor(feed.Lines);
 
-        FeedLine(lines, "You notice a long sword, a torch and a");
-        FeedLine(lines, "shield here.");
+        feed.Line("You notice a long sword, a torch and a");
+        feed.Line("shield here.");
 
         Assert.Equal(new[] { "get long sword", "get shield" }, h.SentText);
     }
@@ -965,17 +965,4 @@ public sealed class AutoGetItemsManagerTests
         Assert.Empty(h.Sent);
     }
 
-    private static void FeedLine(LineExtractor lines, string text)
-    {
-        System.Reflection.FieldInfo? field = typeof(LineExtractor)
-            .GetField("LineEmitted",
-                System.Reflection.BindingFlags.Instance |
-                System.Reflection.BindingFlags.NonPublic);
-        if (field?.GetValue(lines) is Action<LineExtractor.EmittedLine> handler)
-        {
-            handler(new LineExtractor.EmittedLine(
-                text, Array.Empty<CellAttributes>(),
-                DateTimeOffset.UtcNow, IsPromptLine: false));
-        }
-    }
 }

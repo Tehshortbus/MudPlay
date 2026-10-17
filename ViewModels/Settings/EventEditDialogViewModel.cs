@@ -454,7 +454,7 @@ public sealed partial class EventEditDialogViewModel : ObservableObject, IDialog
         if (TryGetMissingTargetMessage() is { } missing)
         {
             // Try the popup; fall through silently if AppServices isn't
-            // initialized (tests). Either way, we don't fire CloseRequested.
+            // initialized. Either way, we don't fire CloseRequested.
             try { AppServices.Current.Dialogs.ShowInfo("Event not saved", missing); }
             catch (InvalidOperationException) { /* AppServices uninitialized — tests */ }
             return;
@@ -564,8 +564,6 @@ public sealed partial class EventEditDialogViewModel : ObservableObject, IDialog
     [RelayCommand]
     private void Cancel() => CloseRequested?.Invoke(null);
 
-    // Internal so tests can poke the validation path without going through a
-    // dispatcher / DialogService.
     internal string? TryGetMissingTargetMessage()
     {
         if (IsTriggerBoss && string.IsNullOrWhiteSpace(BossName))
@@ -604,7 +602,7 @@ public sealed partial class EventEditDialogViewModel : ObservableObject, IDialog
 
     // ----- Radio groups -----------------------------------------------
 
-    // The XAML radios enforce mutual exclusion via GroupName, but tests +
+    // The XAML radios enforce mutual exclusion via GroupName, but
     // programmatic callers don't go through the radios — so each flag, when it
     // flips on, clears its siblings. This way the VM contract — "exactly one
     // trigger, one action, one Then" — holds however a property was set.

@@ -49,12 +49,12 @@ public sealed class AutoLairSchedulerTests
     [Fact]
     public void PickNext_DefaultHeuristic_PrefersCloserReadyLairOverFarReadyLair()
     {
-        // Both ready now. The closer one wins because it minimises
-        // wasted-respawn time.
+        // Both ready now. The closer one wins as the closest ready-by-arrival
+        // lair; its Score is its arrival time (3 hops + 1 s entry).
         LairCandidate[] cands =
         {
-            Reachable(1, 100, readyAt: _t0,                       hops: 10),  // wasted=11s
-            Reachable(1, 200, readyAt: _t0,                       hops:  3),  // wasted= 4s
+            Reachable(1, 100, readyAt: _t0,                       hops: 10),  // arrives in 11s
+            Reachable(1, 200, readyAt: _t0,                       hops:  3),  // arrives in  4s
         };
 
         LairDecision? best = AutoLairScheduler.PickNext(cands, _flat, now: _t0);
@@ -190,8 +190,9 @@ public sealed class AutoLairSchedulerTests
     [Fact]
     public void PickNext_ThroughputHeuristic_PrefersIdleOverWasted()
     {
-        // Same fixture as the default-zero-penalty test — throughput
-        // explicitly ignores idle wait. Idle candidate wins.
+        // Same fixture as PickNext_DefaultHeuristic_PrefersReadyLairOverIdling,
+        // where Default picks the ready lair 200 — throughput ignores idle wait,
+        // so the idle candidate wins here.
         LairCandidate[] cands =
         {
             Reachable(1, 100, readyAt: _t0.AddSeconds(100), hops:  2),  // idle=97s, score=0

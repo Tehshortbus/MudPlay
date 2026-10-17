@@ -78,8 +78,8 @@ public sealed class MpImportReviewOtherGameDataTests : IDisposable
         LoopManager loops = new(new BfsMapper(g), g);
         loops.LoadAll(_opened);
         LogService log = new();
-        ProfileService profile = new();
-        profile.LoadBlank();
+        ProfileService profile = TestProfiles.Service();
+        profile.LoadDefaultProfile();
         MovementFilter filter = new(profile);
         return new Opened(
             new MpImportReviewViewModel("square.mp", file, null, new MpFileImporter(g), g, loops, filter, log),

@@ -4,11 +4,9 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Pins the client-side line buffer contract: 254-char cap, drop-on-
-/// overflow, Latin-1 + CR flush, and the Changed event fires on every
-/// mutation so the TerminalControl overlay can repaint.
-/// </summary>
+// Pins the client-side line buffer contract: 254-char cap, drop-on-
+// overflow, Latin-1 + CR flush, and the Changed event fires on every
+// mutation so the TerminalControl overlay can repaint.
 public sealed class LocalInputBufferTests
 {
     [Fact]

@@ -81,7 +81,6 @@ public sealed class RoomHazardIndexTests : IDisposable
 
         // Damaging but no item counters it → deliberately not indexed.
         Assert.Null(idx.HazardForSpell(700));
-        Assert.Equal(0, idx.HazardCount);
     }
 
     [Fact]
@@ -523,7 +522,6 @@ public sealed class RoomHazardIndexTests : IDisposable
 
         Assert.NotNull(idx.HazardForSpell(700));
         Assert.Null(idx.HazardForSpell(800));
-        Assert.Equal(1, idx.HazardCount);
     }
 
     // A plain damage hazard (magma-heat shape: a direct Damage ability) is
@@ -610,10 +608,9 @@ public sealed class RoomHazardIndexTests : IDisposable
             Room(700),
             """ [ { "Number": 700, "Abil-0": 1, "AbilVal-0": 25 } ] """,
             """ [ { "Number": 42, "NegateSpell-0": 700 } ] """);
-        Assert.Equal(1, idx.HazardCount);
+        Assert.NotNull(idx.HazardForSpell(700));
 
         idx.OnActiveSetChanged(null);
-        Assert.Equal(0, idx.HazardCount);
         Assert.Null(idx.HazardForSpell(700));
     }
 

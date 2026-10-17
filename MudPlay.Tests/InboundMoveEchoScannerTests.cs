@@ -16,6 +16,9 @@ namespace MudPlay.Tests;
 // wrong one (a room display following a bare prompt).
 public sealed class InboundMoveEchoScannerTests : IDisposable
 {
+    // The game's output, fed the way the client receives it.
+    private readonly ServerFeed _feed = new();
+
     private readonly string _root;
 
     public InboundMoveEchoScannerTests()
@@ -59,15 +62,11 @@ public sealed class InboundMoveEchoScannerTests : IDisposable
         RoomGraphManager graph = new(cache);
         graph.OnActiveSetChanged("alpha");
         RoomTracker tracker = new(graph);
-        LineExtractor lines = new(new TerminalEmulator(80, 25));
         InboundMoveEchoScanner scanner = promptPattern is null
-            ? new(lines, tracker)
-            : new(lines, tracker, () => promptPattern);
+            ? new(_feed.Lines, tracker)
+            : new(_feed.Lines, tracker, () => promptPattern);
         return (tracker, scanner);
     }
-
-    private static LineExtractor.EmittedLine Line(string text, DateTimeOffset at, bool prompt) =>
-        new(text, Array.Empty<CellAttributes>(), at, prompt);
 
     private static RoomObservation Hall() =>
         new("Hall", new HashSet<Direction> { Direction.N, Direction.S });
@@ -83,10 +82,10 @@ public sealed class InboundMoveEchoScannerTests : IDisposable
         tracker.NoteRoomObserved(Hall(), t0);
         tracker.NoteMoveSent(Direction.N, t0.AddSeconds(1));  // predicted 1/2 (identical {N,S})
 
-        // The split pair: prompt half then "n", both with the same row timestamp.
+        // The prompt with "n" echoed onto it: one row, which the extractor splits
+        // into a prompt half and "n" sharing the row's timestamp.
         DateTimeOffset echoAt = t0.AddSeconds(2);
-        scanner.FeedTestLine(Line("[HP=100/MA=50]:", echoAt, prompt: true));
-        scanner.FeedTestLine(Line("n", echoAt, prompt: false));
+        _feed.Line("[HP=100/MA=50]:n", echoAt);
 
         tracker.NoteRoomObserved(Hall(), echoAt.AddMilliseconds(100));
 
@@ -107,8 +106,8 @@ public sealed class InboundMoveEchoScannerTests : IDisposable
         tracker.NoteMoveSent(Direction.N, t0.AddSeconds(1));
 
         // Bare prompt, then the room name on a later row (different timestamp).
-        scanner.FeedTestLine(Line("[HP=100/MA=50]:", t0.AddSeconds(2), prompt: true));
-        scanner.FeedTestLine(Line("Hall", t0.AddSeconds(2).AddMilliseconds(40), prompt: false));
+        _feed.Line("[HP=100/MA=50]:", t0.AddSeconds(2));
+        _feed.Line("Hall", t0.AddSeconds(2).AddMilliseconds(40));
 
         // Nothing was forwarded as an echo — the room line is not a command echo.
         Assert.Null(tracker.LastInboundMoveEcho);
@@ -131,9 +130,9 @@ public sealed class InboundMoveEchoScannerTests : IDisposable
 
         // Bare prompt, a broadcast line, then the echo stranded on its own row.
         DateTimeOffset at = t0.AddSeconds(2);
-        scanner.FeedTestLine(Line("[HP=100/MA=50]:", at, prompt: true));
-        scanner.FeedTestLine(Line("[Kitti] logs ON - Hi there!", at.AddMilliseconds(10), prompt: false));
-        scanner.FeedTestLine(Line("n", at.AddMilliseconds(20), prompt: false));
+        _feed.Line("[HP=100/MA=50]:", at);
+        _feed.Line("[Kitti] logs ON - Hi there!", at.AddMilliseconds(10));
+        _feed.Line("n", at.AddMilliseconds(20));
 
         tracker.NoteRoomObserved(Hall(), at.AddMilliseconds(120));
 
@@ -153,8 +152,8 @@ public sealed class InboundMoveEchoScannerTests : IDisposable
         tracker.NoteMoveSent(Direction.N, t0.AddSeconds(1));
 
         // "Hall" and "s" are both single bare tokens; neither names the in-flight N.
-        scanner.FeedTestLine(Line("Hall", t0.AddSeconds(2), prompt: false));
-        scanner.FeedTestLine(Line("s", t0.AddSeconds(2).AddMilliseconds(10), prompt: false));
+        _feed.Line("Hall", t0.AddSeconds(2));
+        _feed.Line("s", t0.AddSeconds(2).AddMilliseconds(10));
 
         Assert.Null(tracker.LastInboundMoveEcho);
     }
@@ -175,7 +174,7 @@ public sealed class InboundMoveEchoScannerTests : IDisposable
 
         // Move one lands via a detached echo.
         tracker.NoteMoveSent(Direction.N, t0.AddSeconds(1));
-        scanner.FeedTestLine(Line("n", t0.AddSeconds(2), prompt: false));
+        _feed.Line("n", t0.AddSeconds(2));
         tracker.NoteRoomObserved(Hall(), t0.AddSeconds(2).AddMilliseconds(100));
         Assert.Equal(new RoomKey(1, 2), tracker.State.CurrentRoom!.Key);
 
@@ -205,7 +204,7 @@ public sealed class InboundMoveEchoScannerTests : IDisposable
 
         // The whole row as one non-prompt line: prompt + the echoed "n".
         DateTimeOffset echoAt = t0.AddSeconds(2);
-        scanner.FeedTestLine(Line("<100/50>:n", echoAt, prompt: false));
+        _feed.Line("<100/50>:n", echoAt);
 
         tracker.NoteRoomObserved(Hall(), echoAt.AddMilliseconds(100));
 

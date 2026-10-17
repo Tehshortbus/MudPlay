@@ -25,7 +25,7 @@ public sealed class CombatManagerSpellsTests
     {
         public MessageRouter Router { get; } = new();
         public MonsterMessageStore Monsters { get; } = new();
-        public PlayerDatabase Players { get; } = new();
+        public PlayerDatabase Players { get; } = new(new ProfileService(), () => null);
         public PartyState Party { get; } = new();
         public LogService Log { get; } = new();
         public RoomEntityClassifier Classifier { get; }
@@ -55,7 +55,7 @@ public sealed class CombatManagerSpellsTests
         public bool Sneaking { get; set; }
         public HashSet<int> SeeHidden { get; } = new();
 
-        // Fake clock for CombatManager.SetClock — Tick() advances it by a full
+        // The combat manager's clock — Tick() advances it by a full
         // round each call, matching TickEngine.CombatTickInterval (5s), so
         // AlternationAdvanceMinGap sees genuine round-to-round elapsed time
         // instead of the zero real elapsed time a synchronous test call has.
@@ -113,10 +113,10 @@ public sealed class CombatManagerSpellsTests
                 readOwnGivenName: () => "MudPlay",
                 post: a => { if (_deferPost) Posted.Add(a); else a(); },
                 log: Log,
-                resolveSpellByCode: c => SpellsByCode.TryGetValue(c, out KnownSpell s) ? s : null);
+                resolveSpellByCode: c => SpellsByCode.TryGetValue(c, out KnownSpell s) ? s : null,
+                now: () => _clock);
             Combat.SetWireSender(b => Sent.Add(b));
             if (Deaths is not null) Combat.RoomSpellKill += Deaths.NoteRoomSpellKill;
-            Combat.SetClock(() => _clock);
             // Production counts MaxCasts off RoundDamageTracker.RoundCount; mirror it.
             Combat.ReadRoundCount = () => _roundCount;
             Combat.SetBackstabHooks(() => Sneaking, n => SeeHidden.Contains(n));
@@ -4561,7 +4561,8 @@ public sealed class CombatManagerSpellsTests
     {
         using Harness h = new();
         DateTimeOffset now = DateTimeOffset.UnixEpoch;
-        using TickEngine tick = new(h.Router, () => now);
+        ManualTimers polls = new();
+        using TickEngine tick = new(h.Router, () => now, schedule: polls.Arm);
         h.Combat.SetCombatTickAnchor(tick.EnsureCombatTickAnchor);
         // Production subscription order: CastCoordinator clears the spent round,
         // then CombatManager retries the attack. CastingDirector sits between them
@@ -4586,7 +4587,7 @@ public sealed class CombatManagerSpellsTests
         // The seeded timer reaches the projected next round without any recognized
         // combat line—the exact production event that was missing in the report.
         now += TickEngine.CombatTickInterval;
-        tick.PollTimersForTests();
+        polls.RunAll();
 
         Assert.Equal("turn shade", h.LastSent);
         Assert.False(h.Combat.Snapshot().SpellAttackOwed);

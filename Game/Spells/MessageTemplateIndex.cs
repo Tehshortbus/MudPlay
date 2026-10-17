@@ -23,39 +23,33 @@ public sealed class MessageTemplateIndex
     private readonly Dictionary<string, List<CasterMessageMatcher>> _byWord =
         new(StringComparer.OrdinalIgnoreCase);
 
-    // Distinct templates indexed. Diagnostics and tests read this to confirm the
-    // catalogue actually produced matchers rather than silently indexing nothing.
-    public int TemplateCount { get; }
-
     public MessageTemplateIndex(IEnumerable<MessageRecord> records)
     {
         ArgumentNullException.ThrowIfNull(records);
 
         HashSet<string> seen = new(StringComparer.Ordinal);
-        int indexed = 0;
         foreach (MessageRecord r in records)
         {
-            if (Add(r.CasterMessage, seen))   indexed++;
-            if (Add(r.TargetMessage, seen))   indexed++;
+            Add(r.CasterMessage, seen);
+            Add(r.TargetMessage, seen);
             // WitnessMessage can hold several wordings, one per line (a room spell's
             // ambient set) — index each so a templated witness among them still matches.
             if (!MessageRecord.IsBlankOrAbsent(r.WitnessMessage))
                 foreach (string wording in r.WitnessMessage.Split('\n'))
-                    if (Add(wording, seen)) indexed++;
-            if (Add(r.AppliedMessage, seen))  indexed++;
-            if (Add(r.AppliedEndsWith, seen)) indexed++;
+                    Add(wording, seen);
+            Add(r.AppliedMessage, seen);
+            Add(r.AppliedEndsWith, seen);
         }
-        TemplateCount = indexed;
     }
 
-    private bool Add(string? template, HashSet<string> seen)
+    private void Add(string? template, HashSet<string> seen)
     {
-        if (MessageRecord.IsBlankOrAbsent(template)) return false;
+        if (MessageRecord.IsBlankOrAbsent(template)) return;
         string text = template!.Trim();
         // Literal slots carry no placeholder, so they're compared as plain text by
         // the caller and have no business being compiled into a regex here.
-        if (!text.Contains('{')) return false;
-        if (!seen.Add(text)) return false;
+        if (!text.Contains('{')) return;
+        if (!seen.Add(text)) return;
 
         // Some shipped templates pin almost no literal text — "The {source}
         // {spellname}!" claims essentially any line starting "The" and ending "!",
@@ -66,17 +60,16 @@ public sealed class MessageTemplateIndex
         // its own job (confirming a cast we already know we made, where the caller
         // supplies the spell and target) — it just can't identify a line on its own.
         if (CasterMessageMatcher.LiteralTextLength(text)
-            < MessageRecord.MinRecognitionPatternLength) return false;
+            < MessageRecord.MinRecognitionPatternLength) return;
         // No literal text at all leaves nothing to file the matcher under.
         if (CasterMessageMatcher.LongestLiteralWord(text) is not { Length: > 0 } word)
-            return false;
+            return;
         if (CasterMessageMatcher.TryCreate(text, compiled: false) is not { } matcher)
-            return false;
+            return;
 
         if (!_byWord.TryGetValue(word, out List<CasterMessageMatcher>? bucket))
             _byWord[word] = bucket = new();
         bucket.Add(matcher);
-        return true;
     }
 
     // True when some catalogue template describes line.

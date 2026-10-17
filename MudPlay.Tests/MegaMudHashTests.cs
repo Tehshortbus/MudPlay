@@ -15,45 +15,45 @@ public sealed class MegaMudHashTests
     public void ComputeNameHash_EmptyOrNull_ReturnsFFF(string? name, string expected)
         => Assert.Equal(expected, MegaMudHash.ComputeNameHash(name));
 
-    [Fact]
-    public void ComputeNameHash_Deterministic_SameInputSameHash()
-    {
-        // Anchor: the JS reference algorithm is sum(pos * charCode) → low 12 bits → 3-hex.
-        // Compute the expected by mirroring the JS:
-        string name = "Stone Street";
-        int n = 0;
-        for (int i = 0; i < name.Length; i++) n = unchecked(n + (i + 1) * name[i]);
-        uint u = unchecked((uint)n);
-        string hex = u.ToString("X");
-        string expected = (hex.Length >= 3 ? hex[^3..] : hex.PadLeft(3, '0')).ToUpperInvariant();
-
-        Assert.Equal(expected, MegaMudHash.ComputeNameHash(name));
-    }
-
-    // ----- exits encode/decode roundtrip -----------------------------
-
-    public static IEnumerable<object[]> ExitRoundtripCases()
-    {
-        yield return new object[] { new HashSet<Direction>() };
-        yield return new object[] { new HashSet<Direction> { Direction.N } };
-        yield return new object[] { new HashSet<Direction> { Direction.N, Direction.S } };
-        yield return new object[] { new HashSet<Direction> { Direction.E, Direction.W } };
-        yield return new object[] { new HashSet<Direction> { Direction.NE, Direction.NW, Direction.SE, Direction.SW } };
-        yield return new object[] { new HashSet<Direction> { Direction.U, Direction.D } };
-        yield return new object[] { new HashSet<Direction>
-            { Direction.N, Direction.S, Direction.E, Direction.W, Direction.NE, Direction.NW, Direction.SE, Direction.SW, Direction.U, Direction.D } };
-        yield return new object[] { new HashSet<Direction> { Direction.S, Direction.NW } };
-    }
-
+    // sum(position × char code), low 12 bits as three hex digits: "Stone Street"
+    // sums to 7833 = 0x1E99.
     [Theory]
-    [MemberData(nameof(ExitRoundtripCases))]
-    public void EncodeDecode_Roundtrip(HashSet<Direction> exits)
+    [InlineData("Stone Street", "E99")]
+    [InlineData("Start", "66A")]
+    [InlineData("Town Square", "9D4")]
+    public void ComputeNameHash_IsTheLow12BitsOfThePositionWeightedSum(string name, string expected)
+        => Assert.Equal(expected, MegaMudHash.ComputeNameHash(name));
+
+    // ----- exits code ------------------------------------------------
+
+    // Each direction lands in its own digit, N/S rightmost and U/D leftmost, the
+    // second of each pair weighing 4 to the first's 1.
+    [Theory]
+    [InlineData(Direction.N, "00001")]
+    [InlineData(Direction.S, "00004")]
+    [InlineData(Direction.E, "00010")]
+    [InlineData(Direction.W, "00040")]
+    [InlineData(Direction.NE, "00100")]
+    [InlineData(Direction.NW, "00400")]
+    [InlineData(Direction.SE, "01000")]
+    [InlineData(Direction.SW, "04000")]
+    [InlineData(Direction.U, "10000")]
+    [InlineData(Direction.D, "40000")]
+    public void EncodeExits_EachDirection_HasItsOwnDigit(Direction dir, string expected)
+        => Assert.Equal(expected, MegaMudHash.EncodeExits(MakeRoom("Test", new[] { (dir, RoomExitHint.None) })));
+
+    [Fact]
+    public void EncodeExits_EveryExit_FillsEveryDigit()
     {
-        string code = MegaMudHash.EncodeExits(exits);
-        Assert.Equal(5, code.Length);
-        IReadOnlySet<Direction>? decoded = MegaMudHash.DecodeExits(code);
-        Assert.NotNull(decoded);
-        Assert.Equal((IReadOnlySet<Direction>)exits, decoded);
+        Room room = MakeRoom("Test", new[]
+        {
+            (Direction.N, RoomExitHint.None), (Direction.S, RoomExitHint.None),
+            (Direction.E, RoomExitHint.None), (Direction.W, RoomExitHint.None),
+            (Direction.NE, RoomExitHint.None), (Direction.NW, RoomExitHint.None),
+            (Direction.SE, RoomExitHint.None), (Direction.SW, RoomExitHint.None),
+            (Direction.U, RoomExitHint.None), (Direction.D, RoomExitHint.None),
+        });
+        Assert.Equal("55555", MegaMudHash.EncodeExits(room));
     }
 
     // ----- door-aware encoding --------------------------------------
@@ -61,27 +61,22 @@ public sealed class MegaMudHashTests
     [Fact]
     public void EncodeExits_NormalExit_WeightsOne()
     {
-        // N alone, no door — encoding should match the naive form.
         Room room = MakeRoom("Test", new[]
         {
             (Direction.N, RoomExitHint.None),
         });
-        string encoded = MegaMudHash.EncodeExits(room);
-        Assert.Equal(MegaMudHash.EncodeExits(new HashSet<Direction> { Direction.N }), encoded);
+        Assert.Equal("00001", MegaMudHash.EncodeExits(room));
     }
 
     [Fact]
     public void EncodeExits_DoorExit_DoublesWeightVsNormal()
     {
-        // Same exit topology but the N is a Door — encoding MUST differ
-        // from the naive "all normal" form.
+        // Same exit topology but the N is a Door: its weight doubles.
         Room doorRoom = MakeRoom("Test", new[]
         {
             (Direction.N, RoomExitHint.Door),
         });
-        string doorEncoded = MegaMudHash.EncodeExits(doorRoom);
-        string naive = MegaMudHash.EncodeExits(new HashSet<Direction> { Direction.N });
-        Assert.NotEqual(naive, doorEncoded);
+        Assert.Equal("00002", MegaMudHash.EncodeExits(doorRoom));
     }
 
     [Fact]
@@ -93,9 +88,7 @@ public sealed class MegaMudHashTests
             (Direction.N, RoomExitHint.SearchableHidden),
             (Direction.S, RoomExitHint.None),
         });
-        string withHidden = MegaMudHash.EncodeExits(hiddenN);
-        string sOnly = MegaMudHash.EncodeExits(new HashSet<Direction> { Direction.S });
-        Assert.Equal(sOnly, withHidden);
+        Assert.Equal("00004", MegaMudHash.EncodeExits(hiddenN));
     }
 
     [Theory]

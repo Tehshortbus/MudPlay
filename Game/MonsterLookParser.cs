@@ -61,12 +61,6 @@ public sealed partial class MonsterLookParser : IDisposable
 
     public void Dispose() => _lines.LineEmitted -= OnLineEmitted;
 
-    // Test hook — feed plain lines without a live LineExtractor. isPrompt marks a
-    // prompt row (block boundary); the echoed command and the name arrive as
-    // non-prompt content lines just as they do on the wire.
-    internal void Feed(string text, bool isPrompt = false)
-        => HandleLine(text, isPrompt);
-
     private void OnLineEmitted(LineExtractor.EmittedLine line)
         => HandleLine(line.Text, line.IsPromptLine);
 

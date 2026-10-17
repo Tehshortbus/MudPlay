@@ -5,11 +5,9 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Coverage for the null-name learning flow added when the player
-/// stumbles into a ganghouse room whose <c>Name</c> shipped as null
-/// in the MDB export.
-/// </summary>
+// Coverage for the null-name learning flow added when the player
+// stumbles into a ganghouse room whose Name shipped as null
+// in the MDB export.
 public sealed class NullNameLearningTests : IDisposable
 {
     private readonly string _root;

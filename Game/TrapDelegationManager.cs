@@ -111,9 +111,6 @@ public sealed class TrapDelegationManager : System.IDisposable
     // wired (always probe).
     public System.Func<bool>? IsPartyReformSettling { get; set; }
 
-    // Test seam — bytes the manager asked to write to the wire.
-    internal System.Collections.Generic.List<byte[]> LastSentForTests => _wire.LastSentForTests;
-
     public void Dispose()
     {
         if (_disposed) return;

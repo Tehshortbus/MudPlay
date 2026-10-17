@@ -82,7 +82,7 @@ public sealed class SuicidePasswordTracker : IDisposable
     // candidate at commit time.
     private string? _latestArmedLine;
 
-    // Current state of the flow — exposed for tests + diagnostics.
+    // Current state of the flow, for diagnostics.
     public FlowState State => _state;
 
     // Counts down the lines of the user's own a bare `suicide` of theirs covers:

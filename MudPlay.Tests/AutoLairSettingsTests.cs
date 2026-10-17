@@ -1,4 +1,3 @@
-using System.Text.Json;
 using MudPlay.Game;
 using MudPlay.Game.Map;
 using MudPlay.Models.Profile;
@@ -6,7 +5,7 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-// AutoLairSettings DTO defaults, JSON round-trip, and the
+// AutoLairSettings DTO defaults and the
 // EncumbranceHopTimes lookup. Plus the EncumbranceGatedTravelCostModel
 // hop → duration math.
 public sealed class AutoLairSettingsTests
@@ -14,53 +13,16 @@ public sealed class AutoLairSettingsTests
     // ----- defaults -------------------------------------------------
 
     [Fact]
-    public void Defaults_AreSane()
+    public void Defaults_AreTheShippedOnes()
     {
+        // What a profile with no Auto-Lair entry runs on (the hop bands are pinned by
+        // HopTimes_For_ReturnsBucketDefault).
         AutoLairSettings dto = new();
         Assert.Equal(AutoLairHeuristic.Default, dto.Heuristic);
         Assert.Equal(30, dto.EngageTimeoutSeconds);
         // Auto is the default — realm-aware model selection out of the box.
         Assert.Equal(AutoLairTravelCostMode.Auto, dto.TravelCostMode);
         Assert.Equal(1.5, dto.FlatSecondsPerHop);
-        Assert.NotNull(dto.HopTimesByEncumbrance);
-        // Measured stock hop timings are a two-band step function: None /
-        // Light / Medium share the fast band, Heavy / Encumbered the slow one.
-        Assert.Equal(dto.HopTimesByEncumbrance.None,  dto.HopTimesByEncumbrance.Light);
-        Assert.Equal(dto.HopTimesByEncumbrance.Light, dto.HopTimesByEncumbrance.Medium);
-        Assert.True(dto.HopTimesByEncumbrance.Medium  < dto.HopTimesByEncumbrance.Heavy);
-        Assert.Equal(dto.HopTimesByEncumbrance.Heavy,  dto.HopTimesByEncumbrance.Encumbered);
-    }
-
-    // ----- JSON round-trip ------------------------------------------
-
-    [Fact]
-    public void JsonRoundTrip_PreservesEveryField()
-    {
-        AutoLairSettings dto = new()
-        {
-            Heuristic = AutoLairHeuristic.Throughput,
-            EngageTimeoutSeconds = 45,
-            TravelCostMode = AutoLairTravelCostMode.EncumbranceGated,
-            FlatSecondsPerHop = 1.7,
-            HopTimesByEncumbrance = new EncumbranceHopTimes
-            {
-                None = 0.8, Light = 1.2, Medium = 2.1, Heavy = 3.5, Encumbered = 5.5,
-            },
-        };
-
-        string json = JsonSerializer.Serialize(dto);
-        AutoLairSettings? roundTrip = JsonSerializer.Deserialize<AutoLairSettings>(json);
-
-        Assert.NotNull(roundTrip);
-        Assert.Equal(AutoLairHeuristic.Throughput, roundTrip!.Heuristic);
-        Assert.Equal(45, roundTrip.EngageTimeoutSeconds);
-        Assert.Equal(AutoLairTravelCostMode.EncumbranceGated, roundTrip.TravelCostMode);
-        Assert.Equal(1.7, roundTrip.FlatSecondsPerHop);
-        Assert.Equal(0.8, roundTrip.HopTimesByEncumbrance.None);
-        Assert.Equal(1.2, roundTrip.HopTimesByEncumbrance.Light);
-        Assert.Equal(2.1, roundTrip.HopTimesByEncumbrance.Medium);
-        Assert.Equal(3.5, roundTrip.HopTimesByEncumbrance.Heavy);
-        Assert.Equal(5.5, roundTrip.HopTimesByEncumbrance.Encumbered);
     }
 
     // ----- EncumbranceHopTimes.For ----------------------------------
@@ -129,18 +91,4 @@ public sealed class AutoLairSettingsTests
         Assert.Equal(TimeSpan.FromSeconds(0.1), model.EstimateTravel(1));
     }
 
-    [Fact]
-    public void EncumbranceGated_TimesProperty_LiveSwap()
-    {
-        // The Settings tab's Apply replaces Times in place — the next
-        // EstimateTravel call must see the new table without a model
-        // re-construct.
-        PlayerState state = new() { Encumbrance = EncumbranceLevel.Medium };
-        EncumbranceGatedTravelCostModel model = new(state,
-            new EncumbranceHopTimes { Medium = 2.0 });
-        Assert.Equal(TimeSpan.FromSeconds(4), model.EstimateTravel(2));
-
-        model.Times = new EncumbranceHopTimes { Medium = 3.0 };
-        Assert.Equal(TimeSpan.FromSeconds(6), model.EstimateTravel(2));
-    }
 }

@@ -24,6 +24,8 @@ public sealed class PathItemShopRouterTests
 
     private sealed class Harness
     {
+        // The router's timeout timers.
+        public readonly ManualTimers Timers = new();
         public readonly Dictionary<int, List<RoomKey>> ShopRooms = new();
         public readonly Dictionary<(RoomKey From, RoomKey To), int> Dist = new();
         public readonly Dictionary<int, int> Carried = new();
@@ -52,7 +54,12 @@ public sealed class PathItemShopRouterTests
         public bool HoldPurseRead;
         public Action? PursesRead;
 
-        public PathItemShopRouter Build() => new(
+        // What the router put on the wire, through the sender the client binds.
+        public readonly List<byte[]> Sent = new();
+
+        public PathItemShopRouter Build()
+        {
+            PathItemShopRouter router = new(
             shopRoomsSellingItem: id => ShopRooms.TryGetValue(id, out List<RoomKey>? r)
                 ? r
                 : (IReadOnlyList<RoomKey>)Array.Empty<RoomKey>(),
@@ -70,8 +77,7 @@ public sealed class PathItemShopRouterTests
             walkTo: Walks.Add,
             post: a => a(),                          // synchronous in tests
             log: null,
-            buyTimeout: TimeSpan.FromHours(1),        // real timer never fires mid-test
-            withdrawTimeout: TimeSpan.FromHours(1),
+            schedule: Timers.Arm,
             partyTollTopUp: PartyTopUp is null ? null : (bank, shop, dest, drawing) =>
             {
                 TopUpAsked.Add((bank, shop, dest, drawing));
@@ -82,6 +88,9 @@ public sealed class PathItemShopRouterTests
                 if (HoldPurseRead) PursesRead = then;
                 else then();
             });
+            router.SetWireSender(Sent.Add);
+            return router;
+        }
 
         // One shop (ShopA) selling item 42, three steps out, four steps on to dest.
         public Harness WithSingleShop()
@@ -292,7 +301,7 @@ public sealed class PathItemShopRouterTests
 
         r.OnWalkEvent(new WalkEvent(WalkEventKind.Finished, "reached", ShopA));
 
-        Assert.Equal("buy boat", Decode(Assert.Single(r.LastSentForTests)));
+        Assert.Equal("buy boat", Decode(Assert.Single(h.Sent)));
         Assert.True(r.DetourActive);     // now Buying
     }
 
@@ -309,7 +318,7 @@ public sealed class PathItemShopRouterTests
         h.Carry(42);                     // covered before the shop was reached
         r.OnWalkEvent(new WalkEvent(WalkEventKind.Finished, "reached", ShopA));
 
-        Assert.Empty(r.LastSentForTests);
+        Assert.Empty(h.Sent);
         Assert.Equal(Dest, h.Walks[^1]);
         Assert.False(r.DetourActive);
     }
@@ -343,7 +352,7 @@ public sealed class PathItemShopRouterTests
         Assert.Equal(2, h.Walks.Count);
         Assert.Equal(Dest, h.Walks[1]);
         Assert.False(r.DetourActive);
-        Assert.Empty(r.LastSentForTests); // never reached the shop, never bought
+        Assert.Empty(h.Sent); // never reached the shop, never bought
     }
 
     [Fact]
@@ -367,7 +376,7 @@ public sealed class PathItemShopRouterTests
         r.OnNeedPosted(PathNeed(42));
         r.OnWalkEvent(new WalkEvent(WalkEventKind.Finished, "reached", ShopA));
 
-        r.OnBuyTimeout();                // item never appeared
+        h.Timers.RunAll();                // item never appeared
 
         Assert.Equal(2, h.Walks.Count);
         Assert.Equal(Dest, h.Walks[1]);
@@ -430,7 +439,7 @@ public sealed class PathItemShopRouterTests
 
         Assert.Equal(
             new[] { "buy boat", "buy boat", "buy boat", "buy boat" },
-            r.LastSentForTests.Select(Decode).ToArray());
+            h.Sent.Select(Decode).ToArray());
         Assert.True(r.DetourActive);               // still Buying until the count lands
     }
 
@@ -444,7 +453,7 @@ public sealed class PathItemShopRouterTests
 
         r.OnWalkEvent(new WalkEvent(WalkEventKind.Finished, "reached", ShopA));
 
-        Assert.Equal(3, r.LastSentForTests.Count); // buy the three still missing
+        Assert.Equal(3, h.Sent.Count); // buy the three still missing
     }
 
     [Fact]
@@ -572,10 +581,10 @@ public sealed class PathItemShopRouterTests
         r.OnNeedPosted(PathNeed(42));
         r.OnWalkEvent(new WalkEvent(WalkEventKind.Finished, "reached", Bank));
 
-        Assert.Empty(r.LastSentForTests);          // the purses first
+        Assert.Empty(h.Sent);          // the purses first
         h.PursesRead!();
 
-        Assert.Equal("with 970", Decode(Assert.Single(r.LastSentForTests)));
+        Assert.Equal("with 970", Decode(Assert.Single(h.Sent)));
         Assert.Equal((Bank, ShopA, Dest, 70L), Assert.Single(h.TopUpAsked));
 
         var dropped = new Harness().WithSingleShop().WithBank(unitCost: 100);
@@ -587,7 +596,7 @@ public sealed class PathItemShopRouterTests
         gone.OnWalkEvent(new WalkEvent(WalkEventKind.Finished, "reached", Bank));
         gone.OnWalkEvent(new WalkEvent(WalkEventKind.Started, "the user walked on", Dest));
         dropped.PursesRead!();
-        Assert.Empty(gone.LastSentForTests);
+        Assert.Empty(dropped.Sent);
     }
 
     // The party's share never makes a bank trip: cash that covers the item goes
@@ -616,7 +625,7 @@ public sealed class PathItemShopRouterTests
 
         r.OnWalkEvent(new WalkEvent(WalkEventKind.Finished, "reached", Bank));
 
-        Assert.Equal("with 70", Decode(Assert.Single(r.LastSentForTests)));
+        Assert.Equal("with 70", Decode(Assert.Single(h.Sent)));
         Assert.True(r.DetourActive);               // Withdrawing, still no shop walk
         Assert.Single(h.Walks);
     }
@@ -664,7 +673,7 @@ public sealed class PathItemShopRouterTests
         r.OnWalkEvent(new WalkEvent(WalkEventKind.Finished, "reached", Bank));
 
         // Over-request silently no-ops — cash never moved. The window elapses.
-        r.OnWithdrawTimeout();
+        h.Timers.RunAll();
 
         Assert.False(r.DetourActive);              // fail-out, no forced resume
         Assert.Single(h.Walks);                    // only the bank walk
@@ -696,7 +705,7 @@ public sealed class PathItemShopRouterTests
         h.Cash = 100;                              // a hand-off arrived during the walk
         r.OnWalkEvent(new WalkEvent(WalkEventKind.Finished, "reached", Bank));
 
-        Assert.Empty(r.LastSentForTests);          // never issued a `with`
+        Assert.Empty(h.Sent);          // never issued a `with`
         Assert.Equal(2, h.Walks.Count);
         Assert.Equal(ShopA, h.Walks[1]);
     }
@@ -732,8 +741,8 @@ public sealed class PathItemShopRouterTests
         r.OnInventoryChanged();                                       // → resume
 
         Assert.Equal(new[] { Bank, ShopA, Dest }, h.Walks.ToArray());
-        Assert.Equal("with 70", Decode(r.LastSentForTests[0]));
-        Assert.Equal("buy boat", Decode(r.LastSentForTests[1]));
+        Assert.Equal("with 70", Decode(h.Sent[0]));
+        Assert.Equal("buy boat", Decode(h.Sent[1]));
         Assert.False(r.DetourActive);
     }
 }

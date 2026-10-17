@@ -11,14 +11,13 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// <see cref="QuestTextFormatter"/>'s data-independent logic: the multi-part band
-/// title ("Good 1" from the GoodQuest flag), the checkbox-markdown parser that
-/// classifies a step line as a tickable checkbox or a plain context label, and the
-/// <c>(map/room)</c> coordinate splitter that isolates clickable walk-to links from
-/// surrounding prose. The cache-dependent <see cref="QuestTextFormatter.StepLines"/>
-/// is covered by the crawler's step-range tests; here we pin the pure string behaviour.
-/// </summary>
+// QuestTextFormatter's data-independent logic: the multi-part band
+// title ("Good 1" from the GoodQuest flag), the checkbox-markdown parser that
+// classifies a step line as a tickable checkbox or a plain context label, and the
+// (map/room) coordinate splitter that isolates clickable walk-to links from
+// surrounding prose. The cache-dependent QuestTextFormatter.StepLines is covered by
+// QuestItemGatheringTests and QuestTickMigrationTests; here we pin the pure string
+// behaviour.
 public sealed class QuestTextFormatterTests
 {
     [Fact]
@@ -234,7 +233,7 @@ public sealed class QuestTextFormatterTests
     public void Step_CommandWithRoom_RendersRoomLinkThenBacktickCommand()
     {
         Assert.Equal("(9/1259) `ask old man phoenix`",
-            QuestTextFormatter.Step(NoSet, MakeStep(1, "ask old man phoenix", "Room 9/1259")));
+            QuestTextFormatter.StepOrNull(NoSet, MakeStep(1, "ask old man phoenix", "Room 9/1259")));
     }
 
     // A set where monster 39 dies into spell 610, which ends by casting 611 — the spell a
@@ -269,7 +268,7 @@ public sealed class QuestTextFormatterTests
     {
         // No placement map → the kill narrates room-less.
         Assert.Equal("kill queen ant (#100)",
-            QuestTextFormatter.Step(KillSet(), MakeStep(2, null, "Spell #611", granted: new[] { 100 })));
+            QuestTextFormatter.StepOrNull(KillSet(), MakeStep(2, null, "Spell #611", granted: new[] { 100 })));
     }
 
     [Fact]
@@ -278,7 +277,7 @@ public sealed class QuestTextFormatterTests
         // The room link comes from where the quest places the monster whose death runs
         // the step, resolved into the threaded-in placement map.
         Assert.Equal("(9/717) kill queen ant (#100)",
-            QuestTextFormatter.Step(KillSet(), MakeStep(2, null, "Spell #611", granted: new[] { 100 }),
+            QuestTextFormatter.StepOrNull(KillSet(), MakeStep(2, null, "Spell #611", granted: new[] { 100 }),
                 Placement(39, new RoomKey(9, 717))));
     }
 
@@ -286,7 +285,7 @@ public sealed class QuestTextFormatterTests
     public void Step_KillStep_MultiplePlacements_ListEveryRoomAsItsOwnLink()
     {
         Assert.Equal("(1/2) (3/4) kill queen ant",
-            QuestTextFormatter.Step(KillSet(), MakeStep(2, null, "Spell #611"),
+            QuestTextFormatter.StepOrNull(KillSet(), MakeStep(2, null, "Spell #611"),
                 Placement(39, new RoomKey(1, 2), new RoomKey(3, 4))));
     }
 
@@ -296,7 +295,7 @@ public sealed class QuestTextFormatterTests
         // Monster absent from the map (nothing places it) → no dead link, the kill
         // narration stands alone.
         Assert.Equal("kill queen ant",
-            QuestTextFormatter.Step(KillSet(), MakeStep(2, null, "Spell #611"),
+            QuestTextFormatter.StepOrNull(KillSet(), MakeStep(2, null, "Spell #611"),
                 Placement(99, new RoomKey(1, 2))));
     }
 
@@ -341,7 +340,7 @@ public sealed class QuestTextFormatterTests
     public void Step_SpellThatIsNoMonstersDeath_IsNotAKill()
     {
         Assert.Equal("obtain #100",
-            QuestTextFormatter.Step(KillSet(), MakeStep(2, null, "Spell #999", granted: new[] { 100 })));
+            QuestTextFormatter.StepOrNull(KillSet(), MakeStep(2, null, "Spell #999", granted: new[] { 100 })));
     }
 
     [Fact]
@@ -351,7 +350,7 @@ public sealed class QuestTextFormatterTests
         // keyword it shows by itself), not its death: nothing to kill and no room to walk to.
         GameDataCache set = KillSet();
         Assert.Equal("obtain #100",
-            QuestTextFormatter.Step(set, MakeStep(2, null, "Monster #40", granted: new[] { 100 }),
+            QuestTextFormatter.StepOrNull(set, MakeStep(2, null, "Monster #40", granted: new[] { 100 }),
                 Placement(40, new RoomKey(2, 340))));
         Assert.Null(QuestTextFormatter.StepOrNull(set, MakeStep(2, null, "Monster #40"),
             Placement(40, new RoomKey(2, 340))));
@@ -361,7 +360,7 @@ public sealed class QuestTextFormatterTests
     public void Step_CommandlessGrant_NarratesObtain()
     {
         Assert.Equal("obtain #100",
-            QuestTextFormatter.Step(NoSet, MakeStep(3, null, "Textblock #5", granted: new[] { 100 })));
+            QuestTextFormatter.StepOrNull(NoSet, MakeStep(3, null, "Textblock #5", granted: new[] { 100 })));
     }
 
     [Fact]
@@ -371,7 +370,7 @@ public sealed class QuestTextFormatterTests
         // and fills in the ask command — the room link comes from that NPC's placement,
         // even though the step carries a command (unlike a kill step).
         Assert.Equal("(2/340) `ask archmage valduin crystal`",
-            QuestTextFormatter.Step(NoSet,
+            QuestTextFormatter.StepOrNull(NoSet,
                 MakeStep(2, "ask archmage valduin crystal", "Monster #1266"),
                 Placement(1266, new RoomKey(2, 340))));
     }
@@ -382,7 +381,7 @@ public sealed class QuestTextFormatterTests
         // A step that checks the same item it takes (checkitem + takeitem of one id)
         // names it once.
         Assert.Equal("(2/340) (#100 required) `ask valduin crystal`",
-            QuestTextFormatter.Step(NoSet,
+            QuestTextFormatter.StepOrNull(NoSet,
                 MakeStep(2, "ask valduin crystal", "Room 2/340",
                     required: new[] { 100 }, turnIn: new[] { 100 })));
     }
@@ -391,7 +390,7 @@ public sealed class QuestTextFormatterTests
     public void Step_TakenAndCheckedItems_AreBothRequired()
     {
         Assert.Equal("(2/340) (#100, #200 required) `ask x`",
-            QuestTextFormatter.Step(NoSet,
+            QuestTextFormatter.StepOrNull(NoSet,
                 MakeStep(2, "ask x", "Room 2/340",
                     required: new[] { 200 }, turnIn: new[] { 100 })));
     }
@@ -400,14 +399,14 @@ public sealed class QuestTextFormatterTests
     public void Step_HandInWithNothingElseToDo_ReadsTurnIn()
     {
         Assert.Equal("(6/3109) turn in #100, #200",
-            QuestTextFormatter.Step(NoSet, MakeStep(10, null, "Room 6/3109", turnIn: new[] { 100, 200 })));
+            QuestTextFormatter.StepOrNull(NoSet, MakeStep(10, null, "Room 6/3109", turnIn: new[] { 100, 200 })));
     }
 
     [Fact]
     public void Step_MultiRoomLocation_ListsEveryRoomAsItsOwnLink()
     {
         Assert.Equal("(5/294) (16/368) (1/527)",
-            QuestTextFormatter.Step(NoSet, MakeStep(1, null, "Room 5/294, Room 16/368, Room 1/527")));
+            QuestTextFormatter.StepOrNull(NoSet, MakeStep(1, null, "Room 5/294, Room 16/368, Room 1/527")));
     }
 
     [Fact]
@@ -415,23 +414,16 @@ public sealed class QuestTextFormatterTests
     {
         // The seed guide's "[](6/1357) (Gleaming Shard required) `ask martok forge`".
         Assert.Equal("(6/1357) (#100 required) `ask martok forge`",
-            QuestTextFormatter.Step(NoSet, MakeStep(4, "ask martok forge", "Room 6/1357", required: new[] { 100 })));
+            QuestTextFormatter.StepOrNull(NoSet, MakeStep(4, "ask martok forge", "Room 6/1357", required: new[] { 100 })));
         Assert.Equal("(1/1333) (#100 required) `ask annora head`",
-            QuestTextFormatter.Step(NoSet, MakeStep(5, "ask annora head", "Room 1/1333", turnIn: new[] { 100 })));
+            QuestTextFormatter.StepOrNull(NoSet, MakeStep(5, "ask annora head", "Room 1/1333", turnIn: new[] { 100 })));
     }
 
     [Fact]
     public void Step_CommandGrant_TrailsAsGetNote()
     {
         Assert.Equal("(9/1259) `ask smith key` (get #100)",
-            QuestTextFormatter.Step(NoSet, MakeStep(6, "ask smith key", "Room 9/1259", granted: new[] { 100 })));
-    }
-
-    [Fact]
-    public void Step_NoRoomCommandOrItems_FallsBackToStepOrdinal()
-    {
-        Assert.Equal("Step 7",
-            QuestTextFormatter.Step(NoSet, MakeStep(7, null, "Textblock #5")));
+            QuestTextFormatter.StepOrNull(NoSet, MakeStep(6, "ask smith key", "Room 9/1259", granted: new[] { 100 })));
     }
 
     [Fact]

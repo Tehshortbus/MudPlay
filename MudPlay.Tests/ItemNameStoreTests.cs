@@ -40,13 +40,6 @@ public sealed class ItemNameStoreTests : IDisposable
     }
 
     [Fact]
-    public void Load_IndexesAllRows()
-    {
-        ItemNameStore s = NewStore();
-        Assert.Equal(3, s.EntryCount);
-    }
-
-    [Fact]
     public void GetName_KnownItemId_ReturnsName()
     {
         ItemNameStore s = NewStore();
@@ -79,19 +72,16 @@ public sealed class ItemNameStoreTests : IDisposable
     public void ActiveSetChanged_ToNull_ClearsStore()
     {
         ItemNameStore s = NewStore();
-        Assert.True(s.EntryCount > 0);
+        Assert.NotNull(s.GetName(172));
 
         s.OnActiveSetChanged(null);
 
-        Assert.Equal(0, s.EntryCount);
         Assert.Null(s.GetName(172));
     }
 
-    // ----- Slot-filtered suggestion lists (Combat typeahead) --------
+    // ----- The off-hand list --------------------------------------------
 
-    // Mix of weapons (ItemType==1), off-hand items (Worn==12), and
-    // neither — plus a "Zaxe" before "axe" to prove the lists sort,
-    // and a duplicate "axe" name to prove they de-dup.
+    // Mix of weapons (ItemType==1), off-hand items (Worn==12), and neither.
     private const string SlotItemsJson = """
         [
           { "Number": 10, "Name": "Zaxe",        "ItemType": 1, "Worn": 0  },
@@ -116,14 +106,6 @@ public sealed class ItemNameStoreTests : IDisposable
     }
 
     [Fact]
-    public void WeaponNames_ContainsOnlyItemType1_SortedAndDeduped()
-    {
-        ItemNameStore s = NewSlotStore();
-        // "axe" appears twice in source → one entry; sorted before "Zaxe".
-        Assert.Equal(new[] { "axe", "main-gauche", "Zaxe" }, s.WeaponNames);
-    }
-
-    [Fact]
     public void OffHandNames_ContainsOnlyWorn12_Sorted()
     {
         ItemNameStore s = NewSlotStore();
@@ -137,69 +119,20 @@ public sealed class ItemNameStoreTests : IDisposable
     public void SlotLists_ClearOnNullSet()
     {
         ItemNameStore s = NewSlotStore();
-        Assert.NotEmpty(s.WeaponNames);
         Assert.NotEmpty(s.OffHandNames);
 
         s.OnActiveSetChanged(null);
 
-        Assert.Empty(s.WeaponNames);
         Assert.Empty(s.OffHandNames);
     }
 
     [Fact]
     public void OriginalFixture_HasNoWeaponsOrOffHands()
     {
-        // The key/boots fixture has ItemType 7/0 and no Worn==12 → both
-        // slot lists stay empty, proving classification is field-driven.
+        // The key/boots fixture has no Worn==12 → the off-hand list stays
+        // empty, proving classification is field-driven.
         ItemNameStore s = NewStore();
-        Assert.Empty(s.WeaponNames);
         Assert.Empty(s.OffHandNames);
-    }
-
-    private const string GettableJson = """
-        [
-          { "Number": 10, "Name": "long sword",   "Gettable": 1 },
-          { "Number": 11, "Name": "stone pillar", "Gettable": 0 }
-        ]
-        """;
-
-    private ItemNameStore NewGettableStore()
-    {
-        Directory.CreateDirectory(Path.Combine(_root, "gettable"));
-        File.WriteAllText(Path.Combine(_root, "gettable", "Items.json"), GettableJson);
-        GameDataCache cache = new(_root);
-        cache.SwitchSet("gettable");
-        ItemNameStore store = new(cache);
-        store.OnActiveSetChanged("gettable");
-        return store;
-    }
-
-    [Fact]
-    public void IsGettable_ReadsTheFlag()
-    {
-        ItemNameStore s = NewGettableStore();
-
-        Assert.True(s.IsGettable(10));
-        Assert.False(s.IsGettable(11));
-    }
-
-    [Fact]
-    public void IsGettable_DefaultsTrue_WhenColumnAbsent()
-    {
-        // The original fixture has no Gettable column. Defaulting to 0 there
-        // would mark every item in the set unpickable.
-        ItemNameStore s = NewStore();
-
-        Assert.True(s.IsGettable(172));
-        Assert.True(s.IsGettable(1720));
-    }
-
-    [Fact]
-    public void IsGettable_DefaultsTrue_ForUnknownId()
-    {
-        ItemNameStore s = NewGettableStore();
-
-        Assert.True(s.IsGettable(999999));
     }
 
     // The game totals a carried item's abilities when it isn't a weapon and has no

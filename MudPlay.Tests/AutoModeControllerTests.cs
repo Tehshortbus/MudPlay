@@ -14,8 +14,8 @@ public sealed class AutoModeControllerTests
 {
     private static ProfileService BlankProfile()
     {
-        ProfileService profile = new();
-        profile.LoadBlank();
+        ProfileService profile = TestProfiles.Service();
+        profile.LoadDefaultProfile();
         return profile;
     }
 
@@ -488,7 +488,7 @@ public sealed class AutoModeControllerTests
         Assert.Equal(1, resets);
         Assert.Empty(switched);
 
-        // And nothing is remembered: the next on falls back to base modes.
+        // A second reset with the switch already on says nothing.
         controller.ResetSnapshot();
         Assert.Equal(1, resets);
     }

@@ -26,6 +26,8 @@ public sealed class PathItemGiveRouterTests
 
     private sealed class Harness
     {
+        // The router's timeout timers.
+        public readonly ManualTimers Timers = new();
         public readonly Dictionary<int, List<GiveSource>> Givers = new();
         public readonly Dictionary<(RoomKey From, RoomKey To), int> Dist = new();
         public readonly Dictionary<int, int> Carried = new();
@@ -54,7 +56,7 @@ public sealed class PathItemGiveRouterTests
                 walkTo: Walks.Add,
                 post: a => a(),                       // synchronous in tests
                 log: null,
-                giveTimeout: TimeSpan.FromHours(1));   // real timer never fires mid-test
+                schedule: Timers.Arm);
             r.SetWireSender(_sent.Add);
             return r;
         }
@@ -213,7 +215,7 @@ public sealed class PathItemGiveRouterTests
         r.OnNeedPosted(PathNeed(42));
         r.OnWalkEvent(Finished(GiverA));
 
-        r.OnGiveTimeout();               // give never landed
+        h.Timers.RunAll();               // give never landed
 
         Assert.False(r.DetourActive);
         Assert.Equal(Dest, h.Walks[^1]);
@@ -262,7 +264,7 @@ public sealed class PathItemGiveRouterTests
         PathItemGiveRouter r = h.Build();
         r.OnNeedPosted(PathNeed(42));
         r.OnWalkEvent(Finished(GiverA));
-        r.OnGiveTimeout();                    // nothing was handed over and nothing was said
+        h.Timers.RunAll();                    // nothing was handed over and nothing was said
         Assert.Equal(new[] { GiverA, Dest }, h.Walks);
 
         // The resumed walk announces the key it still lacks.
@@ -336,7 +338,7 @@ public sealed class PathItemGiveRouterTests
         r.OnNeedPosted(PathNeed(808));
         r.OnWalkEvent(Finished(GiverA));
 
-        r.OnGiveTimeout();
+        h.Timers.RunAll();
         Assert.False(r.DetourActive);
         Assert.Equal(new[] { GiverA, Dest }, h.Walks);
         Assert.Contains(808, r.Declined);
@@ -445,7 +447,7 @@ public sealed class PathItemGiveRouterTests
         r.OnInventoryChanged();   // reply parsed, item absent
         Assert.True(r.DetourActive);
 
-        r.OnGiveTimeout();
+        h.Timers.RunAll();
         Assert.False(r.DetourActive);
         Assert.Equal(Dest, h.Walks[^1]);
     }

@@ -182,8 +182,7 @@ public sealed class DialogService
     // associated Messages found" from a Spells double-click). Uses the same
     // InfoDialog as the About / License menu entries but without the
     // toggle-tracker — every call opens a fresh window the user dismisses with
-    // Close. Returns silently when the main window isn't set (matches the
-    // unit-test path).
+    // Close. Returns silently when the main window isn't set.
     public void ShowInfo(string title, string body)
     {
         Dispatcher.UIThread.VerifyAccess();

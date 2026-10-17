@@ -98,8 +98,7 @@ public sealed class AutoBuyManager : IDisposable
     // taken to be some other command's.
     public static readonly TimeSpan ReplyWindow = TimeSpan.FromSeconds(5);
 
-    // Test seam for the clock the reply window is read against.
-    internal Func<DateTimeOffset> NowProvider { get; set; } = static () => DateTimeOffset.Now;
+    private readonly Func<DateTimeOffset> _now;
 
     private Action<byte[]>? _wireSender;
     private bool _disposed;
@@ -114,8 +113,10 @@ public sealed class AutoBuyManager : IDisposable
         Func<int, int> countCarried,
         Func<bool> isEnabled,
         LogService? log = null,
-        Func<bool>? isParadigm = null)
+        Func<bool>? isParadigm = null,
+        Func<DateTimeOffset>? now = null)
     {
+        _now = now ?? (() => DateTimeOffset.Now);
         ArgumentNullException.ThrowIfNull(router);
         ArgumentNullException.ThrowIfNull(resolve);
         ArgumentNullException.ThrowIfNull(countCarried);
@@ -123,7 +124,7 @@ public sealed class AutoBuyManager : IDisposable
         _resolve = resolve;
         _countCarried = countCarried;
         _isEnabled = isEnabled;
-        // Unbound (tests) → Stock behaviour: one `buy` per copy, wait for each.
+        // Unbound → Stock behaviour: one `buy` per copy, wait for each.
         _isParadigm = isParadigm ?? (static () => false);
         _log = log;
 
@@ -237,7 +238,7 @@ public sealed class AutoBuyManager : IDisposable
             int qty = _isParadigm() ? order.Remaining : 1;
             _log?.Info(LogCategory, $"buy {qty}x item={order.Name}");
             _awaitingArg = qty > 1 ? $"{qty} {order.Name}" : order.Name;
-            _sentAt = NowProvider();
+            _sentAt = _now();
             Send($"buy {_awaitingArg}");
             return;
         }
@@ -307,7 +308,7 @@ public sealed class AutoBuyManager : IDisposable
             if (!typed.Equals(_awaitingArg, StringComparison.OrdinalIgnoreCase)
                 && !typed.Equals(order.Name, StringComparison.OrdinalIgnoreCase)) return;
         }
-        else if (_awaitingArg is null || NowProvider() - _sentAt > ReplyWindow)
+        else if (_awaitingArg is null || _now() - _sentAt > ReplyWindow)
         {
             return;
         }

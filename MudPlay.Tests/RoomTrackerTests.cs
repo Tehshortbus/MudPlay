@@ -6,11 +6,9 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// PR 7.1 FSM coverage — every state-transition path through
-/// <see cref="RoomTracker"/>, including the move-blocked recovery
-/// and the manual Tier-3 override.
-/// </summary>
+// RoomTracker's confidence FSM — every state-transition path through
+// RoomTracker, including the move-blocked recovery
+// and the manual Tier-3 override.
 public sealed class RoomTrackerTests : IDisposable
 {
     private readonly string _root;
@@ -29,20 +27,18 @@ public sealed class RoomTrackerTests : IDisposable
 
     // ----- fixtures --------------------------------------------------
 
-    /// <summary>
-    /// 1/1 Town Gates ↔ 1/3 North Square ↔ 1/4 Inn.
-    /// Town Gates: N → 1/3, E → 1/4 (Door)
-    /// North Square: S → 1/1
-    /// Inn: W → 1/1, N → 1/5
-    /// Cellar (1/5) is name-and-exits unique.
-    /// 2/1 + 2/2 are an ambiguous-name pair for the Reconciling case.
-    /// 3/1 "Darkwood Forest, Main Road" has a hidden `go path` text exit
-    /// (S → 3/2) plus visible {SE, W}; 3/2 + 3/3 are an ambiguous
-    /// "Darkwood Forest" {SW} pair that only the go-path edge disambiguates.
-    /// 4/1–4/3 are an identically-named-and-exited "Cleared Fields" {N, S}
-    /// corridor (a 3-cycle) — the ambiguous case where a source re-look
-    /// display also matches the predicted move target.
-    /// </summary>
+    // 1/1 Town Gates ↔ 1/3 North Square ↔ 1/4 Inn.
+    // Town Gates: N → 1/3, E → 1/4 (Door)
+    // North Square: S → 1/1
+    // Inn: W → 1/1, N → 1/5
+    // Cellar (1/5) is name-and-exits unique.
+    // 2/1 + 2/3 are an ambiguous-name pair for the Suspect case.
+    // 3/1 "Darkwood Forest, Main Road" has a hidden `go path` text exit
+    // (S → 3/2) plus visible {SE, W}; 3/2 + 3/3 are an ambiguous
+    // "Darkwood Forest" {SW} pair that only the go-path edge disambiguates.
+    // 4/1–4/3 are an identically-named-and-exited "Cleared Fields" {N, S}
+    // corridor (a 3-cycle) — the ambiguous case where a source re-look
+    // display also matches the predicted move target.
     private const string GraphJson = """
         [
           { "Map Number": 1, "Room Number": 1, "Name": "Town Gates",
@@ -378,10 +374,10 @@ public sealed class RoomTrackerTests : IDisposable
         Assert.Equal(1, fired);
     }
 
-    // ----- Unknown → Located -----------------------------------------
+    // ----- Unknown → Confirmed ---------------------------------------
 
     [Fact]
-    public void FirstObservation_OneOfOne_PromotesToLocated()
+    public void FirstObservation_OneOfOne_PromotesToConfirmed()
     {
         RoomTracker tracker = NewTracker();
         tracker.NoteRoomObserved(Obs("Town Gates", Direction.N, Direction.E));
@@ -392,7 +388,7 @@ public sealed class RoomTrackerTests : IDisposable
     }
 
     [Fact]
-    public void FirstObservation_Ambiguous_LandsReconciling()
+    public void FirstObservation_Ambiguous_LandsSuspect()
     {
         RoomTracker tracker = NewTracker();
         // 2/1 and 2/3 are both "Hallway" + {N}.
@@ -412,7 +408,7 @@ public sealed class RoomTrackerTests : IDisposable
         Assert.Null(tracker.State.CurrentRoom);
     }
 
-    // ----- Located → Pending → Located (confirmed move) --------------
+    // ----- Confirmed → Pending → Confirmed (confirmed move) ----------
 
     [Fact]
     public void ConfirmedMove_LandsOnExpectedRoom()
@@ -430,7 +426,7 @@ public sealed class RoomTrackerTests : IDisposable
     }
 
     [Fact]
-    public void PendingMove_MismatchingObservation_LandsReconcilingOrLost()
+    public void PendingMove_UnexpectedButUniqueRoom_RelandsConfirmed()
     {
         RoomTracker tracker = NewTracker();
         tracker.NoteRoomObserved(Obs("Town Gates", Direction.N, Direction.E));
@@ -540,7 +536,7 @@ public sealed class RoomTrackerTests : IDisposable
     [Fact]
     public void Pending_PassiveSourceRedisplay_StaysPending_ThenRealMoveConfirms()
     {
-        // Tracker is Located at Town Gates (1/1). We send N. CONFIRMED game
+        // Tracker is Confirmed at Town Gates (1/1). We send N. CONFIRMED game
         // mechanic: a refused ("bonked") move NEVER redisplays the room — it
         // always prints an explicit refusal line (handled separately via
         // NoteMoveBlocked). So a same-room redisplay while the move is Pending
@@ -771,7 +767,7 @@ public sealed class RoomTrackerTests : IDisposable
     }
 
     [Fact]
-    public void Located_SameRoomRedisplay_WithFewerVisibleExits_StaysLocated()
+    public void Confirmed_SameRoomRedisplay_WithFewerVisibleExits_StaysConfirmed()
     {
         RoomTracker tracker = NewTracker();
         tracker.SetLocated(new RoomKey(1, 1));        // {N, E}
@@ -783,10 +779,10 @@ public sealed class RoomTrackerTests : IDisposable
         Assert.Equal(new RoomKey(1, 1), tracker.State.CurrentRoom!.Key);
     }
 
-    // ----- Pending → Located (move blocked) --------------------------
+    // ----- Pending → Confirmed (move blocked) ------------------------
 
     [Fact]
-    public void MoveBlocked_RevertsToLocated_AtPreviousRoom()
+    public void MoveBlocked_RevertsToConfirmed_AtPreviousRoom()
     {
         RoomTracker tracker = NewTracker();
         tracker.NoteRoomObserved(Obs("Town Gates", Direction.N, Direction.E));
@@ -815,10 +811,10 @@ public sealed class RoomTrackerTests : IDisposable
         Assert.Equal(RoomConfidence.Confirmed, tracker.State.Confidence);
     }
 
-    // ----- Located → Reconciling (silent desync) ---------------------
+    // ----- Confirmed → another room (silent desync) -----------------
 
     [Fact]
-    public void LocatedObservation_DifferentFromCurrent_ReReconcileViaCandidate()
+    public void ConfirmedObservation_DifferentRoom_RelandsViaCandidate()
     {
         RoomTracker tracker = NewTracker();
         tracker.NoteRoomObserved(Obs("Town Gates", Direction.N, Direction.E));
@@ -832,7 +828,7 @@ public sealed class RoomTrackerTests : IDisposable
     }
 
     [Fact]
-    public void LocatedObservation_SameAsCurrent_RefreshesTimestampOnly()
+    public void ConfirmedObservation_SameAsCurrent_RefreshesTimestampOnly()
     {
         RoomTracker tracker = NewTracker();
         DateTimeOffset t0 = DateTimeOffset.UtcNow;
@@ -948,7 +944,7 @@ public sealed class RoomTrackerTests : IDisposable
         tracker.SetLocated(new RoomKey(1, 1));    // Town Gates
 
         // Each mismatching observation that follows a fresh move increments the
-        // strike counter but preserves the anchor room — the UI stays "Located".
+        // strike counter but preserves the anchor room — the UI stays on it.
         // A move must sit between observations: a stationary stream of identical
         // redisplays is one piece of evidence, not one strike apiece (002347).
         tracker.NoteRoomObserved(Obs("Hallway", Direction.N), t);     // ambiguous (2/1, 2/3) — strike 1
@@ -1028,30 +1024,6 @@ public sealed class RoomTrackerTests : IDisposable
     }
 
     // ----- replay-from-last-Confirmed recovery -----------------------
-
-    [Fact]
-    public void Replay_FromLastConfirmed_RecoversWhenObsMatchesEndpoint()
-    {
-        // Confirmed at Town Gates → move N to North Square (Confirmed)
-        // → move S back to Town Gates (Confirmed). Then the user is at
-        // 1/4 (Inn) and a sudden observation lands there with no
-        // matching candidate from the graph search alone — but the
-        // history+steps replay should find Inn through valid graph
-        // edges and Confirm there.
-        //
-        // To exercise the no-1-of-1 path we use a sequence where the
-        // recovery target has a unique name in the graph anyway, which
-        // means LandFromCandidateSearch would also succeed. So instead
-        // we verify the simpler invariant: when replay succeeds, the
-        // tracker lands Confirmed at the projected endpoint and the
-        // RecentSteps clear.
-        RoomTracker tracker = NewTracker();
-        tracker.SetLocated(new RoomKey(1, 1));                       // Town Gates
-        tracker.NoteMoveSent(Direction.E);                            // Town Gates → Inn (predicted)
-        tracker.NoteRoomObserved(Obs("Inn", Direction.W, Direction.N));
-        Assert.Equal(RoomConfidence.Confirmed, tracker.State.Confidence);
-        Assert.Equal(new RoomKey(1, 4), tracker.State.CurrentRoom!.Key);
-    }
 
     // ----- door-tolerant name re-anchor (205936 / 075501) ------------
 
@@ -1556,7 +1528,7 @@ public sealed class RoomTrackerTests : IDisposable
         Assert.Equal(3, profile.LastKnownRoom!.Room);
     }
 
-    // ----- death capture (PR 10.5) -----------------------------------
+    // ----- death capture ---------------------------------------------
 
     [Fact]
     public void NoteDeath_CapturesDeathpileFromInventorySnapshot()

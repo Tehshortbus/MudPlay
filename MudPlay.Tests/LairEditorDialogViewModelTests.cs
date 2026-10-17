@@ -13,20 +13,15 @@ namespace MudPlay.Tests;
 // fires; no test here trips a rename collision.
 public sealed class LairEditorDialogViewModelTests : IDisposable
 {
-    private readonly string _bbs;
-
-    public LairEditorDialogViewModelTests()
-    {
-        string suffix = Guid.NewGuid().ToString("N").Substring(0, 12);
-        _bbs = "test-laireditor-" + suffix;
-    }
+    // The game-data set the room graph is read from and the lairs are saved under.
+    private readonly string _setName = "test-laireditor-" + Guid.NewGuid().ToString("N").Substring(0, 12);
 
     public void Dispose()
     {
         try
         {
-            string bbsFolder = AppPaths.BbsFolder(_bbs);
-            if (Directory.Exists(bbsFolder)) Directory.Delete(bbsFolder, recursive: true);
+            string setFolder = AppPaths.GameDataSetDir(_setName);
+            if (Directory.Exists(setFolder)) Directory.Delete(setFolder, recursive: true);
         }
         catch { /* best-effort */ }
     }
@@ -42,7 +37,6 @@ public sealed class LairEditorDialogViewModelTests : IDisposable
 
     private sealed class Harness : IDisposable
     {
-        public required string SetName { get; init; }
         public required LairManager Setups { get; init; }
         public required RoomGraphManager Graph { get; init; }
         public required LairTimerStore Timers { get; init; }
@@ -51,24 +45,22 @@ public sealed class LairEditorDialogViewModelTests : IDisposable
 
     private Harness NewHarness()
     {
-        string setName = "test-set-" + Guid.NewGuid().ToString("N").Substring(0, 8);
-        string setRoot = Path.Combine(AppPaths.GameDataRoot, setName);
+        string setRoot = AppPaths.GameDataSetDir(_setName);
         Directory.CreateDirectory(setRoot);
         File.WriteAllText(Path.Combine(setRoot, "Rooms.json"), RoomsJson);
 
         GameDataCache cache = new();
-        cache.SwitchSet(setName);
+        cache.SwitchSet(_setName);
         RoomGraphManager graph = new(cache);
-        graph.OnActiveSetChanged(setName);
+        graph.OnActiveSetChanged(_setName);
         RoomTracker tracker = new(graph);
 
         LairManager setups = new();
-        setups.LoadAll(_bbs);
+        setups.LoadAll(_setName);
         LairTimerStore timers = new(cache, graph, tracker);
 
         return new Harness
         {
-            SetName = setName,
             Setups = setups,
             Graph = graph,
             Timers = timers,

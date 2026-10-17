@@ -21,7 +21,7 @@ namespace MudPlay.Tests;
 // GameDataSwitchStopsMovementTests.) The wiring here is the one AppServices makes.
 public sealed class GameDataSwitchEndsHeldRunsTests : IDisposable
 {
-    private const string TestBbs = "test-setswitch-held";
+    private const string TestLoopSet = "test-setswitch-held";
     private const string Reason = "game data changed from 'alpha' to 'beta'";
     private readonly string _root =
         Path.Combine(Path.GetTempPath(), "mudplay-setswitch-held-" + Path.GetRandomFileName());
@@ -32,7 +32,7 @@ public sealed class GameDataSwitchEndsHeldRunsTests : IDisposable
         foreach (IDisposable d in _dispose) d.Dispose();
         try { Directory.Delete(_root, recursive: true); }
         catch { /* best-effort temp cleanup */ }
-        try { Directory.Delete(AppPaths.BbsFolder(TestBbs), recursive: true); }
+        try { Directory.Delete(AppPaths.GameDataSetDir(TestLoopSet), recursive: true); }
         catch { /* best-effort temp cleanup */ }
     }
 
@@ -61,10 +61,10 @@ public sealed class GameDataSwitchEndsHeldRunsTests : IDisposable
     [InlineData("lair")]
     public void AnEventWaitingAtTheSwitch_IsEnded_AndDoesNotGoBackToTheOldRun(string kind)
     {
-        using EventEngineHarness h = EventEngineHarness.Create(Path.Combine(_root, kind), TestBbs);
+        using EventEngineHarness h = EventEngineHarness.Create(Path.Combine(_root, kind), TestLoopSet);
         MovementController controller = ControllerOver(h);
         DateTimeOffset now = new(2026, 10, 11, 20, 0, 0, TimeSpan.Zero);
-        h.Events.Now = () => now;
+        h.EventsNow = () => now;
         h.Tracker.SetLocated(new RoomKey(1, 1));
         if (kind == "loop") h.Runner.Start(new Loop("ab", new[] { new RoomKey(1, 1), new RoomKey(1, 2) }));
         else
@@ -99,7 +99,7 @@ public sealed class GameDataSwitchEndsHeldRunsTests : IDisposable
     [Fact]
     public void TheUsersStop_StillEndsAWaitingEventAsStoppedByTheUser()
     {
-        using EventEngineHarness h = EventEngineHarness.Create(Path.Combine(_root, "user"), TestBbs);
+        using EventEngineHarness h = EventEngineHarness.Create(Path.Combine(_root, "user"), TestLoopSet);
         MovementController controller = ControllerOver(h);
         h.Tracker.SetLocated(new RoomKey(1, 1));
         h.Runner.Start(new Loop("ab", new[] { new RoomKey(1, 1), new RoomKey(1, 2) }));
@@ -131,8 +131,9 @@ public sealed class GameDataSwitchEndsHeldRunsTests : IDisposable
         """;
 
     private sealed record Pickup(
-        PartyComebackManager Comeback, RemoteCommandManager Engine, PartyState Party, RoomTracker Tracker,
-        LoopRunner Runner, MovementController Controller, List<string> Sent);
+        PartyComebackManager Comeback, RemoteCommandManager Engine, MessageRouter Router, PartyState Party,
+        RoomTracker Tracker, LoopRunner Runner, MovementController Controller, List<string> Sent,
+        ManualTimers ComebackTimers);
 
     // The engines and a pick-up manager over them, the controller wired to it as
     // AppServices wires it. cancelWired false leaves that wiring out.
@@ -145,7 +146,7 @@ public sealed class GameDataSwitchEndsHeldRunsTests : IDisposable
         DefaultPatterns.Seed(router);
         ChatRouter chat = new(router);
         PartyState partyState = new();
-        PlayerDatabase players = new();
+        PlayerDatabase players = new(new ProfileService(), () => null);
         RemoteCommandManager engine = new(chat, partyState, players);
         GameDataCache cache = new(root);
         cache.SwitchSet("alpha");
@@ -164,7 +165,9 @@ public sealed class GameDataSwitchEndsHeldRunsTests : IDisposable
         AutoLairManager lair = new(walker, tracker, graph, bfs, timers);
         RoomEntityClassifier classifier = new(router, new MonsterMessageStore(), players, tracker);
         PartyManager party = new(router, partyState);
-        PartyComebackManager comeback = new(engine, party, tracker, classifier, walker, runner, lair, router, bfs);
+        ManualTimers comebackTimers = new();
+        PartyComebackManager comeback = new(engine, party, tracker, classifier, walker, runner, lair, router, bfs,
+            schedule: comebackTimers.Arm);
         comeback.SetWireSender(_ => { });
         MovementController controller = new(walker, runner, lair, coord);
         if (cancelWired)
@@ -174,7 +177,7 @@ public sealed class GameDataSwitchEndsHeldRunsTests : IDisposable
                 comeback.Cancel(reason);
             };
         _dispose.AddRange(new IDisposable[] { controller, comeback, lair, timers, party, engine });
-        return new Pickup(comeback, engine, partyState, tracker, runner, controller, sent);
+        return new Pickup(comeback, engine, router, partyState, tracker, runner, controller, sent, comebackTimers);
     }
 
     // Standing in the member's room, re-invited and waiting for them to follow, with
@@ -185,8 +188,7 @@ public sealed class GameDataSwitchEndsHeldRunsTests : IDisposable
         p.Party.IsInParty = true;
         p.Tracker.SetLocated(new RoomKey(1, 1));
         p.Runner.Start(new Loop("ab", new[] { new RoomKey(1, 1), new RoomKey(1, 2) }));
-        p.Engine.DispatchForTests(new ChatLogEntry(
-            DateTimeOffset.UnixEpoch, ChatChannel.TelepathIncoming, "Tank", "@comeback 1/1", "Tank telepaths: @comeback 1/1"));
+        ChatLines.Hear(p.Router, ChatChannel.TelepathIncoming, "Tank", "@comeback 1/1");
         p.Tracker.SetLocated(new RoomKey(1, 1));
         Assert.Equal("Tank", p.Comeback.RecoveringMember);
         Assert.Equal("re-invited, waiting for them to follow", p.Comeback.RecoveryPhase);
@@ -206,7 +208,7 @@ public sealed class GameDataSwitchEndsHeldRunsTests : IDisposable
         Assert.Null(p.Comeback.RecoveringMember);
 
         // The member never follows: the wait running out is what put the loop back.
-        p.Comeback.FireFollowTimeoutForTests();
+        p.ComebackTimers.RunAll();
 
         Assert.Equal(LoopState.Idle, p.Runner.State);
         Assert.Equal(sent, p.Sent.Count);
@@ -220,7 +222,7 @@ public sealed class GameDataSwitchEndsHeldRunsTests : IDisposable
         WaitForTheMember(p);
 
         p.Controller.StopForGameDataChange("alpha", "beta");
-        p.Comeback.FireFollowTimeoutForTests();
+        p.ComebackTimers.RunAll();
 
         Assert.NotEqual(LoopState.Idle, p.Runner.State);
     }

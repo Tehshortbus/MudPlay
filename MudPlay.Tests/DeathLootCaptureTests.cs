@@ -4,10 +4,8 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// PR 10.5 — <see cref="DeathLootCapture"/> splits an inventory snapshot into
-/// the deathpile's worn (re-equippable) and carried-but-unworn halves.
-/// </summary>
+// DeathLootCapture splits an inventory snapshot into
+// the deathpile's worn (re-equippable) and carried-but-unworn halves.
 public sealed class DeathLootCaptureTests
 {
     private static InventorySnapshot Snap(EquippedItem[] worn, string[] carried) =>

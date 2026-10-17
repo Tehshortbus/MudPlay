@@ -4,11 +4,9 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Pins the <see cref="ItemCastToken"/> buff-slot scheme: a '#'-prefixed slot
-/// value names an item to cast from (equip → use → re-equip) rather than a
-/// direct spell cast-code.
-/// </summary>
+// Pins the ItemCastToken buff-slot scheme: a '#'-prefixed slot
+// value names an item to cast from (equip → use → re-equip) rather than a
+// direct spell cast-code.
 public sealed class ItemCastTokenTests
 {
     [Fact]

@@ -1,23 +1,26 @@
+using System.Text;
 using MudPlay.Game;
 using MudPlay.Models.Profile;
 using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Pins the persist-and-rehydrate path: each successful capture
-/// window snapshots the live PlayerStats into a LastKnownStats DTO
-/// (consumed by AppServices to write onto the loaded profile), and
-/// the Hydrate path reverses it so a freshly-loaded profile lands
-/// with the user's last-observed values instead of zeros.
-/// </summary>
+// Pins the persist-and-rehydrate path: each successful capture
+// window snapshots the live PlayerStats into a LastKnownStats DTO
+// (consumed by AppServices to write onto the loaded profile), and
+// the Hydrate path reverses it so a freshly-loaded profile lands
+// with the user's last-observed values instead of zeros.
 public sealed class StatParserPersistenceTests
 {
-    private static (StatParser parser, PlayerStats stats) Setup()
+    // The game's output, fed the way the client receives it.
+    private readonly ServerFeed _feed = new();
+
+    private (StatParser parser, PlayerStats stats) Setup()
     {
         PlayerStats stats = new();
         StatParser parser = new(stats);
-        parser.TestArm();
+        parser.AttachLineExtractor(_feed.Lines);
+        parser.ObserveOutbound(Encoding.Latin1.GetBytes("stat\r"));
         return (parser, stats);
     }
 
@@ -36,10 +39,10 @@ public sealed class StatParserPersistenceTests
     public void Snapshot_AfterParse_MirrorsLivePlayerStats()
     {
         var (p, _) = Setup();
-        p.FeedTestLine("Name: MudPlay WuzHere                  Lives/CP:           7/2");
-        p.FeedTestLine("Race: Dark-Elf       Exp: 12345      Perception:         50");
-        p.FeedTestLine("Class: Mystic        Level: 5        Stealth:            65");
-        p.FeedTestLine("Hits:  120/150       Armour Class:  3/5    Thievery:     10");
+        _feed.Line("Name: MudPlay WuzHere                  Lives/CP:           7/2");
+        _feed.Line("Race: Dark-Elf       Exp: 12345      Perception:         50");
+        _feed.Line("Class: Mystic        Level: 5        Stealth:            65");
+        _feed.Line("Hits:  120/150       Armour Class:  3/5    Thievery:     10");
 
         LastKnownStats snap = p.Snapshot();
         Assert.Equal("MudPlay WuzHere", snap.Name);
@@ -65,9 +68,9 @@ public sealed class StatParserPersistenceTests
         LastKnownStats? captured = null;
         p.ScreenParsed += s => captured = s;
 
-        p.FeedTestLine("Name: Raijin Wuz                     Lives/CP:           4/3");
+        _feed.Line("Name: Raijin Wuz                     Lives/CP:           4/3");
         // Prompt line closes the gate via "prompt after capture".
-        p.FeedTestLine("[HP=40/MA=34]:", isPromptLine: true);
+        _feed.Line("[HP=40/MA=34]:");
 
         Assert.NotNull(captured);
         Assert.Equal("Raijin Wuz", captured!.Name);
@@ -86,7 +89,7 @@ public sealed class StatParserPersistenceTests
         p.ScreenParsed += _ => fired = true;
 
         // Prompt line with nothing captured — gate closes "no capture".
-        p.FeedTestLine("[HP=22]:", isPromptLine: true);
+        _feed.Line("[HP=22]:");
 
         Assert.False(fired);
     }
@@ -98,9 +101,9 @@ public sealed class StatParserPersistenceTests
         int fires = 0;
         p.ScreenParsed += _ => fires++;
 
-        p.FeedTestLine("Name: MudPlay WuzHere                  Lives/CP:           9/0");
-        p.FeedTestLine("Class: Mystic        Level: 1        Stealth:            65");
-        p.FeedTestLine("[HP=22]:", isPromptLine: true);
+        _feed.Line("Name: MudPlay WuzHere                  Lives/CP:           9/0");
+        _feed.Line("Class: Mystic        Level: 1        Stealth:            65");
+        _feed.Line("[HP=22]:");
 
         Assert.Equal(1, fires);
     }
@@ -109,8 +112,8 @@ public sealed class StatParserPersistenceTests
     public void Hydrate_NullSnapshot_ResetsAllFieldsAndHasParsedFlag()
     {
         var (p, s) = Setup();
-        p.FeedTestLine("Name: MudPlay WuzHere                  Lives/CP:           9/0");
-        p.FeedTestLine("Class: Mystic        Level: 1        Stealth:            65");
+        _feed.Line("Name: MudPlay WuzHere                  Lives/CP:           9/0");
+        _feed.Line("Class: Mystic        Level: 1        Stealth:            65");
         Assert.True(p.HasParsed);
         Assert.Equal("MudPlay WuzHere", s.Name);
 
@@ -190,14 +193,14 @@ public sealed class StatParserPersistenceTests
         // snapshot AND a hydrate path; a future field addition has to
         // touch both or this test fails.
         var (writer, _) = Setup();
-        writer.FeedTestLine("Name: MudPlay WuzHere                  Lives/CP:           9/0");
-        writer.FeedTestLine("Race: Dark-Elf       Exp: 0          Perception:         50");
-        writer.FeedTestLine("Class: Mystic        Level: 1        Stealth:            65");
-        writer.FeedTestLine("Hits:  22/22         Armour Class:  0/0    Thievery:     0");
-        writer.FeedTestLine("Kai:   0/0                                  Traps:        0");
-        writer.FeedTestLine("Strength:   60       Agility:   80          Tracking:     0");
-        writer.FeedTestLine("Intellect:  60       Health:    30          Martial Arts: 118");
-        writer.FeedTestLine("Willpower:  30       Charm:     40          MagicRes:     37");
+        _feed.Line("Name: MudPlay WuzHere                  Lives/CP:           9/0");
+        _feed.Line("Race: Dark-Elf       Exp: 0          Perception:         50");
+        _feed.Line("Class: Mystic        Level: 1        Stealth:            65");
+        _feed.Line("Hits:  22/22         Armour Class:  0/0    Thievery:     0");
+        _feed.Line("Kai:   0/0                                  Traps:        0");
+        _feed.Line("Strength:   60       Agility:   80          Tracking:     0");
+        _feed.Line("Intellect:  60       Health:    30          Martial Arts: 118");
+        _feed.Line("Willpower:  30       Charm:     40          MagicRes:     37");
         LastKnownStats snap = writer.Snapshot();
 
         PlayerStats freshLive = new();

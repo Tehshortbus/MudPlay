@@ -52,9 +52,6 @@ public sealed class LeaderDoorAssistManager : IDisposable
     // Bind the gate-wrapped wire sender (MainWindowVM's SendUserInput).
     public void SetWireSender(Action<byte[]> sender) => _wire.Bind(sender);
 
-    // Test seam — bytes the manager asked to write to the wire.
-    internal List<byte[]> LastSentForTests => _wire.LastSentForTests;
-
     public void Dispose()
     {
         if (_disposed) return;

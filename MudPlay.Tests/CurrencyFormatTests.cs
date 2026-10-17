@@ -3,15 +3,13 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// <see cref="CurrencyFormat"/> renders a copper-farthing amount as MajorMUD coin
-/// denominations. <see cref="CurrencyFormat.Denominate"/> "flips up" to the largest
-/// denomination with a whole unit (the Session Stats compact total / per-hour text);
-/// <see cref="CurrencyFormat.Full"/> is the exact itemised breakdown behind the tooltip.
-/// The ladder (copper 1, silver 10, gold 100, platinum 10 000, runic 1 000 000) mirrors
-/// CurrencyHoldings.ToCopper — the ratios are non-uniform, so the rung boundaries are
-/// worth pinning. Output is invariant-culture: the decimal separator stays a dot.
-/// </summary>
+// CurrencyFormat renders a copper-farthing amount as MajorMUD coin
+// denominations. CurrencyFormat.Denominate "flips up" to the largest
+// denomination with a whole unit (the Session Stats compact total / per-hour text);
+// CurrencyFormat.Full is the exact itemised breakdown behind the tooltip.
+// The ladder (copper 1, silver 10, gold 100, platinum 10 000, runic 1 000 000) mirrors
+// CurrencyHoldings.ToCopper — the ratios are non-uniform, so the rung boundaries are
+// worth pinning. Output is invariant-culture: the decimal separator stays a dot.
 public sealed class CurrencyFormatTests
 {
     [Theory]

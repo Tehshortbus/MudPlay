@@ -7,14 +7,15 @@ namespace MudPlay.Tests;
 
 public sealed class WhoListParserTests
 {
+    // The game's output, fed the way the client receives it.
+    private readonly ServerFeed _feed = new();
+
     private static readonly DateTime Now = new(2026, 5, 1, 0, 0, 0, DateTimeKind.Utc);
 
-    /// <summary>
-    /// The real "Newhaven, Marrow Road" sample from the user's screenshot —
-    /// keeps the test honest about leading whitespace, double-spaces
-    /// between fields, and the family-name-touching-marker case
-    /// (Lenneth BoxOfRocksDumb-).
-    /// </summary>
+    // The real "Newhaven, Marrow Road" sample from the user's screenshot —
+    // keeps the test honest about leading whitespace, double-spaces
+    // between fields, and the family-name-touching-marker case
+    // (Lenneth BoxOfRocksDumb-).
     private static readonly string[] HavenSample =
     {
         "                 Current Adventurers",
@@ -33,21 +34,18 @@ public sealed class WhoListParserTests
         "",
     };
 
-    private static WhoListParser Build(out PlayerDatabase db)
+    // feed: the parser's own copy of the game's output; the class feed by default.
+    private WhoListParser Build(out PlayerDatabase db, ServerFeed? feed = null)
     {
-        db = new PlayerDatabase();
-        return new WhoListParser(
-            // Test hook bypasses the real LineExtractor — pass null safely
-            // since FeedTestLines drives HandleLine directly.
-            lines: new Terminal.LineExtractor(new Terminal.TerminalEmulator(80, 25)),
-            db:    db);
+        db = new PlayerDatabase(new ProfileService(), () => null);
+        return new WhoListParser(lines: (feed ?? _feed).Lines, db: db);
     }
 
     [Fact]
     public void ParsesHavenSample_RecordsEveryPlayerWithExpectedFields()
     {
         WhoListParser p = Build(out PlayerDatabase db);
-        p.FeedTestLines(HavenSample, Now);
+        _feed.Rows(HavenSample, Now);
 
         Assert.Equal(11, db.Players.Count);
 
@@ -63,7 +61,7 @@ public sealed class WhoListParserTests
     public void IgnoresLines_OutsideAdventurersBlock()
     {
         WhoListParser p = Build(out PlayerDatabase db);
-        p.FeedTestLines(new[]
+        _feed.Rows(new[]
         {
             "Forged Paradigm gossips: hello world",
             "Some random chat line - Magebane of nowhere",  // looks like a row but no header
@@ -77,12 +75,12 @@ public sealed class WhoListParserTests
     public void ReentersIdle_AfterEndOfBlock_AcceptsSecondWho()
     {
         WhoListParser p = Build(out PlayerDatabase db);
-        p.FeedTestLines(HavenSample, Now);
+        _feed.Rows(HavenSample, Now);
         Assert.Equal(11, db.Players.Count);
 
         // Second `who` call later — fresh table.
         DateTime later = Now.AddHours(1);
-        p.FeedTestLines(new[]
+        _feed.Rows(new[]
         {
             "                 Current Adventurers",
             "                 ===================",
@@ -98,7 +96,7 @@ public sealed class WhoListParserTests
     public void TrailingRoleMarker_M_S_V_CapturedSeparately()
     {
         WhoListParser p = Build(out PlayerDatabase db);
-        p.FeedTestLines(new[]
+        _feed.Rows(new[]
         {
             "                 Current Adventurers",
             "                 ===================",
@@ -123,7 +121,7 @@ public sealed class WhoListParserTests
     public void StockRows_TrailingEdited_IsNotPartOfTheTitleOrTheGang()
     {
         WhoListParser p = Build(out PlayerDatabase db);
-        p.FeedTestLines(new[]
+        _feed.Rows(new[]
         {
             "         Current Adventurers",
             "         ===================",
@@ -158,7 +156,7 @@ public sealed class WhoListParserTests
     public void TechnicalStyle_ReadsTheSameFieldsAsTheFantasyRows()
     {
         WhoListParser p = Build(out PlayerDatabase db);
-        p.FeedTestLines(TechnicalSample, Now);
+        _feed.Rows(TechnicalSample, Now);
 
         Assert.Equal(5, db.Players.Count);
         AssertHas(db, given: "Abelard", family: "Brightwtr", align: "Lawful",  title: "Canon",          gang: "Old People Only");
@@ -166,7 +164,6 @@ public sealed class WhoListParserTests
         AssertHas(db, given: "Eddas",   family: "Fenwicks",  align: "Neutral", title: "Druid Novice",   gang: null);   // Neutral is named outright
         AssertHas(db, given: "Garrick", family: "Holme",     align: "Good",    title: "Kai Warrior",    gang: "Old People Only");
         AssertHas(db, given: "Isolde",  family: "Jute",      align: "Good",    title: "Fighter Priest", gang: null);
-        Assert.Equal(5, p.LastBlockRowCount);
     }
 
     // The same players in fantasy style: a Neutral reputation is a blank left
@@ -175,7 +172,7 @@ public sealed class WhoListParserTests
     public void FantasyAndTechnicalStyles_AgreeOnEveryField()
     {
         WhoListParser fantasy = Build(out PlayerDatabase fantasyDb);
-        fantasy.FeedTestLines(new[]
+        _feed.Rows(new[]
         {
             "         Current Adventurers",
             "         ===================",
@@ -185,8 +182,9 @@ public sealed class WhoListParserTests
             "         Eddas Fenwicks        -  Druid Novice",
             "",
         }, Now);
-        WhoListParser technical = Build(out PlayerDatabase technicalDb);
-        technical.FeedTestLines(TechnicalSample, Now);
+        ServerFeed technicalFeed = new();
+        WhoListParser technical = Build(out PlayerDatabase technicalDb, technicalFeed);
+        technicalFeed.Rows(TechnicalSample, Now);
 
         foreach (string given in new[] { "Abelard", "Corin", "Eddas" })
         {
@@ -213,7 +211,7 @@ public sealed class WhoListParserTests
         // 19, last field 6.
         static string Row(string title, string name, string flags, string rep, string gang, string last) =>
             $"{title,-15} {name,-20}{flags} {rep,-10} {gang,-19} {last,-6}".TrimEnd();
-        p.FeedTestLines(new[]
+        _feed.Rows(new[]
         {
             $"{"Title",-15} {"Name",-20}   {"Reputation",-10} Gang/Guild",
             "=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=",
@@ -234,8 +232,8 @@ public sealed class WhoListParserTests
     public void TechnicalThenFantasy_EachBlockReadInItsOwnStyle()
     {
         WhoListParser p = Build(out PlayerDatabase db);
-        p.FeedTestLines(TechnicalSample, Now);
-        p.FeedTestLines(new[]
+        _feed.Rows(TechnicalSample, Now);
+        _feed.Rows(new[]
         {
             "         Current Adventurers",
             "         ===================",
@@ -253,7 +251,7 @@ public sealed class WhoListParserTests
     public void TechnicalHeader_WithoutItsRule_StartsNothing()
     {
         WhoListParser p = Build(out PlayerDatabase db);
-        p.FeedTestLines(new[]
+        _feed.Rows(new[]
         {
             "Title           Name                    Reputation Gang/Guild",
             "Canon           Abelard Brightwtr       Lawful     Old People Only",
@@ -268,7 +266,7 @@ public sealed class WhoListParserTests
     public void GangContainingTheWordEdited_IsKeptWhole()
     {
         WhoListParser p = Build(out PlayerDatabase db);
-        p.FeedTestLines(new[]
+        _feed.Rows(new[]
         {
             "         Current Adventurers",
             "         ===================",
@@ -293,19 +291,17 @@ public sealed class WhoListParserTests
         throw new InvalidOperationException($"No player with given name '{given}' in database.");
     }
 
-    /// <summary>
-    /// Verbatim live-server output (Newhaven, Narrow Road dump). Differs
-    /// from the earlier <see cref="HavenSample"/> in three ways the parser
-    /// must tolerate: (a) a blank line between the ============ separator
-    /// and the first row, (b) a blank line between the last row and the
-    /// trailing prompt, (c) <c>  -  </c> (two-space dash two-space) marker
-    /// rather than <c>-</c>.
-    /// </summary>
+    // Verbatim live-server output (Newhaven, Narrow Road dump). Differs
+    // from the earlier HavenSample in three ways the parser
+    // must tolerate: (a) a blank line between the ============ separator
+    // and the first row, (b) a blank line between the last row and the
+    // trailing prompt, (c)   -   (two-space dash two-space) marker
+    // rather than -.
     [Fact]
     public void ParsesNewhavenLiveDump_Including_BlankLines_AndTwoSpaceMarker()
     {
         WhoListParser p = Build(out PlayerDatabase db);
-        p.FeedTestLines(new[]
+        _feed.Rows(new[]
         {
             "         Current Adventurers",
             "         ===================",
@@ -345,7 +341,7 @@ public sealed class WhoListParserTests
         DateTime first = Now;
         DateTime later = Now.AddDays(3);
 
-        p.FeedTestLines(new[]
+        _feed.Rows(new[]
         {
             "                 Current Adventurers",
             "                 ===================",
@@ -353,7 +349,7 @@ public sealed class WhoListParserTests
             "",
         }, first);
 
-        p.FeedTestLines(new[]
+        _feed.Rows(new[]
         {
             "                 Current Adventurers",
             "                 ===================",
@@ -368,20 +364,18 @@ public sealed class WhoListParserTests
         Assert.Equal(later, db.Players[0].LastSeenUtc);
     }
 
-    /// <summary>
-    /// Real Paradigm "who" output. Differs from the stock/Newhaven format in two
-    /// ways the parser must tolerate: (a) NO alignment column, and (b) freeform,
-    /// player-chosen guild names that carry punctuation and digits —
-    /// "harsh.beast", "MakingTheLogosGay!", "Fuck Commies", "House of Rage".
-    /// Before the gang class was widened, the first punctuation guild
-    /// ("harsh.beast") failed to match and aborted the block, so only the three
-    /// rows above it were recorded.
-    /// </summary>
+    // Real Paradigm "who" output. Differs from the stock/Newhaven format in two
+    // ways the parser must tolerate: (a) NO alignment column, and (b) freeform,
+    // player-chosen guild names that carry punctuation and digits —
+    // "harsh.beast", "MakingTheLogosGay!", "Fuck Commies", "House of Rage".
+    // Before the gang class was widened, the first punctuation guild
+    // ("harsh.beast") failed to match and aborted the block, so only the three
+    // rows above it were recorded.
     [Fact]
     public void ParsesParadigmSample_FreeformGuilds_NoAlignmentColumn()
     {
         WhoListParser p = Build(out PlayerDatabase db);
-        p.FeedTestLines(new[]
+        _feed.Rows(new[]
         {
             "         Current Adventurers",
             "         ===================",
@@ -415,7 +409,7 @@ public sealed class WhoListParserTests
     public void ParsesAllCapsFiendAlignment_NormalizesCasing_AndKeepsReadingPastIt()
     {
         WhoListParser p = Build(out PlayerDatabase db);
-        p.FeedTestLines(new[]
+        _feed.Rows(new[]
         {
             "         Current Adventurers",
             "         ===================",
@@ -437,7 +431,7 @@ public sealed class WhoListParserTests
     public void SingleUnparseableRow_IsSkipped_NotTreatedAsBlockEnd()
     {
         WhoListParser p = Build(out PlayerDatabase db);
-        p.FeedTestLines(new[]
+        _feed.Rows(new[]
         {
             "         Current Adventurers",
             "         ===================",

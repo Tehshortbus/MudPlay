@@ -25,8 +25,8 @@ public sealed class ProfileService
     // leave it (identical name → no write → no Save churn; blank stat name → nothing to
     // heal from). Name is otherwise only ever written on create/rename, so a profile
     // COPIED from another character keeps the old name until this heals it, mis-tagging
-    // "self" in every consumer (report stock-20260828-104653). Pure so it's unit-tested
-    // directly; AppServices' stat-name handler applies the result.
+    // "self" in every consumer (report stock-20260828-104653). Pure;
+    // AppServices' stat-name handler applies the result.
     public static string? HealedCharacterName(string? currentName, string? statName)
         => string.IsNullOrWhiteSpace(statName)
            || string.Equals(currentName, statName, StringComparison.OrdinalIgnoreCase)
@@ -78,7 +78,7 @@ public sealed class ProfileService
     // Late-bound system-log sink. Set by AppServices after construction so the
     // character-lifecycle transitions (load / swap / close / re-home) land in
     // the always-on Info stream — the peer of the game-data set audit in
-    // GameDataCache. Left null in tests.
+    // GameDataCache.
     public LogService? Log { get; set; }
     // Times saves for the performance log; set once by AppServices.
     public PerformanceMonitor? Performance { get; set; }
@@ -106,8 +106,7 @@ public sealed class ProfileService
     public event Action? ProfileClosed;
 
     // Fired inside Save just before serialization. Subscribers write their
-    // latest state into the profile DTO so it lands in the JSON. Example:
-    // FloatingPanelHost updates CharacterProfile.PanelLayouts.
+    // latest state into the profile DTO so it lands in the JSON.
     public event Action<CharacterProfile>? ProfileSaving;
 
     // Fired whenever in-memory state on Current changes via the settings UI
@@ -338,7 +337,6 @@ public sealed class ProfileService
     // "Playpen" credential key for a "playpen" BBS), which a default
     // case-sensitive dictionary fails to resolve. Rebuilds the dictionary with
     // StringComparer.OrdinalIgnoreCase (last-wins on any case-duplicate key).
-    // Internal for test access.
     internal static void NormalizeForLoad(CharacterProfile profile)
     {
         ArgumentNullException.ThrowIfNull(profile);
@@ -350,37 +348,6 @@ public sealed class ProfileService
                 normalized[kv.Key] = kv.Value;
             profile.BbsCredentials = normalized;
         }
-    }
-
-    // Start a fresh in-memory draft profile from the installed defaults and fire
-    // ProfileLoaded — a scratch profile whose edits stay in memory (Save writes
-    // nothing for an unnamed profile) until it's named via Save As.
-    // Distinct from LoadDefaultProfile, which starts from the Global default file.
-    // Any outgoing profile is auto-saved first so per-session edits aren't dropped.
-    public CharacterProfile LoadBlank()
-    {
-        string? outgoing = CurrentProfileName;
-        if (Current is not null)
-        {
-            try { Save(); }
-            catch { /* swallow — a load shouldn't fail because the outgoing save did */ }
-            Current = null;
-            CurrentProfileName = null;
-            ProfileClosed?.Invoke();
-        }
-
-        CharacterProfile draft = new();
-        Current = draft;
-        CurrentProfileName = null;
-        CurrentBbsName = null;
-        Log?.Info(LogCategory, outgoing is null
-            ? "Started a blank draft profile (no character loaded)."
-            : $"Closed profile '{outgoing}'; started a blank draft profile.");
-        ProfileLoaded?.Invoke(draft);
-        // After the load's own handlers: a store that saves as it takes the new
-        // profile in is not the user changing anything.
-        _draftSaveWanted = false;
-        return draft;
     }
 
     // Load the "default profile" — the CharacterProfile persisted at
@@ -471,7 +438,9 @@ public sealed class ProfileService
                 ? "Loaded the default profile (no character loaded)."
                 : $"Closed profile '{outgoing}'; loaded the default profile.");
         ProfileLoaded?.Invoke(profile);
-        _draftSaveWanted = somethingToKeep;   // set after the handlers, as in LoadBlank
+        // After the load's own handlers: a store that saves as it takes the new
+        // profile in is not the user changing anything.
+        _draftSaveWanted = somethingToKeep;
         return profile;
     }
 

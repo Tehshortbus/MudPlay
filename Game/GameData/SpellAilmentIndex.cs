@@ -50,12 +50,6 @@ public sealed class SpellAilmentIndex
     public bool Applies(int spellNumber, string ailment)
         => Map().TryGetValue(spellNumber, out HashSet<string>? set) && set.Contains(ailment);
 
-    // The ailment keywords a spell applies (empty when none / unknown).
-    public IReadOnlySet<string> AilmentsOf(int spellNumber)
-        => Map().TryGetValue(spellNumber, out HashSet<string>? set)
-            ? set
-            : (IReadOnlySet<string>)System.Collections.Immutable.ImmutableHashSet<string>.Empty;
-
     private Dictionary<int, HashSet<string>> Map()
     {
         GameDataCache.Load load = _cache.ActiveLoad;

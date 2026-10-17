@@ -40,8 +40,8 @@ public sealed class InboundMoveEchoScanner : IDisposable
     private readonly LineExtractor _lines;
     private readonly RoomTracker _tracker;
 
-    // Supplies the active statline prompt matcher (path B). Null in headless tests
-    // that only exercise the default-split path.
+    // Supplies the active statline prompt matcher (path B). Null leaves only the
+    // default-split path.
     private readonly Func<Regex>? _promptPattern;
 
     private bool _prevWasPrompt;
@@ -58,8 +58,6 @@ public sealed class InboundMoveEchoScanner : IDisposable
     }
 
     public void Dispose() => _lines.LineEmitted -= OnLineEmitted;
-
-    internal void FeedTestLine(LineExtractor.EmittedLine line) => OnLineEmitted(line);
 
     private void OnLineEmitted(LineExtractor.EmittedLine line)
     {

@@ -4,12 +4,10 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// PR 10.6 — <see cref="LevelProjectionCalculator"/> composes the experience +
-/// character calculators into the per-level grid rows. These pin the
-/// composition (each cell matches its source formula) and the range / caster
-/// branching; the underlying formulas are covered by their own tests.
-/// </summary>
+// LevelProjectionCalculator composes the experience +
+// character calculators into the per-level grid rows. These pin the
+// composition (each cell matches its source formula) and the range / caster
+// branching; the underlying formulas are covered by their own tests.
 public sealed class LevelProjectionCalculatorTests
 {
     // A Warrior-ish non-caster and a Mage-ish caster, Human race (HPPerLVL 0).

@@ -49,7 +49,6 @@ public sealed class MonsterSpellEfficiencyTests
         Assert.Equal(60, r.ManaToKill);       // 3 rounds × 20 mana/round
         Assert.Equal(5.0, r.DamagePerMana, 5); // 100 / 20
         Assert.Equal(10, r.ManaCostPerCast);
-        Assert.True(r.HasKillEstimate);
     }
 
     [Fact]
@@ -63,7 +62,6 @@ public sealed class MonsterSpellEfficiencyTests
             .RankAttackSpells(spells, 0, NoResists, false)[0];   // monsterHp defaults to 0
 
         Assert.Equal(0, r.RoundsToKill);
-        Assert.False(r.HasKillEstimate);
     }
 
     [Fact]

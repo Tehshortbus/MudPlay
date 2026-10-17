@@ -40,22 +40,9 @@ public abstract partial class GameDataSectionViewModel : ObservableObject, IDisp
     // read-only Info tab).
     public virtual void Dispose() { }
 
-    // Raised when this section wants the browser to switch the active tab — typically
-    // because the user double-clicked a row that references a record in a different table
-    // (e.g. Shops → Rooms). Carrier of an optional row predicate the target should
-    // auto-select after activation.
-    public event Action<NavigationRequest>? NavigationRequested;
-
-    // Section-side helper that fires NavigationRequested for the given target section
-    // (targetSectionId is the target's stable Id) + row predicate. Subclasses call this
-    // from their double-click / link-click handlers. rowSelector is an optional predicate
-    // the target section runs against its rows to pick + select one; pass null when no
-    // auto-selection is wanted (just switch tabs).
-    protected void RequestNavigation(string targetSectionId, Func<Tables.GameDataRow, bool>? rowSelector = null)
-        => NavigationRequested?.Invoke(new NavigationRequest(targetSectionId, rowSelector));
 }
 
-// Payload for GameDataSectionViewModel.NavigationRequested. TargetSectionId is the
+// Where GameDataBrowserViewModel.NavigateToRecord jumps to. TargetSectionId is the
 // section the browser should make active; RowSelector is an optional predicate that
 // picks one row in the target section after activation (null to skip auto-selection).
 public sealed record NavigationRequest(

@@ -14,8 +14,7 @@ public readonly record struct TokenRouteCandidate(
 // Picks the best held token for a walk-to: the one whose landing→destination walk
 // is enough rooms shorter than the overland source→destination walk. Pure — the
 // caller supplies the overland length and a landing→destination distance function
-// (BFS), plus the held tokens with their live charges — so it's unit-tested
-// without the map. A token with a KNOWN-zero charge count is skipped (unusable);
+// (BFS), plus the held tokens with their live charges. A token with a KNOWN-zero charge count is skipped (unusable);
 // unknown (null, not looked yet) is kept so a not-yet-read token still surfaces.
 public static class TokenRouteEvaluator
 {

@@ -127,7 +127,7 @@ public sealed class HangupItemRecheck
     private readonly LogService? _log;
     private readonly WireSender _wire = new();
 
-    // What the death question reads. All unset in tests that don't ask it: the
+    // What the death question reads. All unset: the
     // list then carries no HP, and a list without one raises no suspicion.
     private readonly Func<(int Hp, int? MaxHp)?>? _vitals;
     private readonly Func<int?>? _lives;
@@ -376,8 +376,6 @@ public sealed class HangupItemRecheck
     }
 
     public void SetWireSender(Action<byte[]> sender) => _wire.Bind(sender);
-
-    internal List<byte[]> LastSentForTests => _wire.LastSentForTests;
 
     // ----- the list on disk ---------------------------------------------
 

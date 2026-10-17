@@ -26,14 +26,6 @@ public sealed partial class ContextMenuConfig : ObservableObject
         ReplaceAll(dto.Layout is { Count: > 0 } ? dto.Layout : ContextMenuDefaults.Build());
     }
 
-    // Capture the live state into a fresh DTO for serialisation / export.
-    public ContextMenuSettings Snapshot()
-    {
-        List<ContextMenuEntry> copy = new(Layout.Count);
-        foreach (ContextMenuEntry item in Layout) copy.Add(Clone(item));
-        return new ContextMenuSettings { Layout = copy };
-    }
-
     private void ReplaceAll(IEnumerable<ContextMenuEntry> items)
     {
         Layout.Clear();

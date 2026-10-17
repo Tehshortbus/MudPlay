@@ -4,14 +4,9 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Pure-logic coverage of the static parsers exposed on
-/// <see cref="RoomSearchService"/> — used by the @goto / @loop /
-/// @lair handlers + the Navigation rail search box. The integration
-/// tier (the full @goto dispatch) lands in a separate suite once
-/// the engine seam is mocked.
-/// </summary>
-public sealed class MovePlayerHandlerTests
+// The static parsers on RoomSearchService that the @goto / @loop / @lair
+// handlers and the Navigation rail search box share.
+public sealed class RoomSearchServiceParseTests
 {
     // ----- ExtractAcronym ------------------------------------------
 

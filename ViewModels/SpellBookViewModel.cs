@@ -14,7 +14,7 @@ namespace MudPlay.ViewModels;
 // The book itself is the single source of truth (fed by the live spells /
 // pow list and the learn-scroll signal); this VM is a pure projection. The
 // class name shown in the header comes from an optional provider (the loaded
-// profile's last stat snapshot in production, null in tests) —
+// profile's last stat snapshot) —
 // SpellbookState only knows the numeric class.
 public sealed partial class SpellBookViewModel : ObservableObject, IDisposable
 {
@@ -37,12 +37,12 @@ public sealed partial class SpellBookViewModel : ObservableObject, IDisposable
         _book = book;
         _classNameProvider = classNameProvider;
         // Live Spellcasting stat, read fresh on each Rebuild — feeds the per-row
-        // cast-success ("Success %") column. Null in tests (rows then show "—").
+        // cast-success ("Success %") column. Null when unwired (rows then show "—").
         _spellcastingProvider = spellcastingProvider;
         // Paradigm lifts the Success % cap from 98 to 100 (SpellCastChance.Cap).
         _isParadigmProvider = isParadigmProvider;
         // The character's AlterSpDmg %, so the Effect column's damage / heal
-        // figures are what they actually cast for. Null in tests (no bonus).
+        // figures are what they actually cast for. Null when unwired (no bonus).
         _spellDamageBonusProvider = spellDamageBonusProvider;
         _book.Changed += OnBookChanged;
         _allCastItems = _book.GetSpellBookCastItems();

@@ -24,7 +24,7 @@ namespace MudPlay.Services;
 // and when the installed fonts no longer match it, a copy of the program started
 // with ProbeArgument scans, saves the catalogue and exits, taking that memory
 // with it. Only when that can't be done is the scan run in this process, and
-// outside the client (tests, the XAML previewer) it always is: nothing there
+// outside the client (the XAML previewer) it always is: nothing there
 // should start a process or write to the data folder.
 //
 // Built once, then cached for the app's lifetime. Detection reads glyph advances
@@ -292,7 +292,7 @@ public static class InstalledFontCatalog
     // within a tolerance (a small fraction of the em) to absorb the odd
     // design-unit rounding; any zero or negative width fails it outright, since a
     // face that can't measure a probe glyph isn't one to offer.
-    internal static bool WidthsUniform(IReadOnlyList<double> widths, double epsilon = 0.5)
+    internal static bool WidthsUniform(IReadOnlyList<double> widths, double epsilon)
     {
         if (widths.Count == 0) return false;
         double first = widths[0];

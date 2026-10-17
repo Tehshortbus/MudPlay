@@ -1,7 +1,6 @@
 using System.ComponentModel;
 using System.Text;
 using System.Text.RegularExpressions;
-using Avalonia.Threading;
 using MudPlay.Game.Map;
 using MudPlay.Services;
 using MudPlay.Services.Patterns;
@@ -61,7 +60,7 @@ public sealed partial class ComebackRequester : IDisposable
     // left-behind. The follow move is made in the same tick as the leader's, so a
     // follow line or the "no longer following" line that names the cause is here
     // well inside it, and so is the prompt that shows a drop.
-    private static readonly TimeSpan SettleTime = TimeSpan.FromSeconds(2);
+    internal static readonly TimeSpan SettleTime = TimeSpan.FromSeconds(2);
 
     // A typed room command can be refused with an exit's wording ("A strange power
     // holds you back!"), and its answer comes at once.
@@ -86,7 +85,7 @@ public sealed partial class ComebackRequester : IDisposable
     private static readonly TimeSpan ShortestWait = TimeSpan.FromMinutes(1);
 
     // How often a request that couldn't be sent is looked at again.
-    private static readonly TimeSpan RetryInterval = TimeSpan.FromSeconds(2);
+    internal static readonly TimeSpan RetryInterval = TimeSpan.FromSeconds(2);
 
     private readonly MessageRouter _router;
     private readonly RoomTracker _tracker;
@@ -97,9 +96,13 @@ public sealed partial class ComebackRequester : IDisposable
     private readonly Func<string?>? _sendBlocked;
     private readonly Func<string, bool>? _inTrainTrip;
     private readonly List<IDisposable> _subs = new();
-    private readonly DispatcherTimer _settleTimer;
-    private readonly DispatcherTimer _retryTimer;
-    private readonly DispatcherTimer _lapseTimer;
+    private IDisposable? _settleTimer;
+    // Ticks every RetryInterval while a request is held back.
+    private IDisposable? _retryTimer;
+    private IDisposable? _lapseTimer;
+    private TimeSpan _lapseInterval;
+    // Arms one tick after the delay; disposing what it returns cancels it.
+    private readonly Func<TimeSpan, Action, IDisposable> _schedule;
 
     private Action<byte[]>? _wireSender;
     private bool _disposed;
@@ -148,8 +151,7 @@ public sealed partial class ComebackRequester : IDisposable
     private string? _lastAnswer;
     private string? _lastGivenUp;
 
-    // Test seam for the clock so the windows are deterministic.
-    internal Func<DateTimeOffset> NowProvider { get; set; } = static () => DateTimeOffset.Now;
+    private readonly Func<DateTimeOffset> _now;
 
     // Mirrors OtherSettings.AutoRequestComebackWhenLeftBehind. When false a
     // left-behind is still detected and logged, but no @comeback is sent.
@@ -162,9 +164,6 @@ public sealed partial class ComebackRequester : IDisposable
     // How long a request that couldn't be sent stays worth sending: the Party
     // tab's "If leading, accept @comeback for", past which a leader has moved on.
     public TimeSpan RetryWindow { get; set; } = TimeSpan.FromMinutes(2);
-
-    // Test-visible record of every wire payload sent.
-    internal List<byte[]> LastSentForTests { get; } = new();
 
     // For the bug report: the last left-behind incident, with what was done about
     // it and what the leader answered.
@@ -197,7 +196,7 @@ public sealed partial class ComebackRequester : IDisposable
     public bool IsLeaderWeAsked(string name)
     {
         if (_askedBack is not { } asked || string.IsNullOrEmpty(name)) return false;
-        if (NowProvider() - asked.At > AskedLife)
+        if (_now() - asked.At > AskedLife)
         {
             _askedBack = null;
             return false;
@@ -255,21 +254,21 @@ public sealed partial class ComebackRequester : IDisposable
     public void NoteJoinSent(string leader)
     {
         _joinedLeader = leader;
-        _joinSentAt = NowProvider();
+        _joinSentAt = _now();
     }
 
     // Whether a join to that leader went out a moment ago, so a second one isn't
     // sent on top of it.
     public bool JoinJustSentTo(string leader) =>
         _joinedLeader is { } joined && joined.Equals(leader, StringComparison.OrdinalIgnoreCase)
-        && NowProvider() - _joinSentAt <= JoinReplyWindow;
+        && _now() - _joinSentAt <= JoinReplyWindow;
 
     // A player is in the room with us, as the room was just shown or as they
     // walked in. The leader we asked back standing here is all a Stock follower
     // still on their list needs.
     public void NotePlayerInRoom(string given)
     {
-        if (string.IsNullOrEmpty(given) || _tracker.IsPeekSuppressed(NowProvider())) return;
+        if (string.IsNullOrEmpty(given) || _tracker.IsPeekSuppressed(_now())) return;
         TryJoin(given, "they are in the room with us");
     }
 
@@ -292,12 +291,11 @@ public sealed partial class ComebackRequester : IDisposable
             || (ListedWith?.Invoke() is { } listedWith && listedWith.Equals(leader, StringComparison.OrdinalIgnoreCase));
         if (!listed) return;
         if (MasterSwitchOff?.Invoke() == true || _sendBlocked?.Invoke() is { Length: > 0 }) return;
-        DateTimeOffset now = NowProvider();
+        DateTimeOffset now = _now();
         if (_joinedLeader is { } joined && joined.Equals(leader, StringComparison.OrdinalIgnoreCase)
             && now - _joinSentAt < JoinRetryGap)
             return;
         byte[] bytes = Encoding.Latin1.GetBytes($"join {leader}\r");
-        LastSentForTests.Add(bytes);
         _wireSender?.Invoke(bytes);
         _joinedLeader = leader;
         _joinSentAt = now;
@@ -314,7 +312,7 @@ public sealed partial class ComebackRequester : IDisposable
     // everywhere: it names no realm and assumes no @comeback of ours.
     private void OnMustBeInvited(MatchResult _)
     {
-        if (_joinedLeader is not { } leader || NowProvider() - _joinSentAt > JoinReplyWindow) return;
+        if (_joinedLeader is not { } leader || _now() - _joinSentAt > JoinReplyWindow) return;
         _joinRefused = true;
         _log?.Info(LogCategory,
             $"the game answered our `join {leader}` with \"You must be invited first!\": we are not on {leader}'s member list, so only an invite from them brings us in. This client sends no join of its own to them until we follow someone or ask a leader back again; an invite is taken by the usual rules.");
@@ -334,8 +332,12 @@ public sealed partial class ComebackRequester : IDisposable
     public ComebackRequester(MessageRouter router, RoomTracker tracker, LogService? log = null,
         Func<bool>? isMovementPrevented = null, PartyState? party = null,
         Func<bool>? isSelfDown = null, Func<string?>? sendBlocked = null,
-        Func<string, bool>? inTrainTrip = null)
+        Func<string, bool>? inTrainTrip = null,
+        Func<DateTimeOffset>? now = null,
+        Func<TimeSpan, Action, IDisposable>? schedule = null)
     {
+        _now = now ?? (() => DateTimeOffset.Now);
+        _schedule = schedule ?? DispatcherTicks.Once;
         ArgumentNullException.ThrowIfNull(router);
         ArgumentNullException.ThrowIfNull(tracker);
         _router = router;
@@ -373,13 +375,6 @@ public sealed partial class ComebackRequester : IDisposable
         _tracker.MoveConfirmed += OnArrived;
         _tracker.StateChanged += OnRoomStateChanged;
         if (_party is not null) _party.PropertyChanged += OnPartyChanged;
-
-        _settleTimer = new DispatcherTimer { Interval = SettleTime };
-        _settleTimer.Tick += (_, _) => OnSettleElapsed();
-        _retryTimer = new DispatcherTimer { Interval = RetryInterval };
-        _retryTimer.Tick += (_, _) => OnRetryDue();
-        _lapseTimer = new DispatcherTimer();
-        _lapseTimer.Tick += (_, _) => OnWaitLapsed();
     }
 
     // Bind the outbound wire — the same gate-wrapped sender the other engines use.
@@ -401,9 +396,9 @@ public sealed partial class ComebackRequester : IDisposable
         _tracker.StateChanged -= OnRoomStateChanged;
         _router.LineDispatched -= OnAnyLine;
         if (_party is not null) _party.PropertyChanged -= OnPartyChanged;
-        _settleTimer.Stop();
-        _retryTimer.Stop();
-        _lapseTimer.Stop();
+        StopSettleTimer();
+        StopRetryTimer();
+        StopLapseTimer();
     }
 
     // ----- what we sent ourselves, and what happened to us ---------------
@@ -417,8 +412,8 @@ public sealed partial class ComebackRequester : IDisposable
         if (bytes.IsEmpty || bytes.Length > 64) return;
         string line = Encoding.Latin1.GetString(bytes).TrimEnd('\r', '\n', '\0').Trim();
         if (line.Length == 0) return;
-        if (TypedLeave().IsMatch(line)) _typedLeaveAt = NowProvider();
-        else if (!TypedTalk().IsMatch(line)) _typedCommandAt = NowProvider();
+        if (TypedLeave().IsMatch(line)) _typedLeaveAt = _now();
+        else if (!TypedTalk().IsMatch(line)) _typedCommandAt = _now();
     }
 
     // A member's `@party <command>` was relayed to our wire
@@ -437,15 +432,11 @@ public sealed partial class ComebackRequester : IDisposable
             foreach (string keyword in keywords)
             {
                 if (!keyword.Equals(command.Trim(), StringComparison.OrdinalIgnoreCase)) continue;
-                _partyTeleportAt = NowProvider();
+                _partyTeleportAt = _now();
                 return;
             }
         }
     }
-
-    // Test seam — a teleport edge takes a room command chain to build, which the
-    // test graph doesn't carry.
-    internal void StampPartyTeleportForTests() => _partyTeleportAt = NowProvider();
 
     // The link dropped. Whatever split there is now is the reconnect's:
     // PartyRejoinCoordinator sends that request, once and inside its own window,
@@ -461,15 +452,15 @@ public sealed partial class ComebackRequester : IDisposable
         _leftTheGame = true;
         if (BelievedLeader() is not { } leader) return;
         _incidentAnswered = true;
-        DateTimeOffset now = NowProvider();
+        DateTimeOffset now = _now();
         Record($"the link dropped while following {leader}: the reconnect's @comeback is the rejoin's to send", now);
         _log?.Info(LogCategory, $"link dropped while following {leader} — left-behind requests stand down until we follow again");
     }
 
     // A move the engines didn't make: a keystroke, a macro, a relayed command.
-    private void OnManualMove(string _) => _manualMoveAt = NowProvider();
+    private void OnManualMove(string _) => _manualMoveAt = _now();
 
-    private void OnSelfDied() => _selfDiedAt = NowProvider();
+    private void OnSelfDied() => _selfDiedAt = _now();
 
     // ----- evidence lines ------------------------------------------------
 
@@ -477,7 +468,7 @@ public sealed partial class ComebackRequester : IDisposable
     // Whoever asked for the move, we can't make one.
     private void OnCantMove(MatchResult result)
     {
-        DateTimeOffset now = NowProvider();
+        DateTimeOffset now = _now();
         _cantMoveAt = now;
         _cantMoveText = result.Text.Trim();
         if (_tracker.OwnMoveInFlight) _ownMoveRefusedAt = now;
@@ -489,7 +480,7 @@ public sealed partial class ComebackRequester : IDisposable
     {
         // The answer to `look <dir>` at a shut door, never to a move.
         if (ClosedDoorLookReply().IsMatch(result.Text)) return;
-        DateTimeOffset now = NowProvider();
+        DateTimeOffset now = _now();
         if (_tracker.OwnMoveInFlight)
         {
             _ownMoveRefusedAt = now;
@@ -510,7 +501,7 @@ public sealed partial class ComebackRequester : IDisposable
         if (!result.Groups[0].Trim().Equals(leader, StringComparison.OrdinalIgnoreCase)) return;
         string word = result.Groups[1].Trim();
         if (word.Equals("nowhere", StringComparison.OrdinalIgnoreCase)) return;
-        _leaderLeftAt = NowProvider();
+        _leaderLeftAt = _now();
         _leaderLeftWord = word;
         BeginSettle(leader);
     }
@@ -522,7 +513,7 @@ public sealed partial class ComebackRequester : IDisposable
         if (result.Groups.Count == 0) return;
         if (BelievedLeader() is not { } leader) return;
         if (result.Groups[0].Trim().Equals(leader, StringComparison.OrdinalIgnoreCase))
-            _leaderDownAt = NowProvider();
+            _leaderDownAt = _now();
     }
 
     // " -- Following your Party leader east --". We were following when it was
@@ -535,7 +526,7 @@ public sealed partial class ComebackRequester : IDisposable
     private void OnFollowLine(MatchResult result)
     {
         OnFollowingAgain();
-        _followAttemptAt = NowProvider();
+        _followAttemptAt = _now();
         _followAttemptWord = result.Groups.Count > 0 ? result.Groups[0].Trim() : string.Empty;
         _linesSinceFollowLine = 0;
     }
@@ -588,7 +579,7 @@ public sealed partial class ComebackRequester : IDisposable
     private void StopWaiting()
     {
         _askedLeader = null;
-        _lapseTimer.Stop();
+        StopLapseTimer();
     }
 
     private void ClearEvidence()
@@ -616,8 +607,8 @@ public sealed partial class ComebackRequester : IDisposable
         if (_incidentAnswered || _pendingLeader is not null) return;
         _pendingLeader = leader;
         _pendingRoom = ConfirmedRoom()?.Key;
-        _settleTimer.Stop();
-        _settleTimer.Start();
+        StopSettleTimer();
+        _settleTimer = _schedule(SettleTime, OnSettleElapsed);
     }
 
     private void CancelSettle()
@@ -626,14 +617,18 @@ public sealed partial class ComebackRequester : IDisposable
         _pendingRoom = null;
         _pendingVerdict = null;
         _pendingExitWord = null;
-        _settleTimer.Stop();
+        StopSettleTimer();
     }
 
-    // Test seam — the DispatcherTimer doesn't tick under headless xUnit.
-    internal void FireSettleForTests() => OnSettleElapsed();
+    private void StopSettleTimer()
+    {
+        _settleTimer?.Dispose();
+        _settleTimer = null;
+    }
 
     private void OnSettleElapsed()
     {
+        _settleTimer = null;
         if (_pendingLeader is not { } leader) return;
         RoomKey? from = _pendingRoom;
         string? verdict = _pendingVerdict;
@@ -653,14 +648,14 @@ public sealed partial class ComebackRequester : IDisposable
             _log?.Debug(LogCategory, $"not judged left behind by {leader}: no longer surely in {was}");
             return;
         }
-        Conclude(leader, DescribeEvidence(leader, NowProvider()) ?? "the follow move never came");
+        Conclude(leader, DescribeEvidence(leader, _now()) ?? "the follow move never came");
     }
 
     // Our own `par` shows the leader as [Invited]: on the list, following nobody.
     public void NoteLeaderListedAsInvited(string leader)
     {
         if (string.IsNullOrEmpty(leader)) return;
-        string? evidence = DescribeEvidence(leader, NowProvider());
+        string? evidence = DescribeEvidence(leader, _now());
         if (_pendingVerdict is not null) return;   // the line's own verdict is on its way
         CancelSettle();
         if (_incidentAnswered) return;
@@ -672,7 +667,7 @@ public sealed partial class ComebackRequester : IDisposable
     {
         string leader = result.Groups.Count > 0 ? result.Groups[0].Trim() : string.Empty;
         if (string.IsNullOrEmpty(leader)) return;
-        DateTimeOffset now = NowProvider();
+        DateTimeOffset now = _now();
         CancelSettle();
         DropHeld();
         StopWaiting();
@@ -723,8 +718,8 @@ public sealed partial class ComebackRequester : IDisposable
         _pendingLeader = leader;
         _pendingVerdict = cause;
         _pendingExitWord = exitWord;
-        _settleTimer.Stop();
-        _settleTimer.Start();
+        StopSettleTimer();
+        _settleTimer = _schedule(SettleTime, OnSettleElapsed);
     }
 
     // ----- the decision ------------------------------------------------------
@@ -734,7 +729,7 @@ public sealed partial class ComebackRequester : IDisposable
     private void Conclude(string leader, string cause, string? leaderExitWord = null)
     {
         if (_incidentAnswered) return;
-        DateTimeOffset now = NowProvider();
+        DateTimeOffset now = _now();
         string incident = $"left behind by {leader} ({cause})";
         if (ExclusionFor(leader, now, leaderExitWord) is { } why)
         {
@@ -751,15 +746,24 @@ public sealed partial class ComebackRequester : IDisposable
             Record($"{incident}: @comeback held back, {blocked}", now);
             _log?.Info(LogCategory,
                 $"{incident} — @comeback held back: {blocked}; it goes out within {RetryWindow.TotalMinutes:0.#} min of that clearing");
-            _retryTimer.Stop();
-            _retryTimer.Start();
+            StopRetryTimer();
+            _retryTimer = _schedule(RetryInterval, OnRetryTick);
             return;
         }
         Ask(leader, incident, now);
     }
 
-    // Test seam — the DispatcherTimer doesn't tick under headless xUnit.
-    internal void FireRetryForTests() => OnRetryDue();
+    private void StopRetryTimer()
+    {
+        _retryTimer?.Dispose();
+        _retryTimer = null;
+    }
+
+    private void OnRetryTick()
+    {
+        _retryTimer = _schedule(RetryInterval, OnRetryTick);
+        OnRetryDue();
+    }
 
     // A request that couldn't be sent: out it goes once the client can send, as
     // long as we still aren't following and the split is fresh.
@@ -767,10 +771,10 @@ public sealed partial class ComebackRequester : IDisposable
     {
         if (_heldLeader is not { } leader || _heldIncident is not { } incident)
         {
-            _retryTimer.Stop();
+            StopRetryTimer();
             return;
         }
-        DateTimeOffset now = NowProvider();
+        DateTimeOffset now = _now();
         // A train trip runs as long as it runs, and the leader expects to be asked
         // at the end of it: the split only starts to age once the trip is over.
         if (_inTrainTrip?.Invoke(leader) == true)
@@ -801,7 +805,7 @@ public sealed partial class ComebackRequester : IDisposable
         _heldLeader = null;
         _heldIncident = null;
         _heldWhy = null;
-        _retryTimer.Stop();
+        StopRetryTimer();
     }
 
     private void Ask(string leader, string incident, DateTimeOffset now)
@@ -811,7 +815,6 @@ public sealed partial class ComebackRequester : IDisposable
         // wrong place. A bare @comeback has them backtrack the way they came.
         string payload = ConfirmedRoom() is { } room ? $"@comeback {room.Key}" : "@comeback";
         byte[] bytes = Encoding.Latin1.GetBytes($"/{leader} {payload}\r");
-        LastSentForTests.Add(bytes);
         _wireSender?.Invoke(bytes);
         _askedLeader = leader;
         _askedBack = (leader, now);
@@ -827,21 +830,23 @@ public sealed partial class ComebackRequester : IDisposable
 
     private void WaitFor(TimeSpan wait)
     {
-        _lapseTimer.Stop();
-        _lapseTimer.Interval = wait < ShortestWait ? ShortestWait : wait;
-        _lapseTimer.Start();
+        StopLapseTimer();
+        _lapseInterval = wait < ShortestWait ? ShortestWait : wait;
+        _lapseTimer = _schedule(_lapseInterval, OnWaitLapsed);
     }
 
-    // Test seam — the DispatcherTimer doesn't tick under headless xUnit.
-    internal void FireWaitLapsedForTests() => OnWaitLapsed();
-    internal TimeSpan? WaitingForTests => _lapseTimer.IsEnabled ? _lapseTimer.Interval : null;
+    private void StopLapseTimer()
+    {
+        _lapseTimer?.Dispose();
+        _lapseTimer = null;
+    }
 
     private void OnWaitLapsed()
     {
-        _lapseTimer.Stop();
+        _lapseTimer = null;
         if (_askedLeader is not { } leader) return;
         _askedLeader = null;
-        GiveUpTheFollow(leader, $"nobody came within {_lapseTimer.Interval.TotalMinutes:0.#} min of the @comeback");
+        GiveUpTheFollow(leader, $"nobody came within {_lapseInterval.TotalMinutes:0.#} min of the @comeback");
     }
 
     // We stop believing we follow that leader, if we still do (FollowGivenUp says

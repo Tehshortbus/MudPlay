@@ -174,64 +174,6 @@ public sealed class IndexesAfterReimportTests : IDisposable
         Assert.Equal(201, Assert.Single(flags.Entries).Flag);
     }
 
-    // A warm-up overtaken by a switch away and back: it began under alpha, read its
-    // monster names while beta was the active set, and finished under alpha again.
-    // What it built is neither set's, and carrying alpha's name must not get it served.
-    [Fact]
-    public void ItemSourceIndex_ABuildOvertakenByASwitchAwayAndBack_IsNotServed()
-    {
-        const string items = """[ { "Number": 25, "Name": "Bloodstone Orb" } ]""";
-        const string tbinfo = """[ { "Number": 5, "Action": "giveitem 25", "Called From": "Monster #300" } ]""";
-        Write("Items", items);
-        Write("TBInfo", tbinfo);
-        Write("Monsters", """[ { "Number": 300, "Name": "Alpha Guard" } ]""");
-        string beta = Path.Combine(_root, "beta");
-        Directory.CreateDirectory(beta);
-        File.WriteAllText(Path.Combine(beta, "Items.json"), items);
-        File.WriteAllText(Path.Combine(beta, "TBInfo.json"), tbinfo);
-        File.WriteAllText(Path.Combine(beta, "Monsters.json"), """[ { "Number": 300, "Name": "Beta Guard" } ]""");
-
-        GameDataCache cache = Cache();
-        TBInfoStore tb = new(cache);
-        tb.OnActiveSetChanged(Set);
-        cache.ActiveSetChanged += tb.OnActiveSetChanged;
-        ItemSourceIndex sources = new(cache, tb);
-
-        // Hold the warm-up at its first table read, then again at its read of Monsters.
-        TimeSpan limit = TimeSpan.FromSeconds(20);
-        using ManualResetEventSlim atFirstRead = new(), pastFirstRead = new(), atMonsters = new(), pastMonsters = new();
-        Thread warm = new(sources.Warm);
-        int held = 0;
-        cache.TableReadStarting = table =>
-        {
-            if (Thread.CurrentThread != warm) return;
-            if (held == 0)
-            {
-                held = 1;
-                atFirstRead.Set();
-                pastFirstRead.Wait(limit);
-            }
-            else if (held == 1 && table == "Monsters")
-            {
-                held = 2;
-                atMonsters.Set();
-                pastMonsters.Wait(limit);
-            }
-        };
-
-        warm.Start();
-        Assert.True(atFirstRead.Wait(limit), "the warm-up read no table");
-        cache.SwitchSet("beta");
-        pastFirstRead.Set();
-        Assert.True(atMonsters.Wait(limit), "the warm-up never read Monsters under the other set");
-        cache.SwitchSet(Set);
-        pastMonsters.Set();
-        Assert.True(warm.Join(limit), "the warm-up never finished");
-        cache.TableReadStarting = null;
-
-        Assert.Equal("Alpha Guard", Assert.Single(sources.GiversOf(25)).Name);
-    }
-
     // The cache's load moves before the handlers that reload the textblock store run.
     // An index asked in that moment (here by a handler ahead of the store's; in the
     // app by a warm-up of the last load that only now gets to run) builds from the
@@ -322,19 +264,4 @@ public sealed class IndexesAfterReimportTests : IDisposable
         Assert.Empty(floor.FloorItemsOf(new RoomKey(3, 606)));
     }
 
-    // Reload drops the tables without raising ActiveSetChanged; the indexes that
-    // notice by themselves must notice that too.
-    [Fact]
-    public void AReloadWithNoEventIsNoticedToo()
-    {
-        Write("Monsters", """[ { "Number": 1, "Name": "orc", "Summoned By": "Room 1/1" } ]""");
-        GameDataCache cache = Cache();
-        MonsterSpawnIndex spawns = new(cache);
-        Assert.Equal(new[] { 1 }, spawns.PlacedMonsterIdsAt(new RoomKey(1, 1)));
-
-        Write("Monsters", """[ { "Number": 2, "Name": "troll", "Summoned By": "Room 1/1" } ]""");
-        cache.Reload();
-
-        Assert.Equal(new[] { 2 }, spawns.PlacedMonsterIdsAt(new RoomKey(1, 1)));
-    }
 }

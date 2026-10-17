@@ -9,14 +9,12 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Coverage for <see cref="AllyDroppedHandler"/> — the party reaction to another
-/// member dropping to the ground. Pins the recognition logic (live member,
-/// recently-partied follower, and the off-roster former-leader gap the bug report
-/// exposed), the aid / re-invite / recovery decisions, that aid fires without a
-/// party-heal loadout (a non-healer still rescues), and the
-/// <see cref="MovementCoordinator.AllyDownGate"/> lifecycle.
-/// </summary>
+// Coverage for AllyDroppedHandler — the party reaction to another
+// member dropping to the ground. Pins the recognition logic (live member,
+// recently-partied follower, and the off-roster former-leader gap the bug report
+// exposed), the aid / re-invite / recovery decisions, that aid fires without a
+// party-heal loadout (a non-healer still rescues), and the
+// MovementCoordinator.AllyDownGate lifecycle.
 public sealed class AllyDroppedHandlerTests
 {
     private sealed class Harness : IDisposable
@@ -29,26 +27,28 @@ public sealed class AllyDroppedHandlerTests
         public PartySettings Cfg { get; } = new() { MinorPartyHealSpell = "mihe" };
         public AllyDroppedHandler Handler { get; }
         public List<byte[]> Wire { get; } = new();
+        public List<byte[]> ManagerWire { get; } = new();
 
         public bool Enabled { get; set; } = true;
         public int DeathFloor { get; set; } = -10;   // worst case: 10 ticks = 300 s
         public DateTime Clock { get; set; } = new(2026, 7, 5, 19, 32, 0, DateTimeKind.Utc);
+        // The handler's poll timer.
+        public ManualTimers Timers { get; } = new();
 
         public Harness(string selfName = "Raijin")
         {
             DefaultPatterns.Seed(Router);
             Manager = new PartyManager(Router, Party) { LocalCharacterName = selfName };
+            Manager.SetWireSender(ManagerWire.Add);
             Chat = new ChatRouter(Router);
             Handler = new AllyDroppedHandler(
                 Router, Party, Manager, Chat, Coordinator,
                 readParty: () => Cfg,
                 isEnabled: () => Enabled,
-                useTimer: false,
                 log: null,
-                readDeathFloor: () => DeathFloor)
-            {
-                NowProvider = () => Clock,
-            };
+                readDeathFloor: () => DeathFloor,
+                schedule: Timers.Arm,
+                now: () => Clock);
             Handler.SetWireSender(Wire.Add);
         }
 
@@ -68,7 +68,7 @@ public sealed class AllyDroppedHandlerTests
 
         public bool ManagerSent(string command)
         {
-            foreach (byte[] b in Manager.LastSentForTests)
+            foreach (byte[] b in ManagerWire)
                 if (Encoding.Latin1.GetString(b) == command) return true;
             return false;
         }
@@ -97,7 +97,7 @@ public sealed class AllyDroppedHandlerTests
         h.Handler.HoldForMasterSwitch();
         h.Enabled = false;
         Assert.False(h.GateAsserted);
-        Assert.False(h.Handler.IsTrackingForTests("MudPlay"));
+        Assert.DoesNotContain("MudPlay", h.Handler.DownedGivenNames);
         h.Wire.Clear();
 
         h.Enabled = true;
@@ -105,7 +105,7 @@ public sealed class AllyDroppedHandlerTests
 
         Assert.True(h.GateAsserted);
         Assert.True(h.WireHas("aid MudPlay\r"));
-        Assert.True(h.Handler.IsTrackingForTests("MudPlay"));
+        Assert.Contains("MudPlay", h.Handler.DownedGivenNames);
     }
 
     // One who dropped while the switch was off is owed a rescue too.
@@ -133,7 +133,7 @@ public sealed class AllyDroppedHandlerTests
         h.Drop("MudPlay");
         h.Handler.HoldForMasterSwitch();
         h.Enabled = false;
-        h.Handler.NoteAllyGoneForTests("MudPlay");
+        new ServerFeed(h.Router).Line("MudPlay just left the Realm.");
         h.Wire.Clear();
 
         h.Enabled = true;
@@ -152,7 +152,7 @@ public sealed class AllyDroppedHandlerTests
 
         Assert.True(h.GateAsserted);
         Assert.True(h.WireHas("aid MudPlay\r"));
-        Assert.True(h.Handler.IsTrackingForTests("MudPlay"));
+        Assert.Contains("MudPlay", h.Handler.DownedGivenNames);
     }
 
     [Fact]
@@ -238,7 +238,7 @@ public sealed class AllyDroppedHandlerTests
 
         Assert.True(h.GateAsserted);
         Assert.True(h.WireHas("aid MudPlay\r"));
-        Assert.True(h.Handler.IsTrackingForTests("MudPlay"));
+        Assert.Contains("MudPlay", h.Handler.DownedGivenNames);
     }
 
     // Aid only stops the bleeding — they can't accept an invite until their HP is
@@ -254,7 +254,7 @@ public sealed class AllyDroppedHandlerTests
         h.Aid("MudPlay");
         Assert.False(h.ManagerSent("invite MudPlay\r"));
 
-        h.Handler.NoteHealthReplyForTests("MudPlay", "{HP=1/200}");
+        ChatLines.Hear(h.Router, ChatChannel.TelepathIncoming, "MudPlay", "{HP=1/200}");
         Assert.True(h.ManagerSent("invite MudPlay\r"));
     }
 
@@ -269,7 +269,7 @@ public sealed class AllyDroppedHandlerTests
         h.Drop("MudPlay");
         h.Aid("MudPlay");
 
-        h.Handler.NoteHealthReplyForTests("MudPlay", "{HP=1/200}");
+        ChatLines.Hear(h.Router, ChatChannel.TelepathIncoming, "MudPlay", "{HP=1/200}");
 
         Assert.False(h.ManagerSent("invite MudPlay\r"));
     }
@@ -297,10 +297,10 @@ public sealed class AllyDroppedHandlerTests
         h.Aid("MudPlay");
         Assert.True(h.GateAsserted);
 
-        h.Handler.NoteHealthReplyForTests("MudPlay", "{HP=200/200,MA=100/100}");
+        ChatLines.Hear(h.Router, ChatChannel.TelepathIncoming, "MudPlay", "{HP=200/200,MA=100/100}");
 
         Assert.False(h.GateAsserted);
-        Assert.False(h.Handler.IsTrackingForTests("MudPlay"));
+        Assert.DoesNotContain("MudPlay", h.Handler.DownedGivenNames);
     }
 
     [Fact]
@@ -312,10 +312,10 @@ public sealed class AllyDroppedHandlerTests
         h.Aid("MudPlay");
 
         // Aided but still well below the 70% recovery bar — keep waiting.
-        h.Handler.NoteHealthReplyForTests("MudPlay", "{HP=20/200}");
+        ChatLines.Hear(h.Router, ChatChannel.TelepathIncoming, "MudPlay", "{HP=20/200}");
 
         Assert.True(h.GateAsserted);
-        Assert.True(h.Handler.IsTrackingForTests("MudPlay"));
+        Assert.Contains("MudPlay", h.Handler.DownedGivenNames);
     }
 
     [Fact]
@@ -331,7 +331,7 @@ public sealed class AllyDroppedHandlerTests
         h.Party.Members.Add(new PartyMember { Name = "MudPlay WuzHere" });
 
         Assert.False(h.GateAsserted);
-        Assert.False(h.Handler.IsTrackingForTests("MudPlay"));
+        Assert.DoesNotContain("MudPlay", h.Handler.DownedGivenNames);
     }
 
     [Fact]
@@ -349,7 +349,7 @@ public sealed class AllyDroppedHandlerTests
         h.Party.Members.Add(new PartyMember { Name = "MudPlay WuzHere", IsInvited = true });
 
         Assert.True(h.GateAsserted);
-        Assert.True(h.Handler.IsTrackingForTests("MudPlay"));
+        Assert.Contains("MudPlay", h.Handler.DownedGivenNames);
         Assert.Contains("MudPlay", h.Handler.AidedDownedGivenNames());
     }
 
@@ -378,12 +378,12 @@ public sealed class AllyDroppedHandlerTests
         h.Wire.Clear();
 
         h.Clock = h.Clock.AddSeconds(299);
-        h.Handler.TickPollForTests();
+        h.Timers.RunAll();
         Assert.False(h.WireHas("/MudPlay @health\r"));    // can't be up yet
         Assert.True(h.GateAsserted);
 
         h.Clock = h.Clock.AddSeconds(1);
-        h.Handler.TickPollForTests();
+        h.Timers.RunAll();
         Assert.True(h.WireHas("/MudPlay @health\r"));
         Assert.True(h.GateAsserted);
     }
@@ -396,15 +396,15 @@ public sealed class AllyDroppedHandlerTests
         h.Drop("MudPlay");
         h.Aid("MudPlay");
 
-        h.Handler.NoteHealthReplyForTests("MudPlay", "{HP=-3/200}");   // 4 ticks to 1 HP
+        ChatLines.Hear(h.Router, ChatChannel.TelepathIncoming, "MudPlay", "{HP=-3/200}");   // 4 ticks to 1 HP
         h.Wire.Clear();
 
         h.Clock = h.Clock.AddSeconds(119);
-        h.Handler.TickPollForTests();
+        h.Timers.RunAll();
         Assert.False(h.WireHas("/MudPlay @health\r"));
 
         h.Clock = h.Clock.AddSeconds(1);
-        h.Handler.TickPollForTests();
+        h.Timers.RunAll();
         Assert.True(h.WireHas("/MudPlay @health\r"));
     }
 
@@ -417,12 +417,12 @@ public sealed class AllyDroppedHandlerTests
         h.Aid("MudPlay");
 
         h.Clock = h.Clock.AddSeconds(300 + 59);
-        h.Handler.TickPollForTests();
+        h.Timers.RunAll();
         Assert.True(h.GateAsserted);
 
         h.Clock = h.Clock.AddSeconds(1);
-        h.Handler.TickPollForTests();
+        h.Timers.RunAll();
         Assert.False(h.GateAsserted);
-        Assert.False(h.Handler.IsTrackingForTests("MudPlay"));
+        Assert.DoesNotContain("MudPlay", h.Handler.DownedGivenNames);
     }
 }

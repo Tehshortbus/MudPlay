@@ -10,10 +10,8 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// PR 9.D — <see cref="CastingDirector"/> three-tier decision flow:
-/// life-threat immediate, routine-tick gating, and the master enable.
-/// </summary>
+// CastingDirector's decisions: life-threat heals at once, the routine tick's
+// gates, buffs and party buffs, cures, and the master enable.
 public sealed class CastingDirectorTests
 {
     private sealed class Harness : IDisposable
@@ -29,9 +27,9 @@ public sealed class CastingDirectorTests
         public bool AutoHealRestEnabled { get; set; } = true;
         public bool AutoBlessEnabled { get; set; } = true;
 
-        /// <summary>Cast-code → required mana. Empty by default, so the lookup
-        /// returns null (unknown ⇒ no affordability block) and the legacy tests
-        /// behave exactly as before. Populate to exercise the mana gate.</summary>
+        // Cast-code → required mana. Empty by default, so the lookup
+        // returns null (unknown ⇒ no affordability block) and the legacy tests
+        // behave exactly as before. Populate to exercise the mana gate.
         public Dictionary<string, int> ManaCosts { get; } =
             new(StringComparer.OrdinalIgnoreCase);
 
@@ -51,8 +49,8 @@ public sealed class CastingDirectorTests
             Director.SetAutoBlessGate(() => AutoBlessEnabled);
         }
 
-        /// <summary>Mirror PromptParser's write order so HasPromptData
-        /// flips last and the engine doesn't see a 0/0 race.</summary>
+        // Mirror PromptParser's write order so HasPromptData
+        // flips last and the engine doesn't see a 0/0 race.
         public void SetPrompt(int hp, int maxHp, int ma = 0, int maxMa = 0,
                               bool inCombat = false,
                               PlayerPosition position = PlayerPosition.Standing)
@@ -326,8 +324,7 @@ public sealed class CastingDirectorTests
     {
         using Harness h = new();
         h.Spells.MajorHealSpell = "fullheal";
-        // Set values WITHOUT flipping HasPromptData (since Hp=0 +
-        // HasPromptData=true would also be gated).
+        // A prompt reading 0 HP: dead, and nothing is cast on a corpse.
         h.State.MaxHp = 100;
         h.State.Hp = 0;
         h.State.HasPromptData = true;
@@ -754,6 +751,8 @@ public sealed class CastingDirectorTests
         public MessageStore Messages { get; } = new();
         public CastCoordinator Cast { get; }
         public ConditionTracker Conditions { get; }
+        // The game's output, fed the way the client receives it.
+        public ServerFeed Server { get; } = new();
         public CastingDirector Director { get; }
         public List<string> CastsSent { get; } = new();
         public List<string> SelfBuffCast { get; } = new();
@@ -762,27 +761,27 @@ public sealed class CastingDirectorTests
         public bool AutoBlessEnabled { get; set; } = true;
         public bool AutoHealRestEnabled { get; set; } = true;
 
-        /// <summary>Reported to the director as the combat-tick source. When true, an
-        /// <see cref="CastingDirector.OnCombatTick"/> pass treats HP as unconfirmed for
-        /// the round and holds the non-heal categories (cure / buff / debuff).</summary>
+        // Reported to the director as the combat-tick source. When true, an
+        // CastingDirector.OnCombatTick pass treats HP as unconfirmed for
+        // the round and holds the non-heal categories (cure / buff / debuff).
         public bool CombatTickDamageDriven { get; set; }
 
-        /// <summary>Runs on an HP change BEFORE the director's own handler — the app's
-        /// party self row is subscribed to PlayerState first and re-enters Evaluate
-        /// through its HpPercent change.</summary>
+        // Runs on an HP change BEFORE the director's own handler — the app's
+        // party self row is subscribed to PlayerState first and re-enters Evaluate
+        // through its HpPercent change.
         public Action? BeforeDirectorSeesHp { get; set; }
 
-        /// <summary>Settled passes the director queued (delay, callback). Only
-        /// captured after <see cref="EnableBurstSettle"/> — the burst-settle hold is
-        /// off without a scheduler, so the rest of the suite keeps its reactive
-        /// same-pass behaviour.</summary>
+        // Settled passes the director queued (delay, callback). Only
+        // captured after EnableBurstSettle — the burst-settle hold is
+        // off without a scheduler, so the rest of the suite keeps its reactive
+        // same-pass behaviour.
         public List<(TimeSpan Delay, Action Run)> SettledPasses { get; } = new();
 
         public void EnableBurstSettle() =>
             Director.SetSettledPassScheduler((delay, run) => SettledPasses.Add((delay, run)));
 
-        /// <summary>Advance the clock past the queued settle delay and run the
-        /// settled pass, as the one-shot timer would.</summary>
+        // Advance the clock past the queued settle delay and run the
+        // settled pass, as the one-shot timer would.
         public void RunSettledPass()
         {
             (TimeSpan delay, Action run) = SettledPasses[^1];
@@ -791,42 +790,42 @@ public sealed class CastingDirectorTests
             run();
         }
 
-        /// <summary>Extra unified-list buffs (party / member / whole-party) beyond the
-        /// self-bless the tests set via <see cref="Spells"/>. Rarely used here.</summary>
+        // Extra unified-list buffs (party / member / whole-party) beyond the
+        // self-bless the tests set via Spells. Rarely used here.
         public BuffSettings PartyBuffs { get; } = new();
 
-        /// <summary>When true the triggered-rest gate reports an active recovery
-        /// rest (HP/MA below rest-if-below), so the bless "while resting" gate
-        /// engages. A bare Position=Resting does NOT set this — idle resting still
-        /// buffs.</summary>
+        // When true the triggered-rest gate reports an active recovery
+        // rest (HP/MA below rest-if-below), so the bless "while resting" gate
+        // engages. A bare Position=Resting does NOT set this — idle resting still
+        // buffs.
         public bool TriggeredRest { get; set; }
 
-        /// <summary>When true the buff-strip-room gate reports the current room
-        /// removes buffs on entry, so the Buffing category is suppressed.</summary>
+        // When true the buff-strip-room gate reports the current room
+        // removes buffs on entry, so the Buffing category is suppressed.
         public bool BuffStripRoom { get; set; }
 
-        /// <summary>When true the sneak-maintenance defer gate reports we're a
-        /// stealth runner walking combat-off through an occupied room, so the
-        /// Buffing / Curing categories are held for the next empty room (unless
-        /// resting / meditating).</summary>
+        // When true the sneak-maintenance defer gate reports we're a
+        // stealth runner walking combat-off through an occupied room, so the
+        // Buffing / Curing categories are held for the next empty room (unless
+        // resting / meditating).
         public bool DeferMaintenanceForStealth { get; set; }
 
-        /// <summary>Test clock — buff-expiry math reads this so tests can
-        /// advance time deterministically.</summary>
+        // Test clock — buff-expiry math reads this so tests can
+        // advance time deterministically.
         public DateTime Now { get; set; } =
             new(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
-        /// <summary>Buff cast-code → (caster template, duration seconds).
-        /// Populate to give a self-buff a duration timer; an unmapped code
-        /// resolves to null (no timer ⇒ always due ⇒ re-attempt each pass).
-        /// In this harness the confirmed condition's Name doubles as the
-        /// buff short, so this keys on the condition Name.</summary>
+        // Buff cast-code → (caster template, duration seconds).
+        // Populate to give a self-buff a duration timer; an unmapped code
+        // resolves to null (no timer ⇒ always due ⇒ re-attempt each pass).
+        // In this harness the confirmed condition's Name doubles as the
+        // buff short, so this keys on the condition Name.
         public Dictionary<string, (string Caster, long Duration)> BuffInfo { get; } =
             new(StringComparer.OrdinalIgnoreCase);
 
-        /// <summary>Buff short → the shorts its spell REMOVES (RemovesSpell). Lets a
-        /// test model a clobber (chan removes gbls) so the landing-clears-victim path
-        /// runs.</summary>
+        // Buff short → the shorts its spell REMOVES (RemovesSpell). Lets a
+        // test model a clobber (chan removes gbls) so the landing-clears-victim path
+        // runs.
         public Dictionary<string, string[]> Removes { get; } =
             new(StringComparer.OrdinalIgnoreCase);
 
@@ -837,6 +836,7 @@ public sealed class CastingDirectorTests
             Cast.SetWireSender(_ => { });
             Cast.CastSent += CastsSent.Add;
             Conditions = new ConditionTracker(Messages, Log);
+            Conditions.AttachLineExtractor(Server.Lines);
             State.PropertyChanged += (_, e) =>
             {
                 if (e.PropertyName == nameof(PlayerState.Hp)) BeforeDirectorSeesHp?.Invoke();
@@ -845,17 +845,14 @@ public sealed class CastingDirectorTests
                 readSpells: () => Spells,
                 readHealth: () => Health,
                 isEnabled: () => AutoHealRestEnabled,
-                log: Log);
+                log: Log,
+                now: () => Now);
             Director.SetAutoBlessGate(() => AutoBlessEnabled);
             Director.SetTriggeredRestGate(() => TriggeredRest);
             Director.SetBuffStripRoomGate(() => BuffStripRoom);
             Director.SetStealthMaintenanceDeferGate(() => DeferMaintenanceForStealth);
             Director.SetCombatTickSource(() => CombatTickDamageDriven);
-            Director.SetClock(() => Now);
-            // Self buffs now live in the unified list. Fold the tests' self-bless
-            // config (Spells.BlessSlots / WhenHp/MaFull) into it at read time, exactly
-            // like ProfileMigrations does on load, so the tests set them the old way.
-            Director.SetPartyBuffSource(FoldedBuffs);
+            Director.SetPartyBuffSource(() => PartyBuffs);
             // Self-buff confirmation: the condition's Name is the buff short
             // in this harness, so map a fired record back to its Name and
             // resolve its duration from BuffInfo.
@@ -875,37 +872,26 @@ public sealed class CastingDirectorTests
             State.HasPromptData = true;
         }
 
-        // Mirror ProfileMigrations' v2→v3 fold: BlessSlots (in order) + WhenHp/MaFull
-        // become CastOnSelf slots, prepended to any explicit unified-list buffs.
-        private BuffSettings FoldedBuffs()
-        {
-            BuffSettings merged = new();
-            foreach (System.Collections.Generic.KeyValuePair<int, string> kv in
-                     Spells.BlessSlots.OrderBy(k => k.Key))
-            {
-                if (string.IsNullOrWhiteSpace(kv.Value)) continue;
-                int margin = Spells.BlessSlotRecastMargins.TryGetValue(kv.Key, out int m)
-                    ? m : SpellsSettings.DefaultBlessRecastMarginSec;
-                merged.Slots.Add(new BuffSlot { Spell = kv.Value, CastOnSelf = true, RecastMarginSec = margin });
-            }
-            if (!string.IsNullOrWhiteSpace(Spells.WhenHpFullSpell))
-                merged.Slots.Add(new BuffSlot { Spell = Spells.WhenHpFullSpell, CastOnSelf = true, OnlyWhenHpFull = true });
-            if (!string.IsNullOrWhiteSpace(Spells.WhenMaFullSpell))
-                merged.Slots.Add(new BuffSlot { Spell = Spells.WhenMaFullSpell, CastOnSelf = true, OnlyWhenMaFull = true });
-            // Mana-regen also folds into the unified list now (v4 migration) — a
-            // maintained CastOnSelf slot, appended after the bless / when-full slots.
-            if (!string.IsNullOrWhiteSpace(Spells.MaRegenSpell))
-                merged.Slots.Add(new BuffSlot { Spell = Spells.MaRegenSpell, CastOnSelf = true });
-            merged.Slots.AddRange(PartyBuffs.Slots);
-            StampSharedBlessGates(merged, Health, Spells, SlotsCarryTheirOwnGates);
-            return merged;
-        }
+        // The buffs' own conditions, set on every slot in the list and on each one
+        // SelfBuff adds after. Many tests give every buff the same mana floor or rest
+        // and combat switches; the Buffs tab sets them per slot.
+        private int _manaFloor = 70;
+        private bool _whileResting, _duringCombat;
+        public int ManaFloor { get => _manaFloor; set { _manaFloor = value; foreach (BuffSlot b in PartyBuffs.Slots) b.BlessIfAboveMa = value; } }
+        public bool WhileResting { get => _whileResting; set { _whileResting = value; foreach (BuffSlot b in PartyBuffs.Slots) b.BlessWhileResting = value; } }
+        public bool DuringCombat { get => _duringCombat; set { _duringCombat = value; foreach (BuffSlot b in PartyBuffs.Slots) b.BlessDuringCombat = value; } }
 
-        /// <summary>Set when a test gives each buff slot its own mana floor and rest /
-        /// combat switches. Otherwise the harness mirrors the schema-5 migration: the
-        /// once-shared Health.BlessIfAboveMa and Spells.SelfBless* values the older
-        /// tests set are copied onto every slot before the director reads them.</summary>
-        public bool SlotsCarryTheirOwnGates { get; set; }
+        // A buff cast on ourselves, added to the list as the Buffs tab adds one.
+        public BuffSlot SelfBuff(string spell)
+        {
+            BuffSlot slot = new()
+            {
+                Spell = spell, CastOnSelf = true,
+                BlessIfAboveMa = _manaFloor, BlessWhileResting = _whileResting, BlessDuringCombat = _duringCombat,
+            };
+            PartyBuffs.Slots.Add(slot);
+            return slot;
+        }
 
         public void RecordCondition(string name, MessageFlags flags,
                                     string applied, string endsWith = "")
@@ -922,17 +908,7 @@ public sealed class CastingDirectorTests
                 AppliedEndsWith: endsWith));
         }
 
-        public void FeedLine(string text)
-        {
-            var emitted = new LineExtractor.EmittedLine(
-                text, Array.Empty<CellAttributes>(),
-                DateTimeOffset.UtcNow, IsPromptLine: false);
-            typeof(ConditionTracker)
-                .GetMethod("OnLine",
-                    System.Reflection.BindingFlags.Instance |
-                    System.Reflection.BindingFlags.NonPublic)!
-                .Invoke(Conditions, new object[] { emitted });
-        }
+        public void FeedLine(string text) => Server.Line(text);
 
         public void Dispose()
         {
@@ -963,7 +939,7 @@ public sealed class CastingDirectorTests
         // its applied-line confirm — a roll spell confirms via a shared condition that
         // can't be mapped back to it (paradigm-20260830-110918). Configure a mana-regen
         // self-buff and drive a between-round pass: casting it must report to the sink.
-        h.Spells.MaRegenSpell = "ntap";
+        h.SelfBuff("ntap");
         h.BuffInfo["ntap"] = ("You tap into the mana around you.", 300);
         h.State.MaxMa = 100;
         h.State.Ma = 80;
@@ -1230,9 +1206,9 @@ public sealed class CastingDirectorTests
     public void Buff_OutOfCombat_FiresFirstUnactiveSlot()
     {
         using CureHarness h = new();
-        h.Spells.BlessSlots[1] ="bless";
-        h.Spells.BlessSlots[2] ="haste";
-        h.Health.BlessIfAboveMa = 50;
+        h.SelfBuff("bless");
+        h.SelfBuff("haste");
+        h.ManaFloor = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 80;
         h.State.InCombat = false;
@@ -1251,13 +1227,13 @@ public sealed class CastingDirectorTests
     public void OnIdleHeartbeat_OutOfCombat_DrivesBetweenRoundLoop()
     {
         using CureHarness h = new();
-        h.Health.BlessIfAboveMa = 50;
+        h.ManaFloor = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 80;
         h.State.InCombat = false;
         h.State.Position = PlayerPosition.Standing;
         h.CastsSent.Clear();
-        h.Spells.BlessSlots[1] = "bless";   // configured after state — the setup cascade can't have cast it
+        h.SelfBuff("bless");   // configured after state — the setup cascade can't have cast it
 
         h.Director.OnIdleHeartbeat();
 
@@ -1271,13 +1247,13 @@ public sealed class CastingDirectorTests
     {
         using CureHarness h = new();
         h.Director.SetConnectedGate(() => false);   // link down
-        h.Health.BlessIfAboveMa = 50;
+        h.ManaFloor = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 80;
         h.State.InCombat = false;
         h.State.Position = PlayerPosition.Standing;
         h.CastsSent.Clear();
-        h.Spells.BlessSlots[1] = "bless";
+        h.SelfBuff("bless");
 
         h.Director.OnIdleHeartbeat();
         Assert.Empty(h.CastsSent);      // disconnected → no cast, no timer armed
@@ -1295,13 +1271,13 @@ public sealed class CastingDirectorTests
     {
         using CureHarness h = new();
         h.State.InCombat = true;
-        h.Spells.SelfBlessDuringCombat = true;   // buffs allowed in combat — only the idle gate can stop this
-        h.Health.BlessIfAboveMa = 50;
+        h.DuringCombat = true;   // buffs allowed in combat — only the idle gate can stop this
+        h.ManaFloor = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 80;
         h.State.Position = PlayerPosition.Standing;
         h.CastsSent.Clear();
-        h.Spells.BlessSlots[1] = "bless";
+        h.SelfBuff("bless");
 
         h.Director.OnIdleHeartbeat();
         Assert.Empty(h.CastsSent);          // idle heartbeat is out-of-combat only
@@ -1318,8 +1294,8 @@ public sealed class CastingDirectorTests
         // the gate already in place, not through the default out-of-combat window.
         using CureHarness h = new();
         h.State.InCombat = true;
-        h.Spells.BlessSlots[1] = "bless";
-        h.Health.BlessIfAboveMa = 50;
+        h.SelfBuff("bless");
+        h.ManaFloor = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 80;
 
@@ -1331,12 +1307,12 @@ public sealed class CastingDirectorTests
     [Fact]
     public void Buff_InCombat_DuringCombatOn_Casts()
     {
-        // Opt-in: with SelfBlessDuringCombat the same fight allows the recast.
+        // Opt-in: with the slot's own "during combat" the same fight allows the recast.
         using CureHarness h = new();
         h.State.InCombat = true;
-        h.Spells.SelfBlessDuringCombat = true;
-        h.Spells.BlessSlots[1] = "bless";
-        h.Health.BlessIfAboveMa = 50;
+        h.DuringCombat = true;
+        h.SelfBuff("bless");
+        h.ManaFloor = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 80;
 
@@ -1361,9 +1337,9 @@ public sealed class CastingDirectorTests
         h.EnableBurstSettle();
         h.AutoBlessEnabled = false;              // no buff during setup's reactive passes
         h.State.InCombat = true;
-        h.Spells.SelfBlessDuringCombat = true;
-        h.Spells.BlessSlots[1] = "bless";
-        h.Health.BlessIfAboveMa = 50;
+        h.DuringCombat = true;
+        h.SelfBuff("bless");
+        h.ManaFloor = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 80;                          // HP healthy (200/200) → no heal contends
         h.AutoBlessEnabled = true;                // now eligible, not yet evaluated
@@ -1386,9 +1362,9 @@ public sealed class CastingDirectorTests
         h.EnableBurstSettle();
         h.AutoBlessEnabled = false;
         h.State.InCombat = true;
-        h.Spells.SelfBlessDuringCombat = true;
-        h.Spells.BlessSlots[1] = "bless";
-        h.Health.BlessIfAboveMa = 50;
+        h.DuringCombat = true;
+        h.SelfBuff("bless");
+        h.ManaFloor = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 80;
         h.AutoBlessEnabled = true;
@@ -1435,7 +1411,8 @@ public sealed class CastingDirectorTests
         h.EnableBurstSettle();
         DateTimeOffset start = new(2026, 10, 9, 12, 7, 51, 486, TimeSpan.Zero);
         h.Now = start.UtcDateTime;
-        using TickEngine tick = new(h.Router, () => new DateTimeOffset(h.Now, TimeSpan.Zero));
+        ManualTimers polls = new();
+        using TickEngine tick = new(h.Router, () => new DateTimeOffset(h.Now, TimeSpan.Zero), schedule: polls.Arm);
         tick.CombatTickElapsed += () => h.Cast.OnCombatTick(tick.LastCombatTickWasPlaced);
         tick.CombatTickElapsed += h.Director.NotifyRoundComplete;
         h.Director.SetCombatTickSource(() => tick.LastCombatTickWasDamageDriven);
@@ -1470,35 +1447,13 @@ public sealed class CastingDirectorTests
 
         // The next round, projected from the one seen.
         h.Now = start.UtcDateTime + TickEngine.CombatTickInterval;
-        tick.PollTimersForTests();
+        polls.RunAll();
         h.RunSettledPass();
         Assert.Equal(new[] { "grhe", "grhe" }, h.CastsSent);
     }
 
     private static LineExtractor.EmittedLine RoundLine(string text) =>
         new(text, new CellAttributes[text.Length], DateTimeOffset.UnixEpoch, IsPromptLine: false);
-
-    // ProfileMigrations' v4 → v5 and v5 → v6 steps, for the harnesses: the
-    // once-shared bless gates go onto every slot, and the party pair is folded into
-    // the slots that cast on the party.
-    private static void StampSharedBlessGates(BuffSettings buffs, HealthSettings health, SpellsSettings spells,
-        bool skip, PartySettings? party = null)
-    {
-        if (skip) return;
-        foreach (BuffSlot slot in buffs.Slots)
-        {
-            slot.BlessIfAboveMa = health.BlessIfAboveMa;
-            slot.BlessWhileResting = spells.SelfBlessWhileResting;
-            slot.BlessDuringCombat = spells.SelfBlessDuringCombat;
-            if (party is null) continue;
-            bool aimedAtMembers = slot.AllMembers || slot.Targets.Count > 0;
-            bool wholeParty = !slot.CastOnSelf && !aimedAtMembers && slot.WholePartyOn;
-            if (!aimedAtMembers && !wholeParty) continue;
-            bool alsoOnSelf = wholeParty ? slot.CastSolo : slot.CastOnSelf;
-            slot.BlessWhileResting = party.BlessWhileResting || (alsoOnSelf && slot.BlessWhileResting);
-            slot.BlessDuringCombat = party.BlessDuringCombat || (alsoOnSelf && slot.BlessDuringCombat);
-        }
-    }
 
     // Report paradigm-20260928-131549 settings: 433 max HP, minor < 85%, major < 75%,
     // emergency < 50% (216), grhe / gdhe / mgra, Emergency on priority slot 1.
@@ -1614,9 +1569,9 @@ public sealed class CastingDirectorTests
         h.AutoBlessEnabled = false;
         h.AutoHealRestEnabled = true;
         h.State.InCombat = true;
-        h.Spells.SelfBlessDuringCombat = true;
-        h.Spells.BlessSlots[1] = "uarm";
-        h.Health.BlessIfAboveMa = 50;
+        h.DuringCombat = true;
+        h.SelfBuff("uarm");
+        h.ManaFloor = 50;
         h.Spells.MajorHealSpell = "grhe";
         h.Health.MajorHealCombatTrigger = 75;     // 75% of 257 ≈ 192
         h.State.MaxMa = 330;
@@ -1711,9 +1666,9 @@ public sealed class CastingDirectorTests
         h.State.InCombat = false;
         h.State.Position = PlayerPosition.Resting;
         h.TriggeredRest = false;                 // idle rest, not a recovery rest
-        h.Spells.SelfBlessWhileResting = false;  // the new default
-        h.Spells.BlessSlots[1] = "bless";
-        h.Health.BlessIfAboveMa = 50;
+        h.WhileResting = false;  // the new default
+        h.SelfBuff("bless");
+        h.ManaFloor = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 80;
 
@@ -1732,9 +1687,9 @@ public sealed class CastingDirectorTests
         h.State.InCombat = false;
         h.State.Position = PlayerPosition.Resting;
         h.TriggeredRest = true;                  // active recovery rest
-        h.Spells.SelfBlessWhileResting = false;
-        h.Spells.BlessSlots[1] = "bless";
-        h.Health.BlessIfAboveMa = 50;
+        h.WhileResting = false;
+        h.SelfBuff("bless");
+        h.ManaFloor = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 80;
 
@@ -1751,9 +1706,9 @@ public sealed class CastingDirectorTests
         h.State.InCombat = false;
         h.State.Position = PlayerPosition.Resting;
         h.TriggeredRest = true;
-        h.Spells.SelfBlessWhileResting = true;   // opt-in override
-        h.Spells.BlessSlots[1] = "bless";
-        h.Health.BlessIfAboveMa = 50;
+        h.WhileResting = true;   // opt-in override
+        h.SelfBuff("bless");
+        h.ManaFloor = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 80;
 
@@ -1770,7 +1725,7 @@ public sealed class CastingDirectorTests
     {
         // Two buffs both down at 60% mana: the one waiting for 80% is passed over,
         // the one happy at 40% casts — even though it sits lower in the list.
-        using CureHarness h = new() { SlotsCarryTheirOwnGates = true };
+        using CureHarness h = new();
         h.PartyBuffs.Slots.Add(new BuffSlot { Spell = "bigb", CastOnSelf = true, BlessIfAboveMa = 80 });
         h.PartyBuffs.Slots.Add(new BuffSlot { Spell = "smal", CastOnSelf = true, BlessIfAboveMa = 40 });
         h.State.MaxMa = 100;
@@ -1788,7 +1743,7 @@ public sealed class CastingDirectorTests
     {
         // The ordinary buff is listed first, yet the starred one goes out first:
         // its category ranks ahead of Buffing by default.
-        using CureHarness h = new() { SlotsCarryTheirOwnGates = true };
+        using CureHarness h = new();
         h.PartyBuffs.Slots.Add(new BuffSlot { Spell = "plai", CastOnSelf = true });
         h.PartyBuffs.Slots.Add(new BuffSlot { Spell = "star", CastOnSelf = true, PriorityBuff = true });
         h.State.MaxMa = 100;
@@ -1802,7 +1757,7 @@ public sealed class CastingDirectorTests
     [Fact]
     public void PriorityBuff_FollowsWhereTheUserRanksItsCategory()
     {
-        using CureHarness h = new() { SlotsCarryTheirOwnGates = true };
+        using CureHarness h = new();
         h.Spells.PriorityBuffing = 5;
         h.Spells.PriorityPriorityBuffs = 9;
         h.PartyBuffs.Slots.Add(new BuffSlot { Spell = "star", CastOnSelf = true, PriorityBuff = true });
@@ -1818,7 +1773,7 @@ public sealed class CastingDirectorTests
     [Fact]
     public void Buff_ManaFloorIsPerBuff_HighFloorCastsOnceManaReachesIt()
     {
-        using CureHarness h = new() { SlotsCarryTheirOwnGates = true };
+        using CureHarness h = new();
         h.PartyBuffs.Slots.Add(new BuffSlot { Spell = "bigb", CastOnSelf = true, BlessIfAboveMa = 80 });
         h.State.MaxMa = 100;
         h.State.Ma = 79;
@@ -1836,7 +1791,7 @@ public sealed class CastingDirectorTests
     {
         // With Health thresholds set to absolute values the slot's number is mana
         // points, not a percent: 150 of a 400 pool is under a 200 floor.
-        using CureHarness h = new() { SlotsCarryTheirOwnGates = true };
+        using CureHarness h = new();
         h.Health.MaThresholdMode = ThresholdMode.Absolute;
         h.PartyBuffs.Slots.Add(new BuffSlot { Spell = "bigb", CastOnSelf = true, BlessIfAboveMa = 200 });
         h.State.MaxMa = 400;
@@ -1853,7 +1808,7 @@ public sealed class CastingDirectorTests
     [Fact]
     public void Buff_CombatSwitchIsPerBuff_OnlyTheTickedBuffCastsInAFight()
     {
-        using CureHarness h = new() { SlotsCarryTheirOwnGates = true };
+        using CureHarness h = new();
         h.PartyBuffs.Slots.Add(new BuffSlot { Spell = "calm", CastOnSelf = true, BlessIfAboveMa = 0 });
         h.PartyBuffs.Slots.Add(new BuffSlot { Spell = "figh", CastOnSelf = true, BlessIfAboveMa = 0, BlessDuringCombat = true });
         h.State.InCombat = true;
@@ -1868,7 +1823,7 @@ public sealed class CastingDirectorTests
     [Fact]
     public void Buff_RestSwitchIsPerBuff_OnlyTheTickedBuffCastsInARecoveryRest()
     {
-        using CureHarness h = new() { SlotsCarryTheirOwnGates = true };
+        using CureHarness h = new();
         h.PartyBuffs.Slots.Add(new BuffSlot { Spell = "wait", CastOnSelf = true, BlessIfAboveMa = 0 });
         h.PartyBuffs.Slots.Add(new BuffSlot { Spell = "rest", CastOnSelf = true, BlessIfAboveMa = 0, BlessWhileResting = true });
         h.State.Position = PlayerPosition.Resting;
@@ -1891,7 +1846,7 @@ public sealed class CastingDirectorTests
         Assert.False(fresh.BlessWhileResting);
         Assert.False(fresh.BlessDuringCombat);
 
-        using CureHarness h = new() { SlotsCarryTheirOwnGates = true };
+        using CureHarness h = new();
         h.PartyBuffs.Slots.Add(new BuffSlot { Spell = "bles", CastOnSelf = true });
         h.State.MaxMa = 100;
         h.State.Ma = 49;
@@ -1908,7 +1863,7 @@ public sealed class CastingDirectorTests
     {
         // A reroll staged mid-fight for a buff without "cast during combat" is held,
         // not dropped: it goes out once the fight ends.
-        using CureHarness h = new() { SlotsCarryTheirOwnGates = true };
+        using CureHarness h = new();
         h.PartyBuffs.Slots.Add(new BuffSlot { Spell = "mreg", BlessIfAboveMa = 0 });
         h.State.InCombat = true;
         h.State.MaxMa = 100;
@@ -1926,7 +1881,7 @@ public sealed class CastingDirectorTests
     [Fact]
     public void ManaRegenReroll_UnderItsBuffsManaFloor_IsDropped()
     {
-        using CureHarness h = new() { SlotsCarryTheirOwnGates = true };
+        using CureHarness h = new();
         h.PartyBuffs.Slots.Add(new BuffSlot { Spell = "mreg", BlessIfAboveMa = 90 });
         h.State.MaxMa = 100;
         h.State.Ma = 50;
@@ -1948,8 +1903,8 @@ public sealed class CastingDirectorTests
         h.AutoBlessEnabled = true;
         h.State.InCombat = false;
         h.State.Position = PlayerPosition.Standing;
-        h.Spells.BlessSlots[1] = "bless";
-        h.Health.BlessIfAboveMa = 50;
+        h.SelfBuff("bless");
+        h.ManaFloor = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 80;
 
@@ -1964,8 +1919,8 @@ public sealed class CastingDirectorTests
     {
         using CureHarness h = new();
         h.AutoBlessEnabled = false;          // Auto-Bless engine disabled
-        h.Spells.BlessSlots[1] ="bless";
-        h.Health.BlessIfAboveMa = 50;
+        h.SelfBuff("bless");
+        h.ManaFloor = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 80;
         h.State.InCombat = false;
@@ -1983,8 +1938,8 @@ public sealed class CastingDirectorTests
         // here just burns mana — the Buffing category is suppressed.
         using CureHarness h = new();
         h.BuffStripRoom = true;
-        h.Spells.BlessSlots[1] = "bless";
-        h.Health.BlessIfAboveMa = 50;
+        h.SelfBuff("bless");
+        h.ManaFloor = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 80;
         h.State.InCombat = false;
@@ -2004,8 +1959,8 @@ public sealed class CastingDirectorTests
         h.BuffStripRoom = true;
         h.Spells.MajorHealSpell = "fullheal";
         h.Health.MajorHealCombatTrigger = 40;
-        h.Spells.BlessSlots[1] = "bless";
-        h.Health.BlessIfAboveMa = 50;
+        h.SelfBuff("bless");
+        h.ManaFloor = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 80;
         h.State.InCombat = true;
@@ -2022,9 +1977,9 @@ public sealed class CastingDirectorTests
     public void Buff_SkipsActiveBuff_PicksNext()
     {
         using CureHarness h = new();
-        h.Spells.BlessSlots[1] ="bless";
-        h.Spells.BlessSlots[2] ="haste";
-        h.Health.BlessIfAboveMa = 50;
+        h.SelfBuff("bless");
+        h.SelfBuff("haste");
+        h.ManaFloor = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 80;
         h.State.InCombat = false;
@@ -2048,8 +2003,8 @@ public sealed class CastingDirectorTests
     public void Buff_AllActive_NoCast()
     {
         using CureHarness h = new();
-        h.Spells.BlessSlots[1] ="bless";
-        h.Health.BlessIfAboveMa = 50;
+        h.SelfBuff("bless");
+        h.ManaFloor = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 80;
         h.State.InCombat = false;
@@ -2072,9 +2027,9 @@ public sealed class CastingDirectorTests
         // Cast → confirm (300s timer) → no recast mid-duration → recast once
         // inside the 15s-of-expiry window.
         using CureHarness h = new();
-        h.Spells.BlessSlots[1] ="bless";
+        h.SelfBuff("bless");
         h.BuffInfo["bless"] = (string.Empty, 300);
-        h.Health.BlessIfAboveMa = 50;
+        h.ManaFloor = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 80;
         h.State.InCombat = false;
@@ -2111,14 +2066,14 @@ public sealed class CastingDirectorTests
         // as up (report paradigm-20260910-001023). Deterministic off RemovesSpell,
         // not the ambiguous shared wear-off line.
         using CureHarness h = new();
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         h.State.MaxMa = 100;
         h.State.Ma = 80;
         h.State.InCombat = false;
         h.State.Position = PlayerPosition.Standing;
 
-        h.Spells.BlessSlots[1] = "gbls";
-        h.Spells.BlessSlots[2] = "chan";
+        h.SelfBuff("gbls");
+        h.SelfBuff("chan");
         h.BuffInfo["gbls"] = (string.Empty, 300);
         h.BuffInfo["chan"] = (string.Empty, 500);
         h.Removes["chan"] = new[] { "gbls" };   // chan strips gbls
@@ -2152,9 +2107,9 @@ public sealed class CastingDirectorTests
         // stale clock. The optimistic on-send timer then blocks a same-round
         // double.
         using CureHarness h = new();
-        h.Spells.BlessSlots[1] ="bless";
+        h.SelfBuff("bless");
         h.BuffInfo["bless"] = (string.Empty, 300);
-        h.Health.BlessIfAboveMa = 50;
+        h.ManaFloor = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 80;
         h.State.InCombat = false;
@@ -2190,10 +2145,10 @@ public sealed class CastingDirectorTests
         // drop the timer — doing so would recast the instant it lands, collapsing the
         // buffer. The timer stays and IsRecastDue holds off until the buffer elapses.
         using CureHarness h = new();
-        h.Spells.BlessSlots[1] = "bless";
-        h.Spells.BlessSlotRecastMargins[1] = -30;   // recast 30s AFTER it wears off
+        h.SelfBuff("bless");
+        h.PartyBuffs.Slots.Single(s => s.Spell == "bless").RecastMarginSec = -30;   // recast 30s AFTER it wears off
         h.BuffInfo["bless"] = (string.Empty, 300);
-        h.Health.BlessIfAboveMa = 50;
+        h.ManaFloor = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 80;
         h.State.InCombat = false;
@@ -2235,10 +2190,10 @@ public sealed class CastingDirectorTests
         // config, not the value snapshotted at cast time. Flipping positive → negative
         // redraws the red buffer immediately instead of waiting for the next cast.
         using CureHarness h = new();
-        h.Spells.BlessSlots[1] = "bless";
-        h.Spells.BlessSlotRecastMargins[1] = 15;    // positive to start
+        h.SelfBuff("bless");
+        h.PartyBuffs.Slots.Single(s => s.Spell == "bless").RecastMarginSec = 15;    // positive to start
         h.BuffInfo["bless"] = (string.Empty, 300);
-        h.Health.BlessIfAboveMa = 50;
+        h.ManaFloor = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 80;
         h.State.InCombat = false;
@@ -2252,7 +2207,7 @@ public sealed class CastingDirectorTests
         Assert.Equal(15, h.Director.SnapshotActiveBuffs().Single(b => b.Short == "bless").MarginSec);
 
         // Edit the slot to a negative buffer — no recast, just a config change.
-        h.Spells.BlessSlotRecastMargins[1] = -30;
+        h.PartyBuffs.Slots.Single(s => s.Spell == "bless").RecastMarginSec = -30;
         Assert.Equal(-30, h.Director.SnapshotActiveBuffs().Single(b => b.Short == "bless").MarginSec);
         Assert.Empty(h.CastsSent);
     }
@@ -2263,10 +2218,10 @@ public sealed class CastingDirectorTests
         // A slot with a 30s recast lead re-casts 30s before expiry — earlier than
         // the 15s default would.
         using CureHarness h = new();
-        h.Spells.BlessSlots[1] = "bless";
-        h.Spells.BlessSlotRecastMargins[1] = 30;
+        h.SelfBuff("bless");
+        h.PartyBuffs.Slots.Single(s => s.Spell == "bless").RecastMarginSec = 30;
         h.BuffInfo["bless"] = (string.Empty, 300);
-        h.Health.BlessIfAboveMa = 50;
+        h.ManaFloor = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 80;
         h.State.InCombat = false;
@@ -2299,10 +2254,10 @@ public sealed class CastingDirectorTests
         // A 0 lead means "don't recast until the tracked timer actually runs out"
         // — the 15s default window must NOT trigger an early recast.
         using CureHarness h = new();
-        h.Spells.BlessSlots[1] = "bless";
-        h.Spells.BlessSlotRecastMargins[1] = 0;
+        h.SelfBuff("bless");
+        h.PartyBuffs.Slots.Single(s => s.Spell == "bless").RecastMarginSec = 0;
         h.BuffInfo["bless"] = (string.Empty, 300);
-        h.Health.BlessIfAboveMa = 50;
+        h.ManaFloor = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 80;
         h.State.InCombat = false;
@@ -2334,10 +2289,10 @@ public sealed class CastingDirectorTests
         // The other half of the 0-lead contract: a server wear-off message drops
         // the timer and recasts at once, well before the tracked expiry.
         using CureHarness h = new();
-        h.Spells.BlessSlots[1] = "bless";
-        h.Spells.BlessSlotRecastMargins[1] = 0;
+        h.SelfBuff("bless");
+        h.PartyBuffs.Slots.Single(s => s.Spell == "bless").RecastMarginSec = 0;
         h.BuffInfo["bless"] = (string.Empty, 300);
-        h.Health.BlessIfAboveMa = 50;
+        h.ManaFloor = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 80;
         h.State.InCombat = false;
@@ -2393,9 +2348,9 @@ public sealed class CastingDirectorTests
         // buff before its AppliedMessage confirms — draining kai and drawing a
         // "not enough kai" error. The optimistic timer closes that window.
         using CureHarness h = new();
-        h.Spells.BlessSlots[1] = "tige";
+        h.SelfBuff("tige");
         h.BuffInfo["tige"] = (string.Empty, 300);
-        h.Health.BlessIfAboveMa = 70;          // 70% of 5 kai → floor 4
+        h.ManaFloor = 70;          // 70% of 5 kai → floor 4
         h.State.MaxMa = 5;
         h.State.Ma = 5;
         h.State.InCombat = false;
@@ -2420,9 +2375,9 @@ public sealed class CastingDirectorTests
         // (never lands) that timer must be dropped so the next round re-attempts —
         // otherwise a single fizzle leaves the buff DOWN for ~90s.
         using CureHarness h = new();
-        h.Spells.BlessSlots[1] = "bles";
+        h.SelfBuff("bles");
         h.BuffInfo["bles"] = (string.Empty, 300);   // long duration → phantom timer would suppress
-        h.Health.BlessIfAboveMa = 50;
+        h.ManaFloor = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 80;
         h.State.InCombat = false;
@@ -2455,9 +2410,9 @@ public sealed class CastingDirectorTests
         // authoritative — a later unrelated cast failure must NOT clear it and cause
         // a needless recast inside the still-valid duration.
         using CureHarness h = new();
-        h.Spells.BlessSlots[1] = "bles";
+        h.SelfBuff("bles");
         h.BuffInfo["bles"] = (string.Empty, 300);
-        h.Health.BlessIfAboveMa = 50;
+        h.ManaFloor = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 80;
         h.State.InCombat = false;
@@ -2488,12 +2443,12 @@ public sealed class CastingDirectorTests
         // mageshield storm's root, report paradigm-20260816-101702). The slot frees at
         // the round boundary (NotifyRoundComplete), letting the next buff fire.
         using CureHarness h = new();
-        h.Spells.SelfBlessDuringCombat = true;   // opt in to blessing mid-fight
-        h.Spells.BlessSlots[1] = "mshi";
-        h.Spells.BlessSlots[2] = "armr";
+        h.DuringCombat = true;   // opt in to blessing mid-fight
+        h.SelfBuff("mshi");
+        h.SelfBuff("armr");
         h.BuffInfo["mshi"] = (string.Empty, 300);
         h.BuffInfo["armr"] = (string.Empty, 300);
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         h.State.MaxMa = 100;
         h.State.Ma = 100;
         h.State.InCombat = true;
@@ -2530,9 +2485,9 @@ public sealed class CastingDirectorTests
         // recast timer must be dropped (like a fizzle) so it re-attempts next round,
         // rather than sitting "active" un-cast for its whole assumed duration.
         using CureHarness h = new();
-        h.Spells.BlessSlots[1] = "mshi";
+        h.SelfBuff("mshi");
         h.BuffInfo["mshi"] = (string.Empty, 300);
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         h.State.MaxMa = 100;
         h.State.Ma = 100;
         h.State.InCombat = false;   // the per-round cap applies in or out of combat now
@@ -2563,9 +2518,9 @@ public sealed class CastingDirectorTests
         // round and the game refused that. The refusal names no spell, and the command
         // echoed ahead of it is not the buff's: the buff's timer must stand.
         using CureHarness h = new();
-        h.Spells.BlessSlots[1] = "mshi";
+        h.SelfBuff("mshi");
         h.BuffInfo["mshi"] = (string.Empty, 300);
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         h.State.MaxMa = 100;
         h.State.Ma = 100;
         h.State.InCombat = false;
@@ -2597,9 +2552,9 @@ public sealed class CastingDirectorTests
         // The Buff Watchdog reads live timers through this snapshot — each armed
         // buff surfaces as (Target="" self, Short, Until, MarginSec, TotalSec).
         using CureHarness h = new();
-        h.Spells.BlessSlots[1] = "bles";
+        h.SelfBuff("bles");
         h.BuffInfo["bles"] = (string.Empty, 300);
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         h.State.MaxMa = 100;
         h.State.Ma = 100;
         h.State.InCombat = false;
@@ -2625,9 +2580,9 @@ public sealed class CastingDirectorTests
         // pending self-buff failing — otherwise a buff that already landed gets its
         // timer dropped and re-casts again within seconds, over and over.
         using CureHarness h = new();
-        h.Spells.BlessSlots[1] = "bles";
+        h.SelfBuff("bles");
         h.BuffInfo["bles"] = (string.Empty, 300);
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         h.State.MaxMa = 100;
         h.State.Ma = 100;
         h.State.InCombat = false;
@@ -2661,9 +2616,9 @@ public sealed class CastingDirectorTests
         // recast cascade while 75-150s still remained. A rejection this far past the
         // arm can't be about our own send, so the buff's timer must survive.
         using CureHarness h = new();
-        h.Spells.BlessSlots[1] = "bles";
+        h.SelfBuff("bles");
         h.BuffInfo["bles"] = (string.Empty, 300);
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         h.State.MaxMa = 100;
         h.State.Ma = 100;
         h.State.InCombat = false;
@@ -2690,8 +2645,8 @@ public sealed class CastingDirectorTests
         // A hand-typed buff cast code arms its recast timer anchored on the code — so the
         // Buff Watchdog + recast engine track a manual cast the same as an engine one.
         using CureHarness h = new();
-        h.Spells.BlessSlots[1] = "bles";
-        h.Spells.BlessSlotRecastMargins[1] = 20;   // the slot's configured recast lead
+        h.SelfBuff("bles");
+        h.PartyBuffs.Slots.Single(s => s.Spell == "bles").RecastMarginSec = 20;   // the slot's configured recast lead
         h.BuffInfo["bles"] = (string.Empty, 300);
 
         h.Director.NoteManualBuffCast("bles");
@@ -2720,7 +2675,7 @@ public sealed class CastingDirectorTests
         // drop, so a brief gap keeps it armed (client does not recast). (Self timers used
         // to be cleared wholesale here.)
         using CureHarness h = new();
-        h.Spells.BlessSlots[1] = "bles";
+        h.SelfBuff("bles");
         h.BuffInfo["bles"] = (string.Empty, 300);   // 5-minute self buff
         h.Director.NoteManualBuffCast("bles");     // a self timer
         Assert.Single(h.Director.SnapshotActiveBuffs());
@@ -2742,7 +2697,7 @@ public sealed class CastingDirectorTests
         // 2026-10-10). Until that ruling this test pinned the opposite: a gap longer
         // than the buff dropped its timer on the way back in, and it was recast.
         using CureHarness h = new();
-        h.Spells.BlessSlots[1] = "bles";
+        h.SelfBuff("bles");
         h.BuffInfo["bles"] = (string.Empty, 300);
         h.Director.NoteManualBuffCast("bles");
         h.Now = h.Now.AddSeconds(100);             // 200 s left
@@ -2777,7 +2732,7 @@ public sealed class CastingDirectorTests
     public void PauseResume_OurOwnTimerStandsStill_APartyMembersRunsOn()
     {
         using PartyBlessHarness h = new();
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         h.AddTargetSlot("bles", "Raijin");
         h.BuffInfo["bles"] = ("You cast {s} on {s}!", 300);
         h.BuffInfo["mysh"] = (string.Empty, 200);
@@ -2808,7 +2763,7 @@ public sealed class CastingDirectorTests
     public void PauseResume_APartyMembersTimerThatRanOutWhileAway_IsDropped()
     {
         using PartyBlessHarness h = new();
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         h.AddTargetSlot("bles", "Raijin");
         h.BuffInfo["bles"] = ("You cast {s} on {s}!", 300);
         h.BuffInfo["mysh"] = (string.Empty, 300);
@@ -2840,7 +2795,7 @@ public sealed class CastingDirectorTests
     private static PartyBlessHarness InAPartyWithChanUp(int beforeLeaving)
     {
         PartyBlessHarness h = new();
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         h.AddWholePartySlot("chan").RecastMarginSec = 0;
         h.BuffInfo["chan"] = (string.Empty, 300);
         h.AddMember("Raijin");
@@ -2950,7 +2905,7 @@ public sealed class CastingDirectorTests
         int awaySec, int inGameSec, bool recast)
     {
         using PartyBlessHarness h = new();
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         h.AddWholePartySlot("chan").RecastMarginSec = 0;
         h.BuffInfo["chan"] = (string.Empty, 300);
         h.AddMember("Raijin");
@@ -3002,7 +2957,7 @@ public sealed class CastingDirectorTests
     public void SelfBuff_CarriedOverAPause_InAParty_GoesByOurOwnTimer()
     {
         using PartyBlessHarness h = new();
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         h.PartyBuffs.Slots.Add(new BuffSlot { Spell = "mysh", CastOnSelf = true, RecastMarginSec = 0 });
         h.BuffInfo["mysh"] = (string.Empty, 300);
         h.AddMember("Raijin");
@@ -3025,7 +2980,7 @@ public sealed class CastingDirectorTests
     public void PauseTwice_ResumeOnce_GivesBackTheWholeStretch()
     {
         using CureHarness h = new();
-        h.Spells.BlessSlots[1] = "bles";
+        h.SelfBuff("bles");
         h.BuffInfo["bles"] = (string.Empty, 300);
         h.Director.NoteManualBuffCast("bles");
 
@@ -3044,8 +2999,8 @@ public sealed class CastingDirectorTests
     public void PauseResume_ABuffRaisedWhileStandingStill_IsNotMovedOn()
     {
         using CureHarness h = new();
-        h.Spells.BlessSlots[1] = "bles";
-        h.Spells.BlessSlots[2] = "mysh";
+        h.SelfBuff("bles");
+        h.SelfBuff("mysh");
         h.BuffInfo["bles"] = (string.Empty, 300);
         h.BuffInfo["mysh"] = (string.Empty, 200);
         h.Director.NoteManualBuffCast("bles");
@@ -3066,8 +3021,8 @@ public sealed class CastingDirectorTests
     {
         using CureHarness h = new();
         const string token = "#emerald tipped crozier";
-        h.Spells.BlessSlots[1] = token;
-        h.Health.BlessIfAboveMa = 50;
+        h.SelfBuff(token);
+        h.ManaFloor = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 80;
         h.State.InCombat = false;
@@ -3117,7 +3072,7 @@ public sealed class CastingDirectorTests
     public void SnapshotForSave_KeepsOurOwnTimers_WithWhatEachHasLeft()
     {
         using PartyBlessHarness h = new();
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         h.AddTargetSlot("bles", "Raijin");
         h.BuffInfo["bles"] = ("You cast {s} on {s}!", 300);
         h.BuffInfo["mysh"] = (string.Empty, 200);
@@ -3144,10 +3099,10 @@ public sealed class CastingDirectorTests
     {
         using CureHarness h = new();
         h.AutoBlessEnabled = false;
-        h.Spells.BlessSlots[1] = "bless";
-        h.Spells.BlessSlotRecastMargins[1] = 0;
+        h.SelfBuff("bless");
+        h.PartyBuffs.Slots.Single(s => s.Spell == "bless").RecastMarginSec = 0;
         h.BuffInfo["bless"] = (string.Empty, 300);
-        h.Health.BlessIfAboveMa = 50;
+        h.ManaFloor = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 80;
         h.State.InCombat = false;
@@ -3183,7 +3138,7 @@ public sealed class CastingDirectorTests
     {
         using CureHarness h = new();
         h.AutoBlessEnabled = false;
-        h.Spells.BlessSlots[1] = "bless";
+        h.SelfBuff("bless");
         h.BuffInfo["bless"] = (string.Empty, 300);
         h.RecordCondition("bless", MessageFlags.None,
             applied: "You are blessed!", endsWith: "Your blessing fades.");
@@ -3206,7 +3161,7 @@ public sealed class CastingDirectorTests
     {
         using CureHarness h = new();
         h.AutoBlessEnabled = false;
-        h.Spells.BlessSlots[1] = "bless";
+        h.SelfBuff("bless");
         h.BuffInfo["bless"] = (string.Empty, 300);
         h.RecordCondition("bless", MessageFlags.None,
             applied: "You are blessed!", endsWith: "Your blessing fades.");
@@ -3232,7 +3187,7 @@ public sealed class CastingDirectorTests
     {
         using CureHarness h = new();
         h.AutoBlessEnabled = false;
-        h.Spells.BlessSlots[1] = "bless";
+        h.SelfBuff("bless");
         h.BuffInfo["bless"] = (string.Empty, 300);
         h.RecordCondition("bless", MessageFlags.None, applied: "You feel lucky!", endsWith: "Your luck fades.");
         h.RecordCondition("chant", MessageFlags.None, applied: "You feel lucky!", endsWith: "Your luck fades.");
@@ -3255,7 +3210,7 @@ public sealed class CastingDirectorTests
         using CureHarness h = new();
         h.AutoBlessEnabled = false;
         h.PartyBuffs.Slots.Add(new BuffSlot { Spell = Deck, CastOnSelf = true, RecastMarginSec = 15 });
-        h.Health.BlessIfAboveMa = 50;
+        h.ManaFloor = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 80;
         h.State.InCombat = false;
@@ -3290,9 +3245,9 @@ public sealed class CastingDirectorTests
     {
         using CureHarness h = new();
         h.AutoBlessEnabled = false;
-        h.Spells.BlessSlots[1] = "bles";
-        h.Spells.BlessSlots[2] = "mysh";
-        h.Spells.BlessSlots[3] = "prot";
+        h.SelfBuff("bles");
+        h.SelfBuff("mysh");
+        h.SelfBuff("prot");
         h.BuffInfo["bles"] = (string.Empty, 300);
         h.BuffInfo["mysh"] = (string.Empty, 200);
         h.BuffInfo["prot"] = (string.Empty, 400);
@@ -3336,7 +3291,7 @@ public sealed class CastingDirectorTests
         // The Buff Watchdog reads PausedAtUtc to freeze its display at the drop instant
         // (its heartbeat is a wall clock that keeps ticking while disconnected).
         using CureHarness h = new();
-        h.Spells.BlessSlots[1] = "bles";
+        h.SelfBuff("bles");
         h.BuffInfo["bles"] = (string.Empty, 300);
         h.Director.NoteManualBuffCast("bles");
         Assert.Null(h.Director.PausedAtUtc);          // running
@@ -3367,8 +3322,8 @@ public sealed class CastingDirectorTests
         // login/menu during re-entry (report paradigm-20260908-053448).
         using CureHarness h = new();
         h.AutoBlessEnabled = false;               // no cast during setup's reactive passes
-        h.Spells.BlessSlots[1] = "bless";
-        h.Health.BlessIfAboveMa = 50;
+        h.SelfBuff("bless");
+        h.ManaFloor = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 80;
         h.State.InCombat = false;
@@ -3386,36 +3341,14 @@ public sealed class CastingDirectorTests
     }
 
     [Fact]
-    public void PauseBuffTimers_NoArmedTimers_StillSuspendsCasting()
-    {
-        // The latch must arm even when the drop had no active timers (PauseBuffTimers
-        // leaves PausedAtUtc null in that case) — otherwise a disconnect with nothing
-        // buffed would still leak casts onto the login prompt.
-        using CureHarness h = new();
-        h.AutoBlessEnabled = false;
-        h.Spells.BlessSlots[1] = "bless";
-        h.Health.BlessIfAboveMa = 50;
-        h.State.MaxMa = 100;
-        h.State.Ma = 80;
-        h.State.InCombat = false;
-        h.State.Position = PlayerPosition.Standing;
-        h.AutoBlessEnabled = true;
-
-        h.Director.PauseBuffTimers();
-        Assert.Null(h.Director.PausedAtUtc);      // nothing was frozen…
-        h.Director.Evaluate();
-        Assert.Empty(h.CastsSent);                // …but casting is still latched off
-    }
-
-    [Fact]
     public void SelfBuff_CoveredByPartyBuff_IsNotCast()
     {
         // In a party, a party-wide buff (chan) that removes bless supersedes the self-cast:
         // the director skips self-casting bles and lets the party buff cover us.
         using CureHarness h = new();
-        h.Spells.BlessSlots[1] = "bles";
+        h.SelfBuff("bles");
         h.BuffInfo["bles"] = (string.Empty, 300);
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         // Coverage set BEFORE the state changes, so the setup's auto-eval already skips bles.
         h.Director.SetSelfBuffCoverage(() => new Dictionary<string, string> { ["bles"] = "chan" });
         h.State.MaxMa = 100; h.State.Ma = 100; h.State.InCombat = false;
@@ -3431,9 +3364,9 @@ public sealed class CastingDirectorTests
     {
         // No coverage (solo, or nothing removes it) ⇒ the self-buff casts as usual.
         using CureHarness h = new();
-        h.Spells.BlessSlots[1] = "bles";
+        h.SelfBuff("bles");
         h.BuffInfo["bles"] = (string.Empty, 300);
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         h.State.MaxMa = 100; h.State.Ma = 100; h.State.InCombat = false;
 
         h.Director.Evaluate();
@@ -3447,10 +3380,10 @@ public sealed class CastingDirectorTests
         // In Absolute mode BlessIfAboveMa is a raw kai count, not a percent —
         // a Kai class with a 5-kai pool blesses at "4 kai or more", not "4%".
         using CureHarness h = new();
-        h.Spells.BlessSlots[1] = "tige";
+        h.SelfBuff("tige");
         h.BuffInfo["tige"] = (string.Empty, 300);
         h.Health.MaThresholdMode = ThresholdMode.Absolute;
-        h.Health.BlessIfAboveMa = 4;
+        h.ManaFloor = 4;
         h.State.MaxMa = 5;
         h.State.InCombat = false;
         h.RecordCondition("tige", MessageFlags.None, applied: "You feel invigorated.");
@@ -3470,30 +3403,11 @@ public sealed class CastingDirectorTests
     {
         // MA too low — saving for heals.
         using CureHarness h = new();
-        h.Spells.BlessSlots[1] ="bless";
-        h.Health.BlessIfAboveMa = 70;
+        h.SelfBuff("bless");
+        h.ManaFloor = 70;
         h.State.MaxMa = 100;
         h.State.Ma = 50;
         h.State.InCombat = false;
-
-        h.Director.Evaluate();
-
-        Assert.Empty(h.CastsSent);
-    }
-
-    [Fact]
-    public void Buff_InCombat_Suppressed()
-    {
-        // v1 hard-gates buffs out of combat — never burn a round
-        // mid-fight on a buff. Set InCombat FIRST so the property-
-        // change cascade below doesn't fire a Buff cast through the
-        // (still-default) InCombat=false window.
-        using CureHarness h = new();
-        h.State.InCombat = true;
-        h.Spells.BlessSlots[1] ="bless";
-        h.Health.BlessIfAboveMa = 50;
-        h.State.MaxMa = 100;
-        h.State.Ma = 80;
 
         h.Director.Evaluate();
 
@@ -3510,8 +3424,8 @@ public sealed class CastingDirectorTests
         // re-sneak in. It fires once the room clears (gate goes false).
         using CureHarness h = new();
         h.DeferMaintenanceForStealth = true;
-        h.Spells.BlessSlots[1] = "bless";
-        h.Health.BlessIfAboveMa = 50;
+        h.SelfBuff("bless");
+        h.ManaFloor = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 80;
         h.State.InCombat = false;
@@ -3529,8 +3443,8 @@ public sealed class CastingDirectorTests
         // same due buff casts normally.
         using CureHarness h = new();
         h.DeferMaintenanceForStealth = false;
-        h.Spells.BlessSlots[1] = "bless";
-        h.Health.BlessIfAboveMa = 50;
+        h.SelfBuff("bless");
+        h.ManaFloor = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 80;
         h.State.InCombat = false;
@@ -3550,8 +3464,8 @@ public sealed class CastingDirectorTests
         // would give the character away.
         using CureHarness h = new();
         h.DeferMaintenanceForStealth = true;
-        h.Spells.BlessSlots[1] = "bless";
-        h.Health.BlessIfAboveMa = 50;
+        h.SelfBuff("bless");
+        h.ManaFloor = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 80;
         h.State.InCombat = false;
@@ -3789,7 +3703,7 @@ public sealed class CastingDirectorTests
             AppliedEndsWith: "The gaze of luck is no longer upon you",
             Links: new[] { new GameDataLink("Spells", 966) }));
         h.PartyBuffs.Slots.Add(new BuffSlot { Spell = Deck, CastOnSelf = true, RecastMarginSec = 15 });
-        h.Health.BlessIfAboveMa = 50;
+        h.ManaFloor = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 80;
         h.State.InCombat = false;
@@ -3817,15 +3731,15 @@ public sealed class CastingDirectorTests
         Assert.Equal(2, uses);
     }
 
-    // ----- Item-cast buffs (PR 10.18 #token Bless slot) --------------
+    // ----- Item-cast buffs -------------------------------------------
 
     [Fact]
     public void ItemCastBuff_FiresSequence_BypassesRawCast_AndKeysRecastByToken()
     {
         using CureHarness h = new();
         const string token = "#emerald tipped crozier";
-        h.Spells.BlessSlots[1] =token;
-        h.Health.BlessIfAboveMa = 50;
+        h.SelfBuff(token);
+        h.ManaFloor = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 80;
         h.State.InCombat = false;
@@ -3858,8 +3772,8 @@ public sealed class CastingDirectorTests
     {
         using CureHarness h = new();
         const string token = "#wand of fire";
-        h.Spells.BlessSlots[1] =token;
-        h.Health.BlessIfAboveMa = 50;
+        h.SelfBuff(token);
+        h.ManaFloor = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 80;
         h.State.InCombat = false;
@@ -3882,9 +3796,9 @@ public sealed class CastingDirectorTests
     {
         using CureHarness h = new();
         const string token = "#emerald tipped crozier";
-        h.Spells.BlessSlots[1] =token;
+        h.SelfBuff(token);
         // MA below the bless floor: a mana-drawing buff would be suppressed.
-        h.Health.BlessIfAboveMa = 50;
+        h.ManaFloor = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 10;
         h.State.InCombat = false;
@@ -3907,8 +3821,8 @@ public sealed class CastingDirectorTests
     {
         using CureHarness h = new();
         const string token = "#shimmering greatsword";
-        h.Spells.BlessSlots[1] =token;
-        h.Health.BlessIfAboveMa = 50;
+        h.SelfBuff(token);
+        h.ManaFloor = 50;
         h.State.MaxMa = 100;
         h.State.InCombat = false;
         h.State.Position = PlayerPosition.Standing;
@@ -3941,7 +3855,7 @@ public sealed class CastingDirectorTests
         // wants it always-up puts it in a Bless slot instead.)
         using CureHarness h = new();
         h.Spells.HpRegenSpell = "trollskin";
-        h.Health.BlessIfAboveMa = 50;
+        h.ManaFloor = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 80;
         h.State.MaxHp = 200;
@@ -3959,9 +3873,9 @@ public sealed class CastingDirectorTests
         // Bless1 configured + active → the mana-regen downtime buff is the next
         // non-active self-buff slot (HP-regen is no longer a buff slot).
         using CureHarness h = new();
-        h.Spells.BlessSlots[1] ="bless";
-        h.Spells.MaRegenSpell = "kindred";
-        h.Health.BlessIfAboveMa = 50;
+        h.SelfBuff("bless");
+        h.SelfBuff("kindred");
+        h.ManaFloor = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 80;
         h.State.InCombat = false;
@@ -3986,8 +3900,8 @@ public sealed class CastingDirectorTests
         // WhenHpFull is a buff with extra eligibility (HP at max).
         // Out-of-combat, MA above BlessIfAboveMa, HP at max → fires.
         using CureHarness h = new();
-        h.Spells.WhenHpFullSpell = "detect";
-        h.Health.BlessIfAboveMa = 50;
+        h.SelfBuff("detect").OnlyWhenHpFull = true;
+        h.ManaFloor = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 80;
         h.State.MaxHp = 200;
@@ -4007,8 +3921,8 @@ public sealed class CastingDirectorTests
         // inherits that gate.
         using CureHarness h = new();
         h.State.InCombat = true;
-        h.Spells.WhenHpFullSpell = "detect";
-        h.Health.BlessIfAboveMa = 50;
+        h.SelfBuff("detect").OnlyWhenHpFull = true;
+        h.ManaFloor = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 80;
 
@@ -4025,8 +3939,8 @@ public sealed class CastingDirectorTests
         // the HP-at-max + spell-configured combo and don't fire
         // through the buff path before our explicit Evaluate().
         h.State.Hp = 150;
-        h.Spells.WhenHpFullSpell = "detect";
-        h.Health.BlessIfAboveMa = 50;
+        h.SelfBuff("detect").OnlyWhenHpFull = true;
+        h.ManaFloor = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 80;
 
@@ -4038,8 +3952,8 @@ public sealed class CastingDirectorTests
     public void Utility_WhenHpFullSpell_AlreadyActive_NoCast()
     {
         using CureHarness h = new();
-        h.Spells.WhenHpFullSpell = "detect";
-        h.Health.BlessIfAboveMa = 50;
+        h.SelfBuff("detect").OnlyWhenHpFull = true;
+        h.ManaFloor = 50;
         h.State.MaxMa = 100;
         h.State.Ma = 80;
         h.State.MaxHp = 200;
@@ -4103,6 +4017,8 @@ public sealed class CastingDirectorTests
         public SpellsSettings Spells { get; set; } = new();
         public HealthSettings Health { get; set; } = new();
         public PartySettings PartySettings { get; set; } = new();
+        // The director's clock: the real one unless a test sets its own.
+        public Func<DateTime> Clock { get; set; } = () => DateTime.UtcNow;
 
         public PartyHarness()
         {
@@ -4116,7 +4032,8 @@ public sealed class CastingDirectorTests
                 readHealth: () => Health,
                 readPartySettings: () => PartySettings,
                 isEnabled: () => true,
-                log: Log);
+                log: Log,
+                now: () => Clock());
             State.MaxHp = 200;
             State.Hp = 200;
             State.MaxMa = 100;
@@ -4464,17 +4381,6 @@ public sealed class CastingDirectorTests
     }
 
     [Fact]
-    public void PartyHeal_NoPartySettings_NoCast()
-    {
-        // Mirror real wiring with no PartyState reader — just falls
-        // through to other categories.
-        using PartyHarness h = new();
-        // No spells configured anywhere.
-        h.Director.Evaluate();
-        Assert.Empty(h.CastsSent);
-    }
-
-    [Fact]
     public void PartyHeal_BelowThresholdSingleConfigured_SinglePrefersAoeAtCount()
     {
         // Both single and AOE configured; only one member below
@@ -4553,7 +4459,7 @@ public sealed class CastingDirectorTests
     {
         using PartyHarness h = new();
         DateTime now = new(2026, 10, 3, 12, 0, 0, DateTimeKind.Utc);
-        h.Director.SetClock(() => now);
+        h.Clock = () => now;
         h.Spells.CurePoisonSpell = "mgra";
         PartyMember tank = h.AddMember("Tank", hpPercent: 100);
         PartyMember mage = h.AddMember("Mage", hpPercent: 100);
@@ -4711,39 +4617,57 @@ public sealed class CastingDirectorTests
         public PartyState Party { get; } = new();
         public CastCoordinator Cast { get; }
         public CastingDirector Director { get; }
+        // The game's output, fed the way the client receives it.
+        public ServerFeed Server { get; } = new();
         public List<string> CastsSent { get; } = new();
         public SpellsSettings Spells { get; set; } = new();
         public HealthSettings Health { get; set; } = new();
         public PartySettings PartySettings { get; set; } = new();
 
-        /// <summary>The party-buff plan the director reads (CharacterProfile.PartyBuffs).</summary>
+        // The party-buff plan the director reads (CharacterProfile.PartyBuffs).
         public BuffSettings PartyBuffs { get; } = new();
 
-        /// <summary>Set when a test gives each buff slot its own conditions. Otherwise
-        /// the harness mirrors the profile migration: the once-shared self and party
-        /// bless gates the older tests set are folded onto the slots.</summary>
-        public bool SlotsCarryTheirOwnGates { get; set; }
+        // The buffs' own conditions, set on every slot in the list and on each one
+        // SelfBuff adds after. Many tests give every buff the same mana floor or rest
+        // and combat switches; the Buffs tab sets them per slot.
+        private int _manaFloor = 70;
+        private bool _whileResting, _duringCombat;
+        public int ManaFloor { get => _manaFloor; set { _manaFloor = value; foreach (BuffSlot b in PartyBuffs.Slots) b.BlessIfAboveMa = value; } }
+        public bool WhileResting { get => _whileResting; set { _whileResting = value; foreach (BuffSlot b in PartyBuffs.Slots) b.BlessWhileResting = value; } }
+        public bool DuringCombat { get => _duringCombat; set { _duringCombat = value; foreach (BuffSlot b in PartyBuffs.Slots) b.BlessDuringCombat = value; } }
 
-        /// <summary>Given names currently in the room — the presence gate. AddMember
-        /// puts a member here by default; drop a name to model an absent member.</summary>
+        // A buff cast on ourselves, added to the list as the Buffs tab adds one.
+        public BuffSlot SelfBuff(string spell)
+        {
+            BuffSlot slot = new()
+            {
+                Spell = spell, CastOnSelf = true,
+                BlessIfAboveMa = _manaFloor, BlessWhileResting = _whileResting, BlessDuringCombat = _duringCombat,
+            };
+            PartyBuffs.Slots.Add(slot);
+            return slot;
+        }
+
+        // Given names currently in the room — the presence gate. AddMember
+        // puts a member here by default; drop a name to model an absent member.
         public HashSet<string> InRoom { get; } = new(StringComparer.OrdinalIgnoreCase);
 
-        /// <summary>Spell shorts that are whole-party (Targets 10/13).</summary>
+        // Spell shorts that are whole-party (Targets 10/13).
         public HashSet<string> WholeParty { get; } = new(StringComparer.OrdinalIgnoreCase);
 
-        /// <summary>When true the triggered-rest gate reports an active recovery
-        /// rest. A bare Position=Resting does NOT set this — idle resting still
-        /// buffs the party.</summary>
+        // When true the triggered-rest gate reports an active recovery
+        // rest. A bare Position=Resting does NOT set this — idle resting still
+        // buffs the party.
         public bool TriggeredRest { get; set; }
 
         public DateTime Now { get; set; } =
             new(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
-        /// <summary>Buff short → (CasterMessage template, duration seconds).</summary>
+        // Buff short → (CasterMessage template, duration seconds).
         public Dictionary<string, (string Caster, long Duration)> BuffInfo { get; } =
             new(StringComparer.OrdinalIgnoreCase);
 
-        /// <summary>Buff short → the shorts its spell removes (RemovesSpell).</summary>
+        // Buff short → the shorts its spell removes (RemovesSpell).
         public Dictionary<string, string[]> Removes { get; } =
             new(StringComparer.OrdinalIgnoreCase);
 
@@ -4763,8 +4687,9 @@ public sealed class CastingDirectorTests
                 readHealth: () => Health,
                 readPartySettings: () => PartySettings,
                 isEnabled: () => true,
-                log: Log);
-            Director.SetClock(() => Now);
+                log: Log,
+                now: () => Now);
+            Director.AttachLineExtractor(Server.Lines);
             Director.SetTriggeredRestGate(() => TriggeredRest);
             Director.SetBuffDurationSources(
                 code => BuffInfo.TryGetValue(code, out (string Caster, long Duration) info)
@@ -4774,11 +4699,7 @@ public sealed class CastingDirectorTests
                 _ => null,
                 removesShortsFor: code =>
                     Removes.TryGetValue(code, out string[]? v) ? v : System.Array.Empty<string>());
-            Director.SetPartyBuffSource(() =>
-            {
-                StampSharedBlessGates(PartyBuffs, Health, Spells, SlotsCarryTheirOwnGates, PartySettings);
-                return PartyBuffs;
-            });
+            Director.SetPartyBuffSource(() => PartyBuffs);
             Director.SetRoomPresenceCheck(g => InRoom.Contains(g));
             Director.SetPartyWideBuffCheck(s => WholeParty.Contains(s));
             Director.SetSpellNameLookup(code => SpellNames.TryGetValue(code, out string? n) ? n : null);
@@ -4806,7 +4727,7 @@ public sealed class CastingDirectorTests
             return m;
         }
 
-        /// <summary>A single-target slot that blesses the named members (given names).</summary>
+        // A single-target slot that blesses the named members (given names).
         public BuffSlot AddTargetSlot(string spell, params string[] targets)
         {
             BuffSlot slot = new() { Spell = spell };
@@ -4815,7 +4736,7 @@ public sealed class CastingDirectorTests
             return slot;
         }
 
-        /// <summary>A single-target slot that blesses every in-party, in-room member.</summary>
+        // A single-target slot that blesses every in-party, in-room member.
         public BuffSlot AddAllMembersSlot(string spell)
         {
             BuffSlot slot = new() { Spell = spell, AllMembers = true };
@@ -4823,7 +4744,7 @@ public sealed class CastingDirectorTests
             return slot;
         }
 
-        /// <summary>A whole-party slot (one cast, no target). on = WholePartyOn.</summary>
+        // A whole-party slot (one cast, no target). on = WholePartyOn.
         public BuffSlot AddWholePartySlot(string spell, bool on = true)
         {
             WholeParty.Add(spell);
@@ -4832,21 +4753,11 @@ public sealed class CastingDirectorTests
             return slot;
         }
 
-        /// <summary>Simulate a server line arriving on the wired
-        /// <see cref="LineExtractor"/> by invoking the director's private
-        /// OnLine handler directly (matches the ConditionTracker.OnLine
-        /// reflection idiom used elsewhere in this file).</summary>
-        public void Confirm(string casterLine)
-        {
-            var emitted = new LineExtractor.EmittedLine(
-                casterLine, Array.Empty<CellAttributes>(),
-                DateTimeOffset.UtcNow, IsPromptLine: false);
-            typeof(CastingDirector)
-                .GetMethod("OnLine",
-                    System.Reflection.BindingFlags.Instance |
-                    System.Reflection.BindingFlags.NonPublic)!
-                .Invoke(Director, new object[] { emitted });
-        }
+        // Simulate a server line arriving on the wired
+        // LineExtractor by invoking the director's private
+        // OnLine handler directly (matches the ConditionTracker.OnLine
+        // reflection idiom used elsewhere in this file).
+        public void Confirm(string casterLine) => Server.Line(casterLine);
 
         public void Dispose()
         {
@@ -4859,7 +4770,7 @@ public sealed class CastingDirectorTests
     public void PartyBless_SelectedMember_CastsOnMember()
     {
         using PartyBlessHarness h = new();
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         h.AddTargetSlot("bles", "Raijin");
         h.BuffInfo["bles"] = ("You cast {s} on {s}!", 300);
         h.AddMember("Raijin");
@@ -4876,7 +4787,7 @@ public sealed class CastingDirectorTests
         // Solo (IsInParty false) ⇒ the party-buff slots never fire, even with a lingering
         // member row — party buffs are used only alongside self buffs while in a party.
         using PartyBlessHarness h = new();
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         h.AddTargetSlot("bles", "Raijin");
         h.BuffInfo["bles"] = ("You cast {s} on {s}!", 300);
         h.AddMember("Raijin");
@@ -4892,7 +4803,7 @@ public sealed class CastingDirectorTests
     {
         // A member who isn't one of the slot's chosen targets is left alone.
         using PartyBlessHarness h = new();
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         h.AddTargetSlot("bles", "Raijin");   // only Raijin selected
         h.BuffInfo["bles"] = ("You cast {s} on {s}!", 300);
         h.AddMember("Goldar");               // Goldar isn't selected
@@ -4909,7 +4820,7 @@ public sealed class CastingDirectorTests
         // the room's "Also here:" list (e.g. the leader we follow is never listed
         // there). The old pre-emptive "Also here:" gate wrongly skipped them.
         using PartyBlessHarness h = new();
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         h.AddTargetSlot("bles", "Raijin");
         h.BuffInfo["bles"] = ("You cast {s} on {s}!", 300);
         h.AddMember("Raijin");
@@ -4927,7 +4838,7 @@ public sealed class CastingDirectorTests
         // A HIDING member answers "You do not see <name> here!" to our cast — back off
         // (no per-round spam) until we move, then retry.
         using PartyBlessHarness h = new();
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         h.AddTargetSlot("bles", "Raijin");
         h.BuffInfo["bles"] = ("You cast {s} on {s}!", 300);
         h.AddMember("Raijin");
@@ -4957,7 +4868,7 @@ public sealed class CastingDirectorTests
         // The other clear path: a backed-off hidden member is retried the moment they
         // reappear in "Also here:" (they unhid).
         using PartyBlessHarness h = new();
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         h.AddTargetSlot("bles", "Raijin");
         h.BuffInfo["bles"] = ("You cast {s} on {s}!", 300);
         h.AddMember("Raijin");
@@ -4994,7 +4905,7 @@ public sealed class CastingDirectorTests
         // "if we buff someone, and they're wearing something that negates it, that means
         // we can never buff them with that spell and shouldnt keep trying".
         using PartyBlessHarness h = new();
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         BuffSlot slot = h.AddTargetSlot("bles", "Raijin");
         h.BuffInfo["bles"] = ("You cast {s} on {s}!", 300);
         h.AddMember("Raijin");
@@ -5027,7 +4938,7 @@ public sealed class CastingDirectorTests
     {
         // The user unticks and re-ticks the member, which lifts the mark: re-armed.
         using PartyBlessHarness h = new();
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         BuffSlot slot = h.AddTargetSlot("bles", "Raijin");
         h.BuffInfo["bles"] = ("You cast {s} on {s}!", 300);
         h.AddMember("Raijin");
@@ -5049,7 +4960,7 @@ public sealed class CastingDirectorTests
         // A caster line that can't name the target times the buff from its send; the
         // negate line takes that timer back.
         using PartyBlessHarness h = new();
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         BuffSlot slot = h.AddTargetSlot("bles", "Raijin");
         h.BuffInfo["bles"] = ("You cast {spellname}!", 300);
         h.AddMember("Raijin");
@@ -5069,7 +4980,7 @@ public sealed class CastingDirectorTests
         // "a spell resist is not a negate. a negate specifically has the word negate/d
         // in the line." (user, 2026-10-17)
         using PartyBlessHarness h = new();
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         BuffSlot slot = h.AddTargetSlot("bles", "Raijin");
         h.BuffInfo["bles"] = ("You cast {s} on {s}!", 300);
         h.AddMember("Raijin");
@@ -5091,7 +5002,7 @@ public sealed class CastingDirectorTests
     {
         // The word has to be the line's own "it's negated!", not part of a spell's name.
         using PartyBlessHarness h = new();
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         h.SpellNames["nega"] = "negate magic";
         BuffSlot slot = h.AddTargetSlot("nega", "Raijin");
         h.BuffInfo["nega"] = ("You cast {s} on {s}!", 300);
@@ -5110,7 +5021,7 @@ public sealed class CastingDirectorTests
         // Passage's own holding breath, negated by a worn fish-helm, prints the same
         // caster line while our bless is out. It is not our cast.
         using PartyBlessHarness h = new();
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         BuffSlot slot = h.AddTargetSlot("bles", "Raijin");
         h.BuffInfo["bles"] = ("You cast {s} on {s}!", 300);
         h.AddMember("Raijin");
@@ -5127,7 +5038,7 @@ public sealed class CastingDirectorTests
     public void PartyBless_NegateLineTwoRoundsAfterOurCast_IsNotTiedToIt()
     {
         using PartyBlessHarness h = new();
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         BuffSlot slot = h.AddTargetSlot("bles", "Raijin");
         h.BuffInfo["bles"] = ("You cast {s} on {s}!", 300);
         h.AddMember("Raijin");
@@ -5143,7 +5054,7 @@ public sealed class CastingDirectorTests
     public void PartyBless_NegateLineNamingAnotherTarget_IsNotOurs()
     {
         using PartyBlessHarness h = new();
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         BuffSlot slot = h.AddTargetSlot("bles", "Raijin");
         h.BuffInfo["bles"] = ("You cast {s} on {s}!", 300);
         h.AddMember("Raijin");
@@ -5166,7 +5077,7 @@ public sealed class CastingDirectorTests
         // member stayed online, and its buff ran down the whole time (user,
         // 2026-08-28).
         using PartyBlessHarness h = new();
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         h.AddTargetSlot("bles", "Raijin");
         h.BuffInfo["bles"] = ("You cast {s} on {s}!", 300);
         h.BuffInfo["mysh"] = (string.Empty, 200);
@@ -5202,7 +5113,7 @@ public sealed class CastingDirectorTests
         // OUR death wipes OUR buffs only — self timers clear, the (alive) party member's
         // timer stays so we don't needlessly re-bless them.
         using PartyBlessHarness h = new();
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         h.AddTargetSlot("bles", "Raijin");
         h.BuffInfo["bles"] = ("You cast {s} on {s}!", 300);
         h.BuffInfo["mysh"] = (string.Empty, 200);
@@ -5226,7 +5137,7 @@ public sealed class CastingDirectorTests
     public void PartyBless_MemberLeft_TheirTimerIsDroppedOnceItRunsOut()
     {
         using PartyBlessHarness h = new();
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         h.AddTargetSlot("bles", "Raijin");
         h.BuffInfo["bles"] = ("You cast {s} on {s}!", 300);
         h.BuffInfo["mysh"] = (string.Empty, 200);
@@ -5255,7 +5166,7 @@ public sealed class CastingDirectorTests
     public void PartyBless_MemberStillInParty_TheirRunOutTimerIsKept()
     {
         using PartyBlessHarness h = new();
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         h.AddTargetSlot("bles", "Raijin");
         h.BuffInfo["bles"] = ("You cast {s} on {s}!", 300);
         h.AddMember("Raijin");
@@ -5275,7 +5186,7 @@ public sealed class CastingDirectorTests
     public void PartyBless_MemberListedByLongName_TheirRunOutTimerIsKept()
     {
         using PartyBlessHarness h = new();
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         h.AddTargetSlot("bles", "Raijin");
         h.BuffInfo["bles"] = ("You cast {s} on {s}!", 300);
         h.AddMember("RAIJIN WuzHere");
@@ -5295,7 +5206,7 @@ public sealed class CastingDirectorTests
     public void PartyBless_MemberInvitedNotYetJoined_TheirRunOutTimerIsKept()
     {
         using PartyBlessHarness h = new();
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         h.AddTargetSlot("bles", "Raijin");
         h.BuffInfo["bles"] = ("You cast {s} on {s}!", 300);
         PartyMember m = h.AddMember("Raijin");
@@ -5318,8 +5229,6 @@ public sealed class CastingDirectorTests
     public void PartyBless_NegativeMargin_MemberBrieflyOffRoster_RecastStillWaits()
     {
         using PartyBlessHarness h = new();
-        h.SlotsCarryTheirOwnGates = true;
-        h.Health.BlessIfAboveMa = 0;
         BuffSlot slot = h.AddTargetSlot("bles", "Raijin");
         slot.RecastMarginSec = -120;                 // recast two minutes after it runs out
         h.BuffInfo["bles"] = ("You cast {s} on {s}!", 300);
@@ -5353,7 +5262,7 @@ public sealed class CastingDirectorTests
     public void PartyBless_RemoverOnOneMember_LeavesItsVictimOnAnother()
     {
         using PartyBlessHarness h = new();
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         h.AddTargetSlot("smit", "Raijin");
         h.AddTargetSlot("grsm", "Goldar");
         h.BuffInfo["smit"] = ("You cast {s} on {s}!", 365);
@@ -5386,7 +5295,7 @@ public sealed class CastingDirectorTests
     public void PartyBless_RemoverOnAMember_LeavesOurOwnVictimBuff()
     {
         using PartyBlessHarness h = new();
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         h.AddTargetSlot("smit", "Raijin");
         h.BuffInfo["smit"] = ("You cast {s} on {s}!", 365);
         h.BuffInfo["grsm"] = (string.Empty, 365);
@@ -5404,7 +5313,7 @@ public sealed class CastingDirectorTests
     public void PartyBless_RemoverOnTheSameMember_ClearsItsVictimThere()
     {
         using PartyBlessHarness h = new();
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         h.AddTargetSlot("smit", "Raijin");
         h.AddTargetSlot("grsm", "Raijin");
         h.BuffInfo["smit"] = ("You cast {s} on {s}!", 365);
@@ -5429,7 +5338,7 @@ public sealed class CastingDirectorTests
         // A party member's death wipes THEIR buffs — clear the timers we hold on them;
         // every other member's timer stays.
         using PartyBlessHarness h = new();
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         h.AddAllMembersSlot("bles");
         h.BuffInfo["bles"] = ("You cast {s} on {s}!", 300);
         h.AddMember("Raijin");
@@ -5455,7 +5364,7 @@ public sealed class CastingDirectorTests
     {
         // The Buff Watchdog ✕: manually drop one (target, spell) timer, leaving the rest.
         using PartyBlessHarness h = new();
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         h.AddAllMembersSlot("bles");
         h.BuffInfo["bles"] = ("You cast {s} on {s}!", 300);
         h.AddMember("Raijin");
@@ -5480,7 +5389,7 @@ public sealed class CastingDirectorTests
     public void PartyBless_SkipsSelf()
     {
         using PartyBlessHarness h = new();
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         h.AddAllMembersSlot("bles");
         h.BuffInfo["bles"] = ("You cast {s} on {s}!", 300);
         PartyMember self = h.AddMember("Me");
@@ -5495,7 +5404,7 @@ public sealed class CastingDirectorTests
     public void PartyBless_WholeParty_CastsWithNoTarget()
     {
         using PartyBlessHarness h = new();
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         h.AddWholePartySlot("chan");
         h.AddMember("Raijin");
 
@@ -5509,7 +5418,7 @@ public sealed class CastingDirectorTests
     public void PartyBless_WholePartyOff_NoCast()
     {
         using PartyBlessHarness h = new();
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         h.AddWholePartySlot("chan", on: false);   // all-off
         h.AddMember("Raijin");
 
@@ -5524,7 +5433,7 @@ public sealed class CastingDirectorTests
         // Regression: the Solo option used to bypass the unchecked Party master and
         // cast every bulk-added whole-party buff while alone, draining the mana pool.
         using PartyBlessHarness h = new();
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         BuffSlot slot = h.AddWholePartySlot("chan", on: false);
         slot.CastSolo = true;
         h.Party.IsInParty = false;
@@ -5542,7 +5451,7 @@ public sealed class CastingDirectorTests
         // whole-party item-cast buff never fired outside a party). No members, no
         // IsInParty — the self-bless timing gates apply instead of the party ones.
         using PartyBlessHarness h = new();
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         h.AddWholePartySlot("chan");
         h.Party.IsInParty = false;
 
@@ -5556,10 +5465,10 @@ public sealed class CastingDirectorTests
     public void PartyBless_WholeParty_Solo_ObeysSelfCombatGate()
     {
         // Solo, the fallback is the SELF-bless timing gate, not an unconditional
-        // allow — in combat without SelfBlessDuringCombat it's held, same as any
+        // allow — in combat without the slot's "during combat" it's held, same as any
         // other self-cast buff.
         using PartyBlessHarness h = new();
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         h.AddWholePartySlot("chan");
         h.Party.IsInParty = false;
         h.State.InCombat = true;
@@ -5573,11 +5482,11 @@ public sealed class CastingDirectorTests
     public void PartyBless_WholeParty_Solo_SelfCombatGateOn_Casts()
     {
         using PartyBlessHarness h = new();
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         h.AddWholePartySlot("chan");
         h.Party.IsInParty = false;
         h.State.InCombat = true;
-        h.Spells.SelfBlessDuringCombat = true;
+        h.DuringCombat = true;
 
         h.Director.Evaluate();
 
@@ -5591,7 +5500,7 @@ public sealed class CastingDirectorTests
         // buff is party-only again and stays held while solo even though the self-bless
         // gate would otherwise allow it.
         using PartyBlessHarness h = new();
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         BuffSlot slot = h.AddWholePartySlot("chan");
         slot.CastSolo = false;
         h.Party.IsInParty = false;
@@ -5607,7 +5516,7 @@ public sealed class CastingDirectorTests
         // CastSolo only governs the SOLO case. In a party the whole-party cast rides
         // WholePartyOn + the party gate, so an unticked Solo box doesn't hold it.
         using PartyBlessHarness h = new();
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         BuffSlot slot = h.AddWholePartySlot("chan");
         slot.CastSolo = false;
         h.AddMember("Raijin");
@@ -5622,7 +5531,7 @@ public sealed class CastingDirectorTests
     public void PartyBless_ConfirmStartsTimer_NoImmediateRecast()
     {
         using PartyBlessHarness h = new();
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         h.AddTargetSlot("bles", "Raijin");
         h.BuffInfo["bles"] = ("You cast {s} on {s}!", 300);
         h.AddMember("Raijin");
@@ -5647,7 +5556,7 @@ public sealed class CastingDirectorTests
         // (off in normal play). It now lands on the always-on Info channel with the
         // effect duration and the recast lead (duration − 15s recast margin).
         using PartyBlessHarness h = new();
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         h.AddTargetSlot("bles", "Raijin");
         h.BuffInfo["bles"] = ("You cast {s} on {s}!", 300);
         h.AddMember("Raijin");
@@ -5670,7 +5579,7 @@ public sealed class CastingDirectorTests
         // Decision: no confirmation observed ⇒ no timer ⇒ re-attempt. The
         // CastCoordinator cooldown (cleared here) is the only spam guard.
         using PartyBlessHarness h = new();
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         h.AddTargetSlot("bles", "Raijin");
         h.BuffInfo["bles"] = ("You cast {s} on {s}!", 300);
         h.AddMember("Raijin");
@@ -5692,7 +5601,7 @@ public sealed class CastingDirectorTests
     public void PartyBless_RecastWithinExpiryWindow()
     {
         using PartyBlessHarness h = new();
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         h.AddTargetSlot("bles", "Raijin");
         h.BuffInfo["bles"] = ("You cast {s} on {s}!", 300);
         h.AddMember("Raijin");
@@ -5719,7 +5628,7 @@ public sealed class CastingDirectorTests
     {
         // Both members covered by one all-members slot — cycle blesses each in turn.
         using PartyBlessHarness h = new();
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         h.AddAllMembersSlot("bles");
         h.BuffInfo["bles"] = ("You cast {s} on {s}!", 300);
         h.AddMember("Raijin");
@@ -5753,7 +5662,7 @@ public sealed class CastingDirectorTests
         // Waiting for a line naming the member never armed a timer, so the first
         // member was cast on every round and the second never was.
         using PartyBlessHarness h = new();
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         h.AddAllMembersSlot("halo");
         h.BuffInfo["halo"] = ("You cast {spellname}!", 420);
         h.AddMember("Raijin");
@@ -5780,7 +5689,7 @@ public sealed class CastingDirectorTests
     public void PartyBless_NoCasterLineAtAll_IsTimedFromTheSend()
     {
         using PartyBlessHarness h = new();
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         h.AddTargetSlot("vlwa", "Raijin");
         h.BuffInfo["vlwa"] = (string.Empty, 300);
         h.AddMember("Raijin");
@@ -5801,7 +5710,7 @@ public sealed class CastingDirectorTests
     public void PartyBless_TimedFromTheSend_SaysSoOnTheInfoLog()
     {
         using PartyBlessHarness h = new();
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         h.AddTargetSlot("halo", "Raijin");
         h.BuffInfo["halo"] = ("You cast {spellname}!", 420);
         h.AddMember("Raijin");
@@ -5823,7 +5732,7 @@ public sealed class CastingDirectorTests
         // No line confirms this cast, so the game's refusal is the only word that
         // it never went on.
         using PartyBlessHarness h = new();
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         h.AddTargetSlot("halo", "Raijin");
         h.BuffInfo["halo"] = ("You cast {spellname}!", 420);
         h.AddMember("Raijin");
@@ -5844,7 +5753,7 @@ public sealed class CastingDirectorTests
     public void PartyBless_TimedFromTheSend_AMemberWeCannotSee_GivesTheTimerBack_AndBacksOff()
     {
         using PartyBlessHarness h = new();
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         h.AddTargetSlot("halo", "Raijin");
         h.BuffInfo["halo"] = ("You cast {spellname}!", 420);
         h.AddMember("Raijin");
@@ -5866,7 +5775,7 @@ public sealed class CastingDirectorTests
         // Minutes on, "You do not see Raijin here!" answers something else the user
         // typed. It isn't the reply to the cast, and the buff is still on.
         using PartyBlessHarness h = new();
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         h.AddTargetSlot("halo", "Raijin");
         h.BuffInfo["halo"] = ("You cast {spellname}!", 420);
         h.AddMember("Raijin");
@@ -5883,7 +5792,7 @@ public sealed class CastingDirectorTests
     {
         // Unchanged for the spells whose line does name the member: no line, no timer.
         using PartyBlessHarness h = new();
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         h.AddTargetSlot("bles", "Raijin");
         h.BuffInfo["bles"] = ("You cast {spellname} on {target}!", 300);
         h.AddMember("Raijin");
@@ -5923,29 +5832,13 @@ public sealed class CastingDirectorTests
     }
 
     [Fact]
-    public void PartyBless_DuringCombatOff_NoCast()
-    {
-        using PartyBlessHarness h = new();
-        h.PartySettings.BlessDuringCombat = false;
-        h.State.InCombat = true;
-        h.Health.BlessIfAboveMa = 0;
-        h.AddTargetSlot("bles", "Raijin");
-        h.BuffInfo["bles"] = ("You cast {s} on {s}!", 300);
-        h.AddMember("Raijin");
-
-        h.Director.Evaluate();
-        Assert.Empty(h.CastsSent);
-    }
-
-    [Fact]
     public void PartyBless_WhileRestingOff_NoCast()
     {
-        // A triggered recovery rest with the override off holds party-bless too.
+        // A triggered recovery rest holds a party buff whose own "while resting" is off.
         using PartyBlessHarness h = new();
-        h.PartySettings.BlessWhileResting = false;
         h.State.Position = PlayerPosition.Resting;
         h.TriggeredRest = true;                  // active recovery rest
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         h.AddTargetSlot("bles", "Raijin");
         h.BuffInfo["bles"] = ("You cast {s} on {s}!", 300);
         h.AddMember("Raijin");
@@ -5958,12 +5851,11 @@ public sealed class CastingDirectorTests
     public void PartyBless_IdleResting_Casts()
     {
         // Idle resting (Position=Resting, not a triggered recovery) still buffs the
-        // party even with the "while resting" override off (its new default).
+        // party even with the buff's own "while resting" off (its default).
         using PartyBlessHarness h = new();
-        h.PartySettings.BlessWhileResting = false;
         h.State.Position = PlayerPosition.Resting;
         h.TriggeredRest = false;                 // idle rest
-        h.Health.BlessIfAboveMa = 0;
+        h.ManaFloor = 0;
         h.AddTargetSlot("bles", "Raijin");
         h.BuffInfo["bles"] = ("You cast {s} on {s}!", 300);
         h.AddMember("Raijin");
@@ -5978,7 +5870,7 @@ public sealed class CastingDirectorTests
     {
         // Two buffs aimed at the same member mid-fight: the one with "cast during
         // combat" goes out, the other waits for the fight to end.
-        using PartyBlessHarness h = new() { SlotsCarryTheirOwnGates = true };
+        using PartyBlessHarness h = new();
         h.State.InCombat = true;
         h.PartyBuffs.Slots.Add(new BuffSlot { Spell = "prot", BlessIfAboveMa = 0, Targets = { "raijin" } });
         h.PartyBuffs.Slots.Add(new BuffSlot { Spell = "bles", BlessIfAboveMa = 0, Targets = { "raijin" }, BlessDuringCombat = true });
@@ -5994,7 +5886,7 @@ public sealed class CastingDirectorTests
     [Fact]
     public void PartyBless_RestSwitchIsPerBuff_OnlyTheTickedBuffGoesOutOnAMember()
     {
-        using PartyBlessHarness h = new() { SlotsCarryTheirOwnGates = true };
+        using PartyBlessHarness h = new();
         h.State.Position = PlayerPosition.Resting;
         h.TriggeredRest = true;
         h.PartyBuffs.Slots.Add(new BuffSlot { Spell = "prot", BlessIfAboveMa = 0, Targets = { "raijin" } });
@@ -6013,7 +5905,7 @@ public sealed class CastingDirectorTests
     {
         // Settings → Party's pair is unread: with both on there, a buff without its
         // own "cast during combat" still waits out the fight.
-        using PartyBlessHarness h = new() { SlotsCarryTheirOwnGates = true };
+        using PartyBlessHarness h = new();
         h.PartySettings.BlessDuringCombat = true;
         h.PartySettings.BlessWhileResting = true;
         h.State.InCombat = true;
@@ -6029,7 +5921,7 @@ public sealed class CastingDirectorTests
     [Fact]
     public void PartyBless_ManaFloorIsPerBuff_OnAMemberToo()
     {
-        using PartyBlessHarness h = new() { SlotsCarryTheirOwnGates = true };
+        using PartyBlessHarness h = new();
         h.State.Ma = 50;
         h.PartyBuffs.Slots.Add(new BuffSlot { Spell = "prot", BlessIfAboveMa = 80, Targets = { "raijin" } });
         h.PartyBuffs.Slots.Add(new BuffSlot { Spell = "bles", BlessIfAboveMa = 40, Targets = { "raijin" } });
@@ -6045,7 +5937,7 @@ public sealed class CastingDirectorTests
     [Fact]
     public void PartyBless_WholeParty_InAParty_FollowsTheBuffsOwnCombatSwitch()
     {
-        using PartyBlessHarness h = new() { SlotsCarryTheirOwnGates = true };
+        using PartyBlessHarness h = new();
         h.State.InCombat = true;
         h.AddWholePartySlot("chan");
         h.PartyBuffs.Slots[^1].BlessIfAboveMa = 0;
@@ -6057,24 +5949,6 @@ public sealed class CastingDirectorTests
         h.Director.Evaluate();
 
         Assert.Equal(new[] { "chan" }, h.CastsSent);
-    }
-
-    [Fact]
-    public void PartyBless_DuringCombatOn_Casts()
-    {
-        // "During combat" is an opt-in override (off by default) — turn it on and
-        // party-bless fires even in combat.
-        using PartyBlessHarness h = new();
-        h.PartySettings.BlessDuringCombat = true;
-        h.State.InCombat = true;
-        h.Health.BlessIfAboveMa = 0;
-        h.AddTargetSlot("bles", "Raijin");
-        h.BuffInfo["bles"] = ("You cast {s} on {s}!", 300);
-        h.AddMember("Raijin");
-
-        h.Director.Evaluate();
-        Assert.Single(h.CastsSent);
-        Assert.Equal("bles Raijin", h.CastsSent[0]);
     }
 
     // ----- Mana-regen reroll routes through the priority pass ----------

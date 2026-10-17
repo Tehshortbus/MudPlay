@@ -4,13 +4,11 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// <see cref="EquipmentSlotMap.InventorySlotForWornCode"/> turns an item's
-/// <c>Items.Worn</c> code into the InventoryManager location string, so the
-/// incremental "You are now wearing X." path can slot a freshly-worn piece by
-/// its real position. The string vocabulary must round-trip through
-/// <see cref="EquipmentSlotMap.FromWornString"/> back to the same slot.
-/// </summary>
+// EquipmentSlotMap.InventorySlotForWornCode turns an item's
+// Items.Worn code into the InventoryManager location string, so the
+// incremental "You are now wearing X." path can slot a freshly-worn piece by
+// its real position. The string vocabulary must round-trip through
+// EquipmentSlotMap.FromWornString back to the same slot.
 public sealed class EquipmentSlotMapTests
 {
     [Theory]
@@ -58,7 +56,9 @@ public sealed class EquipmentSlotMapTests
         // The Equipment Manager rows and the Item Finder trial slots both render in
         // DisplayOrder, so this pins the in-game "look" ordering the user asked for:
         // worn slots top-to-bottom, then Off-Hand / Weapon at the bottom, with the
-        // alternates mirroring that pairing right after.
+        // alternates mirroring that pairing right after. SlotForItem /
+        // InventorySlotForWornCode resolve a paired code to the first matching slot
+        // here, so each primary also comes before its pair-mate.
         EquipmentSlot[] expected =
         {
             EquipmentSlot.Head, EquipmentSlot.Ears, EquipmentSlot.Eyes, EquipmentSlot.Face,
@@ -73,17 +73,4 @@ public sealed class EquipmentSlotMapTests
         Assert.Equal(expected, EquipmentSlotMap.DisplayOrder);
     }
 
-    [Fact]
-    public void DisplayOrder_KeepsPrimaryBeforePairMate()
-    {
-        // SlotForItem / InventorySlotForWornCode resolve a paired code to the first
-        // matching slot in DisplayOrder, so each primary must precede its pair-mate.
-        var order = EquipmentSlotMap.DisplayOrder;
-        int Index(EquipmentSlot s) => order.ToList().IndexOf(s);
-
-        Assert.True(Index(EquipmentSlot.Wrist1)   < Index(EquipmentSlot.Wrist2));
-        Assert.True(Index(EquipmentSlot.Finger1)  < Index(EquipmentSlot.Finger2));
-        Assert.True(Index(EquipmentSlot.OffHand)  < Index(EquipmentSlot.AlternateOffHand));
-        Assert.True(Index(EquipmentSlot.Weapon)   < Index(EquipmentSlot.AlternateWeapon));
-    }
 }

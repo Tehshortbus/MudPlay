@@ -5,7 +5,6 @@ using MudPlay.Game;
 using MudPlay.Models.GameData;
 using MudPlay.Services;
 using MudPlay.Services.Patterns;
-using MudPlay.Terminal;
 using Xunit;
 
 namespace MudPlay.Tests;
@@ -25,6 +24,12 @@ public sealed class MessageCandidateReportReplayTests : IDisposable
     private readonly MessageStore _messages = new();
     private readonly MessageCandidateStore _candidates = new();
     private readonly MessageCandidateWatcher _watcher;
+    // The game's output, fed the way the client receives it.
+    private readonly ServerFeed _server;
+
+    // A catalogued line that comes well after the line before it: it releases a line
+    // held back as possible death flavour, as the next line of the game does.
+    private const string LaterKnownLine = "Raijin casts bless on Raijin!";
 
     public MessageCandidateReportReplayTests()
     {
@@ -58,6 +63,8 @@ public sealed class MessageCandidateReportReplayTests : IDisposable
                     "Fujin"  => true,   // Mystic — Kai magery
                     _        => null,
                 }));
+        _server = new ServerFeed(_router);
+        _watcher.AttachLineExtractor(_server.Lines);
         _watcher.NotifyInGame();
     }
 
@@ -69,17 +76,10 @@ public sealed class MessageCandidateReportReplayTests : IDisposable
 
     private void Feed(string text, bool flush = true)
     {
-        var emitted = new LineExtractor.EmittedLine(
-            text, Array.Empty<CellAttributes>(), DateTimeOffset.UtcNow, IsPromptLine: false);
-        Invoke("OnLine", emitted);
-        if (flush) Invoke("CommitPending");
+        DateTimeOffset at = DateTimeOffset.UtcNow;
+        _server.Line(text, at);
+        if (flush) _server.Line(LaterKnownLine, at.AddMinutes(1));
     }
-
-    private void Invoke(string method, params object[] args) =>
-        typeof(MessageCandidateWatcher)
-            .GetMethod(method,
-                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
-            .Invoke(_watcher, args);
 
     [Theory]
     // Party screen — read by PartyManager's block parser, not a router pattern.

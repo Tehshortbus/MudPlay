@@ -8,25 +8,23 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Unit coverage for <see cref="EventScheduler"/>'s connect / disconnect
-/// / prompt-observed lifecycle. Focused on the state-latch paths PR
-/// 8.2 ships — Logon-fires-on-first-prompt, Re-log latching across
-/// in-session disconnects, idempotence within a single in-game window,
-/// and Logoff dispatch via <see cref="EventManager.FireLogoffEvents"/>.
-/// AtTime + Every timer paths smoke-tested manually (DispatcherTimer
-/// needs an Avalonia dispatcher running, out of scope for these
-/// in-process tests).
-/// </summary>
+// Unit coverage for EventScheduler's connect / disconnect
+// / prompt-observed lifecycle. Focused on the state-latch paths PR
+// 8.2 ships — Logon-fires-on-first-prompt, Re-log latching across
+// in-session disconnects, idempotence within a single in-game window,
+// and Logoff dispatch via EventManager.FireLogoffEvents.
+// AtTime + Every timer paths smoke-tested manually (DispatcherTimer
+// needs an Avalonia dispatcher running, out of scope for these
+// in-process tests).
 public sealed class EventSchedulerTests
 {
-    /// <summary>Latin-1 bytes of a minimal MajorMUD status line — drives PromptObserved.</summary>
+    // Latin-1 bytes of a minimal MajorMUD status line — drives PromptObserved.
     private static readonly byte[] PromptBytes = Encoding.Latin1.GetBytes("[HP=100]: ");
 
     private static (EventManager events, EventScheduler scheduler, WirePromptScanner prompt,
-                    List<byte[]> sent) Build(Func<DateTime>? now = null)
+                    List<byte[]> sent) Build(Func<DateTime>? now = null, Func<DateTimeOffset>? eventsNow = null)
     {
-        EventManager events = new();
+        EventManager events = EventEngineHarness.ManagerWithoutGameData(now: eventsNow);
         WirePromptScanner prompt = new();
         EventScheduler scheduler = new(events, prompt, now: now);
         List<byte[]> sent = new();
@@ -37,7 +35,7 @@ public sealed class EventSchedulerTests
     private static (EventManager events, EventScheduler scheduler, WirePromptScanner prompt,
                     CleanupWarningWatcher cleanup, List<byte[]> sent) BuildWithCleanup()
     {
-        EventManager events = new();
+        EventManager events = EventEngineHarness.ManagerWithoutGameData();
         WirePromptScanner prompt = new();
         CleanupWarningWatcher cleanup = new();
         EventScheduler scheduler = new(events, prompt, cleanup);
@@ -63,9 +61,8 @@ public sealed class EventSchedulerTests
     [Fact]
     public void AfterAReconnect_TheWaitingEventRunsBeforeTheLogonEvent()
     {
-        var (events, scheduler, prompt, sent) = Build();
         DateTimeOffset now = new(2026, 10, 10, 18, 0, 0, TimeSpan.Zero);
-        events.Now = () => now;
+        var (events, scheduler, prompt, sent) = Build(eventsNow: () => now);
         ScheduledEvent hold = new() { Name = "hold", ActionType = EventActionType.Wait, WaitSeconds = 60, Then = EventThenType.Nothing };
         ScheduledEvent waiting = CommandEvent(EventTriggerType.Every, "stat", "waiting");
         waiting.Then = EventThenType.Resume;
@@ -346,19 +343,18 @@ public sealed class EventSchedulerTests
     [Fact]
     public void GetNextFire_AtTime_InGame_ReturnsNextOccurrence()
     {
-        var (events, scheduler, prompt, _) = Build();
+        DateTime now = new(2026, 10, 1, 9, 0, 0);
+        var (events, scheduler, prompt, _) = Build(now: () => now);
         ScheduledEvent at = AtTimeEvent("06:30");
         events.Add(at);
 
         scheduler.NotifyConnected();
         prompt.Append(PromptBytes);   // in-game.
 
-        DateTime? next = scheduler.GetNextFire(at);
-        Assert.NotNull(next);
-        Assert.Equal(6, next!.Value.Hour);
-        Assert.Equal(30, next.Value.Minute);
-        Assert.True(next.Value > DateTime.Now);
-        Assert.True(next.Value <= DateTime.Now.AddDays(1));
+        // 06:30 has passed today, so the next one is tomorrow's.
+        Assert.Equal(new DateTime(2026, 10, 2, 6, 30, 0), scheduler.GetNextFire(at));
+        now = new DateTime(2026, 10, 2, 5, 0, 0);
+        Assert.Equal(new DateTime(2026, 10, 2, 6, 30, 0), scheduler.GetNextFire(at));
     }
 
     [Fact]
@@ -390,7 +386,8 @@ public sealed class EventSchedulerTests
     [Fact]
     public void GetNextFire_Every_InGame_ReturnsTrackedDueTime()
     {
-        var (events, scheduler, prompt, _) = Build();
+        DateTime now = new(2026, 10, 1, 9, 0, 0);
+        var (events, scheduler, prompt, _) = Build(now: () => now);
         ScheduledEvent every = new()
         {
             Name = "every-30s",
@@ -405,12 +402,8 @@ public sealed class EventSchedulerTests
         scheduler.NotifyConnected();
         prompt.Append(PromptBytes);   // in-game → the Every-timer is armed at now + 30s.
 
-        DateTime? next = scheduler.GetNextFire(every);
-        Assert.NotNull(next);
-        // No dispatcher pumps these in-process tests, so the timer hasn't
-        // ticked — the due-time sits within (now, now + 30s].
-        Assert.True(next!.Value > DateTime.Now);
-        Assert.True(next.Value <= DateTime.Now.AddSeconds(30));
+        // The timer hasn't ticked, so the due time is one interval from arming.
+        Assert.Equal(now.AddSeconds(30), scheduler.GetNextFire(every));
     }
 
     private static ScheduledEvent EveryMinutes(string name, int minutes) =>

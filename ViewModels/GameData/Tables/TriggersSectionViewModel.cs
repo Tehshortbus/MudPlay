@@ -32,8 +32,6 @@ public sealed class TriggersSectionViewModel : GameDataTableSectionViewModel, IE
         "Enabled", "Name", "Scope", "Match", "Pattern", "Response",
     };
 
-    public override string SearchKeyColumn => "Name";
-
     // Engine-backed table — every row lives only at the Char tier, so the "Use" badge would
     // always read the same value.
     public override bool ShowUseColumn => false;

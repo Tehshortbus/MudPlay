@@ -10,10 +10,4 @@ namespace MudPlay.Game.Inventory;
 // live Readied/N counter: it equals the item's game-data UseCount / 10 at full
 // charge (torch 800 → 80, lantern 2400 → 240) and drains one point on a global
 // 30-second tick.
-public readonly record struct ReadiedLight(string Name, int Readied)
-{
-    // Estimated burn time left at 30 s per readied point. This is an upper
-    // bound: the first drop after lighting can land under 30 s (alignment to the
-    // global tick), so the true remaining time is within one tick of this.
-    public System.TimeSpan RemainingTime => System.TimeSpan.FromSeconds(Readied * 30);
-}
+public readonly record struct ReadiedLight(string Name, int Readied);

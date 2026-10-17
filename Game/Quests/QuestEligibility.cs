@@ -12,8 +12,7 @@ public readonly record struct QuestAvailabilityInfo(int Flag, int Step, string N
 // Resolves which quests are available to the character at a given level — the same
 // eligibility the Quest Status journal applies: a level gate of 1+ that's now met, the
 // character's class/race can do it, it's visible + unblocked, and it isn't already
-// complete. Kept separate from QuestAvailabilityAnnouncer so the announcer's crossing /
-// dedup logic can be unit-tested with a fake provider (a real crawl needs TBInfo data).
+// complete. Kept separate from QuestAvailabilityAnnouncer, which takes it as a provider.
 public static class QuestEligibility
 {
     public static IReadOnlyList<QuestAvailabilityInfo> Resolve(

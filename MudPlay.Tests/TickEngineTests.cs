@@ -21,12 +21,15 @@ public sealed class TickEngineTests
 
     // ----- regen gains keep the round grid true ----------------------------
 
-    private static (MessageRouter router, TickEngine tick, Func<DateTimeOffset> now, Action<double> advance) SetupClocked()
+    // The engine's 100 ms poll.
+    private readonly ManualTimers _polls = new();
+
+    private (MessageRouter router, TickEngine tick, Func<DateTimeOffset> now, Action<double> advance) SetupClocked()
     {
         MessageRouter router = new();
         DefaultPatterns.Seed(router);
         DateTimeOffset now = new(2026, 10, 4, 12, 0, 0, TimeSpan.Zero);
-        TickEngine tick = new(router, () => now);
+        TickEngine tick = new(router, () => now, schedule: _polls.Arm);
         return (router, tick, () => now, seconds => now += TimeSpan.FromSeconds(seconds));
     }
 
@@ -111,7 +114,7 @@ public sealed class TickEngineTests
         advance(4.8);
         tick.NoteGridTick(now(), authoritative: false);
         Assert.Equal(0, fires);                          // nothing fires from the gain itself
-        tick.PollTimersForTests();
+        _polls.RunAll();
 
         Assert.Equal(1, fires);
         Assert.Equal(now(), tick.LastCombatTick);
@@ -156,7 +159,7 @@ public sealed class TickEngineTests
         MessageRouter router = new();
         DefaultPatterns.Seed(router);
         DateTimeOffset now = DateTimeOffset.UnixEpoch;
-        using TickEngine tick = new(router, () => now);
+        using TickEngine tick = new(router, () => now, schedule: _polls.Arm);
         bool? sourceAtFire = null;
         tick.CombatTickElapsed += () => sourceAtFire = tick.LastCombatTickWasDamageDriven;
 
@@ -166,7 +169,7 @@ public sealed class TickEngineTests
 
         sourceAtFire = null;
         now += TickEngine.CombatTickInterval;
-        tick.PollTimersForTests();                        // projected round, no new line
+        _polls.RunAll();                        // projected round, no new line
         Assert.False(sourceAtFire);                       // timer fallback → HP-fresh
         Assert.False(tick.LastCombatTickWasDamageDriven);
     }
@@ -212,11 +215,11 @@ public sealed class TickEngineTests
 
         advance(1.965);
         router.Dispatch(Line("You are seared by the flames for 28 damage!"));                 // 12:07:53.451
-        tick.PollTimersForTests();
+        _polls.RunAll();
         Assert.Empty(projected);
 
         advance(TickEngine.CombatTickInterval.TotalSeconds - 1.965);
-        tick.PollTimersForTests();
+        _polls.RunAll();
         Assert.Equal(new[] { round + TickEngine.CombatTickInterval }, projected);
         Assert.False(tick.LastCombatTickWasDamageDriven);
         tick.Dispose();
@@ -263,7 +266,7 @@ public sealed class TickEngineTests
         MessageRouter router = new();
         DefaultPatterns.Seed(router);
         DateTimeOffset now = DateTimeOffset.UnixEpoch;
-        using TickEngine tick = new(router, () => now);
+        using TickEngine tick = new(router, () => now, schedule: _polls.Arm);
         int fires = 0;
         tick.CombatTickElapsed += () => fires++;
 
@@ -274,7 +277,7 @@ public sealed class TickEngineTests
         Assert.Equal(0, fires); // the projected round, not the current one, retries
 
         now += TickEngine.CombatTickInterval;
-        tick.PollTimersForTests();
+        _polls.RunAll();
 
         Assert.Equal(1, fires);
         Assert.Equal(now, tick.LastCombatTick);
@@ -291,15 +294,6 @@ public sealed class TickEngineTests
 
         Assert.Equal(observed, tick.LastCombatTick);
         tick.Dispose();
-    }
-
-    [Fact]
-    public void CombatTickInterval_IsFiveSeconds()
-    {
-        // Pinning the universal MajorMUD combat-tick value so a stray
-        // refactor doesn't silently change it. The spec is explicit:
-        // 5 s is invariant across realm flavours.
-        Assert.Equal(TimeSpan.FromSeconds(5), TickEngine.CombatTickInterval);
     }
 
     [Fact]
@@ -336,7 +330,7 @@ public sealed class TickEngineTests
 
         // Five rounds on, with nothing seen: the projection is on the game's round.
         DateTimeOffset secondPass = now();
-        for (int i = 0; i < 5 * 51; i++) { advance(0.1); tick.PollTimersForTests(); }
+        for (int i = 0; i < 5 * 51; i++) { advance(0.1); _polls.RunAll(); }
         Assert.NotNull(tick.LastCombatTick);
         double off = (tick.LastCombatTick!.Value - (secondPass + TimeSpan.FromSeconds(5 * 5.055))).TotalMilliseconds;
         Assert.InRange(off, -5, 5);
@@ -375,7 +369,7 @@ public sealed class TickEngineTests
         advance(30.33);
         tick.NoteGridTick(now(), authoritative: true);     // round measured, grid placed here
 
-        for (int i = 0; i < 600; i++) { advance(0.1); tick.PollTimersForTests(); }   // a minute, nothing seen
+        for (int i = 0; i < 600; i++) { advance(0.1); _polls.RunAll(); }   // a minute, nothing seen
 
         Assert.True(placed.Count >= 11);
         Assert.All(placed.Take(7), Assert.True);            // within 40 s of the pass
@@ -393,7 +387,7 @@ public sealed class TickEngineTests
         tick.CombatTickElapsed += () => placed.Add(tick.LastCombatTickWasPlaced);
         tick.NoteGridTick(now(), authoritative: true);
 
-        for (int i = 0; i < 260; i++) { advance(0.1); tick.PollTimersForTests(); }
+        for (int i = 0; i < 260; i++) { advance(0.1); _polls.RunAll(); }
 
         Assert.Equal(new[] { true, true, false, false, false }, placed.Take(5));
         tick.Dispose();

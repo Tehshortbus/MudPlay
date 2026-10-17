@@ -208,7 +208,6 @@ public sealed partial class MpImportReviewViewModel : ObservableObject, IDialogV
     // start room) and our converted loop (walked as the loop runner would) on the
     // Navigation map in two colours, so the steps where they part are visible.
     [ObservableProperty] private bool _displayOnMap;
-    public bool CanDisplayOnMap => _mapComparison is not null;
 
     partial void OnDisplayOnMapChanged(bool value)
     {

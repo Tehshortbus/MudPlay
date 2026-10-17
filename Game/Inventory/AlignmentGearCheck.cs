@@ -46,8 +46,6 @@ public sealed class AlignmentGearCheck
 
     public void SetWireSender(Action<byte[]> sender) => _wire.Bind(sender);
 
-    internal List<byte[]> LastSentForTests => _wire.LastSentForTests;
-
     // A block appeared, sets were edited, a profile loaded: check if the sets now
     // disagree with the record.
     public void RequestCheck() => _checkPending = true;

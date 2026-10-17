@@ -27,8 +27,6 @@ public sealed class MacrosSectionViewModel : GameDataTableSectionViewModel, IEdi
         "Enabled", "Key", "Command",
     };
 
-    public override string SearchKeyColumn => "Command";
-
     // Engine-backed table — every row lives only at the Char tier, so the "Use" badge would
     // always read the same value and just adds noise.
     public override bool ShowUseColumn => false;

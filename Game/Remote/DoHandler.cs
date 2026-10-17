@@ -60,9 +60,6 @@ public sealed class DoHandler : IDisposable
     // line the gate dropped holds nothing.
     public string? SendingFor { get; private set; }
 
-    // Test seam — most recent bytes the handler asked to write.
-    internal List<byte[]> LastSentForTests { get; } = new();
-
     public void Dispose()
     {
         if (_disposed) return;
@@ -83,7 +80,6 @@ public sealed class DoHandler : IDisposable
         // nothing outside plain ASCII goes out as given (WireText).
         string command = WireText.Ascii(string.Join(" ", ctx.Args));
         byte[] bytes = Encoding.Latin1.GetBytes(command + "\r");
-        LastSentForTests.Add(bytes);
         SendingFor = ctx.Sender;
         try { _wireSender(bytes); }
         finally { SendingFor = null; }

@@ -25,12 +25,6 @@ public sealed class DebugLogWriter : IDisposable, IAsyncDisposable
     // Topic tag from construction, surfaced for diagnostics.
     public string Topic { get; }
 
-    // True until Dispose / DisposeAsync closes the file.
-    public bool IsOpen
-    {
-        get { lock (_gate) { return _writer is not null; } }
-    }
-
     // Open a fresh log file for topic. The path is derived from
     // AppPaths.NewDebugLogFile and includes a timestamp so concurrent writers
     // for the same topic don't collide.
@@ -57,9 +51,6 @@ public sealed class DebugLogWriter : IDisposable, IAsyncDisposable
             _writer.WriteLine(message);
         }
     }
-
-    // Append a formatted line. Shorthand for WriteLine(string.Format(...)).
-    public void WriteLine(string format, params object?[] args) => WriteLine(string.Format(format, args));
 
     private void WriteHeader()
     {

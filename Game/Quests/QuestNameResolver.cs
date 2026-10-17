@@ -4,7 +4,7 @@ using MudPlay.Game.GameData;
 namespace MudPlay.Game.Quests;
 
 // Resolves a @quest argument to a quest-flag number, and a flag back to a friendly
-// display label. Pure/static so the matching rules are unit-tested without the wire.
+// display label. Pure/static.
 //
 // Resolution order (first hit wins): an explicit flag number, a curated alias (the
 // alignment quests the seed leaves unnamed — "good align" → 126), an exact name

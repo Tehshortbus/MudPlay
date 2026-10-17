@@ -12,6 +12,11 @@ namespace MudPlay.Tests;
 // step short of the lair until that cast is free.
 public sealed class LairEntryDebuffHoldTests
 {
+    // The hold stands outside a lair waiting, as the bug report's pending list
+    // tells it.
+    private static bool Waiting(LairEntryDebuffHold hold) =>
+        hold.DescribePending()?.StartsWith("waiting", StringComparison.Ordinal) == true;
+
     private sealed class Harness
     {
         public MovementCoordinator Coordinator { get; } = new();
@@ -228,7 +233,7 @@ public sealed class LairEntryDebuffHoldTests
         h.Coordinator.ParkHoldsForMasterSwitch();
         h.Poll();
 
-        Assert.False(h.Hold.IsWaiting);
+        Assert.False(Waiting(h.Hold));
         Assert.False(h.Hold.BlockingBuffs);
         Assert.DoesNotContain(MovementCoordinator.LairDebuffGate, h.Coordinator.ParkedGates);
     }
@@ -438,12 +443,12 @@ public sealed class LairEntryDebuffHoldTests
         Assert.False(h.Hold.BlockingOrdinaryBuffs);
         h.SetMana(80);                              // mana is there, but no step is taken mid-fight
         h.Poll();
-        Assert.True(h.Hold.IsWaiting);
+        Assert.True(Waiting(h.Hold));
         Assert.StartsWith("waiting (" + LairEntryDebuffModes.Label(mode) + "; a fight where it stands", h.Hold.Describe());
 
         h.InCombat = false;
         h.Poll();
-        Assert.False(h.Hold.IsWaiting);             // the fight is over: mana is there, in it goes
+        Assert.False(Waiting(h.Hold));             // the fight is over: mana is there, in it goes
 
         Harness gate = new() { SlotUsed = true };
         Assert.False(gate.Hold.ReadyToEnter(LairEntryDebuffMode.BlockSpells));
@@ -473,7 +478,7 @@ public sealed class LairEntryDebuffHoldTests
         h.Poll();
 
         Assert.False(h.Held);
-        Assert.False(h.Hold.IsWaiting);
+        Assert.False(Waiting(h.Hold));
         Assert.True(h.Hold.ReadyToEnter(mode, new RoomKey(1, 100)));
         Assert.Single(h.LoopLog, m => m.StartsWith("a monster is attacking at the door and the loop doesn't fight"));
         Assert.DoesNotContain("a fight at the door: buffs are free, the wait resumes after", h.LoopLog);
@@ -515,7 +520,7 @@ public sealed class LairEntryDebuffHoldTests
         h.SetMana(80);
         h.Poll();
         Assert.False(h.Hold.WaitingForMana);
-        Assert.False(h.Hold.IsWaiting);
+        Assert.False(Waiting(h.Hold));
     }
 
     // The same monster once something does fight it there (a rest that has to clear
@@ -531,7 +536,7 @@ public sealed class LairEntryDebuffHoldTests
         h.SlotUsed = false;
         h.Poll();
 
-        Assert.True(h.Hold.IsWaiting);              // no step mid-fight
+        Assert.True(Waiting(h.Hold));              // no step mid-fight
         Assert.False(h.Hold.BlockingBuffs);
         Assert.Contains("a fight at the door: buffs are free, the wait resumes after", h.LoopLog);
     }
@@ -910,7 +915,7 @@ public sealed class LairEntryDebuffHoldTests
         filling.ManaIsFull = true;                  // the game says so
         filling.Poll();
         Assert.False(filling.HeldForMana);
-        Assert.False(filling.Hold.IsWaiting);
+        Assert.False(Waiting(filling.Hold));
     }
 
     [Theory]

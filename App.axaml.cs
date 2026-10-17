@@ -61,10 +61,8 @@ public partial class App : Application
             MudPlay.Controls.DialogKeyboardFallthrough.Install(mainWindow);
 
             // DialogService parents every modeless dialog to the main window so
-            // closing main tears down its children. FloatingPanelHost owns the
-            // floating panel windows with the same parenting story.
+            // closing main tears down its children.
             AppServices.Current.Dialogs.SetMainWindow(mainWindow);
-            AppServices.Current.Panels.SetOwnerWindow(mainWindow);
 
             // Per-record edit dialogs — Messages tab + Monsters tab.
             AppServices.Current.Dialogs.RegisterWindow<

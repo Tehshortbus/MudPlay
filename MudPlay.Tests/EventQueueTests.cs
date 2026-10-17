@@ -17,7 +17,7 @@ namespace MudPlay.Tests;
 // says when the way back is refused (report paradigm-20261009-220128).
 public sealed class EventQueueTests : IDisposable
 {
-    private const string TestBbs = "test-event-queue";
+    private const string TestLoopSet = "test-event-queue";
 
     private readonly string _root;
 
@@ -31,11 +31,11 @@ public sealed class EventQueueTests : IDisposable
     {
         try { Directory.Delete(_root, recursive: true); }
         catch { /* best-effort */ }
-        try { Directory.Delete(AppPaths.BbsFolder(TestBbs), recursive: true); }
+        try { Directory.Delete(AppPaths.GameDataSetDir(TestLoopSet), recursive: true); }
         catch { /* best-effort */ }
     }
 
-    private Harness NewHarness() => Harness.Create(_root, TestBbs);
+    private Harness NewHarness() => Harness.Create(_root, TestLoopSet);
 
     private static readonly RoomKey A = new(1, 1);
     private static readonly RoomKey B = new(1, 2);
@@ -382,7 +382,7 @@ public sealed class EventQueueTests : IDisposable
     {
         using Harness h = NewHarness();
         DateTimeOffset now = new(2026, 10, 10, 9, 0, 0, TimeSpan.Zero);
-        h.Events.Now = () => now;
+        h.EventsNow = () => now;
         h.Profile.Current!.EventQueueLimit = 1;
         h.Profile.Current!.EventQueueWaitMinutes = 5;
         h.Tracker.SetLocated(A);
@@ -503,7 +503,7 @@ public sealed class EventQueueTests : IDisposable
     {
         using Harness h = NewHarness();
         DateTimeOffset now = new(2026, 10, 10, 18, 0, 0, TimeSpan.Zero);
-        h.Events.Now = () => now;
+        h.EventsNow = () => now;
         bool off = false;
         h.Events.IsMasterSwitchOff = () => off;
         h.Tracker.SetLocated(A);
@@ -558,7 +558,7 @@ public sealed class EventQueueTests : IDisposable
     private HeldQueue WithWaiting(Harness h, params string[] waiting)
     {
         HeldQueue q = new() { H = h };
-        h.Events.Now = () => q.Now;
+        h.EventsNow = () => q.Now;
         h.Events.IsMasterSwitchOff = () => q.Off;
         h.Events.BlockedByMasterSwitch = _ => q.Off;
         h.Events.QueueChoiceNeeded += () => q.Asked++;
@@ -584,7 +584,7 @@ public sealed class EventQueueTests : IDisposable
         q.SwitchOn();
 
         Assert.Equal(0, q.Asked);
-        Assert.False(h.Events.QueueChoicePending);
+        Assert.DoesNotContain("waiting for your choice", h.Events.QueueSummary);
         Assert.Contains("'first' WalkTo", h.Events.RunSummary);
         Assert.Contains("'second'", h.Events.QueueSummary);
     }
@@ -602,7 +602,7 @@ public sealed class EventQueueTests : IDisposable
         q.SwitchOn();
 
         Assert.Equal(1, q.Asked);
-        Assert.True(h.Events.QueueChoicePending);
+        Assert.Contains("waiting for your choice", h.Events.QueueSummary);
         Assert.Equal("(none)", h.Events.RunSummary);     // the kept completion ran; nothing took its place
         Assert.Contains("'first'", h.Events.QueueSummary);
         Assert.Contains("waiting for your choice (held 6 min by the master switch)", h.Events.QueueSummary);
@@ -634,7 +634,7 @@ public sealed class EventQueueTests : IDisposable
 
         h.Events.ResolveQueueChoice(new[] { Named(h, "third"), Named(h, "first") });
 
-        Assert.False(h.Events.QueueChoicePending);
+        Assert.DoesNotContain("waiting for your choice", h.Events.QueueSummary);
         Assert.Contains("'first' WalkTo", h.Events.RunSummary);
         Assert.Contains("'third'", h.Events.QueueSummary);
         Assert.DoesNotContain("'second'", h.Events.QueueSummary);
@@ -711,7 +711,7 @@ public sealed class EventQueueTests : IDisposable
 
         h.Events.DropQueueChoice(EventManager.PromptClosedUnanswered);
 
-        Assert.False(h.Events.QueueChoicePending);
+        Assert.DoesNotContain("waiting for your choice", h.Events.QueueSummary);
         Assert.Equal("(empty)", h.Events.QueueSummary);
         Assert.Equal(2, h.EventLog.Count(l => l.Contains("the Waiting Events window was closed without an answer")));
         Assert.Equal("[2 waiting event(s) dropped: the Waiting Events window was closed without an answer]",
@@ -758,7 +758,7 @@ public sealed class EventQueueTests : IDisposable
         h.Events.NoteMasterSwitchChanged(remote: true);
 
         Assert.Equal(0, q.Asked);
-        Assert.False(h.Events.QueueChoicePending);
+        Assert.DoesNotContain("waiting for your choice", h.Events.QueueSummary);
         Assert.Equal("(none)", h.Events.RunSummary);
         Assert.Equal("(empty)", h.Events.QueueSummary);
         Assert.Equal(2, h.EventLog.Count(l => l.Contains("switched back on remotely after more than 5 minutes off")));
@@ -885,11 +885,11 @@ public sealed class EventQueueTests : IDisposable
         q.SwitchOff();
         q.Now += TimeSpan.FromMinutes(10);
         q.SwitchOn();                           // 'running' still walks; 'first' awaits the choice
-        Assert.True(h.Events.QueueChoicePending);
+        Assert.Contains("waiting for your choice", h.Events.QueueSummary);
 
         h.Walker.Stop("user stop from toolbar");
 
-        Assert.False(h.Events.QueueChoicePending);
+        Assert.DoesNotContain("waiting for your choice", h.Events.QueueSummary);
         Assert.Equal(1, q.Withdrawn);
         Assert.Equal("(empty)", h.Events.QueueSummary);
     }
@@ -903,7 +903,7 @@ public sealed class EventQueueTests : IDisposable
     {
         using Harness h = NewHarness();
         HeldQueue q = new() { H = h };
-        h.Events.Now = () => q.Now;
+        h.EventsNow = () => q.Now;
         h.Events.IsMasterSwitchOff = () => q.Off;
         h.Events.QueueChoiceNeeded += () => q.Asked++;
         h.Tracker.SetLocated(A);
@@ -922,7 +922,7 @@ public sealed class EventQueueTests : IDisposable
 
         Assert.Equal("(none)", h.Events.RunSummary);
         Assert.Contains("'first'", h.Events.QueueSummary);
-        Assert.True(h.Events.QueueChoicePending);
+        Assert.Contains("waiting for your choice", h.Events.QueueSummary);
         Assert.Contains(h.EventLog, l => l.Contains("its Then event 'first' is waiting for the user's choice"));
 
         h.Events.ResolveQueueChoice(new[] { Named(h, "first") });
@@ -968,7 +968,7 @@ public sealed class EventQueueTests : IDisposable
     {
         using Harness h = NewHarness();
         HeldQueue q = new() { H = h };
-        h.Events.Now = () => q.Now;
+        h.EventsNow = () => q.Now;
         h.Events.IsMasterSwitchOff = () => q.Off;
         h.Events.QueueChoiceNeeded += () => q.Asked++;
         h.Tracker.SetLocated(A);
@@ -994,7 +994,7 @@ public sealed class EventQueueTests : IDisposable
     {
         using Harness h = NewHarness();
         DateTimeOffset now = new(2026, 10, 9, 18, 0, 0, TimeSpan.Zero);
-        h.Events.Now = () => now;
+        h.EventsNow = () => now;
         h.Tracker.SetLocated(A);
         h.Events.Fire(Add(h, WalkTo("stuck", C, EventThenType.Nothing)));
         h.Events.Fire(Add(h, WalkTo("stale", B, EventThenType.Nothing)));
@@ -1240,7 +1240,7 @@ public sealed class EventQueueTests : IDisposable
     {
         using Harness h = NewHarness();
         DateTimeOffset now = new(2026, 10, 9, 18, 0, 0, TimeSpan.Zero);
-        h.Events.Now = () => now;
+        h.EventsNow = () => now;
         h.Tracker.SetLocated(A);
         h.Coordinator.AssertGate(MovementCoordinator.AutoAllGate, "test");
 
@@ -1302,7 +1302,7 @@ public sealed class EventQueueTests : IDisposable
     // The user starts the loop in the study; the boss event walks out to the city.
     private Harness StudyHarness(params (RoomKey From, RoomKey To)[] allowedTeleports)
     {
-        Harness h = Harness.Create(_root, TestBbs, StudyGraphJson, StudyTbinfoJson, loopWalksItself: true);
+        Harness h = Harness.Create(_root, TestLoopSet, StudyGraphJson, StudyTbinfoJson, loopWalksItself: true);
         h.Walker.SetTeleportResolver((_, _) => "pull book");
         HashSet<(RoomKey From, RoomKey To)> allowed = new(allowedTeleports);
         h.Walker.SetAutomaticWalkTeleports(() => allowed);

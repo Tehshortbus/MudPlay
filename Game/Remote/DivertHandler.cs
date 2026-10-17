@@ -34,12 +34,6 @@ public sealed class DivertHandler : IDisposable
     private string? _target;
     private bool _disposed;
 
-    // Test seam — current divert target given name (or null).
-    internal string? TargetForTests => _target;
-
-    // Test-visible record of every forwarded wire payload.
-    internal List<byte[]> LastSentForTests { get; } = new();
-
     public DivertHandler(RemoteCommandManager engine, ChatRouter chat)
     {
         ArgumentNullException.ThrowIfNull(engine);
@@ -117,7 +111,6 @@ public sealed class DivertHandler : IDisposable
         // Latin-1 would land on the target's CP437 screen as a different glyph.
         string wire = $"/{given} {WireText.Ascii(sender)} telepathed: {WireText.Ascii(message)}";
         byte[] bytes = Encoding.Latin1.GetBytes(wire + "\r");
-        LastSentForTests.Add(bytes);
         _wireSender(bytes);
     }
 

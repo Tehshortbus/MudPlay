@@ -52,7 +52,6 @@ public sealed class RoomBuffStripIndexTests : IDisposable
             """ [ { "Number": 700, "Abil-0": 122, "AbilVal-0": 55 } ] """);
 
         Assert.True(idx.StripsBuffs(700));
-        Assert.Equal(1, idx.StripSpellCount);
     }
 
     [Fact]
@@ -75,7 +74,6 @@ public sealed class RoomBuffStripIndexTests : IDisposable
             """ [ { "Number": 700, "Abil-0": 18, "AbilVal-0": 30 } ] """);
 
         Assert.False(idx.StripsBuffs(700));
-        Assert.Equal(0, idx.StripSpellCount);
     }
 
     [Fact]
@@ -105,7 +103,6 @@ public sealed class RoomBuffStripIndexTests : IDisposable
 
         Assert.True(idx.StripsBuffs(700));
         Assert.False(idx.StripsBuffs(800));
-        Assert.Equal(1, idx.StripSpellCount);
     }
 
     [Fact]
@@ -124,10 +121,9 @@ public sealed class RoomBuffStripIndexTests : IDisposable
         RoomBuffStripIndex idx = NewIndex(
             Room(700),
             """ [ { "Number": 700, "Abil-0": 122, "AbilVal-0": 55 } ] """);
-        Assert.Equal(1, idx.StripSpellCount);
+        Assert.True(idx.StripsBuffs(700));
 
         idx.OnActiveSetChanged(null);
-        Assert.Equal(0, idx.StripSpellCount);
         Assert.False(idx.StripsBuffs(700));
     }
 }

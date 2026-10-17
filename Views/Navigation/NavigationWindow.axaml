@@ -690,13 +690,13 @@
                             IsVisible="{Binding MapExpanded}">
                     <!-- Clear all — wipes every selected step from the current
                          loop-build session so the user can start fresh (or clear
-                         the last-loop the Loop chip pre-loaded). Loop-build only:
-                         shown throughout the mode, enabled once there's a step to
-                         clear. Sits left of Save. -->
+                         the last-loop the Loop chip pre-loaded), or every lair
+                         marked in Lair build. Shown throughout either build mode,
+                         enabled once there's something to clear. Sits left of Save. -->
                     <Button Classes="ActionChip"
                             Content="Clear all"
-                            ToolTip.Tip="Remove every selected step from the loop you're building."
-                            IsVisible="{Binding IsLoopMode}"
+                            ToolTip.Tip="{Binding ClearBuilderTip}"
+                            IsVisible="{Binding ShowClearBuilder}"
                             Command="{Binding ClearBuilderCommand}"
                             IsEnabled="{Binding CanClearBuilder}"/>
 

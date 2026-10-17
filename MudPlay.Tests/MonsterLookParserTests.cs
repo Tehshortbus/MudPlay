@@ -5,6 +5,9 @@ namespace MudPlay.Tests;
 
 public sealed class MonsterLookParserTests
 {
+    // The game's output, fed the way the client receives it.
+    private readonly ServerFeed _feed = new();
+
     // ---- Band math (EstimateHp) --------------------------------------------
 
     // The full wound ladder for a 70-HP cave worm, validated live against the
@@ -100,16 +103,16 @@ public sealed class MonsterLookParserTests
         => Assert.False(MonsterLookParser.TryParseWoundLine(
             "This slimy creature oozes across the floor.", out _));
 
-    // ---- End-to-end via the Feed hook --------------------------------------
+    // ---- End-to-end through the client's input path ------------------------
 
-    private static MonsterLookParser Build(
+    private MonsterLookParser Build(
         Func<string, int?> resolve,
         Func<int, int?> maxHp,
         out List<MonsterLookObserved> observed)
     {
         var captured = new List<MonsterLookObserved>();
         var p = new MonsterLookParser(
-            lines: new Terminal.LineExtractor(new Terminal.TerminalEmulator(80, 25)),
+            lines: _feed.Lines,
             resolveMonsterNumber: resolve,
             maxHpForNumber: maxHp);
         p.TargetObserved += o => captured.Add(o);
@@ -129,11 +132,11 @@ public sealed class MonsterLookParserTests
             maxHp:   n => n == 8 ? 70 : null,
             out List<MonsterLookObserved> observed);
 
-        p.Feed("[HP=100]:", isPrompt: true);
-        p.Feed("look ca");
-        p.Feed("cave worm");
-        p.Feed("A large pale worm burrows through the cave wall.");
-        p.Feed("It appears to be heavily wounded.");
+        _feed.Line("[HP=100]:");
+        _feed.Line("look ca");
+        _feed.Line("cave worm");
+        _feed.Line("A large pale worm burrows through the cave wall.");
+        _feed.Line("It appears to be heavily wounded.");
 
         MonsterLookObserved obs = Assert.Single(observed);
         Assert.Equal("cave worm", obs.Name);
@@ -150,9 +153,9 @@ public sealed class MonsterLookParserTests
 
         // Name buffered, then a fresh prompt wipes the block before any wound
         // line arrives — the later wound line has no name to resolve against.
-        p.Feed("cave worm");
-        p.Feed("[HP=100]:", isPrompt: true);
-        p.Feed("It appears to be heavily wounded.");
+        _feed.Line("cave worm");
+        _feed.Line("[HP=100]:");
+        _feed.Line("It appears to be heavily wounded.");
 
         Assert.Empty(observed);
     }
@@ -165,9 +168,9 @@ public sealed class MonsterLookParserTests
             maxHp:   _ => null,
             out List<MonsterLookObserved> observed);
 
-        p.Feed("[HP=100]:", isPrompt: true);
-        p.Feed("[ MudPlay WuzHere ]");
-        p.Feed("MudPlay is a wiry Dark-Elf Mystic.  He is unwounded.");
+        _feed.Line("[HP=100]:");
+        _feed.Line("[ MudPlay WuzHere ]");
+        _feed.Line("MudPlay is a wiry Dark-Elf Mystic.  He is unwounded.");
 
         Assert.Empty(observed);
     }
@@ -180,10 +183,10 @@ public sealed class MonsterLookParserTests
             maxHp:   _ => 70,
             out List<MonsterLookObserved> observed);
 
-        p.Feed("[HP=100]:", isPrompt: true);
-        p.Feed("look zz");
-        p.Feed("shimmering wisp");
-        p.Feed("It appears to be heavily wounded.");
+        _feed.Line("[HP=100]:");
+        _feed.Line("look zz");
+        _feed.Line("shimmering wisp");
+        _feed.Line("It appears to be heavily wounded.");
 
         Assert.Empty(observed);
     }
@@ -198,9 +201,9 @@ public sealed class MonsterLookParserTests
             maxHp:   _ => null,
             out List<MonsterLookObserved> observed);
 
-        p.Feed("[HP=100]:", isPrompt: true);
-        p.Feed("cave worm");
-        p.Feed("It appears to be heavily wounded.");
+        _feed.Line("[HP=100]:");
+        _feed.Line("cave worm");
+        _feed.Line("It appears to be heavily wounded.");
 
         Assert.Empty(observed);
     }

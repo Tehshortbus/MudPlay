@@ -23,7 +23,7 @@ namespace MudPlay.Services;
 // stalled, a network folder gone quiet) the oldest waiting entries make room for
 // the newest, and the file says how many went when writing resumes. A failure
 // nothing here expects is noted once in the program log, the file is closed, and
-// the writing is tried again after RetryDelay: the pump itself never ends before
+// the writing is tried again after a retry delay: the pump itself never ends before
 // the client does.
 //
 // Not written while Auto-collect logs is on: the full program log is then on
@@ -86,21 +86,23 @@ public sealed class RecentLogFile : IAsyncDisposable
 
     // How long the pump waits after a failure it didn't expect before it writes
     // again.
-    internal TimeSpan RetryDelay { get; set; } = TimeSpan.FromSeconds(5);
+    private readonly TimeSpan _retryDelay;
 
     private readonly record struct Item(LogEntry? Entry, TaskCompletionSource? Barrier);
 
     // pathA / pathB: the two files. header: the lines each file opens with.
-    // open: how a file is opened for writing from empty (a seam for tests).
+    // open: how a file is opened for writing from empty.
     public RecentLogFile(
         LogService log,
         LogDiagnosticState diagnostics,
         string pathA,
         string pathB,
         Func<IReadOnlyList<string>> header,
-        Func<string, TextWriter>? open = null)
+        Func<string, TextWriter>? open = null,
+        TimeSpan? retryDelay = null)
     {
         _log = log ?? throw new ArgumentNullException(nameof(log));
+        _retryDelay = retryDelay ?? TimeSpan.FromSeconds(5);
         _diagnostics = diagnostics ?? throw new ArgumentNullException(nameof(diagnostics));
         ArgumentException.ThrowIfNullOrEmpty(pathA);
         ArgumentException.ThrowIfNullOrEmpty(pathB);
@@ -207,8 +209,8 @@ public sealed class RecentLogFile : IAsyncDisposable
             Close();
             _reopenedAfter = unexpected.GetType().Name;
             NoteFailureOnce($"the last-minutes log file could not be written ({unexpected.GetType().Name}: {unexpected.Message}); "
-                + $"it is tried again every {RetryDelay.TotalSeconds:0.#} s, and this is the only notice of it");
-            try { await Task.Delay(RetryDelay, _stopping.Token).ConfigureAwait(false); }
+                + $"it is tried again every {_retryDelay.TotalSeconds:0.#} s, and this is the only notice of it");
+            try { await Task.Delay(_retryDelay, _stopping.Token).ConfigureAwait(false); }
             catch (OperationCanceledException) { /* the client is closing: write what is left, once, and end */ }
         }
         Close();

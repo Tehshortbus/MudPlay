@@ -121,5 +121,4 @@ public sealed class RealmProfile
     // back to "runic". Consumed via CurrencyNaming.
     public string RunicCurrencyName { get; set; } = "runic";
 
-    public RealmProfile Clone() => (RealmProfile)MemberwiseClone();
 }

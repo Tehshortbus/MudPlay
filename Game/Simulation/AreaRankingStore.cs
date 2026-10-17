@@ -40,9 +40,10 @@ public sealed class AreaRankingStore
     // Least recently made or shown first.
     private readonly List<(SimulatorOwner Owner, AreaRanking Ranking)> _kept = new();
 
-    private readonly AreaRankingFiles? _files;
+    private readonly AreaRankingFiles _files;
     private readonly Action<Action> _post;
     private readonly LogService? _log;
+    private readonly Action<Action>? _runFileWork;
     private readonly object _ioLock = new();
     private Task _io = Task.CompletedTask;
     // Moves with every forget and rename; see Load.
@@ -54,13 +55,18 @@ public sealed class AreaRankingStore
     private readonly List<string> _diskNotes = new();
     private const int MaxDiskNotes = 12;
 
-    // files null: nothing is kept on disk. post hands what a read found back to the
-    // UI thread.
-    public AreaRankingStore(AreaRankingFiles? files = null, Action<Action>? post = null, LogService? log = null)
+    // post hands what a read found back to the UI thread. runFileWork runs a piece
+    // of file work; left out, the work is queued off the calling thread, each piece
+    // after the one before.
+    public AreaRankingStore(AreaRankingFiles files, Action<Action> post, LogService? log = null,
+        Action<Action>? runFileWork = null)
     {
+        ArgumentNullException.ThrowIfNull(files);
+        ArgumentNullException.ThrowIfNull(post);
         _files = files;
-        _post = post ?? (act => act());
+        _post = post;
         _log = log;
+        _runFileWork = runFileWork;
     }
 
     public int Count => _kept.Count;
@@ -94,7 +100,7 @@ public sealed class AreaRankingStore
                 _epoch++;
                 _kept.RemoveAt(at);
                 _madeBeforeReload.Remove(found.Ranking);
-                if (_files is { } files) Enqueue(() => files.Delete(owner));
+                Enqueue(() => _files.Delete(owner));
                 Note($"the saved area ranking for {owner.Label} was dropped: {why}");
                 return null;
             }
@@ -122,10 +128,10 @@ public sealed class AreaRankingStore
     {
         ArgumentNullException.ThrowIfNull(ranking);
         SimulatorOwner? dropped = Hold(owner, ranking);
-        if (_files is { } files && HasFile(owner))
+        if (HasFile(owner))
             Enqueue(() =>
             {
-                (string? error, long bytes) = files.Write(owner, ranking);
+                (string? error, long bytes) = _files.Write(owner, ranking);
                 _post(() => Wrote(owner, ranking, error, bytes));
             });
         return dropped;
@@ -186,12 +192,12 @@ public sealed class AreaRankingStore
     {
         ArgumentNullException.ThrowIfNull(worldNow);
         ArgumentNullException.ThrowIfNull(found);
-        if (_files is not { } files || !HasFile(owner)) return;
+        if (!HasFile(owner)) return;
         long epoch = _epoch;
         long loadsBegun = LoadsBegun(owner.Set);
         Enqueue(() =>
         {
-            AreaRankingFiles.ReadResult read = files.Read(owner, worldNow);
+            AreaRankingFiles.ReadResult read = _files.Read(owner, worldNow);
             _post(() =>
             {
                 if (read.Dropped is { } why)
@@ -218,7 +224,7 @@ public sealed class AreaRankingStore
     {
         _epoch++;
         _kept.RemoveAll(k => k.Owner == owner);
-        if (_files is { } files) Enqueue(() => files.Delete(owner));
+        Enqueue(() => _files.Delete(owner));
     }
 
     // A character is now known as to (it was renamed or moved to another BBS, or
@@ -246,7 +252,7 @@ public sealed class AreaRankingStore
             _kept[i] = (_kept[i].Owner with { Character = to }, _kept[i].Ranking);
             if (!capitalsOnly) carried++;
         }
-        if (_files is { } files) Enqueue(() => files.MoveCharacter(from, to));
+        Enqueue(() => _files.MoveCharacter(from, to));
         return carried;
     }
 
@@ -257,7 +263,7 @@ public sealed class AreaRankingStore
         if (character is null) return;
         _epoch++;
         _kept.RemoveAll(k => string.Equals(k.Owner.Character, character, StringComparison.OrdinalIgnoreCase));
-        if (_files is { } files) Enqueue(() => files.MoveCharacter(character, null));
+        Enqueue(() => _files.MoveCharacter(character, null));
     }
 
     // A BBS was renamed: every character under it is known by the new name, loaded
@@ -277,7 +283,7 @@ public sealed class AreaRankingStore
             if (_kept[i].Owner.Character is not { } c || !c.StartsWith(under, StringComparison.OrdinalIgnoreCase)) continue;
             _kept[i] = (_kept[i].Owner with { Character = SimulatorOwner.CharacterKey(newBbs, c[under.Length..]) }, _kept[i].Ranking);
         }
-        if (_files is { } files) Enqueue(() => files.MoveBbs(oldBbs, newBbs));
+        Enqueue(() => _files.MoveBbs(oldBbs, newBbs));
     }
 
     // A BBS was removed with every profile under it: so are their rankings.
@@ -286,7 +292,7 @@ public sealed class AreaRankingStore
         _epoch++;
         string under = bbs + "/";
         _kept.RemoveAll(k => k.Owner.Character is { } c && c.StartsWith(under, StringComparison.OrdinalIgnoreCase));
-        if (_files is { } files) Enqueue(() => files.DeleteBbs(bbs));
+        Enqueue(() => _files.DeleteBbs(bbs));
     }
 
     // The set last told active.
@@ -331,10 +337,9 @@ public sealed class AreaRankingStore
     public int ForgetSet(string? set)
     {
         _epoch++;
-        if (_files is { } files)
-            Enqueue(() =>
+        Enqueue(() =>
             {
-                int deleted = files.DeleteSet(set);
+                int deleted = _files.DeleteSet(set);
                 if (deleted > 0)
                     _post(() => Note($"deleted {deleted} saved area ranking(s) made on game data '{set}': its data was replaced"));
             });
@@ -348,12 +353,11 @@ public sealed class AreaRankingStore
     // left: one on show is not taken from under the list.
     public void SweepOld()
     {
-        if (_files is not { } files) return;
         string[] held = _kept.Select(k => AreaRankingFiles.FileFor(k.Owner)).OfType<string>().ToArray();
         Enqueue(() =>
         {
             var skipped = new List<string>();
-            int deleted = files.SweepOld(held, skipped.Add);
+            int deleted = _files.SweepOld(held, skipped.Add);
             _post(() =>
             {
                 // One line for the pass: with another client sweeping at the same
@@ -367,25 +371,25 @@ public sealed class AreaRankingStore
         });
     }
 
-    // Done when every piece of file work asked for so far has run.
-    internal Task Idle
-    {
-        get { lock (_ioLock) return _io; }
-    }
-
     // File work never throws into the client: AreaRankingFiles reports what it
     // can't do, and anything else is logged here and the queue carries on.
     private void Enqueue(Action work)
     {
-        lock (_ioLock)
-            _io = _io.ContinueWith(_ =>
+        void Guarded()
+        {
+            try { work(); }
+            catch (Exception ex)
             {
-                try { work(); }
-                catch (Exception ex)
-                {
-                    _log?.Warn("Simulator", $"area ranking file work failed: {ex.GetType().Name}: {ex.Message}");
-                }
-            }, CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
+                _log?.Warn("Simulator", $"area ranking file work failed: {ex.GetType().Name}: {ex.Message}");
+            }
+        }
+        if (_runFileWork is { } run)
+        {
+            run(Guarded);
+            return;
+        }
+        lock (_ioLock)
+            _io = _io.ContinueWith(_ => Guarded(), CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
     }
 
     private void Note(string line)

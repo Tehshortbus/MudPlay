@@ -32,7 +32,7 @@ public sealed partial class DeathRecoveryManagerTests
         h.EnterGates();
 
         Assert.Equal(new[] { "recover corpse Ermias" }, h.Sent.ToArray());
-        h.Recovery.FeedTestLine("You have recovered the corpse of Ermias.");
+        h.Feed.Line("You have recovered the corpse of Ermias.");
         Assert.Equal(DeathRecoveryStatus.Recovered, h.Latest.Status);
     }
 
@@ -46,10 +46,10 @@ public sealed partial class DeathRecoveryManagerTests
         h.EnterGates();
         Assert.Contains("recover corpse Ermias", h.Sent);
 
-        h.Recovery.FeedTestLine("You have recovered the corpse of Raijin.");
+        h.Feed.Line("You have recovered the corpse of Raijin.");
         Assert.NotEqual(DeathRecoveryStatus.Recovered, h.Latest.Status);
 
-        h.Recovery.FeedTestLine("You have recovered the corpse of Ermias.");
+        h.Feed.Line("You have recovered the corpse of Ermias.");
         Assert.Equal(DeathRecoveryStatus.Recovered, h.Latest.Status);
     }
 
@@ -68,7 +68,7 @@ public sealed partial class DeathRecoveryManagerTests
 
         live = null;
         h.Profile.Current!.Name = "Stale";
-        h.Recovery.FeedTestLine("You have recovered the corpse of Ermias.");
+        h.Feed.Line("You have recovered the corpse of Ermias.");
         Assert.Equal(DeathRecoveryStatus.Recovered, h.Latest.Status);
     }
 
@@ -91,9 +91,9 @@ public sealed partial class DeathRecoveryManagerTests
         h.Tracker.NoteDarkRoomEntered();
         live = "Raijin";
 
-        h.Recovery.FeedTestLine("You have recovered the corpse of Ermias.");
+        h.Feed.Line("You have recovered the corpse of Ermias.");
         Assert.NotEqual(DeathRecoveryStatus.Recovered, h.Latest.Status);
-        h.Recovery.FeedTestLine("You have recovered the corpse of Raijin.");
+        h.Feed.Line("You have recovered the corpse of Raijin.");
         Assert.Equal(DeathRecoveryStatus.Recovered, h.Latest.Status);
     }
 
@@ -292,7 +292,7 @@ public sealed partial class DeathRecoveryManagerTests
         Assert.Equal(DeathRecoveryStatus.Partial, h.Latest.Status);
 
         h.EnterGates();                                      // the look's display: no floor line
-        h.Recovery.FeedTestLine("Obvious exits: north");
+        h.Feed.Line("Obvious exits: north");
 
         Assert.Equal(DeathRecoveryStatus.Missing, h.Latest.Status);
         Assert.DoesNotContain(h.Sent, s => s.StartsWith("recover corpse"));
@@ -308,7 +308,7 @@ public sealed partial class DeathRecoveryManagerTests
         h.Tracker.NoteMoveSent(Direction.N);                 // stepped off before the answer
 
         h.FeedSurvey("a lantern");                           // the next room's floor
-        h.Recovery.FeedTestLine("Obvious exits: south");
+        h.Feed.Line("Obvious exits: south");
 
         Assert.NotEqual(DeathRecoveryStatus.Missing, h.Latest.Status);
     }
@@ -324,7 +324,7 @@ public sealed partial class DeathRecoveryManagerTests
         Assert.True(h.Recovery.RecoverNow(h.Latest));
         h.FeedSurvey("corpse of Ermias");
         h.EnterGates();
-        h.Recovery.FeedTestLine("Obvious exits: north");
+        h.Feed.Line("Obvious exits: north");
 
         Assert.Contains("recover corpse Ermias", h.Sent);
         Assert.NotEqual(DeathRecoveryStatus.Missing, h.Latest.Status);
@@ -454,7 +454,7 @@ public sealed partial class DeathRecoveryManagerTests
     private static void ShowDeathRoomAgain(GraphHarness h)
     {
         h.EnterGates();
-        h.Recovery.FeedTestLine("Obvious exits: north");
+        h.Feed.Line("Obvious exits: north");
     }
 
     // A hand-back typed by hand, a give at a time, with the follower standing in
@@ -528,7 +528,7 @@ public sealed partial class DeathRecoveryManagerTests
 
         Assert.Equal(new RoomKey(1, 1), w.Here);
         Assert.Equal(1, w.H.Sent.Count(s => s == "recover corpse Ermias"));
-        w.Recovery.FeedTestLine("You have recovered the corpse of Ermias.");
+        w.H.Feed.Line("You have recovered the corpse of Ermias.");
         Assert.Equal(DeathRecoveryStatus.Recovered, w.H.Latest.Status);
     }
 
@@ -612,12 +612,12 @@ public sealed partial class DeathRecoveryManagerTests
         Assert.Contains("get iron key", h.Sent);
 
         h.Sent.Clear();
-        h.Recovery.FeedTestLine("You took longsword.");
-        h.Recovery.FeedTestLine("You took torch.");
-        h.Recovery.FeedTestLine("You took black star key.");
-        h.Recovery.FeedTestLine("You took black star key.");
+        h.Feed.Line("You took longsword.");
+        h.Feed.Line("You took torch.");
+        h.Feed.Line("You took black star key.");
+        h.Feed.Line("You took black star key.");
         Assert.Equal(DeathRecoveryStatus.Partial, h.Latest.Status);   // a key is still out
-        h.Recovery.FeedTestLine("You took iron key.");
+        h.Feed.Line("You took iron key.");
 
         Assert.Equal(DeathRecoveryStatus.Recovered, h.Latest.Status);
         Assert.Equal(new[] { "eq longsword" }, h.Sent.ToArray());     // no `use torch`
@@ -657,7 +657,7 @@ public sealed partial class DeathRecoveryManagerTests
         h.EnterGates();
 
         h.Sent.Clear();
-        h.Recovery.FeedTestLine("You have recovered the corpse of Ermias.");
+        h.Feed.Line("You have recovered the corpse of Ermias.");
 
         Assert.Equal(DeathRecoveryStatus.Recovered, h.Latest.Status);
         Assert.Contains("5 item(s)", h.Latest.RecoveryMessage);
@@ -690,7 +690,7 @@ public sealed partial class DeathRecoveryManagerTests
         Assert.Equal(new[] { "longsword", "longsword", "torch" }, h.Latest.UnrecoveredItems);
 
         h.Sent.Clear();
-        h.Recovery.FeedTestLine("You have recovered the corpse of Ermias.");
+        h.Feed.Line("You have recovered the corpse of Ermias.");
 
         Assert.Equal(new[] { "eq longsword" }, h.Sent.ToArray());
         Assert.Equal(DeathRecoveryStatus.Recovered, h.Latest.Status);
@@ -709,9 +709,9 @@ public sealed partial class DeathRecoveryManagerTests
         Assert.Equal(2, h.Sent.Count(s => s == "get longsword"));
 
         h.Sent.Clear();
-        h.Recovery.FeedTestLine("You took longsword.");
+        h.Feed.Line("You took longsword.");
         Assert.Equal(DeathRecoveryStatus.Partial, h.Latest.Status);   // the other copy is still out
-        h.Recovery.FeedTestLine("You took longsword.");
+        h.Feed.Line("You took longsword.");
 
         Assert.Equal(DeathRecoveryStatus.Recovered, h.Latest.Status);
         Assert.Equal(new[] { "eq longsword" }, h.Sent.ToArray());
@@ -731,7 +731,7 @@ public sealed partial class DeathRecoveryManagerTests
         Assert.Contains("get longsword", h.Sent);
 
         h.Sent.Clear();
-        h.Recovery.FeedTestLine("You took a longsword.");   // one answer: one copy was there
+        h.Feed.Line("You took a longsword.");   // one answer: one copy was there
         for (int i = 0; i < 4; i++) h.Heartbeat();
 
         Assert.Equal(DeathRecoveryStatus.Partial, h.Latest.Status);
@@ -752,7 +752,7 @@ public sealed partial class DeathRecoveryManagerTests
         h.EnterGates();
 
         h.Sent.Clear();
-        h.Recovery.FeedTestLine("You took a steel helm.");
+        h.Feed.Line("You took a steel helm.");
         for (int i = 0; i < 4; i++) h.Heartbeat();
 
         Assert.Contains("wear steel helm", h.Sent);

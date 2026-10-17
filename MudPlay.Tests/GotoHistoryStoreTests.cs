@@ -13,8 +13,8 @@ public sealed class GotoHistoryStoreTests
 {
     private static ProfileService BlankProfile()
     {
-        ProfileService profile = new();
-        profile.LoadBlank();   // Current set; Save() no-ops (no name/BBS), so purely in-memory
+        ProfileService profile = TestProfiles.Service();
+        profile.LoadDefaultProfile();   // Current set; Save() no-ops (no name/BBS), so purely in-memory
         return profile;
     }
 

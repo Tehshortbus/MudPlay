@@ -30,7 +30,8 @@ public sealed class RouteDetailsColoringTests
     public void ColouringOff_LeavesAlignmentTint()
     {
         RoomDetailLink mob = Monster(80);
-        var vm = new RouteDetailsDialogViewModel("t", new[] { Row(mob) });
+        var vm = new RouteDetailsDialogViewModel("t", new[] { Row(mob) }, colorByHitPercent: false,
+            Models.Profile.MonsterHitColorSettings.DefaultGreenMax, Models.Profile.MonsterHitColorSettings.DefaultYellowMax, persist: null);
         Assert.False(vm.ColorByHitPercent);
         Assert.Same(Align, mob.Accent);
     }
@@ -53,7 +54,8 @@ public sealed class RouteDetailsColoringTests
     public void Toggle_RecoloursAndRestores()
     {
         RoomDetailLink mob = Monster(80);
-        var vm = new RouteDetailsDialogViewModel("t", new[] { Row(mob) });
+        var vm = new RouteDetailsDialogViewModel("t", new[] { Row(mob) }, colorByHitPercent: false,
+            Models.Profile.MonsterHitColorSettings.DefaultGreenMax, Models.Profile.MonsterHitColorSettings.DefaultYellowMax, persist: null);
         Assert.Same(Align, mob.Accent);
         vm.ColorByHitPercent = true;
         Assert.Same(MonsterHitBand.Red, mob.Accent);

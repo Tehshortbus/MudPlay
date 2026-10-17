@@ -3,12 +3,10 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// PR 10.8 — <see cref="AutoTrainSequenceBuilder"/> turns a current→target stat
-/// delta into the Enter-driven payloads that drive the <c>train stats</c> form:
-/// 11 entries (skip Family Name, the six stat boxes, skip the three appearance
-/// boxes, save+exit), with target digits only where a stat is actually raised.
-/// </summary>
+// AutoTrainSequenceBuilder turns a current→target stat
+// delta into the Enter-driven payloads that drive the train stats form:
+// 11 entries (skip Family Name, the six stat boxes, skip the three appearance
+// boxes, save+exit), with target digits only where a stat is actually raised.
 public sealed class AutoTrainSequenceBuilderTests
 {
     // order: STR, INT, WIL, AGL, HEA, CHM

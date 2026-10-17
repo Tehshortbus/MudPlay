@@ -9,15 +9,13 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Pins the @divert handler's behaviour: an authorised sender (with the
-/// DivertConversations permission) telepathing <c>@divert &lt;player&gt;</c>
-/// arms forwarding; every subsequent incoming telepath is repeated to that
-/// target as <c>&lt;sender&gt; telepathed: &lt;message&gt;</c>. Bare
-/// <c>@divert</c> stops. The divert target's own telepaths are skipped (no
-/// echo); the <c>@divert</c> control verb is never forwarded; all other
-/// @-command telepaths ARE forwarded.
-/// </summary>
+// Pins the @divert handler's behaviour: an authorised sender (with the
+// DivertConversations permission) telepathing @divert <player>
+// arms forwarding; every subsequent incoming telepath is repeated to that
+// target as <sender> telepathed: <message>. Bare
+// @divert stops. The divert target's own telepaths are skipped (no
+// echo); the @divert control verb is never forwarded; all other
+// @-command telepaths ARE forwarded.
 public sealed class DivertHandlerTests
 {
     private static readonly DateTime Now = new(2026, 6, 2, 0, 0, 0, DateTimeKind.Utc);
@@ -25,21 +23,25 @@ public sealed class DivertHandlerTests
     private static LineExtractor.EmittedLine Line(string text) =>
         new(text, new CellAttributes[text.Length], DateTimeOffset.UnixEpoch, IsPromptLine: false);
 
-    private static (MessageRouter router, DivertHandler handler, PlayerDatabase players, List<byte[]> forwardWire, RemoteCommandManager engine) Setup()
+    // What the remote-command engine put on the wire, through the sender the client binds.
+    private readonly List<byte[]> _replies = new();
+
+    private (MessageRouter router, DivertHandler handler, PlayerDatabase players, List<byte[]> forwardWire, RemoteCommandManager engine) Setup()
     {
         MessageRouter router = new();
         DefaultPatterns.Seed(router);
         ChatRouter chat = new(router);
         PartyState party = new();
-        PlayerDatabase players = new();
+        PlayerDatabase players = new(new ProfileService(), () => null);
         RemoteCommandManager engine = new(chat, party, players);
+        engine.SetWireSender(_replies.Add);
         DivertHandler handler = new(engine, chat);
         List<byte[]> forwardWire = new();
         handler.SetWireSender(forwardWire.Add);
         return (router, handler, players, forwardWire, engine);
     }
 
-    /// <summary>Replay an incoming telepath line so ChatRouter classifies it.</summary>
+    // Replay an incoming telepath line so ChatRouter classifies it.
     private static void Telepath(MessageRouter router, string sender, string message) =>
         router.Dispatch(Line($"{sender} telepaths: {message}"));
 
@@ -57,25 +59,25 @@ public sealed class DivertHandlerTests
 
         Telepath(router, "Bob", "@divert Raijin");
 
-        Assert.Equal("Raijin", handler.TargetForTests);
         // Engine reply routes back to the sender on the telepath channel.
         Assert.Equal("/Bob {Now diverting telepaths to: Raijin}\r",
-            Encoding.Latin1.GetString(Assert.Single(engine.LastSentForTests)));
+            Encoding.Latin1.GetString(Assert.Single(_replies)));
     }
 
     [Fact]
     public void Divert_NoArg_StopsAndReplies()
     {
-        var (router, handler, players, _, engine) = Setup();
+        var (router, _, players, forwardWire, _) = Setup();
         SeedPlayer(players, "Bob", PlayerRemoteControls.DivertConversations);
 
         Telepath(router, "Bob", "@divert Raijin");
-        engine.LastSentForTests.Clear();
+        _replies.Clear();
         Telepath(router, "Bob", "@divert");
 
-        Assert.Null(handler.TargetForTests);
         Assert.Equal("/Bob {No longer diverting telepaths}\r",
-            Encoding.Latin1.GetString(Assert.Single(engine.LastSentForTests)));
+            Encoding.Latin1.GetString(Assert.Single(_replies)));
+        Telepath(router, "Carl", "hello there");
+        Assert.Empty(forwardWire);
     }
 
     [Fact]
@@ -168,7 +170,6 @@ public sealed class DivertHandlerTests
         Telepath(router, "Stranger", "@divert Raijin");
         Telepath(router, "Carl", "hello there");
 
-        Assert.Null(handler.TargetForTests);
         Assert.Empty(forwardWire);
     }
 
@@ -180,7 +181,6 @@ public sealed class DivertHandlerTests
 
         Telepath(router, "Bob", "@divert Raijin");
         Telepath(router, "Bob", "@divert Susanoo");
-        Assert.Equal("Susanoo", handler.TargetForTests);
 
         Telepath(router, "Carl", "hi");
         Assert.Equal("/Susanoo Carl telepathed: hi\r",
@@ -201,23 +201,4 @@ public sealed class DivertHandlerTests
         Assert.False(engine.UnregisterHandler("@divert")); // already gone
     }
 
-    [Fact]
-    public void Divert_WithoutWireSender_ForwardIsNoop()
-    {
-        // Pre-binding (or tests that intentionally don't bind), forwarding
-        // is silently skipped — no exception, no wire output.
-        MessageRouter router = new();
-        DefaultPatterns.Seed(router);
-        ChatRouter chat = new(router);
-        PartyState party = new();
-        PlayerDatabase players = new();
-        RemoteCommandManager engine = new(chat, party, players);
-        using DivertHandler handler = new(engine, chat);   // no SetWireSender
-        SeedPlayer(players, "Bob", PlayerRemoteControls.DivertConversations);
-
-        Telepath(router, "Bob", "@divert Raijin");
-        Telepath(router, "Carl", "hello there");
-
-        Assert.Equal("Raijin", handler.TargetForTests);   // armed, just can't forward
-    }
 }

@@ -44,6 +44,8 @@ internal sealed class EventEngineHarness : IDisposable
 
     // Every command the walker or the loop runner put on the wire, in order.
     public List<string> Sent { get; } = new();
+    // The clock the event manager reads: the real one unless a test sets its own.
+    public Func<DateTimeOffset> EventsNow { get; set; } = () => DateTimeOffset.UtcNow;
     // What the event manager told the terminal.
     public List<string> Notices { get; } = new();
 
@@ -71,6 +73,24 @@ internal sealed class EventEngineHarness : IDisposable
         Timers.Dispose();
     }
 
+    // An EventManager as the client builds it, over engines with no game data
+    // loaded: for what the manager does with its event list and its actions alone.
+    // Its posts run at once.
+    public static EventManager ManagerWithoutGameData(ProfileService? profile = null, LogService? log = null,
+        Func<DateTimeOffset>? now = null)
+    {
+        GameDataCache cache = new(Path.Combine(Path.GetTempPath(), "mudplay-no-game-data-" + Guid.NewGuid().ToString("N")));
+        RoomGraphManager graph = new(cache);
+        BfsMapper bfs = new(graph);
+        RoomTracker tracker = new(graph);
+        MovementCoordinator coord = new();
+        AutoWalkManager walker = new(graph, bfs, tracker, coord);
+        LoopRunner runner = new(tracker, coord, graph: graph, bfs: bfs, postToUi: run => run());
+        AutoLairManager autoLair = new(walker, tracker, graph, bfs, new LairTimerStore(cache, graph, tracker));
+        return new EventManager(profile ?? TestProfiles.Loaded(), new LoopManager(bfs, graph), new LairManager(),
+            runner, autoLair, walker, log, post: act => act(), now: now);
+    }
+
     // deferPosts: what the event manager posts waits for Pump, as it waits for the
     // dispatcher in the app. Off, it runs at once, which suits a test that feeds
     // the manager its engine events by hand.
@@ -78,7 +98,7 @@ internal sealed class EventEngineHarness : IDisposable
     // rooms walks to them (and that walk can be refused). Off, a loop started
     // anywhere begins at once.
     public static EventEngineHarness Create(
-        string root, string bbs, string graphJson = StripGraphJson, string? tbinfoJson = null,
+        string root, string loopSet, string graphJson = StripGraphJson, string? tbinfoJson = null,
         bool loopWalksItself = false, bool deferPosts = false)
     {
         Directory.CreateDirectory(Path.Combine(root, "alpha"));
@@ -101,21 +121,22 @@ internal sealed class EventEngineHarness : IDisposable
         LairTimerStore timers = new(cache, graph, tracker);
         AutoLairManager autoLair = new(walker, tracker, graph, bfs, timers);
         LoopManager loops = new(bfs, graph);
-        // LoopManager.Save no-ops unless a BBS context is set. LoadAll binds the
-        // catalogue to the test BBS (no folder yet, so it seeds an empty
-        // collection); a test that saves a loop writes it under
-        // AppPaths.BbsFolder(bbs), which the test class reclaims.
-        loops.LoadAll(bbs);
+        // LoopManager.Save no-ops until LoadAll binds the catalogue to a game-data
+        // set (no folder yet, so it seeds an empty collection); a test that saves a
+        // loop writes it under AppPaths.GameDataSetLoopsFolder(loopSet), which the
+        // test class reclaims.
+        loops.LoadAll(loopSet);
         LairManager lairs = new();
 
-        ProfileService profile = new();
-        profile.LoadBlank();
+        ProfileService profile = TestProfiles.Service();
+        profile.LoadDefaultProfile();
         LogService log = new();
         List<Action>? posted = deferPosts ? new List<Action>() : null;
+        EventEngineHarness h = null!;
         EventManager events = new(profile, loops, lairs, runner, autoLair, walker, log,
-            post: act => { if (posted is null) act(); else posted.Add(act); });
+            post: act => { if (posted is null) act(); else posted.Add(act); }, now: () => h.EventsNow());
 
-        EventEngineHarness h = new()
+        h = new()
         {
             Tracker = tracker, Coordinator = coord, Walker = walker, Runner = runner, AutoLair = autoLair,
             Loops = loops, Lairs = lairs, Events = events, Timers = timers, Log = log, Profile = profile,

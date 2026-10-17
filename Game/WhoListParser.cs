@@ -92,16 +92,6 @@ public sealed partial class WhoListParser : IDisposable
 
     public void Dispose() => _lines.LineEmitted -= OnLineEmitted;
 
-    // Test hook — drive a sequence of plain text lines through the parser without
-    // spinning up a real LineExtractor. Each line is fed as a non-prompt
-    // EmittedLine with DateTime.UtcNow.
-    internal void FeedTestLines(IEnumerable<string> lines, DateTime? nowUtc = null)
-    {
-        DateTime when = nowUtc ?? DateTime.UtcNow;
-        foreach (string text in lines)
-            HandleLine(text, isPromptLine: false, when);
-    }
-
     private void OnLineEmitted(LineExtractor.EmittedLine line)
     {
         HandleLine(line.Text, line.IsPromptLine, line.Timestamp.UtcDateTime);
@@ -221,9 +211,6 @@ public sealed partial class WhoListParser : IDisposable
         _state = State.Idle;
         ListRead?.Invoke();
     }
-
-    // Number of rows recorded by the most recent who block. Useful for tests / debug.
-    internal int LastBlockRowCount => _rowsThisBlock;
 
     private static bool TryParseRow(string text, out PlayerRowMatch row)
     {

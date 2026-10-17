@@ -9,19 +9,17 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// <see cref="GreetManager"/> — once-per-local-day greet+look on first
-/// sighting of a non-party player. Covers the end-to-end classifier hook
-/// plus the <see cref="GreetManager.TryGreet"/> decision seam (enable gate,
-/// day-boundary dedup, self/party skip).
-/// </summary>
+// GreetManager — once-per-local-day greet+look on first
+// sighting of a non-party player. Covers the end-to-end classifier hook
+// plus the GreetManager.TryGreet decision seam (enable gate,
+// day-boundary dedup, self/party skip).
 public sealed class GreetManagerTests
 {
     private sealed class Harness : IDisposable
     {
         public MessageRouter Router { get; }
         public MonsterMessageStore Monsters { get; } = new();
-        public PlayerDatabase Players { get; } = new();
+        public PlayerDatabase Players { get; } = new(new ProfileService(), () => null);
         public LogService Log { get; } = new();
         public RoomEntityClassifier Classifier { get; }
         public PartyState Party { get; } = new();
@@ -36,11 +34,8 @@ public sealed class GreetManagerTests
             Router = new MessageRouter();
             DefaultPatterns.Seed(Router);
             Classifier = new RoomEntityClassifier(Router, Monsters, Players, Log);
-            Greet = new GreetManager(Classifier, Players, Party, () => SelfName)
-            {
-                Enabled = true,
-                NowUtcProvider = () => Now,
-            };
+            Greet = new GreetManager(Classifier, Players, Party, () => SelfName, now: () => Now)
+            { Enabled = true };
             Greet.SetWireSender(bytes => Sent.Add(Encoding.Latin1.GetString(bytes)));
         }
 

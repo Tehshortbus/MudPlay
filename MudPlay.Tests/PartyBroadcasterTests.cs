@@ -75,23 +75,12 @@ public sealed class PartyBroadcasterTests
         Assert.Equal("/Cleric @Reset\r", Encoding.Latin1.GetString(wire[2]));
     }
 
-    [Fact]
-    public void BroadcastExpReset_NoWireSender_Silent()
-    {
-        PartyState state = new();
-        AddMember(state, "Helper");
-        PartyBroadcaster bc = new(state);
-        // No SetWireSender call — should silently no-op rather than throw.
-        bc.BroadcastExpReset();
-    }
-
     // ===== Generic Broadcast =====
 
     [Fact]
     public void Broadcast_DoesNotConsultAutoExpResetToggle()
     {
-        // Generic Broadcast bypasses the auto-exp-reset gate by design —
-        // future panic / kill broadcasts in Phase 12 will use it.
+        // Generic Broadcast bypasses the auto-exp-reset gate by design.
         var (bc, state, wire) = Setup();
         AddMember(state, "Helper");
         bc.AutoExpResetEnabled = false;

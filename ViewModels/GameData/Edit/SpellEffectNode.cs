@@ -33,7 +33,6 @@ public sealed partial class SpellEffectNode : ObservableObject
     // and the big collapsed room lists start closed so the tree opens tidy.
     [ObservableProperty] private bool _isExpanded = true;
 
-    public bool HasChildren => Children.Count > 0;
     public bool HasPercent => Percent is not null;
     public string PercentText => Percent is { } p ? $"{p}%" : string.Empty;
 

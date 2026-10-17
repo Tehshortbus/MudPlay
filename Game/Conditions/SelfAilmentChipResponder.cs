@@ -71,8 +71,7 @@ public sealed class SelfAilmentChipResponder : IDisposable
     // Reconcile each surfaced self ailment against ConditionTracker, writing only
     // where the self row's chip disagrees. Reads the current chip off the self row
     // itself (the owner of truth) rather than caching a private mirror, so a
-    // rebuilt responder / re-added self row re-syncs for free. Public so tests can
-    // drive it directly without a PropertyChanged round-trip.
+    // rebuilt responder / re-added self row re-syncs for free.
     public void Evaluate()
     {
         PartyMember? self = FindSelf();

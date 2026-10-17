@@ -39,9 +39,4 @@ public sealed class RelogSignal
         _relogPending = false;
         return was;
     }
-
-    // Test seam — non-mutating read of the flag. Lets unit tests assert "relog
-    // is armed" without consuming it. Production callers always go through
-    // ConsumeRelogIntent.
-    internal bool PeekForTests() => _relogPending;
 }

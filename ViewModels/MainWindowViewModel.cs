@@ -3577,6 +3577,9 @@ public partial class MainWindowViewModel : ObservableObject
                 AppServices.Current.DefaultTaskRunner.NotifyDisconnected();
                 // Stop statline reconciliation until the next connect re-arms.
                 AppServices.Current.StatlineReconcile.Disarm();
+                // A prompt the link cut off part-way must not be completed by the
+                // next connection's first bytes.
+                AppServices.Current.PromptScanner.Reset();
                 // Pause Time Analysis accrual: we're no longer in-game, so
                 // the offline span doesn't count. Totals freeze and resume
                 // on the next in-game prompt after reconnect.
@@ -5049,9 +5052,6 @@ public partial class MainWindowViewModel : ObservableObject
     // switches to the requested section first).
     private Views.CharacterWorkshop.CharacterWorkshopWindow? _workshop;
 
-    [RelayCommand]
-    private void OpenWorkshopDeath() => OpenWorkshopAt("death");
-
     // Terminal right-click "Workshop: <tab>" deep-link — opens the Workshop on a
     // section (string param = the WorkshopSectionViewModel.Id; a sub-tab's id opens
     // the tab that holds it).
@@ -5982,8 +5982,7 @@ public partial class MainWindowViewModel : ObservableObject
     private void MovementStop()
     {
         // The first Stop holds a money or training errand; a second ends it.
-        if (AppServices.Current.MovementControl.HoldErrandOnStop()) return;
-        AppServices.Current.MovementControl.Stop();
+        if (!AppServices.Current.MovementControl.StopByUser()) return;
         OnUserStopped("stopped by the user", endsTheRun: true);
     }
 
@@ -6246,10 +6245,6 @@ public partial class MainWindowViewModel : ObservableObject
     }
 
     // ----- Polish commands -----------------------------------------------
-
-    // View → Reset layout. Restores every panel to docked default.
-    [RelayCommand]
-    private void ResetLayout() => AppServices.Current.Panels.ResetToDefault();
 
     // Tools → Open Logs folder…
     [RelayCommand]

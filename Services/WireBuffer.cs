@@ -27,9 +27,6 @@ public sealed class WireBuffer
         get { lock (_gate) { return _totalBytes; } }
     }
 
-    // Fired after each Append on the producer's thread.
-    public event Action? BufferChanged;
-
     public WireBuffer(int capacity = DefaultCapacity)
     {
         if (capacity <= 0) throw new ArgumentOutOfRangeException(nameof(capacity));
@@ -69,7 +66,6 @@ public sealed class WireBuffer
             }
         }
 
-        BufferChanged?.Invoke();
     }
 
     // Copy out the live bytes oldest → newest as a fresh array.
@@ -102,7 +98,6 @@ public sealed class WireBuffer
             _marks.Clear();
             LastClearedAt = DateTimeOffset.Now;
         }
-        BufferChanged?.Invoke();
     }
 
     // When the buffer was last emptied by hand (the Wire Inspector's Clear).

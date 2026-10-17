@@ -35,19 +35,6 @@ public sealed partial class BugReportChatCensor
         _hashes = new HashSet<ulong>(hashes);
     }
 
-    // A censor that also masks the given words. For tests, which use made-up
-    // stand-in words rather than real ones.
-    public BugReportChatCensor WithWords(params string[] words)
-    {
-        HashSet<ulong> all = new(_hashes);
-        foreach (string word in words)
-        {
-            all.Add(Hash(Normalise(word, collapseAll: false), collapsedAll: false));
-            all.Add(Hash(Normalise(word, collapseAll: true), collapsedAll: true));
-        }
-        return new BugReportChatCensor(all);
-    }
-
     // Lower case; digits and symbols that stand in for letters read as the
     // letter; everything but a-z dropped; a run of three or more of one letter
     // cut to two (collapseAll: every run cut to one).

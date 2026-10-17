@@ -26,8 +26,8 @@ public sealed partial class SettingsWindowViewModel : ObservableObject, IDisposa
     private readonly Func<string, Task<bool>>? _sendText;
 
     // Reads the text a section's settings show (labels, tooltips) off its View; set
-    // by the host window, since walking controls is view work. Null until then, and
-    // in tests, where the search falls back to SearchableLabels alone.
+    // by the host window, since walking controls is view work. Null until then,
+    // when the search falls back to SearchableLabels alone.
     private Func<SettingsSectionViewModel, IEnumerable<string>>? _shownText;
 
     // Shared staged combat-profile list edited by the Combat, Health, Spells and Party

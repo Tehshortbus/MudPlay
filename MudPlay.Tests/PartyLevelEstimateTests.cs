@@ -3,12 +3,10 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// PartyLevelEstimate resolves a member's (Low, High) from an exact level and a
-/// title band. Exact wins — UNLESS the band's floor has risen above the exact
-/// reading (the player trained since we last asked), in which case the band wins
-/// until we re-learn an exact at or above the floor.
-/// </summary>
+// PartyLevelEstimate resolves a member's (Low, High) from an exact level and a
+// title band. Exact wins — UNLESS the band's floor has risen above the exact
+// reading (the player trained since we last asked), in which case the band wins
+// until we re-learn an exact at or above the floor.
 public sealed class PartyLevelEstimateTests
 {
     [Fact]

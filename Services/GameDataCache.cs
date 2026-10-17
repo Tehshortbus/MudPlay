@@ -29,7 +29,7 @@ namespace MudPlay.Services;
 // EvictTable, and a table nobody has read for IdleEvictAfter is dropped by a
 // background sweep, so a table read only while a set loads (Rooms is the largest
 // by far) doesn't sit in memory for the whole session; the next read re-reads it.
-// EvictAll wipes everything without changing the active set.
+// Switching or reloading the set wipes everything.
 //
 // Evicting only drops the cache's reference. A GameTable is immutable, and a
 // reader still holding it or one of its rows (a background build mid-scan, a row
@@ -112,10 +112,6 @@ public sealed partial class GameDataCache
     // drops the table, replaced when the table is read again, and cleared with the
     // tables on a switch or reload. Guarded by the _tables lock.
     private readonly Dictionary<string, TableFileStamp> _stamps = new(StringComparer.OrdinalIgnoreCase);
-
-    // Raised on the reading thread just before a table file is opened, with the
-    // table's name. A test seam: counts the reads and holds one open.
-    internal Action<string>? TableReadStarting { get; set; }
 
     // Results worked out from the active set's tables (Derived), and a count bumped
     // whenever the set's tables are dropped for re-reading, so a result built from
@@ -212,8 +208,7 @@ public sealed partial class GameDataCache
 
     // Optional log sink — when set (production wires AppServices.Log after
     // construction), every SwitchSet emits an Info entry naming the outgoing +
-    // incoming set so the user can verify swap success in the program log. Tests
-    // leave it null.
+    // incoming set so the user can verify swap success in the program log.
     public LogService? Log { get; set; }
     // Times table parses for the performance log; set once by AppServices.
     public PerformanceMonitor? Performance { get; set; }
@@ -224,8 +219,7 @@ public sealed partial class GameDataCache
             TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
     }
 
-    // Test seam — lets tests point at an isolated root. No idle sweep; tests call
-    // EvictIdle directly.
+    // The cache over gameDataRoot, with no idle sweep of its own.
     internal GameDataCache(string gameDataRoot)
     {
         GameDataRoot = gameDataRoot;
@@ -264,16 +258,6 @@ public sealed partial class GameDataCache
     public static string RefusedSetNotice(string? name, string whyNot) =>
         $"This profile's game data set {PathGuard.Show(name)} can't be used, so no game data is loaded: {whyNot} "
         + "Pick a set from the Game Data menu.";
-
-    // Table names currently held for ActiveSet. Empty before any GetTable call;
-    // empty again after EvictAll.
-    public IReadOnlyList<string> LoadedTables
-    {
-        get
-        {
-            lock (_tables) return _tables.Keys.ToArray();
-        }
-    }
 
     // Flip the active set. Pass null to clear. Fires ActiveSetChanged with the
     // new value when the effective set changes; suppresses the event on no-op
@@ -341,13 +325,6 @@ public sealed partial class GameDataCache
         Log.Log(LogSeverity.Info, "GameData",
             $"Tables held for '{set}': {string.Join(", ", held.Select(t => $"{t.Table} {Mb(t.Bytes)} MB"))} "
             + $"({Mb(held.Sum(t => t.Bytes))} MB in all).");
-    }
-
-    // Reload the raw cache for the current set. Cheaper than SwitchSet(null) →
-    // SwitchSet(name) because no event fires.
-    public void Reload()
-    {
-        EvictAll();
     }
 
     // Re-ingest the active set's tables from disk AND notify consumers. This is
@@ -552,7 +529,6 @@ public sealed partial class GameDataCache
     {
         try
         {
-            TableReadStarting?.Invoke(tableName);
             using FileStream file = new(path, FileMode.Open, FileAccess.Read, FileShare.Read,
                 bufferSize: 0, FileOptions.SequentialScan);
             // Of the open file, so they describe the bytes read even if the file is
@@ -604,8 +580,7 @@ public sealed partial class GameDataCache
     // there instead of duplicating that handling on a background thread nobody's
     // watching.
     //
-    // Returns the aggregate Task so tests can await completion deterministically;
-    // production startup fires this and discards it (`_ = ...`) — nothing blocks on it.
+    // Returns the aggregate Task; startup fires this and discards it (`_ = ...`) — nothing blocks on it.
     public Task PrewarmAsync(string setName, IReadOnlyList<string> tableNames)
     {
         ArgumentNullException.ThrowIfNull(setName);
@@ -813,11 +788,10 @@ public sealed partial class GameDataCache
                 $"Dropped {string.Join(", ", dropped)} — unread for {idle.TotalMinutes:0.#} min.");
     }
 
-    // Drop every cached table. Called implicitly by SwitchSet and Reload; callers
-    // can use it to free memory after a bulk-conversion pass too. Also clears
+    // Drop every cached table, for SwitchSet and ReloadActiveSet. Also clears
     // remembered parse failures so a re-import that fixed a broken table gets
     // re-read instead of staying marked unavailable.
-    public void EvictAll()
+    private void EvictAll()
     {
         lock (_tables)
         {

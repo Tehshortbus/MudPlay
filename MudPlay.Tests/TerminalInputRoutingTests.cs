@@ -5,12 +5,10 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// The keyboard-fallthrough policy (which keys a focused dialog forwards to the
-/// terminal) and the router that carries them. The focus check and event routing
-/// are UI plumbing (smoke-tested), but the pure decision + gate logic is pinned
-/// here.
-/// </summary>
+// The keyboard-fallthrough policy (which keys a focused dialog forwards to the
+// terminal) and the router that carries them. The focus check and event routing
+// are UI plumbing (smoke-tested), but the pure decision + gate logic is pinned
+// here.
 public sealed class TerminalInputRoutingTests
 {
     // ----- ShouldForwardKey policy ---------------------------------------

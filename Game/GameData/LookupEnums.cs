@@ -127,14 +127,6 @@ public static class LookupEnums
     // Shops.ShopType → shop kind label.
     public static string? FormatShopType(string? raw) => Map(raw, ShopTypeNames);
 
-    private static readonly FrozenDictionary<int, string> MonAttackTypeNames = new Dictionary<int, string>
-    {
-        [0] = "None", [1] = "Normal", [2] = "Spell", [3] = "Rob",
-    }.ToFrozenDictionary();
-
-    // Monsters.AttType-N — per-attack kind on a monster's attack profile.
-    public static string? FormatMonAttackType(string? raw) => Map(raw, MonAttackTypeNames);
-
     private static readonly FrozenDictionary<int, string> MonTypeNames = new Dictionary<int, string>
     {
         [0] = "Solo", [1] = "Leader", [2] = "Follower", [3] = "Stationary",
@@ -174,23 +166,6 @@ public static class LookupEnums
     // Spells.Magery / Classes.MageryType — the casting school. Magery and MageryLVL
     // live in distinct cells, so the level suffix stays a separate column here.
     public static string? FormatMagery(string? raw) => Map(raw, MageryNames);
-
-    // Items / Monsters / Spells / Classes / Races Abil-N → ability name (e.g. "AC",
-    // "Heal", "Strength"). 0 renders as empty so unused slots don't clutter the row.
-    public static string? FormatAbilityCode(string? raw)
-    {
-        if (!TryParseInt(raw, out int code)) return raw;
-        if (code == 0) return string.Empty;
-        return AbilityNames.GetName(code) ?? $"Unknown({code})";
-    }
-
-    // Pairs with FormatAbilityCode on AbilVal-N — render 0 as blank so the paired
-    // ability slot's empty value is uncluttered.
-    public static string? FormatAbilityValue(string? raw)
-    {
-        if (!TryParseInt(raw, out int value)) return raw;
-        return value == 0 ? string.Empty : value.ToString(CultureInfo.InvariantCulture);
-    }
 
     private static readonly FrozenDictionary<int, string> AbilityValueTableRefs = new Dictionary<int, string>
     {

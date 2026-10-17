@@ -28,7 +28,7 @@ public sealed class MonsterObservationTracker : IDisposable
 
     private readonly RoomEntityClassifier _roomClassifier;
     private readonly Func<string?> _currentTarget;
-    // "Is this name a party member, or ourselves?" Null = none known (tests), so nothing is skipped.
+    // "Is this name a party member, or ourselves?" Null = none known, so nothing is skipped.
     private readonly Func<string, bool>? _isPartyMember;
     private readonly ProfileService? _profile;
     private readonly Func<DateTimeOffset> _clock;

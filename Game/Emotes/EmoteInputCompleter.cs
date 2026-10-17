@@ -6,7 +6,7 @@ namespace MudPlay.Game.Emotes;
 
 // Pure logic behind the Discord-style ":" emote picker in the conversation input box:
 // find the active ":partial" token at the caret, suggest matching shortcodes, and
-// splice the chosen one back in. No Avalonia types so it's unit-tested directly.
+// splice the chosen one back in. No Avalonia types.
 public static class EmoteInputCompleter
 {
     // The active token being typed: the text spans [ColonIndex, caret), starting at a

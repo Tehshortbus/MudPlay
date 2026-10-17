@@ -33,8 +33,6 @@ public sealed class ClassesSectionViewModel : JsonTableSectionViewModel
         "Abilities",
     };
 
-    public override string SearchKeyColumn => "Name";
-
     public override IReadOnlyDictionary<string, string> ColumnHeaders { get; } =
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {

@@ -30,7 +30,7 @@ namespace MudPlay.Game.Cash;
 //
 // Owns no source subscriptions — AppServices wires those echo events to the Note*
 // forwarders — matching SessionActivityTracker and keeping the tracker
-// dependency-free behind an injectable clock for unit tests. Every write and
+// dependency-free behind an injectable clock. Every write and
 // Snapshot runs on the marshalled dispatch thread (the sources all fire there),
 // so the list is lock-free. Reset on the same session boundary as the other
 // session-stats trackers (connect / character switch, the window "Reset session"

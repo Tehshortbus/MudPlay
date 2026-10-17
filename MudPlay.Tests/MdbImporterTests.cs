@@ -5,65 +5,13 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Surface tests for <see cref="MdbImporter"/> — covers folder
-/// bookkeeping, filename sanitization, and the missing-file early
-/// exit. The Jackcess read path runs against real .mdb / .accdb
-/// fixtures and is exercised manually via the Game Data → Import
-/// .mdb… flow.
-/// </summary>
+// Surface tests for MdbImporter — covers folder
+// bookkeeping, filename sanitization, and the missing-file early
+// exit. The Jackcess read path runs against real .mdb / .accdb
+// fixtures and is exercised manually via the Game Data → Import
+// .mdb… flow.
 public sealed class MdbImporterTests
 {
-    [Fact]
-    public void Constructor_CreatesGameDataRoot()
-    {
-        MdbImporter importer = new();
-        Assert.True(Directory.Exists(importer.GameDataRoot),
-            $"Expected GameDataRoot to exist after ctor: {importer.GameDataRoot}");
-    }
-
-    [Fact]
-    public void GameDataRoot_PointsAtAppPathsGameDataRoot()
-    {
-        MdbImporter importer = new();
-        Assert.Equal(AppPaths.GameDataRoot, importer.GameDataRoot);
-    }
-
-    [Fact]
-    public void GetSubfolderPath_ComposesUnderGameDataRoot()
-    {
-        MdbImporter importer = new();
-        string path = importer.GetSubfolderPath("Paradigm-PVE2");
-        Assert.Equal(Path.Combine(importer.GameDataRoot, "Paradigm-PVE2"), path);
-    }
-
-    [Fact]
-    public void GetGameDataFolders_ReturnsSortedSubdirectoryNames()
-    {
-        MdbImporter importer = new();
-        string a = Path.Combine(importer.GameDataRoot, "zzz-test-set-a");
-        string b = Path.Combine(importer.GameDataRoot, "aaa-test-set-b");
-        Directory.CreateDirectory(a);
-        Directory.CreateDirectory(b);
-
-        try
-        {
-            var folders = importer.GetGameDataFolders().ToList();
-            Assert.Contains("aaa-test-set-b", folders);
-            Assert.Contains("zzz-test-set-a", folders);
-
-            // Sort is alphabetical / ordinal-ignore-case.
-            int idxA = folders.IndexOf("aaa-test-set-b");
-            int idxZ = folders.IndexOf("zzz-test-set-a");
-            Assert.True(idxA < idxZ, "Expected alphabetical ordering");
-        }
-        finally
-        {
-            Directory.Delete(a, recursive: true);
-            Directory.Delete(b, recursive: true);
-        }
-    }
-
     [Fact]
     public async Task ImportAsync_MissingFile_ReturnsFailureWithNotFoundMessage()
     {
@@ -139,8 +87,6 @@ public sealed class MdbImporterTests
         }
     }
 
-    // The safety guard: a failed re-import over an EXISTING populated set must never
-    // delete that set's files.
     // An export may or may not carry the Lairs table, and may or may not carry
     // room-command item sources: four kinds, each named for what it has.
     [Theory]
@@ -165,6 +111,8 @@ public sealed class MdbImporterTests
             MudPlay.ViewModels.MainWindowViewModel.BuildMdbCompleteStatus(r));
     }
 
+    // The safety guard: a failed re-import over an EXISTING populated set must never
+    // delete that set's files.
     [Fact]
     public void RemoveDirectoryIfEmpty_KeepsAPopulatedFolder()
     {

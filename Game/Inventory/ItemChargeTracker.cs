@@ -329,7 +329,6 @@ public sealed class ItemChargeTracker : IDisposable
 
     private void OnLine(LineExtractor.EmittedLine emitted) => HandleLine(emitted.Text);
 
-    // Split out so tests can drive a line without standing up a LineExtractor.
     internal void HandleLine(string text)
     {
         if (_disposed) return;

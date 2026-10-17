@@ -13,7 +13,7 @@ namespace MudPlay.Services;
 public sealed class BbsProfileStore
 {
     // The Global fallback game-data set — lets the realm migration find the boss
-    // timers of a BBS that never named its own set. null in tests.
+    // timers of a BBS that never named its own set.
     private readonly Func<string?>? _defaultGameDataSet;
     private readonly LogService? _log;
 

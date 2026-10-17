@@ -53,7 +53,7 @@ public sealed class BossTimerSyncStandingTests
 
     // Our own request coming back on a shared channel under our name.
     private void SeesUsAsk(ChatChannel channel) =>
-        _collector.Ingest(new ChatLogEntry(DateTimeOffset.UtcNow, channel, Us, "@timer sync", "raw"));
+        ChatLines.Hear(_router, channel, Us, "@timer sync");
 
     private void Answers(string sender, ChatChannel channel, int chunkChars = 100)
     {
@@ -61,7 +61,7 @@ public sealed class BossTimerSyncStandingTests
         for (int i = 0; i < chunks.Count; i++)
         {
             string msg = $"{{{BossTimerQueryHandler.SyncResponseToken} {i + 1}/{chunks.Count} {chunks[i]}}}";
-            _collector.Ingest(new ChatLogEntry(DateTimeOffset.UtcNow, channel, sender, msg, msg));
+            ChatLines.Hear(_router, channel, sender, msg);
         }
     }
 
@@ -239,7 +239,7 @@ public sealed class BossTimerSyncStandingTests
         {
             string line = $"{{{BossTimerQueryHandler.SyncResponseToken} {i + 1}/{chunks.Count} {chunks[i]}}}";
             ChatChannel by = i == chunks.Count - 1 ? ChatChannel.TelepathIncoming : ChatChannel.Broadcast;
-            _collector.Ingest(new ChatLogEntry(DateTimeOffset.UtcNow, by, "Bob", line, line));
+            ChatLines.Hear(_router, by, "Bob", line);
         }
 
         BossTimerSyncResponse response = Assert.Single(_got);
@@ -257,12 +257,12 @@ public sealed class BossTimerSyncStandingTests
         IReadOnlyList<string> chunks = BossTimerSyncCodec.Chunk(BossTimerSyncCodec.Encode(OneTimer), 6);
         Assert.True(chunks.Count >= 2);
         string Line(int i) => $"{{{BossTimerQueryHandler.SyncResponseToken} {i + 1}/{chunks.Count} {chunks[i]}}}";
-        _collector.Ingest(new ChatLogEntry(DateTimeOffset.UtcNow, ChatChannel.Gangpath, "Sue", Line(0), Line(0)));
+        ChatLines.Hear(_router, ChatChannel.Gangpath, "Sue", Line(0));
 
         _collector.Begin(RemoteChannel.Local);
 
         for (int i = 1; i < chunks.Count; i++)
-            _collector.Ingest(new ChatLogEntry(DateTimeOffset.UtcNow, ChatChannel.Gangpath, "Sue", Line(i), Line(i)));
+            ChatLines.Hear(_router, ChatChannel.Gangpath, "Sue", Line(i));
         Answers("Bob", ChatChannel.Local);
 
         Assert.Equal(new[] { "Bob", "Sue", "Bob" }, _got.Select(r => r.Sender));
@@ -277,13 +277,13 @@ public sealed class BossTimerSyncStandingTests
         IReadOnlyList<string> chunks = BossTimerSyncCodec.Chunk(BossTimerSyncCodec.Encode(OneTimer), 6);
         Assert.True(chunks.Count >= 2);
         string first = $"{{{BossTimerQueryHandler.SyncResponseToken} 1/{chunks.Count} {chunks[0]}}}";
-        _collector.Ingest(new ChatLogEntry(DateTimeOffset.UtcNow, ChatChannel.Gangpath, "Bob", first, first));
+        ChatLines.Hear(_router, ChatChannel.Gangpath, "Bob", first);
 
         // Each piece is well formed and the whole decodes to nothing.
         string a = $"{{{BossTimerQueryHandler.SyncResponseToken} 1/2 {chunks[0]}}}";
         string b = $"{{{BossTimerQueryHandler.SyncResponseToken} 2/2 !!!!}}";
-        _collector.Ingest(new ChatLogEntry(DateTimeOffset.UtcNow, ChatChannel.Gangpath, "Sue", a, a));
-        _collector.Ingest(new ChatLogEntry(DateTimeOffset.UtcNow, ChatChannel.Gangpath, "Sue", b, b));
+        ChatLines.Hear(_router, ChatChannel.Gangpath, "Sue", a);
+        ChatLines.Hear(_router, ChatChannel.Gangpath, "Sue", b);
 
         Assert.Empty(_got);
     }

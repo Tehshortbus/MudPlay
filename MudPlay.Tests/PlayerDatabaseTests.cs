@@ -10,7 +10,7 @@ public sealed class PlayerDatabaseTests
     [Fact]
     public void RecordObservation_CreatesMergedRecord_WhenNameNotKnown()
     {
-        PlayerDatabase db = new();
+        PlayerDatabase db = new(new ProfileService(), () => null);
         DateTime now = new(2026, 5, 1, 0, 0, 0, DateTimeKind.Utc);
 
         db.RecordObservation("Forged", null, null, "Lawful", "Magebane", "Mudd Life Crisis", null, now);
@@ -32,7 +32,7 @@ public sealed class PlayerDatabaseTests
     [Fact]
     public void RecordObservation_SplitsTwoWordName_IntoGivenAndFamily()
     {
-        PlayerDatabase db = new();
+        PlayerDatabase db = new(new ProfileService(), () => null);
         DateTime now = new(2026, 5, 1, 0, 0, 0, DateTimeKind.Utc);
 
         db.RecordObservation("Forged Paradigm", null, null, null, "Magebane", null, null, now);
@@ -45,7 +45,7 @@ public sealed class PlayerDatabaseTests
     [Fact]
     public void EditCustomization_AppliesToMergedView_WithoutTouchingObservation()
     {
-        PlayerDatabase db = new();
+        PlayerDatabase db = new(new ProfileService(), () => null);
         DateTime first = new(2026, 5, 1, 0, 0, 0, DateTimeKind.Utc);
         DateTime later = new(2026, 5, 2, 0, 0, 0, DateTimeKind.Utc);
 
@@ -76,7 +76,7 @@ public sealed class PlayerDatabaseTests
     [Fact]
     public void EditCustomization_RemovesEntry_WhenAllFieldsDefault()
     {
-        PlayerDatabase db = new();
+        PlayerDatabase db = new(new ProfileService(), () => null);
         DateTime now = new(2026, 5, 1, 0, 0, 0, DateTimeKind.Utc);
         db.RecordObservation("Forged", null, null, null, "Magebane", null, null, now);
 
@@ -92,7 +92,7 @@ public sealed class PlayerDatabaseTests
     [Fact]
     public void RecordObservation_LeavesExistingFields_WhenNewObservationNull()
     {
-        PlayerDatabase db = new();
+        PlayerDatabase db = new(new ProfileService(), () => null);
         DateTime now = new(2026, 5, 1, 0, 0, 0, DateTimeKind.Utc);
 
         db.RecordObservation("Forged", "Mage", "Elf", "Good", "the Wise", null, null, now);
@@ -105,7 +105,7 @@ public sealed class PlayerDatabaseTests
     [Fact]
     public void PurgeStale_DropsRowsOlderThanCutoff()
     {
-        PlayerDatabase db = new();
+        PlayerDatabase db = new(new ProfileService(), () => null);
         DateTime now = new(2026, 5, 1, 0, 0, 0, DateTimeKind.Utc);
 
         db.RecordObservation("Recent",  null, null, null, null, null, null, now.AddDays(-10));
@@ -121,7 +121,7 @@ public sealed class PlayerDatabaseTests
     [Fact]
     public void PurgeStale_SkipsRecords_FlaggedDontAutoDelete()
     {
-        PlayerDatabase db = new();
+        PlayerDatabase db = new(new ProfileService(), () => null);
         DateTime now = new(2026, 5, 1, 0, 0, 0, DateTimeKind.Utc);
 
         db.RecordObservation("Keeper", null, null, null, null, null, null, now.AddDays(-365));
@@ -152,7 +152,7 @@ public sealed class PlayerDatabaseTests
         // The bug: train-stats lets a player change family name without
         // losing identity. Re-observing under the new family must merge
         // into the existing row, not create a duplicate.
-        PlayerDatabase db = new();
+        PlayerDatabase db = new(new ProfileService(), () => null);
         DateTime first = new(2026, 5, 30, 0, 0, 0, DateTimeKind.Utc);
         DateTime later = new(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc);
 
@@ -176,7 +176,7 @@ public sealed class PlayerDatabaseTests
         // The user's per-player flags / auto-party toggles / notes /
         // DontAutoDelete must travel with the player identity, not with
         // the display name. Family-rename can never reset them.
-        PlayerDatabase db = new();
+        PlayerDatabase db = new(new ProfileService(), () => null);
         DateTime first = new(2026, 5, 30, 0, 0, 0, DateTimeKind.Utc);
         DateTime later = new(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc);
 
@@ -204,7 +204,7 @@ public sealed class PlayerDatabaseTests
         // Three consecutive observations of the same given name through
         // different families. All collapse to one row; the last family
         // is the one currently displayed.
-        PlayerDatabase db = new();
+        PlayerDatabase db = new(new ProfileService(), () => null);
         DateTime t1 = new(2026, 5, 1, 0, 0, 0, DateTimeKind.Utc);
         DateTime t2 = new(2026, 5, 15, 0, 0, 0, DateTimeKind.Utc);
         DateTime t3 = new(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc);
@@ -225,7 +225,7 @@ public sealed class PlayerDatabaseTests
         // Same family-name "Clawful" appears on multiple given names in
         // the screenshot — these are real different players and must
         // NOT merge. Sanity check the given-name keying.
-        PlayerDatabase db = new();
+        PlayerDatabase db = new(new ProfileService(), () => null);
         DateTime now = new(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc);
 
         db.RecordObservation("Furnagerie Clawful", null, null, null, null, null, null, now);
@@ -244,7 +244,7 @@ public sealed class PlayerDatabaseTests
         // look-observation fully replaces an earlier loadout, not merges
         // item-by-item. An old loadout combined with a new loadout would
         // misrepresent both moments.
-        PlayerDatabase db = new();
+        PlayerDatabase db = new(new ProfileService(), () => null);
         DateTime t1 = new(2026, 5, 1, 0, 0, 0, DateTimeKind.Utc);
         DateTime t2 = new(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc);
 
@@ -271,7 +271,7 @@ public sealed class PlayerDatabaseTests
         // A later observation that didn't see equipment (e.g. who only)
         // must not erase the prior loadout — that would be replacing an
         // observation with a non-observation.
-        PlayerDatabase db = new();
+        PlayerDatabase db = new(new ProfileService(), () => null);
         DateTime t1 = new(2026, 5, 1, 0, 0, 0, DateTimeKind.Utc);
         DateTime t2 = new(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc);
 
@@ -292,7 +292,7 @@ public sealed class PlayerDatabaseTests
     [Fact]
     public void RecordLevel_CreatesRecord_WhenPlayerUnknown()
     {
-        PlayerDatabase db = new();
+        PlayerDatabase db = new(new ProfileService(), () => null);
         DateTime now = new(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc);
 
         db.RecordLevel("Bob", 42, now);
@@ -311,7 +311,7 @@ public sealed class PlayerDatabaseTests
         // A probed level supersedes the title-derived range but must not
         // disturb the other observation fields — answering @level only
         // tells us the level and that they're present right now.
-        PlayerDatabase db = new();
+        PlayerDatabase db = new(new ProfileService(), () => null);
         DateTime first = new(2026, 5, 1, 0, 0, 0, DateTimeKind.Utc);
         DateTime later = new(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc);
 
@@ -334,7 +334,7 @@ public sealed class PlayerDatabaseTests
         // A rerolled character answers @level 1 while the record still carries the
         // old character's "Curate" (Priest 10-14): that band would otherwise outrank
         // the reading, so a manual @level changed nothing. A title that fits stays.
-        PlayerDatabase db = new();
+        PlayerDatabase db = new(new ProfileService(), () => null);
         DateTime now = new(2026, 9, 24, 0, 0, 0, DateTimeKind.Utc);
         db.RecordObservation("Raijin", "Priest", null, null, "Curate", null, null, now);
         db.RecordObservation("Bob", "Priest", null, null, "Curate", null, null, now);
@@ -349,7 +349,7 @@ public sealed class PlayerDatabaseTests
     [Fact]
     public void RecordStatedClass_NewClass_DropsTheOldCharactersObservations()
     {
-        PlayerDatabase db = new();
+        PlayerDatabase db = new(new ProfileService(), () => null);
         DateTime now = new(2026, 9, 24, 0, 0, 0, DateTimeKind.Utc);
         db.RecordObservation("Raijin", "Priest", "Elf", "Good", "Curate", "asdf", null, now);
         db.RecordLevel("Raijin", 12, now);
@@ -372,7 +372,7 @@ public sealed class PlayerDatabaseTests
     [Fact]
     public void EveryPlayerStartsNeutral_WithNoResponseOfTheirOwn()
     {
-        PlayerDatabase db = new();
+        PlayerDatabase db = new(new ProfileService(), () => null);
         db.RecordObservation("Raijin Storm", null, null, "Good", "Curate", null, null, DateTime.UtcNow);
 
         PlayerRecord r = db.Find("Raijin")!;
@@ -383,10 +383,8 @@ public sealed class PlayerDatabaseTests
     [Fact]
     public void SetRelationship_StoresBoth_AndSaysWhenNothingChanged()
     {
-        PlayerDatabase db = new();
+        PlayerDatabase db = new(new ProfileService(), () => null);
         db.RecordObservation("Raijin Storm", null, null, null, null, null, null, DateTime.UtcNow);
-        List<(string Given, PlayerRelationship Relationship)> raised = new();
-        db.RelationshipChanged += (g, rel) => raised.Add((g, rel));
 
         Assert.True(db.SetRelationship("Raijin Storm", PlayerRelationship.Enemy, PvpAction.Flee));
         Assert.False(db.SetRelationship("Raijin", PlayerRelationship.Enemy, PvpAction.Flee));   // unchanged
@@ -395,13 +393,12 @@ public sealed class PlayerDatabaseTests
         PlayerRecord r = db.Find("Raijin")!;
         Assert.Equal(PlayerRelationship.Enemy, r.Relationship);
         Assert.Equal(PvpAction.Flee, r.PvpResponse);
-        Assert.Equal(("Raijin", PlayerRelationship.Enemy), Assert.Single(raised));
     }
 
     [Fact]
     public void Relationship_OutlastsANewSighting_AndAClassChange()
     {
-        PlayerDatabase db = new();
+        PlayerDatabase db = new(new ProfileService(), () => null);
         DateTime now = new(2026, 10, 5, 0, 0, 0, DateTimeKind.Utc);
         db.RecordObservation("Raijin", "Priest", null, null, "Curate", null, null, now);
         db.SetRelationship("Raijin", PlayerRelationship.Friend, null);
@@ -415,7 +412,7 @@ public sealed class PlayerDatabaseTests
     [Fact]
     public void PurgeStale_KeepsFriendsAndEnemies()
     {
-        PlayerDatabase db = new();
+        PlayerDatabase db = new(new ProfileService(), () => null);
         DateTime old = new(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
         db.RecordObservation("Stranger", null, null, null, null, null, null, old);
         db.RecordObservation("Ally", null, null, null, null, null, null, old);
@@ -452,7 +449,7 @@ public sealed class PlayerDatabaseTests
     [Fact]
     public void RecordLevel_SplitsFullName_KeysOnGiven()
     {
-        PlayerDatabase db = new();
+        PlayerDatabase db = new(new ProfileService(), () => null);
         DateTime now = new(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc);
 
         db.RecordLevel("Bob Ironhelm", 33, now);
@@ -465,7 +462,7 @@ public sealed class PlayerDatabaseTests
     [Fact]
     public void RecordLevel_NonPositive_NoOp()
     {
-        PlayerDatabase db = new();
+        PlayerDatabase db = new(new ProfileService(), () => null);
         db.RecordLevel("Bob", 0, DateTime.UtcNow);
         db.RecordLevel("Bob", -3, DateTime.UtcNow);
         Assert.Empty(db.Players);
@@ -476,7 +473,7 @@ public sealed class PlayerDatabaseTests
     [Fact]
     public void RecordVersion_CreatesRecord_WhenPlayerUnknown()
     {
-        PlayerDatabase db = new();
+        PlayerDatabase db = new(new ProfileService(), () => null);
         DateTime now = new(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc);
 
         db.RecordVersion("Bob", "MudPlay 2.37.0", now);
@@ -491,7 +488,7 @@ public sealed class PlayerDatabaseTests
     [Fact]
     public void RecordVersion_UpdatesVersion_KeepingOtherFields()
     {
-        PlayerDatabase db = new();
+        PlayerDatabase db = new(new ProfileService(), () => null);
         DateTime first = new(2026, 5, 1, 0, 0, 0, DateTimeKind.Utc);
         DateTime later = new(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc);
 
@@ -509,7 +506,7 @@ public sealed class PlayerDatabaseTests
     [Fact]
     public void RecordVersion_Blank_NoOp()
     {
-        PlayerDatabase db = new();
+        PlayerDatabase db = new(new ProfileService(), () => null);
         db.RecordVersion("Bob", "", DateTime.UtcNow);
         db.RecordVersion("Bob", "   ", DateTime.UtcNow);
         Assert.Empty(db.Players);
@@ -520,7 +517,7 @@ public sealed class PlayerDatabaseTests
     [Fact]
     public void RecordPartied_RoundTripsLastPartiedUtc()
     {
-        PlayerDatabase db = new();
+        PlayerDatabase db = new(new ProfileService(), () => null);
         DateTime now = new(2026, 6, 1, 12, 0, 0, DateTimeKind.Utc);
 
         Assert.Null(db.GetLastPartiedUtc("Bob"));   // never partied
@@ -531,7 +528,7 @@ public sealed class PlayerDatabaseTests
     [Fact]
     public void RecordPartied_LeavesOtherFieldsIntact()
     {
-        PlayerDatabase db = new();
+        PlayerDatabase db = new(new ProfileService(), () => null);
         DateTime first = new(2026, 5, 1, 0, 0, 0, DateTimeKind.Utc);
         DateTime party = new(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc);
 
@@ -550,7 +547,7 @@ public sealed class PlayerDatabaseTests
     {
         // A later who-observation carries no level; the probed level must
         // survive (with-expression leaves untouched fields intact).
-        PlayerDatabase db = new();
+        PlayerDatabase db = new(new ProfileService(), () => null);
         DateTime t1 = new(2026, 5, 1, 0, 0, 0, DateTimeKind.Utc);
         DateTime t2 = new(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc);
 
@@ -565,14 +562,14 @@ public sealed class PlayerDatabaseTests
     [Fact]
     public void Find_UnknownPlayer_ReturnsNull()
     {
-        PlayerDatabase db = new();
+        PlayerDatabase db = new(new ProfileService(), () => null);
         Assert.Null(db.Find("Nobody"));
     }
 
     [Fact]
     public void Find_ByGivenOrFullName_ReturnsMergedRecord()
     {
-        PlayerDatabase db = new();
+        PlayerDatabase db = new(new ProfileService(), () => null);
         DateTime now = new(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc);
         db.RecordObservation("Bob Ironhelm", "Mage", "Elf", "Good", "Wizard", null, null, now);
         db.RecordLevel("Bob", 51, now);
@@ -590,7 +587,7 @@ public sealed class PlayerDatabaseTests
     [Fact]
     public void Find_BlankName_ReturnsNull()
     {
-        PlayerDatabase db = new();
+        PlayerDatabase db = new(new ProfileService(), () => null);
         Assert.Null(db.Find(""));
         Assert.Null(db.Find("   "));
     }
@@ -602,7 +599,7 @@ public sealed class PlayerDatabaseTests
     [Fact]
     public void AddManual_CreatesNewRecord_WhenGivenIsUnknown()
     {
-        PlayerDatabase db = new();
+        PlayerDatabase db = new(new ProfileService(), () => null);
         DateTime now = new(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc);
 
         bool isNew = db.AddManual("Debbie", "Par", now);
@@ -622,7 +619,7 @@ public sealed class PlayerDatabaseTests
         // the same sparse-merge as RecordObservation. The dialog blocks
         // this from happening via its CanSave validation, but the DB
         // itself stays consistent under direct callers.
-        PlayerDatabase db = new();
+        PlayerDatabase db = new(new ProfileService(), () => null);
         DateTime first = new(2026, 5, 1, 0, 0, 0, DateTimeKind.Utc);
         DateTime later = new(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc);
 
@@ -639,7 +636,7 @@ public sealed class PlayerDatabaseTests
     [Fact]
     public void AddManual_EmptyGiven_NoOp()
     {
-        PlayerDatabase db = new();
+        PlayerDatabase db = new(new ProfileService(), () => null);
         Assert.False(db.AddManual("", "Par", DateTime.UtcNow));
         Assert.False(db.AddManual("   ", "", DateTime.UtcNow));
         Assert.Empty(db.Players);
@@ -648,7 +645,7 @@ public sealed class PlayerDatabaseTests
     [Fact]
     public void RemoveByGivenName_DropsTheRow()
     {
-        PlayerDatabase db = new();
+        PlayerDatabase db = new(new ProfileService(), () => null);
         DateTime now = new(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc);
         db.RecordObservation("Debbie Par", null, null, null, null, null, null, now);
         db.RecordObservation("Helper Lastname", null, null, null, null, null, null, now);
@@ -665,7 +662,7 @@ public sealed class PlayerDatabaseTests
     {
         // Convenience for callers passing the full "Given Family" string —
         // the helper splits internally and matches on the given token.
-        PlayerDatabase db = new();
+        PlayerDatabase db = new(new ProfileService(), () => null);
         DateTime now = new(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc);
         db.RecordObservation("Debbie Par", null, null, null, null, null, null, now);
 
@@ -679,7 +676,7 @@ public sealed class PlayerDatabaseTests
         // Removing the observation drops the row from Players, but the
         // customization stays attached. On the NEXT observation of the
         // same player (real or manual), the customization re-binds.
-        PlayerDatabase db = new();
+        PlayerDatabase db = new(new ProfileService(), () => null);
         DateTime now = new(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc);
         db.RecordObservation("Debbie", null, null, null, null, null, null, now);
         db.EditCustomization("Debbie", new PlayerCustomization(
@@ -699,7 +696,7 @@ public sealed class PlayerDatabaseTests
     [Fact]
     public void RemoveByGivenName_UnknownGiven_NoOp()
     {
-        PlayerDatabase db = new();
+        PlayerDatabase db = new(new ProfileService(), () => null);
         Assert.False(db.RemoveByGivenName("NeverSeen"));
         Assert.False(db.RemoveByGivenName(""));
         Assert.False(db.RemoveByGivenName("   "));

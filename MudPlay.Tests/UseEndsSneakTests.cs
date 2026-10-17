@@ -236,6 +236,8 @@ public sealed class UseEndsSneakTests : IDisposable
         public MessageRouter Router { get; } = new();
         public PlayerState State { get; } = new();
         public StealthManager Stealth { get; }
+        // The manager's re-sneak, cooldown-retry, answer and held-cast timers.
+        public ManualTimers StealthTimers { get; } = new();
         public List<string> Wire { get; } = new();
         public bool EngineDriving;
         public bool AutoSneak = true;
@@ -246,7 +248,7 @@ public sealed class UseEndsSneakTests : IDisposable
         {
             DefaultPatterns.Seed(Router);
             _items = new ItemUseStealthRule(() => { RuleConsulted++; return Pack; }, FactsOf);
-            Stealth = new StealthManager(Router, State, new LogService());
+            Stealth = new StealthManager(Router, State, new LogService(), schedule: StealthTimers.Arm);
             Stealth.SetAutoToggles(() => AutoSneak, () => AutoHide);
             Stealth.SetEngineDrivingCheck(() => EngineDriving);
             Stealth.SetWireSender(SendBytes);
@@ -442,13 +444,14 @@ public sealed class UseEndsSneakTests : IDisposable
     public void SneakedInThenHid_EngineStep_SendsNoSn_IsNotHeld_AndIsSneakingAgain()
     {
         using World w = new() { EngineDriving = true };
-        w.Stealth.SetMovementCoordinator(new MovementCoordinator());
+        MovementCoordinator coordinator = new();
+        w.Stealth.SetMovementCoordinator(coordinator);
         w.Feed("Sneaking...");
         w.Feed("Attempting to hide...");
         Assert.Equal(StealthState.Hidden, w.Stealth.State);
 
         Assert.True(w.Stealth.ReadyToMoveSneaking());
-        Assert.False(w.Stealth.IsHoldingForSneakAnswer);
+        Assert.False(coordinator.IsGateAsserted(MovementCoordinator.SneakSettleGate));
         w.Stealth.RequestPreMoveStealth();
         w.Stealth.NoteDirectionalMoveSent();        // the step's direction goes out
         w.Stealth.NoteTypedMove();
@@ -708,12 +711,12 @@ public sealed class UseEndsSneakTests : IDisposable
         w.Feed("Sneaking...");
 
         w.Send("use waterskin");
-        Assert.True(w.Stealth.InPlaceReSneakPendingForTests);
+        Assert.Contains(StealthManager.InPlaceReSneakDelay, w.StealthTimers.PendingDelays);
         w.Stealth.ReSneakAfterCast();
 
         Assert.Equal(new[] { "use waterskin", "sn" }, w.Wire);
-        Assert.False(w.Stealth.InPlaceReSneakPendingForTests);
-        w.Stealth.ReSneakInPlaceForTests();         // and were it to fire all the same
+        Assert.DoesNotContain(StealthManager.InPlaceReSneakDelay, w.StealthTimers.PendingDelays);
+        w.StealthTimers.RunAll();
         Assert.Equal(new[] { "use waterskin", "sn" }, w.Wire);
     }
 

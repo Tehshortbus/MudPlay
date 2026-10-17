@@ -1,13 +1,11 @@
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using MudPlay.Game.Combat;
 using MudPlay.Game.Conditions;
 using MudPlay.Game.GameData;
 using MudPlay.Game.Map;
 using MudPlay.Models.GameData;
 using MudPlay.Services;
-using MudPlay.Terminal;
 using Xunit;
 
 namespace MudPlay.Tests;
@@ -19,6 +17,9 @@ namespace MudPlay.Tests;
 // CastReach.Standing, so each thing it goes by is one a test can take away.
 public sealed class ConditionTrackerCastReachTests : IDisposable
 {
+    // The game's output, fed the way the client receives it.
+    private readonly ServerFeed _feed = new();
+
     private readonly string _root;
     private readonly LogService _log = new() { Diagnostics = new LogDiagnosticState { DebugDiagnostics = true } };
     private readonly MessageStore _messages = new();
@@ -46,6 +47,7 @@ public sealed class ConditionTrackerCastReachTests : IDisposable
         (_, _casters) = SpellCasterIndexTests.NewIndex(_root);
 
         _tracker = new ConditionTracker(_messages, _log);
+        _tracker.AttachLineExtractor(_feed.Lines);
         _tracker.ConditionApplied += _applied.Add;
         _tracker.SetCastReach(new CastReach(_casters, Standing));
     }
@@ -104,13 +106,7 @@ public sealed class ConditionTrackerCastReachTests : IDisposable
 
     private void Feed(string text) => FeedAt(text, DateTimeOffset.UtcNow);
 
-    private void FeedAt(string text, DateTimeOffset when) =>
-        typeof(ConditionTracker)
-            .GetMethod("OnLine", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .Invoke(_tracker, new object[]
-            {
-                new LineExtractor.EmittedLine(text, Array.Empty<CellAttributes>(), when, IsPromptLine: false),
-            });
+    private void FeedAt(string text, DateTimeOffset when) => _feed.Line(text, when);
 
     private IEnumerable<string> AppliedNames => _applied.Select(r => r.Name);
 

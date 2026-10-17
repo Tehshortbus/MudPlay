@@ -12,13 +12,11 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// PR 10.8 — <see cref="LevelUpAnnouncer"/>: broadcasts "I can now train to
-/// level: N" when a live "You gain N experience." line pushes a Level-Projection
-/// row's "Exp to level" to 0. Verifies the anti-login-spam baseline (pre-banked
-/// levels stay silent), the multi-level burst, the enable gate, and the
-/// channel→wire-verb mapping.
-/// </summary>
+// LevelUpAnnouncer: broadcasts "I can now train to
+// level: N" when a live "You gain N experience." line pushes a Level-Projection
+// row's "Exp to level" to 0. Verifies the anti-login-spam baseline (pre-banked
+// levels stay silent), the multi-level burst, the enable gate, and the
+// channel→wire-verb mapping.
 public sealed class LevelUpAnnouncerTests
 {
     // ExpTable 100 (class) + 0 (race) → CalcExpChart(100,0) = 200, which spreads the
@@ -33,6 +31,8 @@ public sealed class LevelUpAnnouncerTests
         private readonly string _root;
         public PlayerStats Stats { get; }
         public StatParser Parser { get; }
+        // The game's output, fed the way the client receives it.
+        public ServerFeed Feed { get; } = new();
         public ProfileService Profile { get; }
         public LevelUpAnnouncer Announcer { get; }
         public List<byte[]> Wire { get; } = new();
@@ -51,9 +51,10 @@ public sealed class LevelUpAnnouncerTests
             // seeds the baseline from these values (the login-restore equivalent).
             Stats = new PlayerStats { Class = "Warrior", Race = "Human", Level = level, Exp = (int)exp };
             Parser = new StatParser(Stats);
+            Parser.AttachLineExtractor(Feed.Lines);
 
-            Profile = new ProfileService();
-            Profile.LoadBlank();
+            Profile = TestProfiles.Service();
+            Profile.LoadDefaultProfile();
             Profile.Current!.Settings = new Dictionary<string, JsonElement>
             {
                 ["AutoTrainer"] = JsonSerializer.SerializeToElement(
@@ -64,8 +65,8 @@ public sealed class LevelUpAnnouncerTests
             Announcer.SetWireSender(Wire.Add);
         }
 
-        /// <summary>Feed a combat exp-gain line through the parser's always-on accrual path.</summary>
-        public void Gain(long amount) => Parser.FeedTestLine($"You gain {amount} experience.");
+        // Feed a combat exp-gain line through the parser's always-on accrual path.
+        public void Gain(long amount) => Feed.Line($"You gain {amount} experience.");
 
         public IReadOnlyList<string> Sent =>
             Wire.Select(b => Encoding.Latin1.GetString(b).TrimEnd('\r')).ToList();
@@ -138,8 +139,15 @@ public sealed class LevelUpAnnouncerTests
         using var h = new Harness(level: 5, exp: Threshold(6) - 1, announce: false);
 
         h.Gain(Threshold(7) - (Threshold(6) - 1));   // crosses 6 and 7 while disabled
-
         Assert.Empty(h.Sent);
+
+        // Switched back on, the next level up announces only itself: 6 and 7 went
+        // into the baseline while the toggle was off.
+        h.Profile.Current!.Settings!["AutoTrainer"] = JsonSerializer.SerializeToElement(
+            new AutoTrainerSettings { AnnounceLevelUps = true });
+        h.Gain(Threshold(8) - Threshold(7));
+
+        Assert.Equal(new[] { "bg I can now train to level: 8" }, h.Sent);
     }
 
     [Fact]
@@ -175,9 +183,9 @@ public sealed class LevelUpAnnouncerTests
     {
         using var h = new Harness(level: 5, exp: Threshold(6) - 1, announce: true);
 
-        // Swap characters (LoadBlank fires ProfileClosed + ProfileLoaded) — the
+        // Swap characters (LoadDefaultProfile fires ProfileClosed + ProfileLoaded) — the
         // baseline drops, then re-seeds from the new character's exp.
-        h.Profile.LoadBlank();
+        h.Profile.LoadDefaultProfile();
         h.Profile.Current!.Settings = new Dictionary<string, JsonElement>
         {
             ["AutoTrainer"] = JsonSerializer.SerializeToElement(

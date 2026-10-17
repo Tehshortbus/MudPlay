@@ -214,9 +214,6 @@ public readonly record struct SpellEffectivenessResult(
     // per-round figures (both damage and mana carry the same energy multiplier),
     // so it reads as damage output per mana spent. 0 when free / blocked.
     public double DamagePerMana => ManaCostPerRound > 0 ? (double)EffectiveDamage / ManaCostPerRound : 0;
-
-    // True once a target HP was supplied, so RoundsToKill / ManaToKill are real.
-    public bool HasKillEstimate => RoundsToKill > 0;
 }
 
 // Spell-matchup additions to MonsterMatchupCalculator below — kept as their

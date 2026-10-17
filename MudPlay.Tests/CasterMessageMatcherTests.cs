@@ -5,13 +5,11 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Pins the <c>{s}</c>/<c>{d}</c>/<c>{target}</c>/<c>{source}</c>/<c>{dmg}</c>
-/// caster-message template → regex matcher that <see cref="CastingDirector"/>
-/// uses to confirm OUR party-buff cast landed before starting the duration
-/// timer, plus the spell-aware <c>ConfirmsSpellTarget</c> used to clear a
-/// member's ailment chip.
-/// </summary>
+// Pins the {s}/{d}/{target}/{source}/{dmg}
+// caster-message template → regex matcher that CastingDirector
+// uses to confirm OUR party-buff cast landed before starting the duration
+// timer, plus the spell-aware ConfirmsSpellTarget used to clear a
+// member's ailment chip.
 public sealed class CasterMessageMatcherTests
 {
     [Fact]
@@ -224,7 +222,7 @@ public sealed class CasterMessageMatcherTests
         Assert.False(m.TryMatch("You cast smite XholyX at Raijin!", out _));
     }
 
-    // ----- TryMatchDamage (Phase 11 proc / attack-spell recogniser) -----
+    // ----- TryMatchDamage -----------------------------------------------
 
     [Fact]
     public void TryMatchDamage_SurfacesTheNumericCapture()

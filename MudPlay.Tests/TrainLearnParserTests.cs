@@ -8,15 +8,16 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Pins <see cref="TrainLearnParser"/> — the collector that marks powers
-/// obtained the moment training lists them ("You learn the following Kai
-/// abilities:"). Incremental (never snapshots), so it mirrors the learn-scroll
-/// path. Harness reuses the synthetic class + spell rows from
-/// <see cref="SpellListParserTests"/>.
-/// </summary>
+// Pins TrainLearnParser — the collector that marks powers
+// obtained the moment training lists them ("You learn the following Kai
+// abilities:"). Incremental (never snapshots), so it mirrors the learn-scroll
+// path. Harness reuses the synthetic class + spell rows from
+// SpellListParserTests.
 public sealed class TrainLearnParserTests : IDisposable
 {
+    // The game's output, fed the way the client receives it.
+    private readonly ServerFeed _feed = new();
+
     private readonly string _root;
 
     public TrainLearnParserTests()
@@ -65,12 +66,13 @@ public sealed class TrainLearnParserTests : IDisposable
     {
         SpellbookState book = NewBook();
         using TrainLearnParser parser = new(book);
+        parser.AttachLineExtractor(_feed.Lines);
 
         // Verbatim from the captured mystic `train`.
-        parser.FeedTestLine("You learn the following Kai abilities:");
-        parser.FeedTestLine("way of the swan");
+        _feed.Line("You learn the following Kai abilities:");
+        _feed.Line("way of the swan");
         Assert.True(book.IsObtained(200)); // additive — marked as read, no commit wait
-        parser.FeedTestLine("[HP=34/KAI=1]:", isPromptLine: true);
+        _feed.Line("[HP=34/KAI=1]:");
 
         Assert.True(book.IsObtained(200));
         Assert.Equal(1, book.ObtainedCount);
@@ -81,11 +83,12 @@ public sealed class TrainLearnParserTests : IDisposable
     {
         SpellbookState book = NewBook();
         using TrainLearnParser parser = new(book);
+        parser.AttachLineExtractor(_feed.Lines);
 
-        parser.FeedTestLine("You learn the following Kai abilities:");
-        parser.FeedTestLine("way of the swan");
-        parser.FeedTestLine("way of the crane");
-        parser.FeedTestLine("[HP=34/KAI=1]:", isPromptLine: true);
+        _feed.Line("You learn the following Kai abilities:");
+        _feed.Line("way of the swan");
+        _feed.Line("way of the crane");
+        _feed.Line("[HP=34/KAI=1]:");
 
         Assert.True(book.IsObtained(200));
         Assert.True(book.IsObtained(201));
@@ -102,9 +105,10 @@ public sealed class TrainLearnParserTests : IDisposable
         Assert.Equal(1, book.ObtainedCount);
 
         using TrainLearnParser parser = new(book);
-        parser.FeedTestLine("You learn the following Kai abilities:");
-        parser.FeedTestLine("way of the swan");
-        parser.FeedTestLine("[HP=34/KAI=1]:", isPromptLine: true);
+        parser.AttachLineExtractor(_feed.Lines);
+        _feed.Line("You learn the following Kai abilities:");
+        _feed.Line("way of the swan");
+        _feed.Line("[HP=34/KAI=1]:");
 
         // Both the pre-existing and the newly learned power survive.
         Assert.True(book.IsObtained(200));
@@ -119,9 +123,10 @@ public sealed class TrainLearnParserTests : IDisposable
     {
         SpellbookState book = NewBook();
         using TrainLearnParser parser = new(book);
+        parser.AttachLineExtractor(_feed.Lines);
 
         // A bare spell name with no header preceding it is not a learn.
-        parser.FeedTestLine("way of the swan");
+        _feed.Line("way of the swan");
         Assert.Equal(0, book.ObtainedCount);
     }
 
@@ -130,13 +135,14 @@ public sealed class TrainLearnParserTests : IDisposable
     {
         SpellbookState book = NewBook();
         using TrainLearnParser parser = new(book);
+        parser.AttachLineExtractor(_feed.Lines);
 
-        parser.FeedTestLine("You learn the following Kai abilities:");
-        parser.FeedTestLine("way of the swan");
-        parser.FeedTestLine("[HP=34/KAI=1]:", isPromptLine: true);
+        _feed.Line("You learn the following Kai abilities:");
+        _feed.Line("way of the swan");
+        _feed.Line("[HP=34/KAI=1]:");
         // A later bare name (e.g. a `pow` row's spell-name token line) must
         // not be folded in once the block closed.
-        parser.FeedTestLine("way of the crane");
+        _feed.Line("way of the crane");
 
         Assert.True(book.IsObtained(200));
         Assert.False(book.IsObtained(201));
@@ -148,11 +154,12 @@ public sealed class TrainLearnParserTests : IDisposable
     {
         SpellbookState book = NewBook();
         using TrainLearnParser parser = new(book);
+        parser.AttachLineExtractor(_feed.Lines);
 
-        parser.FeedTestLine("You learn the following Kai abilities:");
-        parser.FeedTestLine("way of the swan");
-        parser.FeedTestLine("");
-        parser.FeedTestLine("way of the crane"); // after the block closed
+        _feed.Line("You learn the following Kai abilities:");
+        _feed.Line("way of the swan");
+        _feed.Line("");
+        _feed.Line("way of the crane"); // after the block closed
 
         Assert.True(book.IsObtained(200));
         Assert.False(book.IsObtained(201));

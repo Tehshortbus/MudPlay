@@ -3,11 +3,9 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// <see cref="RateText.Compact"/> abbreviates a per-hour figure to k / M so it fits the
-/// narrow Session Stats graph headers and the main-window looping chip without a
-/// comma-grouped digit run. Invariant culture keeps the decimal a dot on every locale.
-/// </summary>
+// RateText.Compact abbreviates a per-hour figure to k / M so it fits the
+// narrow Session Stats graph headers and the main-window looping chip without a
+// comma-grouped digit run. Invariant culture keeps the decimal a dot on every locale.
 public sealed class RateTextTests
 {
     [Theory]

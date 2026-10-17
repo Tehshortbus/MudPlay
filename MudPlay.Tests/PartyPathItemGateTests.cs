@@ -11,16 +11,14 @@ namespace MudPlay.Tests;
 
 public sealed class PartyPathItemGateTests
 {
-    /// <summary>
-    /// Harness driving the gate with fully synchronous seams: the probe
-    /// <c>query</c> returns a pre-canned result via <see cref="SetResult"/>,
-    /// <c>post</c> runs inline, and the give hand-off's wire is captured. Since
-    /// the query task is already completed, <c>OnPathItemsRequired</c> runs the
-    /// whole check-then-act path before it returns, so assertions read the
-    /// captured wire / forwards directly. <see cref="IsLeader"/> defaults to
-    /// <c>false</c> — the follower self-borrow path — so the E1 tests read
-    /// unchanged; leader-provisioning tests flip it on.
-    /// </summary>
+    // Harness driving the gate with fully synchronous seams: the probe
+    // query returns a pre-canned result via SetResult,
+    // post runs inline, and the give hand-off's wire is captured. Since
+    // the query task is already completed, OnPathItemsRequired runs the
+    // whole check-then-act path before it returns, so assertions read the
+    // captured wire / forwards directly. IsLeader defaults to
+    // false — the follower self-borrow path — so the E1 tests read
+    // unchanged; leader-provisioning tests flip it on.
     private sealed class Harness
     {
         public readonly HashSet<int> Carried = new();

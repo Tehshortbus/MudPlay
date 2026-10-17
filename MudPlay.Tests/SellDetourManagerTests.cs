@@ -188,12 +188,14 @@ public sealed class SellDetourManagerTests : IDisposable
         h.Carried.AddRange(new[] { "dagger", "dagger" });
         h.Tracker.SetLocated(new RoomKey(1, 1));
         h.Walker.WalkTo(new RoomKey(1, 3));
+        h.Detour.Evaluate();                          // mid-step, where a due item would hold
         h.Arrive(new RoomKey(1, 2));
-
         h.Detour.Evaluate();
 
         Assert.False(h.Detour.IsDetouring);
+        Assert.DoesNotContain(MovementCoordinator.SellDetourGate, h.Coordinator.AssertedGates);
         Assert.Equal(new RoomKey(1, 3), h.Walker.Destination);
+        Assert.Contains("last decline: (none)", h.Detour.Status);   // nothing due, nothing weighed
     }
 
     [Fact]
@@ -203,11 +205,13 @@ public sealed class SellDetourManagerTests : IDisposable
         h.Carried.Add("dagger");
         h.Tracker.SetLocated(new RoomKey(1, 2));
         h.Walker.WalkTo(Shop);
+        h.Detour.Evaluate();
         h.Arrive(new RoomKey(1, 1));
-
         h.Detour.Evaluate();
 
         Assert.False(h.Detour.IsDetouring);   // Auto-sell sells when the walk gets there
+        Assert.DoesNotContain(MovementCoordinator.SellDetourGate, h.Coordinator.AssertedGates);
+        Assert.Contains("last decline: dagger: the Walk reaches 1/4 itself", h.Detour.Status);
     }
 
     // The walk back ends at the loop's room nearest the shop (1/2), not where the
@@ -268,11 +272,12 @@ public sealed class SellDetourManagerTests : IDisposable
         h.Carried.Add("dagger");
         h.Tracker.SetLocated(new RoomKey(1, 1));
         h.Walker.WalkTo(new RoomKey(1, 3));
+        h.Detour.Evaluate();
         h.Arrive(new RoomKey(1, 2));
-
         h.Detour.Evaluate();
 
         Assert.False(h.Detour.IsDetouring);
+        Assert.DoesNotContain(MovementCoordinator.SellDetourGate, h.Coordinator.AssertedGates);
     }
 
     // Walk to 1/3, detour to the shop and arrive there.

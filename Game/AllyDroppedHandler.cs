@@ -3,7 +3,6 @@ using System.ComponentModel;
 using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
-using Avalonia.Threading;
 using MudPlay.Game.Map;
 using MudPlay.Models.Profile;
 using MudPlay.Services;
@@ -87,7 +86,9 @@ public sealed partial class AllyDroppedHandler : IDisposable
     private readonly Func<int> _readDeathFloor;
     private readonly LogService? _log;
     private readonly List<IDisposable> _subs = new();
-    private readonly DispatcherTimer? _pollTimer;
+    // Arms one poll tick after the cadence; disposing what it returns cancels it.
+    private readonly Func<TimeSpan, Action, IDisposable> _schedule;
+    private IDisposable? _pollTick;
     private Action<byte[]>? _wireSender;
     private bool _disposed;
 
@@ -117,8 +118,7 @@ public sealed partial class AllyDroppedHandler : IDisposable
     private string? _recentLeaderGiven;
     private DateTime _recentLeaderAt;
 
-    // Test seam — overrides DateTime.UtcNow for the poll / grace clocks.
-    public Func<DateTime> NowProvider { get; set; } = () => DateTime.UtcNow;
+    private readonly Func<DateTime> _now;
 
     // Canonical @health reply shape, mirroring PartyPoller: {HP=cur/max[,MA=cur/max]
     // [,status text]}. The cur halves accept a leading minus so a still-negative (aided but
@@ -128,8 +128,7 @@ public sealed partial class AllyDroppedHandler : IDisposable
         RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
     private static partial Regex HealthReply();
 
-    // Default constructor — wires the in-process DispatcherTimer. Use the
-    // test-seam ctor (no timer) for unit tests.
+    // schedule stands in for the dispatcher's poll timer; now for the clock.
     public AllyDroppedHandler(
         MessageRouter router,
         PartyState party,
@@ -139,22 +138,11 @@ public sealed partial class AllyDroppedHandler : IDisposable
         Func<PartySettings> readParty,
         Func<bool> isEnabled,
         LogService? log = null,
-        Func<int>? readDeathFloor = null)
-        : this(router, party, manager, chat, coordinator, readParty, isEnabled,
-               useTimer: true, log, readDeathFloor) { }
-
-    internal AllyDroppedHandler(
-        MessageRouter router,
-        PartyState party,
-        PartyManager manager,
-        ChatRouter chat,
-        MovementCoordinator coordinator,
-        Func<PartySettings> readParty,
-        Func<bool> isEnabled,
-        bool useTimer,
-        LogService? log = null,
-        Func<int>? readDeathFloor = null)
+        Func<int>? readDeathFloor = null,
+        Func<TimeSpan, Action, IDisposable>? schedule = null,
+        Func<DateTime>? now = null)
     {
+        _now = now ?? (() => DateTime.UtcNow);
         ArgumentNullException.ThrowIfNull(router);
         ArgumentNullException.ThrowIfNull(party);
         ArgumentNullException.ThrowIfNull(manager);
@@ -171,6 +159,7 @@ public sealed partial class AllyDroppedHandler : IDisposable
         _isEnabled = isEnabled;
         _readDeathFloor = readDeathFloor ?? (static () => -25);
         _log = log;
+        _schedule = schedule ?? DispatcherTicks.Once;
 
         _subs.Add(_router.Subscribe(KnownPatterns.PartyMemberDropped, OnDropped));
         _subs.Add(_router.Subscribe(KnownPatterns.UserAidedAlly,      OnAided));
@@ -189,15 +178,6 @@ public sealed partial class AllyDroppedHandler : IDisposable
         // Seed the current leader if we wire up mid-party.
         if (!string.IsNullOrEmpty(_party.LeaderName))
             _currentLeaderGiven = GivenName(_party.LeaderName);
-
-        if (useTimer)
-        {
-            _pollTimer = new DispatcherTimer(DispatcherPriority.Background)
-            {
-                Interval = PollCadence,
-            };
-            _pollTimer.Tick += (_, _) => TickPoll();
-        }
     }
 
     // Bind the wire-sender — same gate-wrapped engineSend the other party engines
@@ -288,7 +268,7 @@ public sealed partial class AllyDroppedHandler : IDisposable
         if (_downed.ContainsKey(given)) return; // already rescuing this ally
 
         bool first = _downed.Count == 0;
-        DateTime now = NowProvider();
+        DateTime now = _now();
         DownedAlly ally = new() { Given = given, DroppedAt = now };
         _downed[given] = ally;
         if (first)
@@ -317,7 +297,7 @@ public sealed partial class AllyDroppedHandler : IDisposable
         // The name-targeted heal can land from here on (fed to CastingDirector).
         a.Aided = true;
         if (!a.HpKnown && !a.Up)
-            ScheduleCheck(a, NowProvider() + WorstCaseStand());
+            ScheduleCheck(a, _now() + WorstCaseStand());
         _log?.Info(LogCategory,
             $"Ally {given} aided — healing by name; checking on them at {a.CheckAt.ToLocalTime():HH:mm:ss}.");
     }
@@ -401,7 +381,7 @@ public sealed partial class AllyDroppedHandler : IDisposable
             return true;
         if (_recentLeaderGiven is { } recent
             && recent.Equals(given, StringComparison.OrdinalIgnoreCase)
-            && NowProvider() - _recentLeaderAt <= RecentLeaderGrace)
+            && _now() - _recentLeaderAt <= RecentLeaderGrace)
             return true;
         return false;
     }
@@ -421,7 +401,7 @@ public sealed partial class AllyDroppedHandler : IDisposable
             // Leadership just cleared (dissolution / leader disconnect). Remember
             // the departing leader so a drop line for them lands as an ally.
             _recentLeaderGiven = lost;
-            _recentLeaderAt = NowProvider();
+            _recentLeaderAt = _now();
             _currentLeaderGiven = null;
         }
     }
@@ -458,7 +438,7 @@ public sealed partial class AllyDroppedHandler : IDisposable
         if (!m.Success) return;
         int hpCur = int.Parse(m.Groups["hp"].Value,    CultureInfo.InvariantCulture);
         int hpMax = int.Parse(m.Groups["hpmax"].Value, CultureInfo.InvariantCulture);
-        DateTime now = NowProvider();
+        DateTime now = _now();
         if (hpCur <= 0)
         {
             // Still down: they reach 1 HP after (1 − hp) ticks. 0 isn't up.
@@ -484,12 +464,17 @@ public sealed partial class AllyDroppedHandler : IDisposable
             Resolve(given, $"recovered HP {hpCur}/{hpMax} ({pct}%)");
     }
 
-    internal void TickPollForTests() => TickPoll();
+    // One poll tick: the next is armed before this one runs.
+    private void OnPollTick()
+    {
+        _pollTick = _schedule(PollCadence, OnPollTick);
+        TickPoll();
+    }
 
     private void TickPoll()
     {
         if (_downed.Count == 0) { StopPollTimer(); return; }
-        DateTime now = NowProvider();
+        DateTime now = _now();
         foreach (string given in _downed.Keys.ToArray())
         {
             if (!_downed.TryGetValue(given, out DownedAlly? a)) continue;
@@ -541,13 +526,13 @@ public sealed partial class AllyDroppedHandler : IDisposable
         _wireSender?.Invoke(Encoding.Latin1.GetBytes($"/{given} @health\r"));
     }
 
-    private void EnsurePollTimerRunning()
-    {
-        if (_pollTimer is null) return;
-        if (!_pollTimer.IsEnabled) _pollTimer.Start();
-    }
+    private void EnsurePollTimerRunning() => _pollTick ??= _schedule(PollCadence, OnPollTick);
 
-    private void StopPollTimer() => _pollTimer?.Stop();
+    private void StopPollTimer()
+    {
+        _pollTick?.Dispose();
+        _pollTick = null;
+    }
 
     private static string GivenName(string name)
     {
@@ -555,16 +540,6 @@ public sealed partial class AllyDroppedHandler : IDisposable
         int space = name.IndexOf(' ');
         return space >= 0 ? name[..space] : name;
     }
-
-    // ----- Test seams ----------------------------------------------------
-
-    internal void NoteDroppedForTests(string playerName) => HandleDropped(playerName);
-    internal void NoteAidedForTests(string playerName) => HandleAided(playerName);
-    internal void NoteAllyGoneForTests(string playerName) => HandleAllyGone(playerName);
-    internal void NoteHealthReplyForTests(string speaker, string message) =>
-        OnChatEntry(new ChatLogEntry(
-            DateTimeOffset.UtcNow, ChatChannel.TelepathIncoming, speaker, message, message));
-    internal bool IsTrackingForTests(string given) => _downed.ContainsKey(GivenName(given));
 
     public void Dispose()
     {
@@ -575,7 +550,7 @@ public sealed partial class AllyDroppedHandler : IDisposable
         _party.PropertyChanged -= OnPartyPropertyChanged;
         _party.Members.CollectionChanged -= OnMembersChanged;
         _chat.EntryClassified -= OnChatEntry;
-        _pollTimer?.Stop();
+        StopPollTimer();
         if (_downed.Count > 0)
         {
             _downed.Clear();

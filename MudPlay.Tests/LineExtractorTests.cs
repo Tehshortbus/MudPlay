@@ -3,12 +3,8 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Deterministic tests for <see cref="LineExtractor"/>'s pure cell-row →
-/// EmittedLine conversion. The event-driven path (subscribing to the
-/// scrollback) gets exercised indirectly by integration through the
-/// emulator; these unit tests pin the conversion logic itself.
-/// </summary>
+// LineExtractor: the pure cell-row → EmittedLine conversion, and the event
+// path from the emulator's scrollback through the extractor.
 public sealed class LineExtractorTests
 {
     private static readonly DateTimeOffset FixedNow = new(2026, 1, 2, 12, 0, 0, TimeSpan.Zero);
@@ -317,12 +313,10 @@ public sealed class LineExtractorTests
         Assert.Equal("n", content.Trim());
     }
 
-    /// <summary>
-    /// Helper: build a row whose first <paramref name="text"/>.Length cells
-    /// hold <paramref name="text"/> at default attributes, then pad blanks
-    /// to <paramref name="paddedTo"/>. The pads use default background so
-    /// trim drops them.
-    /// </summary>
+    // Helper: build a row whose first text.Length cells
+    // hold text at default attributes, then pad blanks
+    // to paddedTo. The pads use default background so
+    // trim drops them.
     private static Cell[] MakeRow(string text, int paddedTo)
     {
         Cell[] cells = new Cell[paddedTo];

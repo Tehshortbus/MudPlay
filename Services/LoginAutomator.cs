@@ -79,8 +79,6 @@ public sealed class LoginAutomator : IDisposable
     // saved. Payload is a short reason.
     public event Action<string>? StepSkipped;
 
-    public bool IsRunning => _started && !_disposed && _stepIndex < _steps.Count;
-
     // Zero-based index of the step currently being awaited; exposed for diagnostics.
     public int CurrentStepIndex => _stepIndex;
 

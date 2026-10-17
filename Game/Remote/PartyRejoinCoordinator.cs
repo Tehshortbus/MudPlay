@@ -1,5 +1,4 @@
 using System.ComponentModel;
-using Avalonia.Threading;
 using MudPlay.Game.Map;
 using MudPlay.Services;
 
@@ -75,12 +74,14 @@ public sealed class PartyRejoinCoordinator : IDisposable
 
     // Waiting on that confirmation before firing: the leader to telepath.
     private string? _pendingLeader;
-    private readonly DispatcherTimer _roomWaitTimer;
+    private IDisposable? _roomWaitTimer;
+    // Arms one tick after the delay; disposing what it returns cancels it.
+    private readonly Func<TimeSpan, Action, IDisposable> _schedule;
     public static readonly TimeSpan RoomWait = TimeSpan.FromSeconds(5);
 
     // Write-through sink for the crash-survivable memory. AppServices wires this
-    // to stamp the loaded profile + Save() so a crash retains the value. Null in
-    // tests (the in-memory _rememberedLeader is enough there).
+    // to stamp the loaded profile + Save() so a crash retains the value. Null keeps
+    // only the in-memory _rememberedLeader.
     public Action<string?>? PersistLeader { get; set; }
 
     // The leader we'd try to rejoin on the next reconnect, or null when there's
@@ -91,7 +92,7 @@ public sealed class PartyRejoinCoordinator : IDisposable
     // this and the party has moved on, so re-entry sends no @comeback.
     public TimeSpan ComebackWindow { get; set; } = TimeSpan.FromMinutes(2);
 
-    public Func<DateTimeOffset> NowProvider { get; set; } = () => DateTimeOffset.UtcNow;
+    private readonly Func<DateTimeOffset> _now;
 
     // When this session last lost the connection; null after a relaunch (a crash
     // leaves no drop time), and then the @comeback goes out.
@@ -100,16 +101,17 @@ public sealed class PartyRejoinCoordinator : IDisposable
     // The leader we're about to @comeback, while we wait for our room to confirm.
     public string? WaitingForRoomToRejoin => _pendingLeader;
 
-    // Test seam — every outbound wire buffer, in order.
-    internal List<byte[]> LastSentForTests => _wire.LastSentForTests;
-
     public PartyRejoinCoordinator(
         WirePromptScanner scanner,
         PartyState party,
         RoomTracker tracker,
         Func<bool>? isAutoEnabled = null,
-        LogService? log = null)
+        LogService? log = null,
+        Func<DateTimeOffset>? now = null,
+        Func<TimeSpan, Action, IDisposable>? schedule = null)
     {
+        _schedule = schedule ?? DispatcherTicks.Once;
+        _now = now ?? (() => DateTimeOffset.UtcNow);
         ArgumentNullException.ThrowIfNull(scanner);
         ArgumentNullException.ThrowIfNull(party);
         ArgumentNullException.ThrowIfNull(tracker);
@@ -118,7 +120,7 @@ public sealed class PartyRejoinCoordinator : IDisposable
         _tracker = tracker;
         // Master auto-responses gate — when it returns false (kill switch
         // engaged) the rejoin stays silent, same as MainMenuEntryAutomation.
-        // Defaults to always-on so tests behave without wiring it.
+        // Defaults to always-on when unwired.
         _isAutoEnabled = isAutoEnabled ?? (() => true);
         _log = log;
 
@@ -128,8 +130,6 @@ public sealed class PartyRejoinCoordinator : IDisposable
         _scanner.PromptObserved += OnInGamePrompt;
         _party.PropertyChanged += OnPartyChanged;
         _tracker.StateChanged += OnRoomStateChanged;
-        _roomWaitTimer = new DispatcherTimer { Interval = RoomWait };
-        _roomWaitTimer.Tick += (_, _) => OnRoomWaitElapsed();
     }
 
     // Bind the outbound wire — the gate-wrapped engine sender the other party
@@ -150,7 +150,7 @@ public sealed class PartyRejoinCoordinator : IDisposable
 
     // The connection dropped while we were in-game. Only the first drop of an outage
     // counts; failed redials don't restamp it.
-    public void NoteDisconnected() => _droppedAt ??= NowProvider();
+    public void NoteDisconnected() => _droppedAt ??= _now();
 
     // Open the one-shot rejoin latch. Called on every connect; the @comeback
     // only actually fires on the next in-game prompt if a leader is remembered.
@@ -245,10 +245,10 @@ public sealed class PartyRejoinCoordinator : IDisposable
                 $"Auto-responses off — not auto-rejoining {_rememberedLeader}.");
             return;
         }
-        if (droppedAt is { } at && NowProvider() - at > ComebackWindow)
+        if (droppedAt is { } at && _now() - at > ComebackWindow)
         {
             _log?.Info(LogCategory,
-                $"Offline {(NowProvider() - at).TotalMinutes:0.#} min, past the {ComebackWindow.TotalMinutes:0} min @comeback window — not asking {_rememberedLeader} to come back.");
+                $"Offline {(_now() - at).TotalMinutes:0.#} min, past the {ComebackWindow.TotalMinutes:0} min @comeback window — not asking {_rememberedLeader} to come back.");
             return;
         }
         if (FreshRoom() is not null)
@@ -257,8 +257,8 @@ public sealed class PartyRejoinCoordinator : IDisposable
             return;
         }
         _pendingLeader = _rememberedLeader;
-        _roomWaitTimer.Stop();
-        _roomWaitTimer.Start();
+        _roomWaitTimer?.Dispose();
+        _roomWaitTimer = _schedule(RoomWait, OnRoomWaitElapsed);
         _log?.Info(LogCategory,
             $"Reconnected while following {_pendingLeader} — waiting up to {RoomWait.TotalSeconds:0}s for our room to confirm before @comeback.");
     }
@@ -277,19 +277,18 @@ public sealed class PartyRejoinCoordinator : IDisposable
 
     private void OnRoomWaitElapsed()
     {
+        _roomWaitTimer = null;
         if (_pendingLeader is not { } leader) return;
         CancelRoomWait();
         _log?.Info(LogCategory, $"our room didn't confirm within {RoomWait.TotalSeconds:0}s — @comeback without it.");
         SendComeback(leader);
     }
 
-    // Test seam — the DispatcherTimer doesn't tick under headless xUnit.
-    internal void FireRoomWaitForTests() => OnRoomWaitElapsed();
-
     private void CancelRoomWait()
     {
         _pendingLeader = null;
-        _roomWaitTimer.Stop();
+        _roomWaitTimer?.Dispose();
+        _roomWaitTimer = null;
     }
 
     private Room? FreshRoom() =>

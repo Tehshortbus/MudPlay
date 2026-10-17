@@ -586,22 +586,12 @@ public sealed class MessageCandidateWatcher : IDisposable
         || _templates.Matches(text)
         || _router.AnyPatternMatches(line);
 
-    // Drop staged lines the catalogues have since learned — a new message record, a
+    // Drop a staged line the catalogues have since learned — a new message record, a
     // new pattern or noise shape — so the queue heals after an update instead of
-    // carrying them until someone dismisses each one. Dismissed rows stay: they are
-    // the user's verdict and keep the line from re-staging. Returns how many went.
-    public int PruneRecognized()
-    {
-        List<string> gone = new();
-        foreach (MessageCandidateRecord c in _candidates.Candidates)
-            if (IsNowRecognized(c)) gone.Add(c.Id);
-        foreach (string id in gone) _candidates.Remove(id);
-        ReportPruned(gone.Count);
-        return gone.Count;
-    }
-
-    // The same check a candidate at a time, for a caller that spreads the pass out:
-    // a queue of a thousand candidates against every pattern is half a second.
+    // carrying it until someone dismisses it. Dismissed rows stay: they are the
+    // user's verdict and keep the line from re-staging. A candidate at a time, so
+    // the caller can spread the pass out: a queue of a thousand candidates against
+    // every pattern is half a second.
     public bool PruneIfRecognized(MessageCandidateRecord candidate)
     {
         ArgumentNullException.ThrowIfNull(candidate);
@@ -686,7 +676,7 @@ public sealed class MessageCandidateWatcher : IDisposable
             $"un-staged a monster death message (it precedes the experience line): '{Truncate(p.Text, 80)}'");
     }
 
-    // Test-only counter so each SimulateCapture() call injects a distinct
+    // Counter so each SimulateCapture() call injects a distinct
     // never-before-seen line (staging a fresh candidate rather than bumping one).
     private int _simCounter;
 

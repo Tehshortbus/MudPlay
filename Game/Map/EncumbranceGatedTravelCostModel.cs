@@ -7,18 +7,16 @@ namespace MudPlay.Game.Map;
 // bucket's seconds-per-hop in EncumbranceHopTimes, and converts the
 // supplied hop count to a TimeSpan.
 //
-// The lookup table itself is a snapshot owned by the model — the caller
-// (typically AppServices applying AutoLairSettings) writes a fresh table
-// when the user edits the Settings tab. The PlayerState reference is
+// The lookup table is a snapshot owned by the model — a settings edit builds a
+// fresh model (AppServices applying AutoLairSettings). The PlayerState reference is
 // long-lived; we don't subscribe to it because the scheduler asks for
 // fresh estimates on every tick, so polling on demand stays accurate.
 public sealed class EncumbranceGatedTravelCostModel : ITravelCostModel
 {
     private readonly PlayerState _state;
 
-    // Per-bucket seconds-per-hop. Replace via the property to apply a
-    // settings edit live.
-    public EncumbranceHopTimes Times { get; set; }
+    // Per-bucket seconds-per-hop.
+    public EncumbranceHopTimes Times { get; }
 
     public EncumbranceGatedTravelCostModel(PlayerState state, EncumbranceHopTimes times)
     {

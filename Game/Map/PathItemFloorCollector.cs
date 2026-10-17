@@ -50,8 +50,7 @@ public sealed class PathItemFloorCollector : IDisposable
         _ground.SurveyUpdated += OnSurvey;
     }
 
-    // Test seam: run the collect pass directly (production drives it off the
-    // floor-survey event).
+    // The collect pass, run off the floor-survey event.
     internal void CollectRevealed()
     {
         foreach (Need n in _needs.Outstanding(NeedKind.PathItem))

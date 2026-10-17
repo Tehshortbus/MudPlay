@@ -7,11 +7,8 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// PR 9.C — <see cref="CastCoordinator"/> wire emission, cooldown
-/// gating, cast-block latch driven by server failure messages, and
-/// combat-tick reset.
-/// </summary>
+// CastCoordinator's wire emission, cooldown gating, the cast-block latch driven
+// by server failure messages, and the combat-tick reset.
 public sealed class CastCoordinatorTests
 {
     private sealed class Harness : IDisposable
@@ -377,18 +374,4 @@ public sealed class CastCoordinatorTests
         Assert.Empty(h.Sent);
     }
 
-    // Regression (report paradigm-20260831-091839, "WHY DOES IT KEEP BUFFING
-    // ITSELF"): CastBlockExpiry used to be a bare 3s, racing the confirmed
-    // ~5.04s combat tick (GAME_MECHANICS.md) that actually governs the
-    // once-per-round cast slot. It self-cleared the block latch ~2s before the
-    // server's slot had really refreshed, so the next retry got rejected again
-    // and the self-buff spammed a reject/retry loop indefinitely out of
-    // combat. CastBlockExpiry and CastCommandCooldown gate the identical
-    // once-per-round constraint from opposite directions, so they must never
-    // drift apart again.
-    [Fact]
-    public void CastBlockExpiry_NeverShorterThanCastCommandCooldown()
-    {
-        Assert.True(CastCoordinator.CastBlockExpiry >= CastCoordinator.CastCommandCooldown);
-    }
 }

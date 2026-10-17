@@ -73,12 +73,8 @@ public sealed class ScrollbackBuffer
         RowAdded?.Invoke(entry);
     }
 
-    // Capture row with the current wall-clock instant — for callers that don't
-    // track a per-row write time.
-    public void Append(ReadOnlySpan<Cell> row) => Append(row, DateTimeOffset.Now);
-
     // Indexer with 0 = oldest row, Count - 1 = newest. Throws when out of
-    // range so subtle off-by-one errors surface in tests.
+    // range so subtle off-by-one errors surface.
     public Row this[int index]
     {
         get
@@ -98,14 +94,6 @@ public sealed class ScrollbackBuffer
         {
             yield return _ring[(start + i) % Capacity];
         }
-    }
-
-    // Drop every captured row. RowAdded does NOT fire.
-    public void Clear()
-    {
-        Array.Clear(_ring);
-        _head = 0;
-        _count = 0;
     }
 
     // Resize the ring to newCapacity in place. Shrinking discards the oldest

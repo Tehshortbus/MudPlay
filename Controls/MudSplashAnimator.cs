@@ -119,13 +119,6 @@ public sealed class MudSplashAnimator : IDisposable
         else RenderFrame(0);        // static header only
     }
 
-    public void Stop()
-    {
-        if (!IsPlaying) return;
-        IsPlaying = false;
-        _timer.Stop();
-    }
-
     private void OnTick(object? sender, EventArgs e)
     {
         _frame++;

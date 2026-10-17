@@ -31,7 +31,7 @@ public sealed class HostileNameTests : IDisposable
     private readonly string _tag = Path.GetRandomFileName().Replace(".", "")[..8];
     private readonly List<string> _made = new();
 
-    private readonly ProfileService _profiles = new();
+    private readonly ProfileService _profiles = TestProfiles.Service();
     private readonly BbsProfileStore _bbs = new();
 
     private string Bbs => $"hn{_tag}";
@@ -146,7 +146,7 @@ public sealed class HostileNameTests : IDisposable
     {
         // A profile's name.
         new("Profile.Load(bbs, H)", Under.Profiles, (t, h) => t._profiles.Load(t.Bbs, h)),
-        new("Profile.SaveAs(bbs, H)", Under.Profiles, (t, h) => { t._profiles.LoadBlank(); t._profiles.SaveAs(t.Bbs, h); }),
+        new("Profile.SaveAs(bbs, H)", Under.Profiles, (t, h) => { t._profiles.LoadDefaultProfile(); t._profiles.SaveAs(t.Bbs, h); }),
         new("Profile.CreateProfile(bbs, H)", Under.Profiles, (t, h) => t._profiles.CreateProfile(t.Bbs, h)),
         new("Profile.CopyProfile(bbs, kept, H)", Under.Profiles, (t, h) => t._profiles.CopyProfile(t.Bbs, Kept, h)),
         new("Profile.CopyProfile(bbs, H, new)", Under.Profiles, (t, h) => t._profiles.CopyProfile(t.Bbs, h, "copied")),
@@ -160,7 +160,7 @@ public sealed class HostileNameTests : IDisposable
 
         // A BBS's name, to the profile store.
         new("Profile.Load(H, name)", Under.BbsDir, (t, h) => t._profiles.Load(h, Kept)),
-        new("Profile.SaveAs(H, name)", Under.BbsDir, (t, h) => { t._profiles.LoadBlank(); t._profiles.SaveAs(h, $"p{t._tag}"); }),
+        new("Profile.SaveAs(H, name)", Under.BbsDir, (t, h) => { t._profiles.LoadDefaultProfile(); t._profiles.SaveAs(h, $"p{t._tag}"); }),
         new("Profile.CreateProfile(H, name)", Under.BbsDir, (t, h) => t._profiles.CreateProfile(h, $"p{t._tag}")),
         new("Profile.CopyProfile(H, kept, new)", Under.BbsDir, (t, h) => t._profiles.CopyProfile(h, Kept, $"p{t._tag}")),
         new("Profile.MoveProfile(bbs, mover, H, name)", Under.BbsDir, (t, h) => t._profiles.MoveProfile(t.Bbs, Mover, h, $"p{t._tag}")),

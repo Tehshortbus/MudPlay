@@ -40,6 +40,8 @@ public sealed class PlayerDeathMovementHaltTests
         public PlayerDeathMovementHalt Halt { get; }
         public int EngineStopCount { get; private set; }
         public List<byte[]> Sent { get; } = new();
+        // The post-death graveyard resync.
+        public ManualTimers Resync { get; } = new();
 
         public Harness()
         {
@@ -52,7 +54,7 @@ public sealed class PlayerDeathMovementHaltTests
             graph.OnActiveSetChanged("alpha");
 
             Tracker = new RoomTracker(graph);
-            Halt = new PlayerDeathMovementHalt(Tracker, Coord);
+            Halt = new PlayerDeathMovementHalt(Tracker, Coord, schedule: Resync.Arm);
             Halt.SetWireSender(Sent.Add);
             // AppServices always wires a stopper (Walker/LoopRunner/AutoLair Stop);
             // count invocations so the death-stop path is exercised as in production.
@@ -136,7 +138,7 @@ public sealed class PlayerDeathMovementHaltTests
         Assert.Equal(RoomConfidence.PendingRespawn, h.Tracker.State.Confidence);
         Assert.False(h.SentCarriageReturn);   // armed, not fired yet
 
-        h.Halt.FireGraveyardResyncForTests();
+        h.Resync.RunAll();
 
         Assert.True(h.SentCarriageReturn);
     }
@@ -146,10 +148,12 @@ public sealed class PlayerDeathMovementHaltTests
     {
         // Unbound sender (pre-connect) → the resync is a silent no-op, never a throw.
         using Harness h = new();
-        var halt = new PlayerDeathMovementHalt(h.Tracker, h.Coord);   // no SetWireSender
+        ManualTimers resync = new();
+        var halt = new PlayerDeathMovementHalt(h.Tracker, h.Coord, schedule: resync.Arm);   // no SetWireSender
         h.Tracker.NoteDeath(6, "You have 6 lives left.");
+        Assert.Equal(1, resync.Pending);
 
-        halt.FireGraveyardResyncForTests();   // must not throw
+        resync.RunAll();   // must not throw
 
         halt.Dispose();
     }

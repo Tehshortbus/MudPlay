@@ -21,6 +21,14 @@ public sealed class SimulatorViewModelTests : IDisposable
     private readonly string _loopSet = "test-set-" + Guid.NewGuid().ToString("N")[..12];
     // Sets whose rankings are kept in files: throwaway folders under the data root.
     private readonly List<string> _savedSets = new();
+    // The harness's own game data names: its rankings land in files under them.
+    private readonly string Alpha = "test-sim-alpha-" + Guid.NewGuid().ToString("N")[..10];
+    private readonly string Beta = "test-sim-beta-" + Guid.NewGuid().ToString("N")[..10];
+
+    // As the app wires the store, with its file work run in turn on the calling
+    // thread and what a read finds waiting in posted for the harness to run.
+    private static AreaRankingStore NewStore(List<Action> posted, LogService log) =>
+        new(new AreaRankingFiles(), act => posted.Add(act), log, runFileWork: work => work());
 
     private string NewSavedSet(string name)
     {
@@ -34,7 +42,7 @@ public sealed class SimulatorViewModelTests : IDisposable
     {
         try { Directory.Delete(_root, recursive: true); }
         catch { /* best-effort temp cleanup */ }
-        foreach (string set in _savedSets.Append(_loopSet))
+        foreach (string set in _savedSets.Append(_loopSet).Append(Alpha).Append(Beta))
         {
             try
             {
@@ -80,14 +88,13 @@ public sealed class SimulatorViewModelTests : IDisposable
         // What a file read handed back for the UI thread, to be run by Settle.
         public required List<Action> Posted { get; init; }
 
-        // Let the file work asked for so far finish, and what it handed back run.
+        // Let what the file work handed back run, and whatever that hands back.
         public void Settle()
         {
             for (int round = 0; round < 10; round++)
             {
-                Rankings.Idle.GetAwaiter().GetResult();
-                Action[] batch;
-                lock (Posted) { batch = Posted.ToArray(); Posted.Clear(); }
+                Action[] batch = Posted.ToArray();
+                Posted.Clear();
                 if (batch.Length == 0) return;
                 foreach (Action act in batch) act();
             }
@@ -135,10 +142,12 @@ public sealed class SimulatorViewModelTests : IDisposable
     private static readonly RankingCharacter SameCharacter = new(
         RankingCharacter.Order.ToDictionary(g => g, g => "as-made"));
 
-    // set: the game data the harness starts on. onDisk: its rankings are also kept
-    // in files, as the app keeps them, in that set's folder under the data root.
-    private Harness Build(bool saveLoops = false, AreaRankingStore? rankings = null, string set = "alpha", bool onDisk = false)
+    // set: the game data the harness starts on (Alpha when left out). Its rankings
+    // are kept in files, as the app keeps them, in the set's folder under the data
+    // root.
+    private Harness Build(bool saveLoops = false, AreaRankingStore? rankings = null, string? set = null)
     {
+        set ??= Alpha;
         Directory.CreateDirectory(Path.Combine(_root, set));
         File.WriteAllText(Path.Combine(_root, set, "Rooms.json"), Json);
         GameDataCache cache = new(_root);
@@ -162,9 +171,7 @@ public sealed class SimulatorViewModelTests : IDisposable
         if (store is null)
         {
             // As the app wires the store it holds for as long as it runs.
-            AreaRankingStore made = store = onDisk
-                ? new AreaRankingStore(new AreaRankingFiles(), act => { lock (posted) posted.Add(act); }, log)
-                : new AreaRankingStore();
+            AreaRankingStore made = store = NewStore(posted, log);
             made.NoteActiveSet(cache.ActiveSet);
             cache.ActiveSetChanged += name => made.NoteActiveSet(name);
         }
@@ -330,7 +337,7 @@ public sealed class SimulatorViewModelTests : IDisposable
         Assert.StartsWith("400 lairs, 2000 rooms a lap: 17/1200 → 17/1201 → ", route);
         Assert.EndsWith("17/1219 → … (380 more)", route);
         // Notes that named all 400 rooms were refused by the player it was sent to.
-        Loop received = MudPlay.Game.Remote.LoopShareCodec.Decode(MudPlay.Game.Remote.LoopShareCodec.Encode(saved));
+        Loop received = MudPlay.Game.Remote.LoopShareCodec.Decode(MudPlay.Game.Remote.LoopShareCodec.Encode(saved), out _);
         Assert.Equal(saved.Notes, received.Notes);
     }
 
@@ -358,7 +365,7 @@ public sealed class SimulatorViewModelTests : IDisposable
         Assert.Equal(2, h.Session.Clicks.Count);
         Assert.True(h.Simulator.SaveRankingAsLoopCommand.CanExecute(null));
 
-        h.Cache.SwitchSet("beta");
+        h.Cache.SwitchSet(Beta);
 
         Assert.Empty(h.Simulator.Rankings);
         Assert.False(h.Simulator.HasRankings);
@@ -380,11 +387,11 @@ public sealed class SimulatorViewModelTests : IDisposable
         using Harness h = Build();
         AreaRanking onAlpha = Ranking("Hills"), onBeta = Ranking("Marsh", level: 55);
         h.Finish(onAlpha);
-        h.Cache.SwitchSet("beta");
+        h.Cache.SwitchSet(Beta);
         h.Finish(onBeta);
         Assert.Equal(onBeta.Rows, h.Simulator.Rankings);
 
-        h.Cache.SwitchSet("alpha");
+        h.Cache.SwitchSet(Alpha);
 
         Assert.Equal(onAlpha.Rows, h.Simulator.Rankings);
         AssertListedAsKept(onAlpha, h.Simulator.RankStatus);
@@ -395,7 +402,7 @@ public sealed class SimulatorViewModelTests : IDisposable
         h.Simulator.SelectedRanking = h.Simulator.Rankings[0];
         Assert.Contains(h.Simulator.RankStats, s => s.Label == "Tested" && s.Value.StartsWith("L30 · 3 × 1 h · "));
 
-        h.Cache.SwitchSet("BETA");
+        h.Cache.SwitchSet(Beta.ToUpperInvariant());
         Assert.Equal(onBeta.Rows, h.Simulator.Rankings);
         AssertListedAsKept(onBeta, h.Simulator.RankStatus);
     }
@@ -412,16 +419,16 @@ public sealed class SimulatorViewModelTests : IDisposable
         Assert.False(h.Simulator.RankingNotCurrent);
 
         // Listed again at the level it was made at: when, and no mark.
-        h.Cache.SwitchSet("beta");
-        h.Cache.SwitchSet("alpha");
+        h.Cache.SwitchSet(Beta);
+        h.Cache.SwitchSet(Alpha);
         AssertListedAsKept(made, h.Simulator.RankStatus);
         Assert.False(h.Simulator.RankingNotCurrent);
 
         // Listed again a level on: marked, in the line and on the table.
         h.Level = 31;
-        h.Cache.SwitchSet("beta");
+        h.Cache.SwitchSet(Beta);
         Assert.False(h.Simulator.RankingNotCurrent);
-        h.Cache.SwitchSet("alpha");
+        h.Cache.SwitchSet(Alpha);
         AssertListedAsKept(made, h.Simulator.RankStatus, after: "; you are L31 now\\.");
         Assert.True(h.Simulator.RankingNotCurrent);
 
@@ -452,7 +459,7 @@ public sealed class SimulatorViewModelTests : IDisposable
         // The second character's is its own on this game data only.
         h.Load(Two);
         Assert.Equal(twos.Rows, h.Simulator.Rankings);
-        h.Cache.SwitchSet("beta");
+        h.Cache.SwitchSet(Beta);
         Assert.Empty(h.Simulator.Rankings);
     }
 
@@ -462,21 +469,21 @@ public sealed class SimulatorViewModelTests : IDisposable
         using Harness h = Build();
         AreaRanking inBetween = Ranking("Fen"), twos = Ranking("Marsh");
         h.Finish(Ranking("Hills"));
-        h.Rankings.Keep(new SimulatorOwner("beta", One), inBetween);
-        h.Rankings.Keep(new SimulatorOwner("beta", Two), twos);
+        h.Rankings.Keep(new SimulatorOwner(Beta, One), inBetween);
+        h.Rankings.Keep(new SimulatorOwner(Beta, Two), twos);
 
         // The second profile is the loaded one by the time its game data is applied,
         // and the Simulator hears of the game data before it hears of the load.
         h.Character = Two;
-        h.Cache.SwitchSet("beta");
+        h.Cache.SwitchSet(Beta);
         Assert.Equal(twos.Rows, h.Simulator.Rankings);
         h.Simulator.CharacterChanged();
         Assert.Equal(twos.Rows, h.Simulator.Rankings);
 
         // Nothing was listed, or logged as listed, for the first character on beta.
         Assert.DoesNotContain(h.Said, m => m.StartsWith("listing") && m.Contains($"'{One}'"));
-        Assert.Single(h.Said, m => m.StartsWith($"listing the area ranking kept for game data 'beta', character '{Two}'"));
-        Assert.Single(h.Said, m => m.StartsWith($"the area ranking for game data 'alpha', character '{One}' is off the list"));
+        Assert.Single(h.Said, m => m.StartsWith($"listing the area ranking kept for game data '{Beta}', character '{Two}'"));
+        Assert.Single(h.Said, m => m.StartsWith($"the area ranking for game data '{Alpha}', character '{One}' is off the list"));
     }
 
     [Fact]
@@ -486,24 +493,24 @@ public sealed class SimulatorViewModelTests : IDisposable
         const string renamed = "board/renamed";
         AreaRanking onAlpha = Ranking("Hills"), onBeta = Ranking("Marsh");
         h.Finish(onAlpha);
-        h.Rankings.Keep(new SimulatorOwner("beta", One), onBeta);
+        h.Rankings.Keep(new SimulatorOwner(Beta, One), onBeta);
 
         h.Rename(renamed);
 
         // Still the same character's list.
         Assert.Equal(onAlpha.Rows, h.Simulator.Rankings);
         Assert.Equal(renamed, h.Simulator.ToSnapshot().ForCharacter);
-        h.Cache.SwitchSet("beta");
+        h.Cache.SwitchSet(Beta);
         Assert.Equal(onBeta.Rows, h.Simulator.Rankings);
         // A ranking made after the rename is the renamed character's.
         AreaRanking again = Ranking("Fen");
         h.Finish(again);
-        Assert.Same(again, h.Rankings.Get(new SimulatorOwner("beta", renamed)));
+        Assert.Same(again, h.Rankings.Get(new SimulatorOwner(Beta, renamed)));
 
         // Another profile later given the old name is another character.
         h.Load(One);
         Assert.Empty(h.Simulator.Rankings);
-        h.Cache.SwitchSet("alpha");
+        h.Cache.SwitchSet(Alpha);
         Assert.Empty(h.Simulator.Rankings);
     }
 
@@ -529,9 +536,9 @@ public sealed class SimulatorViewModelTests : IDisposable
     public void ARankingIsKeptForThePairingItWasStartedForWhateverIsOnShow()
     {
         using Harness h = Build();
-        var alpha = new SimulatorOwner("alpha", One);
+        var alpha = new SimulatorOwner(Alpha, One);
         AreaRanking onBeta = Ranking("Marsh"), late = Ranking("Hills");
-        h.Cache.SwitchSet("beta");
+        h.Cache.SwitchSet(Beta);
         h.Finish(onBeta);
 
         h.Simulator.ListFinishedRanking(alpha, late);
@@ -539,17 +546,17 @@ public sealed class SimulatorViewModelTests : IDisposable
         Assert.Equal(onBeta.Rows, h.Simulator.Rankings);
         Assert.Equal(onBeta.Summary, h.Simulator.RankStatus);
         Assert.Same(late, h.Rankings.Get(alpha));
-        Assert.Same(onBeta, h.Rankings.Get(new SimulatorOwner("beta", One)));
+        Assert.Same(onBeta, h.Rankings.Get(new SimulatorOwner(Beta, One)));
     }
 
     [Fact]
     public void ARankingCancelledByASwitchLeavesTheListNowOnShowAlone()
     {
         using Harness h = Build();
-        var alpha = new SimulatorOwner("alpha", One);
+        var alpha = new SimulatorOwner(Alpha, One);
         AreaRanking onBeta = Ranking("Marsh");
-        h.Rankings.Keep(new SimulatorOwner("beta", One), onBeta);
-        h.Cache.SwitchSet("beta");
+        h.Rankings.Keep(new SimulatorOwner(Beta, One), onBeta);
+        h.Cache.SwitchSet(Beta);
 
         // The ranking that was running on alpha finds out it was cancelled only now.
         h.Simulator.RankingStopped(alpha, "Ranking cancelled.");
@@ -557,7 +564,7 @@ public sealed class SimulatorViewModelTests : IDisposable
         AssertListedAsKept(onBeta, h.Simulator.RankStatus);
 
         // Cancelled with its own game data still on show, its list is empty and says why.
-        h.Simulator.RankingStopped(new SimulatorOwner("beta", One), "Ranking cancelled.");
+        h.Simulator.RankingStopped(new SimulatorOwner(Beta, One), "Ranking cancelled.");
         Assert.Empty(h.Simulator.Rankings);
         Assert.Equal("Ranking cancelled.", h.Simulator.RankStatus);
     }
@@ -574,10 +581,10 @@ public sealed class SimulatorViewModelTests : IDisposable
         using Harness h = Build(saveLoops: true);
         AreaRanking hills = Ranking("Hills");
         h.Finish(hills);
-        h.Cache.SwitchSet("beta");
+        h.Cache.SwitchSet(Beta);
 
         if (changed) h.World = WithAnotherMonstersTable;
-        h.Cache.SwitchSet("alpha");
+        h.Cache.SwitchSet(Alpha);
 
         if (!changed)
         {
@@ -587,7 +594,7 @@ public sealed class SimulatorViewModelTests : IDisposable
         Assert.Empty(h.Simulator.Rankings);
         Assert.Equal("", h.Simulator.RankStatus);
         Assert.False(h.Simulator.SaveRankingAsLoopCommand.CanExecute(null));
-        Assert.Null(h.Rankings.Get(new SimulatorOwner("alpha", One)));
+        Assert.Null(h.Rankings.Get(new SimulatorOwner(Alpha, One)));
     }
 
     // What Manage Sets does to a set whose data it replaced, from another set: its
@@ -597,10 +604,10 @@ public sealed class SimulatorViewModelTests : IDisposable
     {
         using Harness h = Build(saveLoops: true);
         h.Finish(Ranking("Hills"));
-        h.Cache.SwitchSet("beta");
+        h.Cache.SwitchSet(Beta);
 
-        h.Rankings.ForgetSet("alpha");
-        h.Cache.SwitchSet("alpha");
+        h.Rankings.ForgetSet(Alpha);
+        h.Cache.SwitchSet(Alpha);
 
         Assert.Empty(h.Simulator.Rankings);
         Assert.Equal("", h.Simulator.RankStatus);
@@ -619,8 +626,8 @@ public sealed class SimulatorViewModelTests : IDisposable
     public void GameDataReadInAgainWithTheSameTablesKeepsItsRankingsAndTheSketch()
     {
         using Harness h = Build();
-        h.Rankings.Keep(new SimulatorOwner("alpha", Two), Ranking("Marsh"));
-        h.Rankings.Keep(new SimulatorOwner("beta", One), Ranking("Fen"));
+        h.Rankings.Keep(new SimulatorOwner(Alpha, Two), Ranking("Marsh"));
+        h.Rankings.Keep(new SimulatorOwner(Beta, One), Ranking("Fen"));
         AreaRanking hills = Ranking("Hills");
         h.Finish(hills);
         h.Simulator.SelectedRanking = h.Simulator.Rankings[0];
@@ -646,8 +653,8 @@ public sealed class SimulatorViewModelTests : IDisposable
     public void GameDataReadInAgainWithAChangedTableDropsTheRankingsMadeOnTheOldOne()
     {
         using Harness h = Build();
-        h.Rankings.Keep(new SimulatorOwner("alpha", Two), Ranking("Marsh"));
-        h.Rankings.Keep(new SimulatorOwner("beta", One), Ranking("Fen"));
+        h.Rankings.Keep(new SimulatorOwner(Alpha, Two), Ranking("Marsh"));
+        h.Rankings.Keep(new SimulatorOwner(Beta, One), Ranking("Fen"));
         h.Finish(Ranking("Hills"));
 
         h.World = WithAnotherMonstersTable;
@@ -661,7 +668,7 @@ public sealed class SimulatorViewModelTests : IDisposable
         h.Load(Two);
         Assert.Empty(h.Simulator.Rankings);
         Assert.Equal(1, h.Rankings.Count);
-        Assert.NotNull(h.Rankings.Get(new SimulatorOwner("beta", One)));
+        Assert.NotNull(h.Rankings.Get(new SimulatorOwner(Beta, One)));
     }
 
     // A row picked from the ranking put its tour on the map as the estimator's
@@ -677,7 +684,7 @@ public sealed class SimulatorViewModelTests : IDisposable
         h.Simulator.SelectedRanking = h.Simulator.Rankings[0];
         Assert.Equal(2, h.Session.Clicks.Count);
 
-        if (dataReplaced) h.Rankings.ForgetSet("alpha");
+        if (dataReplaced) h.Rankings.ForgetSet(Alpha);
         else h.World = WithAnotherMonstersTable;
         h.Cache.ReloadActiveSet();
 
@@ -746,20 +753,20 @@ public sealed class SimulatorViewModelTests : IDisposable
         h.Finish(Ranking("Hills") with { World = null });
         Assert.Single(h.Simulator.Rankings);
 
-        h.Cache.SwitchSet("beta");
+        h.Cache.SwitchSet(Beta);
         if (tablesChanged) h.World = WithAnotherMonstersTable;
-        h.Cache.SwitchSet("alpha");
+        h.Cache.SwitchSet(Alpha);
 
         Assert.Empty(h.Simulator.Rankings);
         Assert.Equal("", h.Simulator.RankStatus);
         Assert.False(h.Simulator.SaveRankingAsLoopCommand.CanExecute(null));
-        Assert.Null(h.Rankings.Get(new SimulatorOwner("alpha", One)));
+        Assert.Null(h.Rankings.Get(new SimulatorOwner(Alpha, One)));
     }
 
     [Fact]
     public void ARankingOutlivesTheNavigationWindowItWasMadeIn()
     {
-        var kept = new AreaRankingStore();
+        AreaRankingStore kept = NewStore(new List<Action>(), new LogService());
         AreaRanking ranking = Ranking("Hills");
         using (Harness first = Build(rankings: kept))
             first.Finish(ranking);
@@ -775,15 +782,15 @@ public sealed class SimulatorViewModelTests : IDisposable
     {
         using Harness h = Build();
         h.Finish(Ranking("Hills"));
-        Assert.Equal("alpha", h.Simulator.ToSnapshot().ForSet);
+        Assert.Equal(Alpha, h.Simulator.ToSnapshot().ForSet);
         Assert.Equal(One, h.Simulator.ToSnapshot().ForCharacter);
         Assert.NotNull(h.Simulator.ToSnapshot().AreaRanking);
 
-        h.Cache.SwitchSet("beta");
+        h.Cache.SwitchSet(Beta);
         h.Load(Two);
         SimulatorSnapshot snap = h.Simulator.ToSnapshot();
 
-        Assert.Equal("beta", snap.ForSet);
+        Assert.Equal(Beta, snap.ForSet);
         Assert.Equal(Two, snap.ForCharacter);
         Assert.Equal(1, snap.RankingsKept);
         Assert.Null(snap.AreaRanking);
@@ -795,7 +802,7 @@ public sealed class SimulatorViewModelTests : IDisposable
     private string SetWithASavedRanking(AreaRanking ranking, string character = One)
     {
         string set = NewSavedSet("made");
-        using Harness earlier = Build(set: set, onDisk: true);
+        using Harness earlier = Build(set: set);
         earlier.Character = character;
         earlier.Simulator.CharacterChanged();
         earlier.Finish(ranking);
@@ -810,7 +817,7 @@ public sealed class SimulatorViewModelTests : IDisposable
         AreaRanking made = Ranking("Hills");
         string set = SetWithASavedRanking(made);
 
-        using Harness h = Build(set: set, onDisk: true);
+        using Harness h = Build(set: set);
         // Read off the UI thread: nothing is listed until it arrives.
         Assert.Empty(h.Simulator.Rankings);
         h.Settle();
@@ -835,7 +842,7 @@ public sealed class SimulatorViewModelTests : IDisposable
         AreaRanking made = Ranking("Hills");
         string set = SetWithASavedRanking(made);
 
-        using Harness h = Build(set: set, onDisk: true);
+        using Harness h = Build(set: set);
         h.CharacterNow = new RankingCharacter(SameCharacter.Groups.ToDictionary(
             g => g.Key, g => g.Key is RankingCharacter.StatsOrGear or RankingCharacter.Settings ? "other" : g.Value));
         h.Settle();
@@ -854,7 +861,7 @@ public sealed class SimulatorViewModelTests : IDisposable
         string set = SetWithASavedRanking(made);
 
         // Just logged in: no stat screen, no inventory.
-        using Harness h = Build(set: set, onDisk: true);
+        using Harness h = Build(set: set);
         h.Level = 0;
         h.CharacterNow = null;
         h.Settle();
@@ -883,7 +890,7 @@ public sealed class SimulatorViewModelTests : IDisposable
     {
         AreaRanking made = Ranking("Hills");
         string set = SetWithASavedRanking(made);
-        using Harness h = Build(set: set, onDisk: true);
+        using Harness h = Build(set: set);
         h.Settle();
         Assert.False(h.Simulator.RankingNotCurrent);
 
@@ -929,7 +936,7 @@ public sealed class SimulatorViewModelTests : IDisposable
     public void ACheckThatFindsNothingNewLeavesTheStatusLineAndTheLogAlone()
     {
         string set = SetWithASavedRanking(Ranking("Hills"));
-        using Harness h = Build(set: set, onDisk: true);
+        using Harness h = Build(set: set);
         h.Settle();
         string listed = h.Simulator.RankStatus;
         int said = h.Said.Length;
@@ -1065,7 +1072,7 @@ public sealed class SimulatorViewModelTests : IDisposable
     public void ASavedRankingReadForACharacterThatHasChanged_IsMarkedWhenTheCharacterIsRead()
     {
         string set = SetWithASavedRanking(Ranking("Hills"));
-        using Harness h = Build(set: set, onDisk: true);
+        using Harness h = Build(set: set);
         h.CharacterNow = null;
         h.Settle();
 
@@ -1085,7 +1092,7 @@ public sealed class SimulatorViewModelTests : IDisposable
 
         // The client starts on another set; this one's Monsters were imported again
         // while it was closed.
-        using Harness h = Build(set: NewSavedSet("other"), onDisk: true);
+        using Harness h = Build(set: NewSavedSet("other"));
         h.Settle();
         h.World = SameWorld with { Tables = SameWorld.Tables.ToDictionary(t => t.Key, t => t.Key == "Monsters" ? "99:9" : t.Value) };
         h.Cache.SwitchSet(set);
@@ -1104,7 +1111,7 @@ public sealed class SimulatorViewModelTests : IDisposable
         AreaRanking made = Ranking("Hills");
         string set = SetWithASavedRanking(made);
 
-        using Harness h = Build(set: set, onDisk: true);
+        using Harness h = Build(set: set);
         h.Cache.SwitchSet(NewSavedSet("other"));
         h.Settle();
 
@@ -1127,7 +1134,7 @@ public sealed class SimulatorViewModelTests : IDisposable
         string set = SetWithASavedRanking(Ranking("Hills"));
         var owner = new SimulatorOwner(set, One);
 
-        using Harness h = Build(set: set, onDisk: true);
+        using Harness h = Build(set: set);
         if (changed) h.World = WithAnotherMonstersTable;
         h.Cache.ReloadActiveSet();
         h.Settle();
@@ -1151,7 +1158,7 @@ public sealed class SimulatorViewModelTests : IDisposable
         string never = SetWithASavedRanking(Ranking("Hills"));
         string other = SetWithASavedRanking(Ranking("Marsh"), character: Two);
 
-        using Harness h = Build(set: shown, onDisk: true);
+        using Harness h = Build(set: shown);
         h.Settle();
 
         Assert.Equal(0, h.Rankings.Count);
@@ -1170,7 +1177,7 @@ public sealed class SimulatorViewModelTests : IDisposable
     public void ARankingLetGoFromMemoryIsReadBackWhenItsPairingIsShownAgain()
     {
         string set = NewSavedSet("first");
-        using Harness h = Build(set: set, onDisk: true);
+        using Harness h = Build(set: set);
         h.Finish(Ranking("Hills"));
         h.Settle();
 
@@ -1193,14 +1200,14 @@ public sealed class SimulatorViewModelTests : IDisposable
     {
         string set = NewSavedSet("first");
         const string renamed = "board/renamed";
-        using (Harness h = Build(set: set, onDisk: true))
+        using (Harness h = Build(set: set))
         {
             h.Finish(Ranking("Hills"));
             h.Rename(renamed);
             h.Settle();
         }
 
-        using Harness later = Build(set: set, onDisk: true);
+        using Harness later = Build(set: set);
         later.Settle();
         Assert.Empty(later.Simulator.Rankings);
         later.Load(renamed);

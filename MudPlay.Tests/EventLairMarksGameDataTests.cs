@@ -14,7 +14,7 @@ namespace MudPlay.Tests;
 // that set is the active one; marks read from a saved setup are the active set's.
 public sealed class EventLairMarksGameDataTests : IDisposable
 {
-    private const string TestBbs = "test-event-lairmarks";
+    private const string TestLoopSet = "test-event-lairmarks";
     private readonly string _root =
         Path.Combine(Path.GetTempPath(), "mudplay-event-lairmarks-" + Path.GetRandomFileName());
 
@@ -22,14 +22,14 @@ public sealed class EventLairMarksGameDataTests : IDisposable
     {
         try { Directory.Delete(_root, recursive: true); }
         catch { /* best-effort temp cleanup */ }
-        try { Directory.Delete(AppPaths.BbsFolder(TestBbs), recursive: true); }
+        try { Directory.Delete(AppPaths.GameDataSetDir(TestLoopSet), recursive: true); }
         catch { /* best-effort temp cleanup */ }
     }
 
     [Fact]
     public void TheSnapshotOfARun_CarriesTheGameDataItsMarksAreOf()
     {
-        using Harness h = Harness.Create(_root, TestBbs);
+        using Harness h = Harness.Create(_root, TestLoopSet);
         h.Tracker.SetLocated(new RoomKey(1, 1));
         h.AutoLair.Mark(new RoomKey(1, 2));
         h.AutoLair.Mark(new RoomKey(1, 3));
@@ -45,7 +45,7 @@ public sealed class EventLairMarksGameDataTests : IDisposable
     [Fact]
     public void ResumingARunOnItsOwnGameData_PutsItsMarksBackAndStartsIt()
     {
-        using Harness h = Harness.Create(_root, TestBbs);
+        using Harness h = Harness.Create(_root, TestLoopSet);
         h.Tracker.SetLocated(new RoomKey(1, 1));
         Dictionary<RoomKey, int?> markers = new() { [new RoomKey(1, 2)] = null, [new RoomKey(1, 3)] = 120 };
 
@@ -63,7 +63,7 @@ public sealed class EventLairMarksGameDataTests : IDisposable
     [Fact]
     public void ResumingARunUnderAnotherGameData_PutsNothingBackAndStartsNothing()
     {
-        using Harness h = Harness.Create(_root, TestBbs);
+        using Harness h = Harness.Create(_root, TestLoopSet);
         h.Tracker.SetLocated(new RoomKey(1, 1));
         Dictionary<RoomKey, int?> markers = new() { [new RoomKey(1, 2)] = null, [new RoomKey(1, 3)] = 120 };
 
@@ -79,7 +79,7 @@ public sealed class EventLairMarksGameDataTests : IDisposable
     [Fact]
     public void StartingASetupsMarks_StampsTheActiveGameData()
     {
-        using Harness h = Harness.Create(_root, TestBbs);
+        using Harness h = Harness.Create(_root, TestLoopSet);
         h.Tracker.SetLocated(new RoomKey(1, 1));
         Dictionary<RoomKey, int?> markers = new() { [new RoomKey(1, 2)] = null, [new RoomKey(1, 3)] = null };
 

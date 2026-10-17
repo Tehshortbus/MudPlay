@@ -1,4 +1,3 @@
-using System.Reflection;
 using System.Text;
 using MudPlay.Game;
 using MudPlay.Game.Cash;
@@ -13,23 +12,25 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Pins the write-side <see cref="InventoryActionHandler"/> commands
-/// (<c>@drop-all</c> / <c>@deposit-all</c> / <c>@share</c>): each reads the
-/// immutable <see cref="InventoryManager.Snapshot"/>, gates on "parse
-/// inventory first" until a full <c>i</c> dump lands, and emits its wire verb
-/// (<c>drop</c> / <c>dep</c> / <c>with</c> / <c>give</c>) on the bound sender
-/// while replying a friendly summary on the sender's channel.
-/// </summary>
+// Pins the write-side InventoryActionHandler commands
+// (@drop-all / @deposit-all / @share): each reads the
+// immutable InventoryManager.Snapshot, gates on "parse
+// inventory first" until a full i dump lands, and emits its wire verb
+// (drop / dep / with / give) on the bound sender
+// while replying a friendly summary on the sender's channel.
 public sealed class InventoryActionHandlerTests
 {
+    // What the remote-command engine put on the wire, through the sender the client binds.
+    private readonly List<byte[]> _replies = new();
+
     private static readonly DateTime Now = new(2026, 6, 22, 0, 0, 0, DateTimeKind.Utc);
 
     private sealed class Harness
     {
         public required RemoteCommandManager Engine { get; init; }
         public required InventoryManager Inventory { get; init; }
-        public required LineExtractor Lines { get; init; }
+        // The game's output, fed the way the client receives it.
+        public required ServerFeed Feed { get; init; }
         public required MessageRouter Router { get; init; }
         public required GroundItemTracker Ground { get; init; }
         public required PlayerDatabase Players { get; init; }
@@ -38,18 +39,19 @@ public sealed class InventoryActionHandlerTests
         public required List<byte[]> WireSent { get; init; }
     }
 
-    private static Harness Setup(bool paradigm = false, Func<string, bool, bool>? cannotDrop = null,
+    private Harness Setup(bool paradigm = false, Func<string, bool, bool>? cannotDrop = null,
         Func<string, bool>? isCursed = null)
     {
         MessageRouter router = new();
         DefaultPatterns.Seed(router);
         ChatRouter chat = new(router);
         PartyState party = new();
-        PlayerDatabase players = new();
+        PlayerDatabase players = new(new ProfileService(), () => null);
         RemoteCommandManager engine = new(chat, party, players);
+        engine.SetWireSender(_replies.Add);
         InventoryManager inv = new(log: null, itemWeightResolver: null, slotResolver: null);
-        LineExtractor lines = new(new TerminalEmulator(80, 24));
-        inv.AttachLineExtractor(lines);
+        ServerFeed feed = new();
+        inv.AttachLineExtractor(feed.Lines);
         GroundItemTracker ground = new(router, new CurrencyNaming());
         CashSettings cash = new();
         List<byte[]> wire = new();
@@ -60,7 +62,7 @@ public sealed class InventoryActionHandlerTests
         {
             Engine = engine,
             Inventory = inv,
-            Lines = lines,
+            Feed = feed,
             Router = router,
             Ground = ground,
             Players = players,
@@ -77,29 +79,17 @@ public sealed class InventoryActionHandlerTests
             text, Array.Empty<CellAttributes>(),
             DateTimeOffset.UtcNow, IsPromptLine: false));
 
-    private static void Feed(LineExtractor lines, string text)
+    private static void FeedCurrencyDump(ServerFeed feed)
     {
-        FieldInfo? field = typeof(LineExtractor).GetField(
-            "LineEmitted", BindingFlags.Instance | BindingFlags.NonPublic);
-        if (field?.GetValue(lines) is Action<LineExtractor.EmittedLine> handler)
-        {
-            handler(new LineExtractor.EmittedLine(
-                text, Array.Empty<CellAttributes>(),
-                DateTimeOffset.UtcNow, IsPromptLine: false));
-        }
-    }
-
-    private static void FeedCurrencyDump(LineExtractor lines)
-    {
-        Feed(lines, "You are carrying 2 runic coins, 6 platinum pieces, 94 gold crowns, "
+        feed.Line("You are carrying 2 runic coins, 6 platinum pieces, 94 gold crowns, "
                   + "2 silver nobles, 5 copper farthings.");
-        Feed(lines, "You have no keys.");
-        Feed(lines, "Wealth:    2069425 copper farthings");
-        Feed(lines, "Encumbrance:    36/2880  -  Light  [1%]");
+        feed.Line("You have no keys.");
+        feed.Line("Wealth:    2069425 copper farthings");
+        feed.Line("Encumbrance:    36/2880  -  Light  [1%]");
     }
 
-    private static ChatLogEntry Telepath(string sender, string msg) =>
-        new(Now, ChatChannel.TelepathIncoming, sender, msg, $"{sender} telepaths: {msg}");
+    private static ChatLine Telepath(string sender, string msg) =>
+        new(ChatChannel.TelepathIncoming, sender, msg);
 
     private static void SeedPlayer(PlayerDatabase db, string name, PlayerRemoteControls controls)
     {
@@ -114,8 +104,8 @@ public sealed class InventoryActionHandlerTests
         party.IsInParty = true;
     }
 
-    private static List<string> Replies(RemoteCommandManager engine) =>
-        engine.LastSentForTests
+    private List<string> Replies() =>
+        _replies
             .Select(b => Encoding.Latin1.GetString(b))
             .Select(StripWire)
             .ToList();
@@ -142,8 +132,8 @@ public sealed class InventoryActionHandlerTests
         Harness h = Setup();
         SeedPlayer(h.Players, "Bob", PlayerRemoteControls.ExecuteCommands);
 
-        h.Engine.DispatchForTests(Telepath("Bob", "@get-all"));
-        Assert.Equal("re-surveying the floor for get-all", Assert.Single(Replies(h.Engine)));
+        ChatLines.Hear(h.Router, Telepath("Bob", "@get-all"));
+        Assert.Equal("re-surveying the floor for get-all", Assert.Single(Replies()));
         Assert.Equal(new[] { "" }, Wire(h));   // the bare CR (trailing \r trimmed)
 
         // The fresh survey lands with loot → it's grabbed.
@@ -161,10 +151,10 @@ public sealed class InventoryActionHandlerTests
         SeedPlayer(h.Players, "Bob", PlayerRemoteControls.ExecuteCommands);
         FeedRoom(h.Router, "You notice a rusty dagger, a cursed ring here.");
 
-        h.Engine.DispatchForTests(Telepath("Bob", "@get-all"));
+        ChatLines.Hear(h.Router, Telepath("Bob", "@get-all"));
 
         Assert.Equal(new[] { "get rusty dagger" }, Wire(h));
-        Assert.Equal("getting 1 ground item (leaving 1 cursed: cursed ring)", Assert.Single(Replies(h.Engine)));
+        Assert.Equal("getting 1 ground item (leaving 1 cursed: cursed ring)", Assert.Single(Replies()));
     }
 
     [Fact]
@@ -174,7 +164,7 @@ public sealed class InventoryActionHandlerTests
         Harness h = Setup();
         SeedPlayer(h.Players, "Bob", PlayerRemoteControls.ExecuteCommands);
 
-        h.Engine.DispatchForTests(Telepath("Bob", "@get-all"));
+        ChatLines.Hear(h.Router, Telepath("Bob", "@get-all"));
         FeedRoom(h.Router, "You notice 12 gold crowns here.");   // cash only, no items
 
         Assert.Equal(new[] { "" }, Wire(h));   // just the CR — nothing to grab
@@ -188,13 +178,13 @@ public sealed class InventoryActionHandlerTests
         FeedRoom(h.Router, "You notice a rusty dagger, 12 gold crowns, "
                          + "an iron helm and a healing potion here.");
 
-        h.Engine.DispatchForTests(Telepath("Bob", "@get-all"));
+        ChatLines.Hear(h.Router, Telepath("Bob", "@get-all"));
 
         // Coin ("12 gold crowns") is excluded; each item's article is stripped.
         Assert.Equal(
             new[] { "get rusty dagger", "get iron helm", "get healing potion" },
             Wire(h));
-        Assert.Equal("getting 3 ground items", Assert.Single(Replies(h.Engine)));
+        Assert.Equal("getting 3 ground items", Assert.Single(Replies()));
     }
 
     // ----- @drop-all ---------------------------------------------------
@@ -205,9 +195,9 @@ public sealed class InventoryActionHandlerTests
         Harness h = Setup();
         SeedPlayer(h.Players, "Bob", PlayerRemoteControls.ExecuteCommands);
 
-        h.Engine.DispatchForTests(Telepath("Bob", "@drop-all"));
+        ChatLines.Hear(h.Router, Telepath("Bob", "@drop-all"));
 
-        Assert.Contains("inventory not parsed yet", Assert.Single(Replies(h.Engine)));
+        Assert.Contains("inventory not parsed yet", Assert.Single(Replies()));
         Assert.Empty(Wire(h));
     }
 
@@ -216,11 +206,11 @@ public sealed class InventoryActionHandlerTests
     {
         Harness h = Setup();
         SeedPlayer(h.Players, "Bob", PlayerRemoteControls.ExecuteCommands);
-        FeedCurrencyDump(h.Lines); // coins only — no carried items
+        FeedCurrencyDump(h.Feed); // coins only — no carried items
 
-        h.Engine.DispatchForTests(Telepath("Bob", "@drop-all"));
+        ChatLines.Hear(h.Router, Telepath("Bob", "@drop-all"));
 
-        Assert.Equal("nothing to drop", Assert.Single(Replies(h.Engine)));
+        Assert.Equal("nothing to drop", Assert.Single(Replies()));
         Assert.Empty(Wire(h));
     }
 
@@ -229,17 +219,17 @@ public sealed class InventoryActionHandlerTests
     {
         Harness h = Setup();
         SeedPlayer(h.Players, "Bob", PlayerRemoteControls.ExecuteCommands);
-        Feed(h.Lines, "You are carrying a rusty dagger, a healing potion, "
+        h.Feed.Line("You are carrying a rusty dagger, a healing potion, "
                     + "padded vest (Torso), a jagged dagger.");
-        Feed(h.Lines, "Encumbrance:    36/2880  -  Light  [1%]");
+        h.Feed.Line("Encumbrance:    36/2880  -  Light  [1%]");
 
-        h.Engine.DispatchForTests(Telepath("Bob", "@drop-all"));
+        ChatLines.Hear(h.Router, Telepath("Bob", "@drop-all"));
 
         // Worn "padded vest (Torso)" is excluded; the article is stripped.
         Assert.Equal(
             new[] { "drop rusty dagger", "drop healing potion", "drop jagged dagger" },
             Wire(h));
-        Assert.Equal("dropping 3 carried items", Assert.Single(Replies(h.Engine)));
+        Assert.Equal("dropping 3 carried items", Assert.Single(Replies()));
     }
 
     // A stacked pack entry: Stock has no item batching, so one `drop` per copy;
@@ -251,10 +241,10 @@ public sealed class InventoryActionHandlerTests
     {
         Harness h = Setup(paradigm);
         SeedPlayer(h.Players, "Bob", PlayerRemoteControls.ExecuteCommands);
-        Feed(h.Lines, "You are carrying 3 black diamond.");
-        Feed(h.Lines, "Encumbrance:    36/2880  -  Light  [1%]");
+        h.Feed.Line("You are carrying 3 black diamond.");
+        h.Feed.Line("Encumbrance:    36/2880  -  Light  [1%]");
 
-        h.Engine.DispatchForTests(Telepath("Bob", "@drop-all"));
+        ChatLines.Hear(h.Router, Telepath("Bob", "@drop-all"));
 
         Assert.Equal(expected, Wire(h));
     }
@@ -268,13 +258,13 @@ public sealed class InventoryActionHandlerTests
         Harness h = Setup(paradigm: true, cannotDrop: (name, worn) =>
             name == "token of Silvermere" || (worn && name == "cursed ring"));
         SeedPlayer(h.Players, "Bob", PlayerRemoteControls.ExecuteCommands);
-        Feed(h.Lines, "You are carrying a rusty dagger, token of Silvermere, cursed ring (Finger), "
+        h.Feed.Line("You are carrying a rusty dagger, token of Silvermere, cursed ring (Finger), "
                     + "padded vest (Torso).");
-        Feed(h.Lines, "You have no keys.");
-        Feed(h.Lines, "Wealth:    0 copper farthings");
-        Feed(h.Lines, "Encumbrance:    36/2880  -  Light  [1%]");
+        h.Feed.Line("You have no keys.");
+        h.Feed.Line("Wealth:    0 copper farthings");
+        h.Feed.Line("Encumbrance:    36/2880  -  Light  [1%]");
 
-        h.Engine.DispatchForTests(Telepath("Bob", "@drop-all full"));
+        ChatLines.Hear(h.Router, Telepath("Bob", "@drop-all full"));
 
         string[] sent = Wire(h).ToArray();
         Assert.Contains("drop rusty dagger", sent);
@@ -282,7 +272,7 @@ public sealed class InventoryActionHandlerTests
         Assert.DoesNotContain("drop token of Silvermere", sent);
         Assert.DoesNotContain("drop cursed ring", sent);
         Assert.EndsWith("(keeping 2 that can't be dropped: token of Silvermere, cursed ring)",
-            Assert.Single(Replies(h.Engine)));
+            Assert.Single(Replies()));
     }
 
     [Fact]
@@ -290,13 +280,13 @@ public sealed class InventoryActionHandlerTests
     {
         Harness h = Setup(paradigm: true);
         SeedPlayer(h.Players, "Bob", PlayerRemoteControls.ExecuteCommands);
-        Feed(h.Lines, "You are carrying 2 runic coins, 94 gold crowns, a rusty dagger, "
+        h.Feed.Line("You are carrying 2 runic coins, 94 gold crowns, a rusty dagger, "
                     + "padded vest (Torso), torch (Readied/40).");
-        Feed(h.Lines, "You have the following keys: 3 black star key, gate key.");
-        Feed(h.Lines, "Wealth:    2009400 copper farthings");
-        Feed(h.Lines, "Encumbrance:    36/2880  -  Light  [1%]");
+        h.Feed.Line("You have the following keys: 3 black star key, gate key.");
+        h.Feed.Line("Wealth:    2009400 copper farthings");
+        h.Feed.Line("Encumbrance:    36/2880  -  Light  [1%]");
 
-        h.Engine.DispatchForTests(Telepath("Bob", "@drop-all full"));
+        ChatLines.Hear(h.Router, Telepath("Bob", "@drop-all full"));
 
         string[] sent = Wire(h).ToArray();
         Assert.Contains("drop rusty dagger", sent);
@@ -306,7 +296,7 @@ public sealed class InventoryActionHandlerTests
         Assert.Contains("drop gate key", sent);
         Assert.Contains("drop 94 gold crown", sent);
         Assert.Contains("drop 2 runic coin", sent);
-        Assert.StartsWith("dropping everything:", Assert.Single(Replies(h.Engine)));
+        Assert.StartsWith("dropping everything:", Assert.Single(Replies()));
     }
 
     [Fact]
@@ -314,10 +304,10 @@ public sealed class InventoryActionHandlerTests
     {
         Harness h = Setup();
         SeedPlayer(h.Players, "Bob", PlayerRemoteControls.ExecuteCommands);
-        Feed(h.Lines, "You are carrying 94 gold crowns, 5 copper farthings, a rusty dagger.");
-        Feed(h.Lines, "Encumbrance:    36/2880  -  Light  [1%]");
+        h.Feed.Line("You are carrying 94 gold crowns, 5 copper farthings, a rusty dagger.");
+        h.Feed.Line("Encumbrance:    36/2880  -  Light  [1%]");
 
-        h.Engine.DispatchForTests(Telepath("Bob", "@drop-all coins"));
+        ChatLines.Hear(h.Router, Telepath("Bob", "@drop-all coins"));
 
         Assert.Equal(new[] { "drop 5 copper farthing", "drop 94 gold crown" }, Wire(h));
     }
@@ -327,14 +317,14 @@ public sealed class InventoryActionHandlerTests
     {
         Harness h = Setup(paradigm: false);
         SeedPlayer(h.Players, "Bob", PlayerRemoteControls.ExecuteCommands);
-        Feed(h.Lines, "You are carrying a rusty dagger.");
-        Feed(h.Lines, "You have the following keys: 2 black star key, gate key.");
-        Feed(h.Lines, "Encumbrance:    36/2880  -  Light  [1%]");
+        h.Feed.Line("You are carrying a rusty dagger.");
+        h.Feed.Line("You have the following keys: 2 black star key, gate key.");
+        h.Feed.Line("Encumbrance:    36/2880  -  Light  [1%]");
 
-        h.Engine.DispatchForTests(Telepath("Bob", "@drop-all keys"));
+        ChatLines.Hear(h.Router, Telepath("Bob", "@drop-all keys"));
 
         Assert.Equal(new[] { "drop black star key", "drop black star key", "drop gate key" }, Wire(h));
-        Assert.Equal("dropping 3 keys", Assert.Single(Replies(h.Engine)));
+        Assert.Equal("dropping 3 keys", Assert.Single(Replies()));
     }
 
     [Fact]
@@ -342,12 +332,12 @@ public sealed class InventoryActionHandlerTests
     {
         Harness h = Setup();
         SeedPlayer(h.Players, "Bob", PlayerRemoteControls.ExecuteCommands);
-        Feed(h.Lines, "You are carrying a rusty dagger.");
-        Feed(h.Lines, "Encumbrance:    36/2880  -  Light  [1%]");
+        h.Feed.Line("You are carrying a rusty dagger.");
+        h.Feed.Line("Encumbrance:    36/2880  -  Light  [1%]");
 
-        h.Engine.DispatchForTests(Telepath("Bob", "@drop-all everything"));
+        ChatLines.Hear(h.Router, Telepath("Bob", "@drop-all everything"));
 
-        Assert.StartsWith("usage: @drop-all", Assert.Single(Replies(h.Engine)));
+        Assert.StartsWith("usage: @drop-all", Assert.Single(Replies()));
         Assert.Empty(Wire(h));
     }
 
@@ -358,11 +348,11 @@ public sealed class InventoryActionHandlerTests
     {
         Harness h = Setup(paradigm: true);
         SeedPlayer(h.Players, "Bob", PlayerRemoteControls.ExecuteCommands);
-        Feed(h.Lines, "You are carrying 94 gold crowns, a rusty dagger, padded vest (Torso), torch (Readied/40).");
-        Feed(h.Lines, "You have the following keys: 3 black star key.");
-        Feed(h.Lines, "Encumbrance:    36/2880  -  Light  [1%]");
+        h.Feed.Line("You are carrying 94 gold crowns, a rusty dagger, padded vest (Torso), torch (Readied/40).");
+        h.Feed.Line("You have the following keys: 3 black star key.");
+        h.Feed.Line("Encumbrance:    36/2880  -  Light  [1%]");
 
-        h.Engine.DispatchForTests(Telepath("Bob", "@hide-all full"));
+        ChatLines.Hear(h.Router, Telepath("Bob", "@hide-all full"));
 
         string[] sent = Wire(h).ToArray();
         Assert.Contains("hide rusty dagger", sent);
@@ -371,7 +361,7 @@ public sealed class InventoryActionHandlerTests
         Assert.Contains("hide 3 black star key", sent);     // batched on Paradigm
         Assert.Contains("hide 94 gold crown", sent);
         Assert.DoesNotContain("hide", sent);                // a bare hide hides the player
-        Assert.StartsWith("hiding everything:", Assert.Single(Replies(h.Engine)));
+        Assert.StartsWith("hiding everything:", Assert.Single(Replies()));
     }
 
     [Fact]
@@ -379,13 +369,13 @@ public sealed class InventoryActionHandlerTests
     {
         Harness h = Setup(paradigm: false);
         SeedPlayer(h.Players, "Bob", PlayerRemoteControls.ExecuteCommands);
-        Feed(h.Lines, "You are carrying 2 black diamond.");
-        Feed(h.Lines, "Encumbrance:    36/2880  -  Light  [1%]");
+        h.Feed.Line("You are carrying 2 black diamond.");
+        h.Feed.Line("Encumbrance:    36/2880  -  Light  [1%]");
 
-        h.Engine.DispatchForTests(Telepath("Bob", "@hide-all"));
+        ChatLines.Hear(h.Router, Telepath("Bob", "@hide-all"));
 
         Assert.Equal(new[] { "hide black diamond", "hide black diamond" }, Wire(h));
-        Assert.Equal("hiding 2 carried items", Assert.Single(Replies(h.Engine)));
+        Assert.Equal("hiding 2 carried items", Assert.Single(Replies()));
     }
 
     [Fact]
@@ -393,13 +383,13 @@ public sealed class InventoryActionHandlerTests
     {
         Harness h = Setup();
         SeedPlayer(h.Players, "Bob", PlayerRemoteControls.ExecuteCommands);
-        Feed(h.Lines, "You are carrying a rusty dagger.");
-        Feed(h.Lines, "Encumbrance:    36/2880  -  Light  [1%]");
+        h.Feed.Line("You are carrying a rusty dagger.");
+        h.Feed.Line("Encumbrance:    36/2880  -  Light  [1%]");
 
-        h.Engine.DispatchForTests(Telepath("Bob", "@hide-all everything"));
+        ChatLines.Hear(h.Router, Telepath("Bob", "@hide-all everything"));
 
         Assert.Empty(Wire(h));
-        Assert.StartsWith("usage: @hide-all", Assert.Single(Replies(h.Engine)));
+        Assert.StartsWith("usage: @hide-all", Assert.Single(Replies()));
     }
 
     // ----- @deposit-all ------------------------------------------------
@@ -410,9 +400,9 @@ public sealed class InventoryActionHandlerTests
         Harness h = Setup();
         SeedPlayer(h.Players, "Bob", PlayerRemoteControls.ExecuteCommands);
 
-        h.Engine.DispatchForTests(Telepath("Bob", "@deposit-all"));
+        ChatLines.Hear(h.Router, Telepath("Bob", "@deposit-all"));
 
-        Assert.Contains("parse inventory first", Assert.Single(Replies(h.Engine)));
+        Assert.Contains("parse inventory first", Assert.Single(Replies()));
         Assert.Empty(Wire(h));
     }
 
@@ -421,12 +411,12 @@ public sealed class InventoryActionHandlerTests
     {
         Harness h = Setup();
         SeedPlayer(h.Players, "Bob", PlayerRemoteControls.ExecuteCommands);
-        FeedCurrencyDump(h.Lines); // wealth 2,069,425 copper, keep defaults to 0
+        FeedCurrencyDump(h.Feed); // wealth 2,069,425 copper, keep defaults to 0
 
-        h.Engine.DispatchForTests(Telepath("Bob", "@deposit-all"));
+        ChatLines.Hear(h.Router, Telepath("Bob", "@deposit-all"));
 
         Assert.Equal(new[] { "dep 2069425" }, Wire(h));
-        Assert.Equal("depositing 2,069,425 copper (keeping 0)", Assert.Single(Replies(h.Engine)));
+        Assert.Equal("depositing 2,069,425 copper (keeping 0)", Assert.Single(Replies()));
     }
 
     [Fact]
@@ -435,13 +425,13 @@ public sealed class InventoryActionHandlerTests
         Harness h = Setup();
         SeedPlayer(h.Players, "Bob", PlayerRemoteControls.ExecuteCommands);
         h.Cash.KeepOnHandWealth = 3_000_000; // keep floor in copper
-        FeedCurrencyDump(h.Lines);  // holding 2,069,425 copper
+        FeedCurrencyDump(h.Feed);  // holding 2,069,425 copper
 
-        h.Engine.DispatchForTests(Telepath("Bob", "@deposit-all"));
+        ChatLines.Hear(h.Router, Telepath("Bob", "@deposit-all"));
 
         Assert.Equal(new[] { "with 930575" }, Wire(h));
         Assert.Equal("withdrawing 930,575 copper (up to 3,000,000 on hand)",
-            Assert.Single(Replies(h.Engine)));
+            Assert.Single(Replies()));
     }
 
     [Fact]
@@ -451,12 +441,12 @@ public sealed class InventoryActionHandlerTests
         SeedPlayer(h.Players, "Bob", PlayerRemoteControls.ExecuteCommands);
         // Keep floor set to the exact held wealth (2,069,425 copper).
         h.Cash.KeepOnHandWealth = 2_069_425;
-        FeedCurrencyDump(h.Lines);
+        FeedCurrencyDump(h.Feed);
 
-        h.Engine.DispatchForTests(Telepath("Bob", "@deposit-all"));
+        ChatLines.Hear(h.Router, Telepath("Bob", "@deposit-all"));
 
         Assert.Empty(Wire(h));
-        Assert.Equal("already at keep-on-hand (2,069,425 copper)", Assert.Single(Replies(h.Engine)));
+        Assert.Equal("already at keep-on-hand (2,069,425 copper)", Assert.Single(Replies()));
     }
 
     // ----- @share ------------------------------------------------------
@@ -467,9 +457,9 @@ public sealed class InventoryActionHandlerTests
         Harness h = Setup();
         JoinParty(h.Party, ("Me", true), ("Bob", false));
 
-        h.Engine.DispatchForTests(Telepath("Bob", "@share"));
+        ChatLines.Hear(h.Router, Telepath("Bob", "@share"));
 
-        Assert.Contains("parse inventory first", Assert.Single(Replies(h.Engine)));
+        Assert.Contains("parse inventory first", Assert.Single(Replies()));
         Assert.Empty(Wire(h));
     }
 
@@ -479,9 +469,9 @@ public sealed class InventoryActionHandlerTests
         Harness h = Setup();
         // Party of three (self + two followers); split divides by 3.
         JoinParty(h.Party, ("Me", true), ("Bob", false), ("Carol Whitmane", false));
-        FeedCurrencyDump(h.Lines); // 5c 2s 94g 6p 2r
+        FeedCurrencyDump(h.Feed); // 5c 2s 94g 6p 2r
 
-        h.Engine.DispatchForTests(Telepath("Bob", "@share"));
+        ChatLines.Hear(h.Router, Telepath("Bob", "@share"));
 
         // per-denom = count / 3: copper 1, silver 0 (skip), gold 31,
         // platinum 2, runic 0 (skip). Two-word name gives on the given name.
@@ -493,7 +483,7 @@ public sealed class InventoryActionHandlerTests
                 "give 2 platinum to Bob", "give 2 platinum to Carol",
             },
             Wire(h));
-        Assert.Equal("sharing coins among 3 party members", Assert.Single(Replies(h.Engine)));
+        Assert.Equal("sharing coins among 3 party members", Assert.Single(Replies()));
     }
 
     [Fact]
@@ -502,14 +492,14 @@ public sealed class InventoryActionHandlerTests
         Harness h = Setup();
         JoinParty(h.Party, ("Me", true), ("Bob", false), ("Carol", false),
             ("Dave", false), ("Ed", false)); // party of five
-        Feed(h.Lines, "You are carrying 1 platinum piece, 4 gold crowns, "
+        h.Feed.Line("You are carrying 1 platinum piece, 4 gold crowns, "
                     + "2 silver nobles, 3 copper farthings.");
-        Feed(h.Lines, "Encumbrance:    36/2880  -  Light  [1%]");
+        h.Feed.Line("Encumbrance:    36/2880  -  Light  [1%]");
 
-        h.Engine.DispatchForTests(Telepath("Bob", "@share"));
+        ChatLines.Hear(h.Router, Telepath("Bob", "@share"));
 
         Assert.Empty(Wire(h)); // every denom < 5, so per-head share is 0
-        Assert.Equal("nothing to share (too few coins to split)", Assert.Single(Replies(h.Engine)));
+        Assert.Equal("nothing to share (too few coins to split)", Assert.Single(Replies()));
     }
 
     // ----- gating ------------------------------------------------------
@@ -520,11 +510,11 @@ public sealed class InventoryActionHandlerTests
         Harness h = Setup();
         h.Engine.WarnOnDenial = false;
         JoinParty(h.Party, ("Me", true), ("Bob", false)); // Stranger not in party
-        FeedCurrencyDump(h.Lines);
+        FeedCurrencyDump(h.Feed);
 
-        h.Engine.DispatchForTests(Telepath("Stranger", "@share"));
+        ChatLines.Hear(h.Router, Telepath("Stranger", "@share"));
 
-        Assert.Empty(Replies(h.Engine));
+        Assert.Empty(Replies());
         Assert.Empty(Wire(h));
     }
 
@@ -535,12 +525,12 @@ public sealed class InventoryActionHandlerTests
         h.Engine.WarnOnDenial = false;
         SeedPlayer(h.Players, "Stranger",
             PlayerRemoteControls.All & ~PlayerRemoteControls.ExecuteCommands);
-        Feed(h.Lines, "You are carrying a rusty dagger.");
-        Feed(h.Lines, "Encumbrance:    36/2880  -  Light  [1%]");
+        h.Feed.Line("You are carrying a rusty dagger.");
+        h.Feed.Line("Encumbrance:    36/2880  -  Light  [1%]");
 
-        h.Engine.DispatchForTests(Telepath("Stranger", "@drop-all"));
+        ChatLines.Hear(h.Router, Telepath("Stranger", "@drop-all"));
 
-        Assert.Empty(Replies(h.Engine));
+        Assert.Empty(Replies());
         Assert.Empty(Wire(h));
     }
 }

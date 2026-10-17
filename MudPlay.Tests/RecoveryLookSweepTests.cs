@@ -5,12 +5,10 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Drives the move-free recovery look-sweep inline (no wall-clock timer) to
-/// pin its sequencing: one `look <dir>` per exit in enum order, each sent only
-/// after the previous neighbour renders, a timed-out arm skipped, and the
-/// collected neighbours handed to the completion callback.
-/// </summary>
+// Drives the move-free recovery look-sweep inline (no wall-clock timer) to
+// pin its sequencing: one `look <dir>` per exit in enum order, each sent only
+// after the previous neighbour renders, a timed-out arm skipped, and the
+// collected neighbours handed to the completion callback.
 public sealed class RecoveryLookSweepTests
 {
     private static RoomObservation Obs(string name, params Direction[] exits)

@@ -16,7 +16,7 @@ public sealed class PvpFightTests
     private sealed class Harness : IDisposable
     {
         public MessageRouter Router { get; } = new();
-        public PlayerDatabase Players { get; } = new();
+        public PlayerDatabase Players { get; } = new(new ProfileService(), () => null);
         public RoomEntityClassifier Classifier { get; }
         public RoomDepartureWatcher Departure { get; }
         public PvpFight Fight { get; }

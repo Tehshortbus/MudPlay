@@ -14,7 +14,7 @@ namespace MudPlay.Services;
 // into the seed for that game type — so a curated line a user fills in-game reaches the
 // next shipped seed without a manual back-and-forth.
 //
-// Diff and Render are pure (no I/O) so the shape is unit-tested; the caller (the section
+// Diff and Render are pure (no I/O); the caller (the section
 // VM's command) loads the bundled baseline and writes the document to the Desktop.
 public static class MessageEditExporter
 {

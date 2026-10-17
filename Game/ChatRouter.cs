@@ -15,8 +15,8 @@ namespace MudPlay.Game;
 // named capture groups.
 //
 // Lifetime: subscriptions live for the router's lifetime. The router is
-// app-singleton, so IDisposable isn't strictly necessary; it's implemented
-// anyway to support tests that build / tear down a router per case.
+// app-singleton; Dispose unhooks every subscription for a router that is torn
+// down before the MessageRouter it listens to.
 public sealed class ChatRouter : IDisposable
 {
     private readonly MessageRouter _router;
@@ -107,11 +107,10 @@ public sealed class ChatRouter : IDisposable
 
     // isParadigmRealm gates the server-PvP channel: paradigm is the only realm
     // that emits the "Server PvP Message:" line, so on any other realm the sub
-    // is a no-op. Optional (null → gate open) so tests can build a bare router.
+    // is a no-op. Optional (null → gate open).
     // log is optional (null → the stale-discard notice just doesn't surface,
     // same fail-open convention as everywhere else in this codebase); clock is
-    // optional (defaults to the real wall clock) so tests can control time
-    // precisely for the staleness check without a real 15s sleep.
+    // optional (defaults to the real wall clock) and drives the staleness check.
     public ChatRouter(MessageRouter router, Func<bool>? isParadigmRealm = null,
         LogService? log = null, Func<DateTimeOffset>? clock = null)
     {

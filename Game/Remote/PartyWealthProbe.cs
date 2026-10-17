@@ -55,9 +55,6 @@ public sealed partial class PartyWealthProbe : IDisposable
 
         // An empty result — no party members to ask, or the probe was disposed.
         public static PartyWealthResult Empty => new(0, 0, NoWealth);
-
-        // True when at least one member answered (with a value or "unknown").
-        public bool AnyReplied => Replied > 0;
     }
 
     private sealed class PendingQuery

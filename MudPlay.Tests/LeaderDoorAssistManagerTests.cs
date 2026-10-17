@@ -9,12 +9,10 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Decision coverage for <see cref="LeaderDoorAssistManager"/>: only the
-/// leader's door-bash failure (with the toggle on) triggers a matching
-/// help command, with the verb chosen by the Other-tab pick/bash
-/// preference and the full direction word normalised to its short token.
-/// </summary>
+// Decision coverage for LeaderDoorAssistManager: only the
+// leader's door-bash failure (with the toggle on) triggers a matching
+// help command, with the verb chosen by the Other-tab pick/bash
+// preference and the full direction word normalised to its short token.
 public sealed class LeaderDoorAssistManagerTests
 {
     private sealed class Harness : IDisposable

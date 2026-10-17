@@ -86,7 +86,7 @@ public sealed class PerformanceMonitor : IAsyncDisposable
         SyncWriter();
     }
 
-    // Tests drive stalls and timings directly, without a watcher, dispatcher or file.
+    // A monitor with no watcher thread or file behind it; stalls and timings are fed in directly.
     internal PerformanceMonitor(Action<Action>? postLowPriority, Func<bool> onUiThread)
     {
         _postLowPriority = postLowPriority;

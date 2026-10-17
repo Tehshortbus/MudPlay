@@ -90,7 +90,7 @@ public sealed class AutoSellManager : IDisposable
         _resolve = resolve;
         _shopTradesItem = shopTradesItem;
         _isEnabled = isEnabled;
-        // Unbound (tests) → Stock behaviour: one `sell` per copy, wait for each.
+        // Unbound → Stock behaviour: one `sell` per copy, wait for each.
         _isParadigm = isParadigm ?? (static () => false);
         _log = log;
 
@@ -116,7 +116,7 @@ public sealed class AutoSellManager : IDisposable
     }
 
     // The movement gate held while selling, and the one-shot scheduler for the
-    // result timeout. Both optional (tests leave them off).
+    // result timeout. Both optional.
     public void SetMovementGate(MovementCoordinator coordinator) => _coordinator = coordinator;
     public void SetScheduler(Action<TimeSpan, Action> schedule) => _schedule = schedule;
 

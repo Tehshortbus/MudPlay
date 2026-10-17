@@ -8,36 +8,38 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Pins the @relog handler's wire behaviour: only fires for a sender
-/// with the HangupDisconnect permission, sends the configured
-/// GameCommands.ExitCommand verbatim + CR (graceful main-menu logoff),
-/// and arms RelogSignal so MainWindowVM forces a reconnect-and-login.
-/// Sibling of HangupHandler — same wire shape, opposite reconnect
-/// intent (relog does NOT suppress the entry automation).
-/// </summary>
+// Pins the @relog handler's wire behaviour: only fires for a sender
+// with the HangupDisconnect permission, sends the configured
+// GameCommands.ExitCommand verbatim + CR (graceful main-menu logoff),
+// and arms RelogSignal so MainWindowVM forces a reconnect-and-login.
+// Sibling of HangupHandler — same wire shape, opposite reconnect
+// intent (relog does NOT suppress the entry automation).
 public sealed class RelogHandlerTests
 {
+    // The router each engine reads, which a test's chat lines go through.
+    private readonly Dictionary<RemoteCommandManager, MessageRouter> _routers = new();
+
     private static readonly DateTime Now = new(2026, 6, 2, 0, 0, 0, DateTimeKind.Utc);
 
-    private static (RemoteCommandManager engine, RelogHandler handler, PlayerDatabase players, List<byte[]> wire, GameCommands commands, RelogSignal signal) Setup()
+    private (RemoteCommandManager engine, RelogHandler handler, PlayerDatabase players, List<byte[]> wire, GameCommands commands, RelogSignal signal) Setup(bool bindWire = true)
     {
         MessageRouter router = new();
         DefaultPatterns.Seed(router);
         ChatRouter chat = new(router);
         PartyState party = new();
-        PlayerDatabase players = new();
+        PlayerDatabase players = new(new ProfileService(), () => null);
         GameCommands commands = new();   // defaults: "E" / "=x"
         RelogSignal signal = new();
         RemoteCommandManager engine = new(chat, party, players);
+        _routers[engine] = router;
         RelogHandler handler = new(engine, commands, signal);
         List<byte[]> wire = new();
-        handler.SetWireSender(wire.Add);
+        if (bindWire) handler.SetWireSender(wire.Add);
         return (engine, handler, players, wire, commands, signal);
     }
 
-    private static ChatLogEntry Telepath(string sender, string msg) =>
-        new(Now, ChatChannel.TelepathIncoming, sender, msg, $"{sender} telepaths: {msg}");
+    private static ChatLine Telepath(string sender, string msg) =>
+        new(ChatChannel.TelepathIncoming, sender, msg);
 
     private static void SeedPlayer(PlayerDatabase db, string name, PlayerRemoteControls controls)
     {
@@ -51,7 +53,7 @@ public sealed class RelogHandlerTests
         var (engine, _, players, wire, _, _) = Setup();
         SeedPlayer(players, "Trusted", PlayerRemoteControls.HangupDisconnect);
 
-        engine.DispatchForTests(Telepath("Trusted", "@relog"));
+        ChatLines.Hear(_routers[engine], Telepath("Trusted", "@relog"));
 
         byte[] sent = Assert.Single(wire);
         Assert.Equal("=x\r", Encoding.Latin1.GetString(sent));
@@ -64,7 +66,7 @@ public sealed class RelogHandlerTests
         SeedPlayer(players, "Trusted", PlayerRemoteControls.HangupDisconnect);
         commands.ExitCommand = "bye";
 
-        engine.DispatchForTests(Telepath("Trusted", "@relog"));
+        ChatLines.Hear(_routers[engine], Telepath("Trusted", "@relog"));
 
         Assert.Equal("bye\r", Encoding.Latin1.GetString(Assert.Single(wire)));
     }
@@ -78,7 +80,7 @@ public sealed class RelogHandlerTests
         SeedPlayer(players, "Stranger",
             PlayerRemoteControls.All & ~PlayerRemoteControls.HangupDisconnect);
 
-        engine.DispatchForTests(Telepath("Stranger", "@relog"));
+        ChatLines.Hear(_routers[engine], Telepath("Stranger", "@relog"));
 
         Assert.Empty(wire);
     }
@@ -88,7 +90,7 @@ public sealed class RelogHandlerTests
     {
         // No customization at all → default deny.
         var (engine, _, _, wire, _, _) = Setup();
-        engine.DispatchForTests(Telepath("Drive-by", "@relog"));
+        ChatLines.Hear(_routers[engine], Telepath("Drive-by", "@relog"));
         Assert.Empty(wire);
     }
 
@@ -101,7 +103,7 @@ public sealed class RelogHandlerTests
         SeedPlayer(players, "Trusted", PlayerRemoteControls.HangupDisconnect);
         commands.ExitCommand = string.Empty;
 
-        engine.DispatchForTests(Telepath("Trusted", "@relog"));
+        ChatLines.Hear(_routers[engine], Telepath("Trusted", "@relog"));
 
         Assert.Empty(wire);
     }
@@ -116,11 +118,11 @@ public sealed class RelogHandlerTests
         int asked = 0;
         handler.SetHangupPenaltyLog(() => { Assert.Single(wire); asked++; });
 
-        engine.DispatchForTests(Telepath("Trusted", "@relog"));
+        ChatLines.Hear(_routers[engine], Telepath("Trusted", "@relog"));
         Assert.Equal(1, asked);
 
         commands.ExitCommand = "";
-        engine.DispatchForTests(Telepath("Trusted", "@relog"));
+        ChatLines.Hear(_routers[engine], Telepath("Trusted", "@relog"));
         Assert.Equal(1, asked);
         Assert.Single(wire);
     }
@@ -132,7 +134,7 @@ public sealed class RelogHandlerTests
         SeedPlayer(players, "Trusted", PlayerRemoteControls.HangupDisconnect);
 
         handler.Dispose();
-        engine.DispatchForTests(Telepath("Trusted", "@relog"));
+        ChatLines.Hear(_routers[engine], Telepath("Trusted", "@relog"));
 
         Assert.Empty(wire);
     }
@@ -149,9 +151,9 @@ public sealed class RelogHandlerTests
         var (engine, _, players, _, _, signal) = Setup();
         SeedPlayer(players, "Trusted", PlayerRemoteControls.HangupDisconnect);
 
-        engine.DispatchForTests(Telepath("Trusted", "@relog"));
+        ChatLines.Hear(_routers[engine], Telepath("Trusted", "@relog"));
 
-        Assert.True(signal.PeekForTests());
+        Assert.True(signal.ConsumeRelogIntent());
     }
 
     [Fact]
@@ -161,21 +163,20 @@ public sealed class RelogHandlerTests
         // A stranger spamming @relog must not be able to force a
         // reconnect cycle.
         var (engine, _, _, _, _, signal) = Setup();
-        engine.DispatchForTests(Telepath("Stranger", "@relog"));
+        ChatLines.Hear(_routers[engine], Telepath("Stranger", "@relog"));
 
-        Assert.False(signal.PeekForTests());
+        Assert.False(signal.ConsumeRelogIntent());
     }
 
     [Fact]
     public void Relog_SignalRaisedEvenWithoutWireSender()
     {
-        // Pre-binding (or in tests where the wire-sender intentionally
-        // isn't bound), the intent should still be recorded so a racing
-        // Disconnected event still classifies correctly.
-        var (engine, handler, players, _, _, signal) = Setup();
-        handler.SetWireSender(_ => { });   // bind once...
+        // Before the wire-sender binds, the intent is still recorded so a
+        // racing Disconnected event classifies the drop correctly.
+        var (engine, _, players, wire, _, signal) = Setup(bindWire: false);
         SeedPlayer(players, "Trusted", PlayerRemoteControls.HangupDisconnect);
-        engine.DispatchForTests(Telepath("Trusted", "@relog"));
-        Assert.True(signal.PeekForTests());
+        ChatLines.Hear(_routers[engine], Telepath("Trusted", "@relog"));
+        Assert.Empty(wire);
+        Assert.True(signal.ConsumeRelogIntent());
     }
 }

@@ -87,8 +87,8 @@ public sealed class MovePlayerHandlerStopGotoTests : IDisposable
         AutoLairManager autoLair = new(walker, tracker, graph, bfs, timers, log: null, coordinator: coord);
         MovementController controller = new(walker, loopRunner, autoLair, coord);
         RoomBlacklistStore blacklist = new();
-        ProfileService favoritesProfile = new();
-        favoritesProfile.LoadBlank();
+        ProfileService favoritesProfile = TestProfiles.Service();
+        favoritesProfile.LoadDefaultProfile();
         FavoritesStore favorites = new(favoritesProfile, cache, () => cache.ActiveSet);
         BossStore bosses = new();
         RoomSearchService search = new(graph, cache, bfs, blacklist, favorites: favorites, bosses: bosses);
@@ -96,7 +96,7 @@ public sealed class MovePlayerHandlerStopGotoTests : IDisposable
         MessageRouter router = new();
         DefaultPatterns.Seed(router);
         ChatRouter chat = new(router);
-        RemoteCommandManager engine = new(chat, new PartyState(), new PlayerDatabase());
+        RemoteCommandManager engine = new(chat, new PartyState(), new PlayerDatabase(new ProfileService(), () => null));
 
         // Registers @goto / @stop / @rego / … on the engine.
         MovePlayerHandler handler = new(engine, search, graph, tracker, walker, loops, loopRunner,

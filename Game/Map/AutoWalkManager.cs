@@ -217,8 +217,6 @@ public sealed class AutoWalkManager : IRecoverableEngine
     // ask didn't go out (the resolver's throttle may only have been in the way).
     private bool _stallWatchdogRearmed;
 
-    public IReadOnlyList<byte[]> LastSentForTests => _sentForTests;
-    private readonly List<byte[]> _sentForTests = new();
 
     public WalkState State { get; private set; } = WalkState.Idle;
 
@@ -504,8 +502,6 @@ public sealed class AutoWalkManager : IRecoverableEngine
         _wireSender = sender;
     }
 
-    internal void SetWireSenderForTests(Action<byte[]> sender) => SetWireSender(sender);
-
     // Bind the random-teleport-maze solver. When a WalkTo targets a room inside a
     // teleport-maze pocket that normal routing can't reach (no known source, or
     // no plain route because BFS won't cross the cast-teleport exits), the walker
@@ -555,11 +551,9 @@ public sealed class AutoWalkManager : IRecoverableEngine
     // Bind the voyage scheduler — a one-shot wall-clock timer the boat step uses
     // to time the sail from boarding to landing (see the _boatTimer field). It's
     // injected rather than a raw timer so the Game/Map layer stays UI-free:
-    // production wires a UI-thread one-shot (DispatcherTimer), tests a fake clock
-    // they fire by hand. The callback must land on the same thread the walker runs
+    // AppServices wires a UI-thread one-shot (DispatcherTimer). The callback must land on the same thread the walker runs
     // on (the UI thread in production). Left unset on realms with no docks — a
-    // voyage then relies purely on the arrival observation, which is fine for the
-    // tests that never sail without wiring a scheduler.
+    // voyage then relies purely on the arrival observation.
     public void SetVoyageScheduler(Func<TimeSpan, Action, IDisposable> scheduler)
     {
         ArgumentNullException.ThrowIfNull(scheduler);
@@ -592,7 +586,6 @@ public sealed class AutoWalkManager : IRecoverableEngine
 
     // Bind the trap-disarm enqueuer. Production wires this to
     // TrapDisarmManager.Enqueue, which disarms directly before the move goes out.
-    // Tests pass a capture-and-fire delegate.
     //
     // Signature: (direction, sender, reply). The walker passes the
     // lowercase direction word, the literal string "walker", and a reply
@@ -920,14 +913,6 @@ public sealed class AutoWalkManager : IRecoverableEngine
         _routeAnnouncer = announcer;
     }
 
-    // Test seam — pretend the wire prompt scanner just fired, so the
-    // pending command step can advance without a real telnet client.
-    // No-op when no command step is in flight.
-    internal void FirePromptForTests()
-    {
-        if (_awaitingPromptForCommand) OnPromptObservedCore();
-    }
-
     // When non-null, the user requested a walk while the tracker still
     // had pipelined moves outstanding (Confidence == Pending). Planning is
     // deferred until the tracker reaches Confirmed; the next confirmation
@@ -992,7 +977,7 @@ public sealed class AutoWalkManager : IRecoverableEngine
 
     // Long enough that a slow-but-normal confirm is never cut short, short enough
     // that a wedged walk self-heals instead of stranding the character.
-    private static readonly TimeSpan StallWatchdogInterval = TimeSpan.FromSeconds(10);
+    internal static readonly TimeSpan StallWatchdogInterval = TimeSpan.FromSeconds(10);
 
     // The active walk's planning flags, captured when a route is committed in
     // WalkToImmediate and reset in Reset(). A mid-walk replan (TryReplanOrFail)
@@ -1095,7 +1080,7 @@ public sealed class AutoWalkManager : IRecoverableEngine
     // walk nobody chose a route for states none, and used to take whichever vortex
     // was on the shortest route with nobody asked. Read as each such walk starts and
     // kept for the whole walk, so a change of the setting reaches the next walk and
-    // never a route under way. Unwired (tests, tooling) nothing is refused.
+    // never a route under way. Unwired, nothing is refused.
     private Func<IReadOnlySet<(RoomKey From, RoomKey To)>?>? _automaticWalkTeleports;
 
     // Wired by AppServices from Settings → Teleports (TeleportSettings.AutomaticWalkTeleports).
@@ -2266,9 +2251,6 @@ public sealed class AutoWalkManager : IRecoverableEngine
         Raise(new WalkEvent(WalkEventKind.Stopped, reason, dest, WillResume: willResume));
     }
 
-    public void Pause() => _coordinator.AssertGate(MovementCoordinator.UserGate);
-    public void Resume() => _coordinator.ClearGate(MovementCoordinator.UserGate);
-
     // A move already on the wire carried us out of a room where we'd engaged a
     // hostile (combat gate was held) before it died. The step can't be recalled,
     // but we must not keep walking the route deeper past a fight we committed to.
@@ -2317,7 +2299,7 @@ public sealed class AutoWalkManager : IRecoverableEngine
         // Combat cleared. Don't resume instantly — the monster we abandoned may be
         // one step behind; hold the settle so its follow-arrival can re-assert
         // Combat before the loop sprints on (report stock-20260731-010401). No
-        // scheduler wired (unit tests) → release immediately (legacy behaviour).
+        // scheduler wired → release immediately.
         if (_abandonSettle is not null) return;   // settle already pending
         if (_scheduleDelay is null) { ReleaseAbandonHold(); return; }
         _abandonSettle = _scheduleDelay(AbandonSettleWindow, ReleaseAbandonHold);
@@ -2696,9 +2678,6 @@ public sealed class AutoWalkManager : IRecoverableEngine
              || _awaitingDoorOpen || _awaitingWinch || _awaitingTrapDisarm || _awaitingHiddenReveal)
         && _recovery is { AwaitingAuthoritativeResync: false, CurrentTier: not TierLevel.Tier3 };
 
-    // Test seam — pretend the in-flight stall watchdog just elapsed.
-    internal void FireStallWatchdogForTests() => OnStallWatchdogElapsed();
-
     private void SendMoveStep(MoveStep step)
     {
         // Predict the expected landing so we can validate via tracker.
@@ -2917,7 +2896,7 @@ public sealed class AutoWalkManager : IRecoverableEngine
         }
 
         // Inform the tracker before the bytes go out so a synchronous
-        // wire path or test harness sees Pending before any landing
+        // wire path sees Pending before any landing
         // observation arrives.
         _tracker.NoteMoveSent(step.Direction);
                 _recovery?.NoteEngineStepSent(step.Direction);
@@ -3321,7 +3300,6 @@ public sealed class AutoWalkManager : IRecoverableEngine
 
     private void WriteBytes(byte[] bytes, string reasonForLog)
     {
-        _sentForTests.Add(bytes);
         if (_wireSender is null)
             _log?.Warn("Walker", $"wire sender not bound; suppressed: {reasonForLog}");
         else
@@ -3460,7 +3438,7 @@ public sealed class AutoWalkManager : IRecoverableEngine
             if (_recovery is not null)
                 _recovery.NoteSuspectedMismatch($"tracker {transition.NewConfidence} mid-step {_index + 1}");
             else
-                TryReplanOrFail(transition.NewConfidence);   // legacy path when no gate is bound (tests)
+                TryReplanOrFail(transition.NewConfidence);   // no gate bound
             return;
         }
 

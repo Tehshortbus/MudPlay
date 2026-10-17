@@ -4,13 +4,11 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Pins the level-scaled display formatting on <see cref="SpellBookRowViewModel"/>
-/// — effect string (damage / heal / duration), mana, formula tooltip, and the
-/// obtained glyph — independent of game-data loading. Magnitudes come from the
-/// ported <see cref="SpellCalculator"/>; these tests assert the row's string
-/// shaping, not the math (which <c>SpellCalculatorTests</c> owns).
-/// </summary>
+// Pins the level-scaled display formatting on SpellBookRowViewModel
+// — effect string (damage / heal / duration), mana, formula tooltip, and the
+// obtained glyph — independent of game-data loading. Magnitudes come from the
+// ported SpellCalculator; these tests assert the row's string
+// shaping, not the math (which SpellCalculatorTests owns).
 public sealed class SpellBookRowViewModelTests
 {
     private static SpellFormulaInput Damage(int minBase, int maxBase) => new()

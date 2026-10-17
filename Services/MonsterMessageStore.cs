@@ -121,22 +121,6 @@ public sealed class MonsterMessageStore
         Delta.Save(AppPaths.MonsterMessagesFile(ActiveSet), Messages, _seed, _log, "MonsterMessages");
     }
 
-    // Find the record anchored to monsterNumber, or null.
-    public MonsterMessageRecord? FindByMonsterNumber(int monsterNumber)
-    {
-        foreach (MonsterMessageRecord m in Messages)
-        {
-            if (m.Links is null) continue;
-            foreach (GameDataLink l in m.Links)
-            {
-                if (l.Number == monsterNumber &&
-                    string.Equals(l.Table, "Monsters", StringComparison.OrdinalIgnoreCase))
-                    return m;
-            }
-        }
-        return null;
-    }
-
     // Upsert record: replace the existing record with the same Id if present,
     // else append. Persists after.
     public void Upsert(MonsterMessageRecord record)

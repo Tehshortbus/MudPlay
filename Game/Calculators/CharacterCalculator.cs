@@ -34,20 +34,6 @@ public static class CharacterCalculator
         return ((level - 1) / 10) * 5 + 10;
     }
 
-    // Total CP a character has received on reaching targetLevel: the race's
-    // level-1 BaseCP pool (baseCP) plus every training gain from level 2 through
-    // targetLevel. With Kang's BaseCP of 100, CalcTotalCpAtLevel(10, 100) = 190
-    // (100 + 9×10).
-    public static int CalcTotalCpAtLevel(int targetLevel, int baseCP = 0)
-    {
-        int total = baseCP;
-        for (int level = 2; level <= targetLevel; level++)
-        {
-            total += CalcCpGainedAtLevel(level);
-        }
-        return total;
-    }
-
     // CP cost to raise a stat by one point from currentStat:
     // cost = Floor((currentStat - raceMin) / 10) + 1. ParaMUD has no cap; Stock
     // caps the per-point cost at 10.
@@ -385,7 +371,6 @@ public static class CharacterCalculator
             totals.WeaponStrReq = GetInt(itemData, "StrReq");
             totals.WeaponMin = GetInt(itemData, "Min");
             totals.WeaponMax = GetInt(itemData, "Max");
-            totals.WeaponType = GetInt(itemData, "WeaponType");
             totals.WeaponSpeed = GetInt(itemData, "Speed");
         }
         else if (slotTag == "Off-Hand")

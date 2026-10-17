@@ -14,8 +14,8 @@ public sealed class GhManagedRoomStoreTests
 {
     private static ProfileService BlankProfile()
     {
-        ProfileService profile = new();
-        profile.LoadBlank();   // Current set; Save() no-ops (no name/BBS), so purely in-memory
+        ProfileService profile = TestProfiles.Service();
+        profile.LoadDefaultProfile();   // Current set; Save() no-ops (no name/BBS), so purely in-memory
         return profile;
     }
 
@@ -77,9 +77,9 @@ public sealed class GhManagedRoomStoreTests
         int fires = 0;
         store.Changed += () => fires++;
 
-        // Swap characters (LoadBlank fires ProfileClosed + ProfileLoaded) — the new
+        // Swap characters (LoadDefaultProfile fires ProfileClosed + ProfileLoaded) — the new
         // character has its own (empty) managed set.
-        profile.LoadBlank();
+        profile.LoadDefaultProfile();
 
         Assert.True(fires >= 1);
         Assert.False(store.IsManaged(new RoomKey(1, 2)));   // previous char's pick gone

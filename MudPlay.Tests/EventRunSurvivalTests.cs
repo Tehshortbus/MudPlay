@@ -18,7 +18,7 @@ namespace MudPlay.Tests;
 // waiting. Each of these either stranded the queue or dropped it.
 public sealed class EventRunSurvivalTests : IDisposable
 {
-    private const string TestBbs = "test-event-survival";
+    private const string TestLoopSet = "test-event-survival";
 
     private readonly string _root;
 
@@ -32,7 +32,7 @@ public sealed class EventRunSurvivalTests : IDisposable
     {
         try { Directory.Delete(_root, recursive: true); }
         catch { /* best-effort */ }
-        try { Directory.Delete(AppPaths.BbsFolder(TestBbs), recursive: true); }
+        try { Directory.Delete(AppPaths.GameDataSetDir(TestLoopSet), recursive: true); }
         catch { /* best-effort */ }
     }
 
@@ -40,7 +40,7 @@ public sealed class EventRunSurvivalTests : IDisposable
     private static readonly RoomKey B = new(1, 2);
     private static readonly RoomKey C = new(1, 3);
 
-    private Harness NewHarness(bool deferPosts = false) => Harness.Create(_root, TestBbs, deferPosts: deferPosts);
+    private Harness NewHarness(bool deferPosts = false) => Harness.Create(_root, TestLoopSet, deferPosts: deferPosts);
 
     private static ScheduledEvent Add(Harness h, ScheduledEvent e)
     {
@@ -157,7 +157,7 @@ public sealed class EventRunSurvivalTests : IDisposable
     {
         using Harness h = NewHarness(deferPosts: true);
         DateTimeOffset now = new(2026, 10, 10, 18, 0, 0, TimeSpan.Zero);
-        h.Events.Now = () => now;
+        h.EventsNow = () => now;
         ScheduledEvent farm = FarmThenWalk(h);
         farm.StopAfterLaps = null;
         farm.StopAfterMinutes = 10;
@@ -224,7 +224,7 @@ public sealed class EventRunSurvivalTests : IDisposable
     {
         using Harness h = NewHarness();
         DateTimeOffset now = new(2026, 10, 10, 18, 0, 0, TimeSpan.Zero);
-        h.Events.Now = () => now;
+        h.EventsNow = () => now;
         bool off = false;
         h.Events.IsMasterSwitchOff = () => off;
         h.Events.Fire(FarmThenWalk(h));
@@ -257,7 +257,7 @@ public sealed class EventRunSurvivalTests : IDisposable
     {
         using Harness h = NewHarness();
         DateTimeOffset now = new(2026, 10, 10, 18, 0, 0, TimeSpan.Zero);
-        h.Events.Now = () => now;
+        h.EventsNow = () => now;
         h.Events.Fire(FarmThenWalk(h));
         h.Events.Fire(Add(h, WalkTo("boss", B, EventThenType.Nothing)));
         DetourResume.Snapshot(h.Walker, h.Runner, h.AutoLair, includeWalk: true)
@@ -294,7 +294,7 @@ public sealed class EventRunSurvivalTests : IDisposable
     {
         using Harness h = NewHarness();
         DateTimeOffset now = new(2026, 10, 10, 18, 0, 0, TimeSpan.Zero);
-        h.Events.Now = () => now;
+        h.EventsNow = () => now;
         h.Tracker.SetLocated(A);
         h.Runner.Start(new Loop("ab", new[] { A, B }), userStarted: true);
         h.Events.Fire(Add(h, WalkTo("boss one", C)));                 // then go back to the loop
@@ -328,7 +328,7 @@ public sealed class EventRunSurvivalTests : IDisposable
     {
         using Harness h = NewHarness();
         DateTimeOffset now = new(2026, 10, 10, 18, 0, 0, TimeSpan.Zero);
-        h.Events.Now = () => now;
+        h.EventsNow = () => now;
         h.Events.Fire(FarmThenWalk(h));
         DetourResume.Snapshot(h.Walker, h.Runner, h.AutoLair, includeWalk: true)
             .Stop(h.Walker, h.Runner, h.AutoLair, "auto-deposit reroute");
@@ -362,7 +362,7 @@ public sealed class EventRunSurvivalTests : IDisposable
     {
         using Harness h = NewHarness();
         DateTimeOffset now = new(2026, 10, 10, 18, 0, 0, TimeSpan.Zero);
-        h.Events.Now = () => now;
+        h.EventsNow = () => now;
         h.Profile.Current!.EventSuspendedIdleMinutes = 1;
         h.Events.Fire(FarmThenWalk(h));
         DetourResume.Snapshot(h.Walker, h.Runner, h.AutoLair, includeWalk: true)
@@ -386,7 +386,7 @@ public sealed class EventRunSurvivalTests : IDisposable
     {
         using Harness h = NewHarness();
         DateTimeOffset now = new(2026, 10, 10, 18, 0, 0, TimeSpan.Zero);
-        h.Events.Now = () => now;
+        h.EventsNow = () => now;
         h.Events.Fire(FarmThenWalk(h));
         DetourResume.Snapshot(h.Walker, h.Runner, h.AutoLair, includeWalk: true)
             .Stop(h.Walker, h.Runner, h.AutoLair, "sell detour");
@@ -503,7 +503,7 @@ public sealed class EventRunSurvivalTests : IDisposable
     {
         using Harness h = NewHarness();
         DateTimeOffset now = new(2026, 10, 10, 18, 0, 0, TimeSpan.Zero);
-        h.Events.Now = () => now;
+        h.EventsNow = () => now;
         h.Tracker.SetLocated(A);
         h.Runner.Start(new Loop("ab", new[] { A, B }), userStarted: true);
         h.Events.Fire(Add(h, new ScheduledEvent
@@ -588,7 +588,7 @@ public sealed class EventRunSurvivalTests : IDisposable
     {
         using Harness h = NewHarness();
         DateTimeOffset now = new(2026, 10, 10, 18, 0, 0, TimeSpan.Zero);
-        h.Events.Now = () => now;
+        h.EventsNow = () => now;
         h.Profile.Current!.EventQueueLimit = 2;
         h.Tracker.SetLocated(A);
         h.Events.Fire(Add(h, WalkTo("running", C, EventThenType.Nothing)));
@@ -724,7 +724,7 @@ public sealed class EventRunSurvivalTests : IDisposable
     {
         using Harness h = NewHarness();
         DateTimeOffset now = new(2026, 10, 10, 18, 0, 0, TimeSpan.Zero);
-        h.Events.Now = () => now;
+        h.EventsNow = () => now;
         h.Tracker.SetLocated(A);
         h.Events.Fire(Add(h, WalkTo("one", C, EventThenType.Nothing)));
         h.Events.Fire(Add(h, WalkTo("old", B, EventThenType.Nothing)));

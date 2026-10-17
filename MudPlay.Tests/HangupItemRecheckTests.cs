@@ -255,9 +255,11 @@ public sealed class HangupItemRecheckTests
         public string? GameDataSet { get; set; } = "alpha";
         public List<MudPlay.Game.Recovery.UnwitnessedDeath> Deaths { get; } = new();
         public HangupItemRecheck Check { get; }
+        // What Check put on the wire, through the sender the client binds.
+        public List<byte[]> CheckWire { get; } = new();
 
         public bool Held => Coordinator.IsGateAsserted(MovementCoordinator.HangupItemCheckGate);
-        public List<string> Sent => Check.LastSentForTests.Select(b => Encoding.Latin1.GetString(b)).ToList();
+        public List<string> Sent => CheckWire.Select(b => Encoding.Latin1.GetString(b)).ToList();
 
         public Harness()
         {
@@ -309,7 +311,7 @@ public sealed class HangupItemRecheckTests
                         : null),
                 roomLabel: room => RoomNames.TryGetValue(room, out string? name) ? $"{name} ({room})" : $"room {room}",
                 roomsGameData: () => GameDataSet);
-            Check.SetWireSender(_ => { });
+            Check.SetWireSender(CheckWire.Add);
         }
 
         // The list a save left when the link dropped with the character at this HP

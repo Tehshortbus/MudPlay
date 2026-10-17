@@ -48,8 +48,7 @@ public sealed class RelogHandler : IDisposable
 
     // Bind the wire-sender — same shape as HangupHandler. MainWindowViewModel
     // supplies SendUserInput. Without it the handler still authorises the @relog
-    // AND raises the RelogSignal intent, but produces no wire output — useful for
-    // tests.
+    // AND raises the RelogSignal intent, but produces no wire output.
     public void SetWireSender(Action<byte[]> sender)
     {
         ArgumentNullException.ThrowIfNull(sender);
@@ -78,7 +77,7 @@ public sealed class RelogHandler : IDisposable
         // Arm BEFORE the wire write so the Disconnected event handler
         // (which can race with the wire round-trip) sees the relog
         // intent and forces the dial-back regardless of the per-BBS
-        // reconnect toggles. Set even with no wire-sender so a test or
+        // reconnect toggles. Set even with no wire-sender so a
         // pre-connection invocation still records the intent.
         _signal.SignalRelog();
         if (_wireSender is null) return;

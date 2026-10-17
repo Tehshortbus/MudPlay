@@ -3,13 +3,11 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Regression: when a server clears the screen via CSI ED (2J or partial),
-/// the rows being cleared must land in the scrollback first if they had
-/// content. Without this fix, BBS welcome banners and any other absolute-
-/// positioned art that gets <c>2J</c>'d before the next redraw never makes
-/// it into the backscroll export.
-/// </summary>
+// Regression: when a server clears the screen via CSI ED (2J or partial),
+// the rows being cleared must land in the scrollback first if they had
+// content. Without this fix, BBS welcome banners and any other absolute-
+// positioned art that gets 2J'd before the next redraw never makes
+// it into the backscroll export.
 public sealed class ScreenClearScrollbackCaptureTests
 {
     private static void WriteRow(TerminalScreen screen, int y, string text)

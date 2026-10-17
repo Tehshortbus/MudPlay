@@ -42,23 +42,16 @@ public sealed class ItemUseCastEffectTests : IDisposable
         new ItemMdbViewBuilder(_cache, playerCharm: 50).Build(itemNumber).CastsSpells
         ?? System.Array.Empty<CastsSpellRow>();
 
-    private IReadOnlyList<ShopSaleRow> ShopSalesFor(string itemNumber)
-    {
-        ItemsSectionViewModel vm = new(_cache);
-        return vm.BuildShopSalesForTests(itemNumber);
-    }
+    private IReadOnlyList<ShopSaleRow> ShopSalesFor(string itemNumber) =>
+        new ItemMdbViewBuilder(_cache, playerCharm: 0).Build(itemNumber).Shops;
 
-    private IReadOnlyList<DroppedByRow> DroppedByFor(string itemNumber)
-    {
-        ItemsSectionViewModel vm = new(_cache);
-        return vm.BuildDroppedByForTests(itemNumber);
-    }
+    private IReadOnlyList<DroppedByRow> DroppedByFor(string itemNumber) =>
+        new ItemMdbViewBuilder(_cache, playerCharm: 50).Build(itemNumber).DroppedBy
+        ?? System.Array.Empty<DroppedByRow>();
 
-    private IReadOnlyList<PlacedInRow> PlacedInFor(string itemNumber)
-    {
-        ItemsSectionViewModel vm = new(_cache);
-        return vm.BuildPlacedInForTests(itemNumber);
-    }
+    private IReadOnlyList<PlacedInRow> PlacedInFor(string itemNumber) =>
+        new ItemMdbViewBuilder(_cache, playerCharm: 50).Build(itemNumber).PlacedIn
+        ?? System.Array.Empty<PlacedInRow>();
 
     [Fact]
     public void NonWeaponUseCast_ShowsEffectDamage()

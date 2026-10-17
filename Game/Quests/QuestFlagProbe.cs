@@ -17,7 +17,7 @@ namespace MudPlay.Game.Quests;
 //     ability, "User abilities: 126(17) 2(1) …". LineExtractor reassembles the soft-wrap, so
 //     one HandleLine sees the whole list.
 // Collects into flag → value over a settle window and returns the map; the parsers are pure
-// statics so the formats are unit-tested without the wire. The caller picks the realm path
+// statics. The caller picks the realm path
 // (and, for stock, has already confirmed sys-god powers).
 public sealed partial class QuestFlagProbe : IDisposable
 {
@@ -93,7 +93,7 @@ public sealed partial class QuestFlagProbe : IDisposable
         return EndCollect();
     }
 
-    // ----- pure parsers (unit-tested without the wire) -----
+    // ----- pure parsers -----
 
     // Every flag→value pair in a stock `sys god … abil` dump line. Returns nothing for a line
     // that isn't the ability dump.

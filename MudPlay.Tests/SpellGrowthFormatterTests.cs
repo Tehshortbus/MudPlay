@@ -3,15 +3,13 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Pins <see cref="SpellGrowthFormatter"/> — the Game Data Browser's
-/// human-readable growth summary — against MMUD Explorer's spell-browser
-/// "LVL Cap" / "LVL Increases" block. Magnitude ranges route through
-/// <see cref="SpellCalculator.AffectMagnitude"/> (per-cast, no energy
-/// multiplier); the growth formula and GCD reduction are pure string math,
-/// so every expected value is hand-computed from the live data examples
-/// (holy force #110, magic missile #1, frost jet #5).
-/// </summary>
+// Pins SpellGrowthFormatter — the Game Data Browser's
+// human-readable growth summary — the
+// "LVL Cap" / "LVL Increases" block. Magnitude ranges route through
+// SpellCalculator.AffectMagnitude (per-cast, no energy
+// multiplier); the growth formula and GCD reduction are pure string math,
+// so every expected value is hand-computed from the live data examples
+// (holy force #110, magic missile #1, frost jet #5).
 public sealed class SpellGrowthFormatterTests
 {
     private static SpellAbility DamageMr(int value = 0) => new(17, value);   // Damage(-MR)

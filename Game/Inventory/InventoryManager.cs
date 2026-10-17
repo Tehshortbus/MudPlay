@@ -41,25 +41,25 @@ public sealed partial class InventoryManager : IDisposable
     // Resolves a game item display-name ("a torch") to its carry weight (MDB
     // Encum), or null when unknown. Lets item get / drop / buy / sell move the
     // live encumbrance estimate the same way coin transactions already do.
-    // Null in tests that don't exercise item weight.
+    // Null leaves item weight out of the estimate.
     private readonly Func<string, int?>? _itemWeight;
 
     // Resolves a worn item's display-name to its true slot string ("Torso"), or
     // null when unknown. The "You are now wearing X." line names no slot, so this
     // supplies the real placement instead of a generic "Worn" that would misfile
-    // the piece in "Snapshot Current". Null in tests / when no game data is loaded
+    // the piece in "Snapshot Current". Null when no game data is loaded
     // — the handler falls back to the generic slot.
     private readonly Func<string, string?>? _slotResolver;
 
     // True when a text is an item's record name exactly as the game data spells
     // it. Gates the "<Player> gives you <item>." hand-over, whose shape NPC give
-    // flavour text shares. Null in tests / when no game data is loaded: that
+    // flavour text shares. Null when no game data is loaded: that
     // hand-over form then goes unread and the next 'i' picks the item up.
     private readonly Func<string, bool>? _isItemRecordName;
 
     // True when a named item is a key. The game lists keys on a ring of their own
     // in the 'i' dump, apart from the pack, so a key handed over lands there. Null
-    // in tests / when no game data is loaded: only a key already on the ring is
+    // when no game data is loaded: only a key already on the ring is
     // then known to be one.
     private readonly Func<string, bool>? _isKey;
     // The named item is kept when its uses run out (the data's Retain After Uses).

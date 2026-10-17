@@ -64,16 +64,17 @@ public sealed class PlayerLookManager : IDisposable
     // Default off.
     public bool LookAtPlayersOnArrival { get; set; }
 
-    // Test seam for the day-boundary clock, same shape as GreetManager's.
-    public Func<DateTime> NowUtcProvider { get; set; } = static () => DateTime.UtcNow;
+    private readonly Func<DateTime> _now;
 
     public PlayerLookManager(
         MessageRouter router,
         RoomEntryWatcher roomEntry,
         PlayerDatabase players,
         PartyState party,
-        Func<string?> selfNameProvider)
+        Func<string?> selfNameProvider,
+        Func<DateTime>? now = null)
     {
+        _now = now ?? (() => DateTime.UtcNow);
         ArgumentNullException.ThrowIfNull(router);
         ArgumentNullException.ThrowIfNull(roomEntry);
         ArgumentNullException.ThrowIfNull(players);
@@ -115,7 +116,7 @@ public sealed class PlayerLookManager : IDisposable
         TryLookBack(match.Groups[0]);
     }
 
-    // Test seam — runs the look-back decision directly.
+    // The look-back decision.
     internal void TryLookBack(string? name)
     {
         if (_wireSender is null) return;
@@ -134,8 +135,8 @@ public sealed class PlayerLookManager : IDisposable
         TryLookAtArrival(e.Name);
     }
 
-    // Test seam — runs the arrival look decision directly (caller has already
-    // filtered to EntityKind.Player).
+    // The arrival look decision (the caller has already filtered to
+    // EntityKind.Player).
     internal void TryLookAtArrival(string? name)
     {
         if (_wireSender is null) return;
@@ -154,7 +155,7 @@ public sealed class PlayerLookManager : IDisposable
     {
         DateTime? last = _players.GetLastLookedUtc(given);
         return last is { } when
-            && when.ToLocalTime().Date == NowUtcProvider().ToLocalTime().Date;
+            && when.ToLocalTime().Date == _now().ToLocalTime().Date;
     }
 
     // Write the look and stamp it in one place, so no caller can send without
@@ -162,7 +163,7 @@ public sealed class PlayerLookManager : IDisposable
     private void Send(string given)
     {
         _wireSender!(Encoding.Latin1.GetBytes($"look {given}\r"));
-        _players.RecordLooked(given, NowUtcProvider());
+        _players.RecordLooked(given, _now());
     }
 
     private bool IsSelf(string given)

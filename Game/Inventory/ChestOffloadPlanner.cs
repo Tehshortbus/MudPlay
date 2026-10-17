@@ -6,8 +6,8 @@ namespace MudPlay.Game.Inventory;
 
 // Pure helpers behind the Chest Offload tab: diff a before/after carried
 // inventory to find what a chest gave, and pack the sellable loot into as few
-// shops as possible. Everything here is deterministic and service-free so it can
-// be unit-tested; the view-model supplies the item→shop and pricing lookups.
+// shops as possible. Everything here is deterministic and service-free; the
+// view-model supplies the item→shop and pricing lookups.
 public static class ChestOffloadPlanner
 {
     // Items.ItemType of a container — a chest, box or other thing you `open`.

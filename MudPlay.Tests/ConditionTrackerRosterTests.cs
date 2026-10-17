@@ -1,6 +1,5 @@
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using MudPlay.Game.Combat;
 using MudPlay.Game.Conditions;
 using MudPlay.Game.GameData;
@@ -8,7 +7,6 @@ using MudPlay.Game.Map;
 using MudPlay.Models.GameData;
 using MudPlay.Services;
 using MudPlay.Services.Patterns;
-using MudPlay.Terminal;
 using Xunit;
 
 namespace MudPlay.Tests;
@@ -109,6 +107,8 @@ public sealed class ConditionTrackerRosterTests
         private readonly string _root;
         private readonly MessageStore _messages = new();
         private readonly MessageRouter _router = new();
+        // The game's output through the router and the extractor both trackers read.
+        private readonly ServerFeed _feed;
         private readonly RoomEntryWatcher _watcher;
 
         public RoomEntityClassifier Classifier { get; }
@@ -137,7 +137,7 @@ public sealed class ConditionTrackerRosterTests
 
             DefaultPatterns.Seed(_router);
             Classifier = new RoomEntityClassifier(
-                _router, new MonsterMessageStore(), new PlayerDatabase(), roomTracker: null, gameData: cache);
+                _router, new MonsterMessageStore(), new PlayerDatabase(new ProfileService(), () => null), roomTracker: null, gameData: cache);
             _watcher = new RoomEntryWatcher(_router, Classifier);
 
             Room room = new()
@@ -153,20 +153,14 @@ public sealed class ConditionTrackerRosterTests
             Told.CasterNamed += Classifier.NoteCasterNamed;
             NotTold = new ConditionTracker(_messages);
             NotTold.ConditionApplied += NotToldApplied.Add;
+            _feed = new ServerFeed(_router);
+            Told.AttachLineExtractor(_feed.Lines);
+            NotTold.AttachLineExtractor(_feed.Lines);
         }
 
         public void Feed(params string[] lines)
         {
-            foreach (string text in lines)
-            {
-                LineExtractor.EmittedLine line = new(
-                    text, Array.Empty<CellAttributes>(), DateTimeOffset.UtcNow, IsPromptLine: false);
-                _router.Dispatch(line);
-                foreach (ConditionTracker tracker in new[] { Told, NotTold })
-                    typeof(ConditionTracker)
-                        .GetMethod("OnLine", BindingFlags.Instance | BindingFlags.NonPublic)!
-                        .Invoke(tracker, new object[] { line });
-            }
+            _feed.Rows(lines);
         }
 
         public string[] Names(List<MessageRecord> applied) =>

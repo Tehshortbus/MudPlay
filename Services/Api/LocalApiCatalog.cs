@@ -141,12 +141,8 @@ public static class LocalApiCatalog
     //
     // RoomTooltipBuilder.ParseLairTag, deliberately — it's what the map tooltip
     // and ROOM INFO already use, so this endpoint and the UI can't disagree about
-    // what's in a room. LairTagParser is the wrong tool here despite the name: it
-    // only understands the NMR 1.83+ `[group][regen]Group(lair): m/r` shape (for
-    // which it returns NO monster ids, by design — the ids live in Lairs.json) and
-    // a bare pre-1.83 id list. This realm's cells are a third shape,
-    // `(Max 1): 53,54,…,[10-10-15-1]`, which it returns null for — so using it
-    // reported every loop as having zero lair monsters.
+    // what's in a room. The cells read `(Max 1): 53,54,…,[10-10-15-1]`; a parser
+    // that missed that shape once reported every loop as having zero lair monsters.
     private static IReadOnlyList<int> LairMonsterIds(AppServices svc, RoomKey key)
     {
         Room? room = svc.RoomGraph.GetRoom(key);

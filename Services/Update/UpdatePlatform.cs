@@ -6,7 +6,7 @@ namespace MudPlay.Services.Update;
 // Pure platform facts the updater needs: which release asset matches THIS build,
 // and whether we're a self-contained install that can actually be replaced (vs a
 // `dotnet run` dev build, where self-update is a no-op). No I/O beyond reading the
-// process path — kept pure so the asset-matching logic is unit-testable.
+// process path.
 public static class UpdatePlatform
 {
     // The RID segment that names this platform's release asset:

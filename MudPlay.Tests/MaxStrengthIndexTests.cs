@@ -5,12 +5,10 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Coverage for <see cref="MaxStrengthIndex"/> — the per-set door bash ceiling
-/// (strongest race's Strength cap plus the best <c>+Strength</c> gear any class can
-/// wear), which supersedes the old hardcoded 200. Each test seeds an isolated temp
-/// game-data set so the walk is deterministic.
-/// </summary>
+// Coverage for MaxStrengthIndex — the per-set door bash ceiling
+// (strongest race's Strength cap plus the best +Strength gear any class can
+// wear), which supersedes the old hardcoded 200. Each test seeds an isolated temp
+// game-data set so the walk is deterministic.
 public sealed class MaxStrengthIndexTests : IDisposable
 {
     private readonly string _root;

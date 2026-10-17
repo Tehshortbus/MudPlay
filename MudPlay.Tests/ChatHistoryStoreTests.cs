@@ -8,7 +8,7 @@ namespace MudPlay.Tests;
 
 public sealed class ChatHistoryStoreTests
 {
-    /// <summary>Construct a line with an explicit timestamp so day-rollover tests are deterministic.</summary>
+    // Construct a line with an explicit timestamp so day-rollover tests are deterministic.
     private static LineExtractor.EmittedLine Line(string text, DateTimeOffset timestamp) =>
         new(text, new CellAttributes[text.Length], timestamp, IsPromptLine: false);
 

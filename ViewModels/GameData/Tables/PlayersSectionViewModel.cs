@@ -30,8 +30,6 @@ public sealed class PlayersSectionViewModel : GameDataTableSectionViewModel, IEd
         "Given Name", "Family Name", "Gang", "Relationship", "@'s", TogglesColumn, "Last Seen",
     };
 
-    public override string SearchKeyColumn => "Given Name";
-
     // Engine-backed (BBS-tier observations + Char-tier customisations) — see
     // GameDataTableSectionViewModel.ShowUseColumn.
     public override bool ShowUseColumn => false;
@@ -61,8 +59,8 @@ public sealed class PlayersSectionViewModel : GameDataTableSectionViewModel, IEd
     private readonly Action? _profileClosedHandler;
 
     // Live self-name source (given/full), preferred over the stored profile name
-    // for the self-row filter. Injected so it can stay null in tests (falls back
-    // to the profile name then).
+    // for the self-row filter. Null falls back
+    // to the profile name.
     private readonly Func<string?>? _liveSelfName;
 
     public PlayersSectionViewModel(

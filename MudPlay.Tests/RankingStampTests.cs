@@ -114,7 +114,7 @@ public sealed class RankingStampTests : IDisposable
         RankingWorld made = Assert.IsType<RankingWorld>(client.World(out string? why));
         Assert.Null(why);
         Assert.Null(made.DiffersFrom(loaded));
-        Assert.Empty(client.Watch.Changed);
+        Assert.Null(client.Watch.WhyUnfit);
 
         // After a restart the tables are the new ones, and that ranking is not of them.
         Client restarted = new(_dir);
@@ -133,7 +133,7 @@ public sealed class RankingStampTests : IDisposable
         // file as it was: nothing has changed.
         client.Read("Items", "Rooms");
         Assert.Null(client.World()!.DiffersFrom(before));
-        Assert.Empty(client.Watch.Changed);
+        Assert.Null(client.Watch.WhyUnfit);
     }
 
     [Fact]
@@ -149,7 +149,7 @@ public sealed class RankingStampTests : IDisposable
         client.Read("Rooms");
         Assert.Null(client.World(out string? why));
         Assert.Equal("Rooms was read again from a file that had changed since the set was loaded", why);
-        Assert.Equal(new[] { "Rooms" }, client.Watch.Changed);
+        Assert.StartsWith("Rooms ", client.Watch.WhyUnfit);
 
         // So is one stamped from its file before it was ever read, then read from another.
         ImportedElsewhere("Items");
@@ -166,7 +166,7 @@ public sealed class RankingStampTests : IDisposable
         client.Reload();
         client.Read("Rooms", "Monsters", "Items");
         RankingWorld reloaded = Assert.IsType<RankingWorld>(client.World());
-        Assert.Empty(client.Watch.Changed);
+        Assert.Null(client.Watch.WhyUnfit);
         Assert.Contains("Rooms, Items tables have changed", reloaded.DiffersFrom(loaded));
     }
 
@@ -182,7 +182,7 @@ public sealed class RankingStampTests : IDisposable
         client.Read("Rooms");
         client.Watch.Observe(client.Load);
 
-        Assert.Equal(new[] { "Rooms" }, client.Watch.Changed);
+        Assert.StartsWith("Rooms ", client.Watch.WhyUnfit);
         Assert.Null(client.World());
     }
 

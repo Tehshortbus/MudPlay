@@ -154,8 +154,8 @@ public sealed class AutoWalkManagerPickedRouteTests : IDisposable
         RoomTracker tracker = new(graph);
         MovementCoordinator coordinator = new();
         BfsMapper bfs = new(graph);
-        ProfileService profile = new();
-        profile.LoadBlank();
+        ProfileService profile = TestProfiles.Service();
+        profile.LoadDefaultProfile();
         MovementFilter filter = new(profile)
         {
             InventoryReadyProbe = () => true,

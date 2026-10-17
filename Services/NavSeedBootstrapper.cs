@@ -48,8 +48,7 @@ public static class NavSeedBootstrapper
               setName, log);
     }
 
-    // The path-resolved core (public for tests, which pass scratch dirs so nothing
-    // touches the real data root). bundle = the realm's unzipped nav-seed dir.
+    // The path-resolved core. bundle = the realm's unzipped nav-seed dir.
     public static void Apply(string realm, string bundle, string loopsDest, string favDest,
                              string ledgerPath, string legacyMarker, string setName, LogService? log = null)
     {
@@ -127,7 +126,7 @@ public static class NavSeedBootstrapper
     private static string BundledLoops(string setName) =>
         Path.Combine(AppPaths.BundledNavSeedDir(GameDataRealm.Resolve(setName)), "Loops");
 
-    // The path-resolved core (public for tests, as Apply is).
+    // The path-resolved core of the loop restore.
     public static int RestoreLoops(string srcLoops, string dstLoops)
     {
         List<string> missing = MissingLoops(srcLoops, dstLoops);

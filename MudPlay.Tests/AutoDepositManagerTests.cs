@@ -100,6 +100,8 @@ public sealed class AutoDepositManagerTests : IDisposable
         public required ProfileService Profile { get; init; }
         public required RoomGraphManager Graph { get; init; }
         public required CashManager Cash { get; init; }
+        // The clock behind the auto-deposit cooldown.
+        public Func<DateTime> AutoDepositNow { get; set; } = () => DateTime.UtcNow;
         public required RoomTracker Tracker { get; init; }
         public required AutoWalkManager Walker { get; init; }
         public required LoopRunner Loop { get; init; }
@@ -229,8 +231,8 @@ public sealed class AutoDepositManagerTests : IDisposable
         File.WriteAllText(Path.Combine(_root, "alpha", "Rooms.json"), graphJson ?? GraphJson);
         File.WriteAllText(Path.Combine(_root, "alpha", "Lairs.json"), LairsJson);
 
-        ProfileService profile = new();
-        profile.LoadBlank();
+        ProfileService profile = TestProfiles.Service();
+        profile.LoadDefaultProfile();
 
         GameDataCache cache = new(_root);
         cache.SwitchSet("alpha");
@@ -258,7 +260,8 @@ public sealed class AutoDepositManagerTests : IDisposable
             isEnabled: () => true,
             collectAfterCombatFinished: () => h.Settings.CollectAfterCombatFinished,
             hasEngageableHostiles: () => false,
-            getSnapshot: () => h.Snapshot);
+            getSnapshot: () => h.Snapshot,
+            autoDepositClock: () => h.AutoDepositNow());
         StashRoomManager stash = new(profile,
             readCash: () => h.Settings,
             getSnapshot: () => h.Snapshot,
@@ -690,7 +693,7 @@ public sealed class AutoDepositManagerTests : IDisposable
         h.Cash.AutoDepositRequested += _ => fires++;
 
         DateTime now = DateTime.UtcNow;
-        h.Cash.AutoDepositClock = () => now;
+        h.AutoDepositNow = () => now;
 
         // Parseable key that is neither a bank nor a marked stash → aborts.
         h.Settings.BankRoomKey = "1/2";
@@ -726,7 +729,7 @@ public sealed class AutoDepositManagerTests : IDisposable
         h.Settings.KeepOnHandWealth = 10_000;      // nothing lands above the floor
 
         DateTime now = DateTime.UtcNow;
-        h.Cash.AutoDepositClock = () => now;
+        h.AutoDepositNow = () => now;
         int fires = 0;
         h.Cash.AutoDepositRequested += _ => fires++;
 
@@ -763,7 +766,7 @@ public sealed class AutoDepositManagerTests : IDisposable
         ArmBankGate(h);
 
         DateTime now = DateTime.UtcNow;
-        h.Cash.AutoDepositClock = () => now;
+        h.AutoDepositNow = () => now;
         int fires = 0;
         h.Cash.AutoDepositRequested += _ => fires++;
 

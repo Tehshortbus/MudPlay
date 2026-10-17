@@ -1,7 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
-using Avalonia.Threading;
 using MudPlay.Services;
 
 namespace MudPlay.Game.Map;
@@ -54,10 +53,17 @@ public sealed class AutoLairManager : IDisposable
     private readonly Dictionary<RoomKey, int?> _markers = new();
 
     // Runtime state.
-    private readonly DispatcherTimer _schedulerTick;
-    private readonly DispatcherTimer _entryTimer;
-    private readonly DispatcherTimer _engageTimer;
-    private readonly System.Timers.Timer _retryTimer;
+    // The scheduler re-picks every SchedulerInterval while running; the engage
+    // window ticks every _engageInterval until the engagement finishes. The entry
+    // and retry timers are one-shot.
+    private IDisposable? _schedulerTick;
+    private IDisposable? _entryTimer;
+    private IDisposable? _engageTimer;
+    private TimeSpan _engageInterval;
+    private IDisposable? _retryTimer;
+    // Arms one tick after the delay; disposing what it returns cancels it.
+    private readonly Func<TimeSpan, Action, IDisposable> _schedule;
+    internal static readonly TimeSpan SchedulerInterval = TimeSpan.FromSeconds(1);
 
     // Set while we're inside our own _walker.WalkTo. A WalkTo that supersedes
     // our previous walk raises Stopped("superseded by new walk") synchronously,
@@ -90,7 +96,7 @@ public sealed class AutoLairManager : IDisposable
     // an empty room was most of the idle time in report stock-20260908-192900,
     // and entering has already burned the lair's timer, so there is nothing to
     // gain by standing in it.
-    private static readonly TimeSpan EmptyLairGrace = TimeSpan.FromSeconds(3);
+    internal static readonly TimeSpan EmptyLairGrace = TimeSpan.FromSeconds(3);
 
     // Scoring heuristic. Default = closest ready-by-arrival; Throughput = wasted-only.
     public AutoLairHeuristic Heuristic { get; set; } = AutoLairHeuristic.Default;
@@ -145,17 +151,14 @@ public sealed class AutoLairManager : IDisposable
     private readonly Dictionary<RoomKey, NoRouteVerdict> _noRoute = new();
     private static readonly TimeSpan NoRouteRecheck = TimeSpan.FromSeconds(30);
     private readonly record struct NoRouteVerdict(RoomKey From, int DoorsVersion, int RuleStamp, DateTimeOffset At);
-    internal int NoRouteSearchesForTests { get; private set; }
 
     // A failed walk into a lair is retried on a timer, starting at RetryBase and
     // doubling for each further failed entry to the same lair up to RetryCap, so a
     // lair that keeps refusing isn't re-sent whatever the entry sends every 2 s.
-    private static readonly TimeSpan RetryBase = TimeSpan.FromSeconds(2);
+    internal static readonly TimeSpan RetryBase = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan RetryCap = TimeSpan.FromSeconds(60);
     private RoomKey? _failedEntryLair;
     private int _failedEntries;
-    internal int FailedEntriesForTests => _failedEntries;
-    internal TimeSpan RetryDelayForTests =>TimeSpan.FromMilliseconds(_retryTimer.Interval);
 
     // Latched entry-arrival instant for the current Waiting cycle. Set
     // once on Approaching→Waiting (and on the "already at wait-room"
@@ -210,9 +213,11 @@ public sealed class AutoLairManager : IDisposable
         BfsMapper bfs,
         LairTimerStore timers,
         LogService? log = null,
-        MovementCoordinator? coordinator = null)
+        MovementCoordinator? coordinator = null,
+        Func<TimeSpan, Action, IDisposable>? schedule = null)
     {
         ArgumentNullException.ThrowIfNull(walker);
+        _schedule = schedule ?? DispatcherTicks.Once;
         ArgumentNullException.ThrowIfNull(tracker);
         ArgumentNullException.ThrowIfNull(graph);
         ArgumentNullException.ThrowIfNull(bfs);
@@ -225,21 +230,6 @@ public sealed class AutoLairManager : IDisposable
         _log = log;
         _coordinator = coordinator;
 
-        _schedulerTick = new DispatcherTimer(TimeSpan.FromSeconds(1),
-            DispatcherPriority.Normal, (_, _) => OnSchedulerTick());
-        _schedulerTick.Stop();
-
-        _entryTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
-        _entryTimer.Tick += (_, _) => OnEntryTimerFired();
-        _entryTimer.Stop();
-
-        _engageTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
-        _engageTimer.Tick += (_, _) => OnEngageTimerFired();
-        _engageTimer.Stop();
-
-        _retryTimer = new System.Timers.Timer(RetryBase.TotalMilliseconds) { AutoReset = false };
-        _retryTimer.Elapsed += (_, _) => Dispatcher.UIThread.Post(EvaluateAndDispatch);
-
         _walker.Event += OnWalkerEvent;
         _tracker.StateChanged += OnTrackerTransition;
         if (_coordinator is not null) _coordinator.GatesChanged += OnGatesChanged;
@@ -247,11 +237,10 @@ public sealed class AutoLairManager : IDisposable
 
     public void Dispose()
     {
-        _schedulerTick.Stop();
-        _entryTimer.Stop();
-        _engageTimer.Stop();
-        _retryTimer.Stop();
-        _retryTimer.Dispose();
+        Cancel(ref _schedulerTick);
+        Cancel(ref _entryTimer);
+        Cancel(ref _engageTimer);
+        Cancel(ref _retryTimer);
         _walker.Event -= OnWalkerEvent;
         _tracker.StateChanged -= OnTrackerTransition;
         if (_coordinator is not null) _coordinator.GatesChanged -= OnGatesChanged;
@@ -401,12 +390,11 @@ public sealed class AutoLairManager : IDisposable
         _noRoute.Clear();
         _failedEntryLair = null;
         _failedEntries = 0;
-        _retryTimer.Interval = RetryBase.TotalMilliseconds;
 
         SetPhase(AutoLairPhase.Approaching);
         ActiveChanged?.Invoke(true);
         _log?.Info("AutoLair", $"start ({_markers.Count} markers)");
-        _schedulerTick.Start();
+        StartSchedulerTick();
         EvaluateAndDispatch();
         return true;
     }
@@ -418,10 +406,10 @@ public sealed class AutoLairManager : IDisposable
     {
         if (!IsActive) return;
         StoppedForResume = willResume;
-        _schedulerTick.Stop();
-        _entryTimer.Stop();
-        _engageTimer.Stop();
-        _retryTimer.Stop();
+        Cancel(ref _schedulerTick);
+        Cancel(ref _entryTimer);
+        Cancel(ref _engageTimer);
+        Cancel(ref _retryTimer);
         // Clear the pause gate before tearing the session down so the
         // walker isn't stuck behind a stale UserGate after Stop fires.
         if (IsPaused)
@@ -450,10 +438,10 @@ public sealed class AutoLairManager : IDisposable
     {
         if (!IsActive || IsPaused) return;
         IsPaused = true;
-        _schedulerTick.Stop();
-        _entryTimer.Stop();
-        _engageTimer.Stop();
-        _retryTimer.Stop();
+        Cancel(ref _schedulerTick);
+        Cancel(ref _entryTimer);
+        Cancel(ref _engageTimer);
+        Cancel(ref _retryTimer);
         _coordinator?.AssertGate(MovementCoordinator.UserGate);
         PausedChanged?.Invoke(true);
         _log?.Info("AutoLair", "paused.");
@@ -482,11 +470,11 @@ public sealed class AutoLairManager : IDisposable
         CurrentTarget = null;
         CurrentWaitRoom = null;
         CurrentEntryArrivalAt = null;
-        _entryTimer.Stop();
-        _engageTimer.Stop();
+        Cancel(ref _entryTimer);
+        Cancel(ref _engageTimer);
         SetPhase(AutoLairPhase.Approaching);
 
-        _schedulerTick.Start();
+        StartSchedulerTick();
         PausedChanged?.Invoke(false);
         _log?.Info("AutoLair", "resumed; re-evaluating against current timer state.");
         EvaluateAndDispatch();
@@ -585,7 +573,7 @@ public sealed class AutoLairManager : IDisposable
             // entry latch from the previous target so the next arrival
             // gets a fresh LatchAndScheduleEntry.
             CurrentEntryArrivalAt = null;
-            _entryTimer.Stop();
+            Cancel(ref _entryTimer);
 
             // Dispatch walker to the new wait-room.
             CurrentTarget = pick.Lair;
@@ -630,9 +618,47 @@ public sealed class AutoLairManager : IDisposable
 
     private void ArmRetry(TimeSpan? delay = null)
     {
-        _retryTimer.Stop();
-        _retryTimer.Interval = (delay ?? RetryBase).TotalMilliseconds;
-        _retryTimer.Start();
+        Cancel(ref _retryTimer);
+        _retryTimer = _schedule(delay ?? RetryBase, OnRetryDue);
+    }
+
+    private void OnRetryDue()
+    {
+        _retryTimer = null;
+        EvaluateAndDispatch();
+    }
+
+    private void StartSchedulerTick()
+    {
+        Cancel(ref _schedulerTick);
+        _schedulerTick = _schedule(SchedulerInterval, OnSchedulerTickDue);
+    }
+
+    private void OnSchedulerTickDue()
+    {
+        _schedulerTick = _schedule(SchedulerInterval, OnSchedulerTickDue);
+        OnSchedulerTick();
+    }
+
+    private void StartEngageTimer(TimeSpan window)
+    {
+        Cancel(ref _engageTimer);
+        _engageInterval = window;
+        _engageTimer = _schedule(window, OnEngageTick);
+    }
+
+    // The window keeps ticking until the engagement finishes: a tick while frozen
+    // by the master switch is passed over, and the next one is acted on.
+    private void OnEngageTick()
+    {
+        _engageTimer = _schedule(_engageInterval, OnEngageTick);
+        OnEngageTimerFired();
+    }
+
+    private static void Cancel(ref IDisposable? timer)
+    {
+        timer?.Dispose();
+        timer = null;
     }
 
     private static TimeSpan RetryDelayAfter(int failedEntries) =>
@@ -784,7 +810,7 @@ public sealed class AutoLairManager : IDisposable
         IReadOnlyList<Direction>? path = _bfs.FindPath(current, lair, filter);
         if (path is null || path.Count == 0)
         {
-            NoRouteSearchesForTests++;
+            _log?.Debug("AutoLair", $"searched the map for a route from {current} to lair {lair}: none");
             return (null, null);
         }
 
@@ -877,9 +903,8 @@ public sealed class AutoLairManager : IDisposable
             EnterLairNow();
             return;
         }
-        _entryTimer.Stop();
-        _entryTimer.Interval = wait;
-        _entryTimer.Start();
+        Cancel(ref _entryTimer);
+        _entryTimer = _schedule(wait, OnEntryTimerFired);
     }
 
     // The entry time came while the master switch had the run frozen. The timer's
@@ -890,7 +915,7 @@ public sealed class AutoLairManager : IDisposable
 
     private void OnEntryTimerFired()
     {
-        _entryTimer.Stop();
+        _entryTimer = null;
         if (FrozenByMasterSwitch)
         {
             _entryOwedAfterFreeze = true;
@@ -926,9 +951,7 @@ public sealed class AutoLairManager : IDisposable
         // respawned should cost seconds, not the full engage timeout — that was
         // most of the idle time in report stock-20260908-192900. The window
         // becomes EngageTimeoutSeconds the moment combat actually starts.
-        _engageTimer.Stop();
-        _engageTimer.Interval = EmptyLairGrace;
-        _engageTimer.Start();
+        StartEngageTimer(EmptyLairGrace);
         _log?.Info("AutoLair",
             $"engaging — leaving when the fight ends, "
             + $"or in {EmptyLairGrace.TotalSeconds:0}s if the lair is empty.");
@@ -964,9 +987,7 @@ public sealed class AutoLairManager : IDisposable
                 // A fight started, so the short empty-lair window no longer
                 // applies — give the kill the full engage budget.
                 _engageSawCombat = true;
-                _engageTimer.Stop();
-                _engageTimer.Interval = TimeSpan.FromSeconds(Math.Max(1, EngageTimeoutSeconds));
-                _engageTimer.Start();
+                StartEngageTimer(TimeSpan.FromSeconds(Math.Max(1, EngageTimeoutSeconds)));
             }
             return;
         }
@@ -998,18 +1019,10 @@ public sealed class AutoLairManager : IDisposable
             : $"lair empty after {EmptyLairGrace.TotalSeconds:0}s — nothing to fight");
     }
 
-    // Test seams: the Engaging phase is normally reached through DispatcherTimer
-    // ticks, which the unit tests don't pump.
-    internal void StartEngagementForTests() => StartEngagement();
-    internal TimeSpan EngageWindowForTests => _engageTimer.Interval;
-    internal void FireEngageTimerForTests() => OnEngageTimerFired();
-    // The retry timer posts to the UI thread, which the unit tests don't pump either.
-    internal void FireRetryForTests() => EvaluateAndDispatch();
-    internal void FireEntryTimerForTests() => OnEntryTimerFired();
 
     private void FinishEngagement(string why)
     {
-        _engageTimer.Stop();
+        Cancel(ref _engageTimer);
         if (!IsActive || IsPaused) return;
         string readyAgain = CurrentTarget is { } lair && _timers.NextReadyAt(lair, GetOverride(lair)) is { } at
             ? $" ({lair} ready again {at.ToLocalTime():HH:mm:ss})"
@@ -1112,7 +1125,7 @@ public sealed class AutoLairManager : IDisposable
                 {
                     _log?.Info("AutoLair",
                         $"walker stopped ({evt.Detail}); rescheduling.");
-                    _entryTimer.Stop();
+                    Cancel(ref _entryTimer);
                     CurrentEntryArrivalAt = null;
                     LastDecision = null;
                     CurrentTarget = null;
@@ -1138,7 +1151,7 @@ public sealed class AutoLairManager : IDisposable
             && CurrentTarget is { } target
             && room.Key.Equals(target))
         {
-            _entryTimer.Stop();
+            Cancel(ref _entryTimer);
             StartEngagement();
         }
     }

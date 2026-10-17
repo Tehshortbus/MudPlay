@@ -5,12 +5,10 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// PR 10.7 — <see cref="CpPlanState"/> is the live bridge from the CP Allocation
-/// tab to the Level Projection tab. Pins the level-resolution (latest planned row
-/// at or below a level, else the baseline) and the change signal the projection
-/// rebuilds on.
-/// </summary>
+// CpPlanState is the live bridge from the CP Allocation
+// tab to the Level Projection tab. Pins the level-resolution (latest planned row
+// at or below a level, else the baseline) and the change signal the projection
+// rebuilds on.
 public sealed class CpPlanStateTests
 {
     [Fact]

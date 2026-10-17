@@ -11,20 +11,18 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// PR 10.10a — <see cref="QuestCrawler"/> discovers quests and their rewards from
-/// <c>TBInfo</c> chains. Discovery is data-driven: every <c>giveability</c> target
-/// is a quest, including skill grants (Smash 32, Meditate 187, Perfect Stealth 186);
-/// the only number-based notion is gone. Cases reproduce shapes verified against
-/// real data-v1.11p: single-part quests key to step 0; a flag whose give/test/check
-/// minlevel gates form a strict per-level staircase splits into level tiers (the
-/// test/check gates surface tiers the give gates alone miss) while per-class variants
-/// of one step and non-monotonic gate sets stay single-part; <c>addability</c> off
-/// the quest-flag set are stat rewards and
-/// resolve to the requested class with a no-class default; <c>giveitem</c> never
-/// taken back is a keeper award. Synthetic seeded caches keep it deterministic and
-/// CI-portable, matching ClassCapabilitiesTests.
-/// </summary>
+// QuestCrawler discovers quests and their rewards from
+// TBInfo chains. Discovery is data-driven: every giveability target
+// is a quest, including skill grants (Smash 32, Meditate 187, Perfect Stealth 186);
+// the only number-based notion is gone. Cases reproduce shapes verified against
+// real data-v1.11p: single-part quests key to step 0; a flag whose give/test/check
+// minlevel gates form a strict per-level staircase splits into level tiers (the
+// test/check gates surface tiers the give gates alone miss) while per-class variants
+// of one step and non-monotonic gate sets stay single-part; addability off
+// the quest-flag set are stat rewards and
+// resolve to the requested class with a no-class default; giveitem never
+// taken back is a keeper award. Synthetic seeded caches keep it deterministic and
+// CI-portable, matching ClassCapabilitiesTests.
 public sealed class QuestCrawlerTests : IDisposable
 {
     private readonly string _root;

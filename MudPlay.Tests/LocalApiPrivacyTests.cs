@@ -182,7 +182,7 @@ public sealed class LocalApiPrivacyTests
         int built = 0;
         using LocalApiMaskedEvents events = new(
             () => { Interlocked.Increment(ref built); return Task.FromResult(Scrubber()); },
-            anyoneListening: () => true, sink.Send);
+            anyoneListening: () => true, sink.Send, gather: TimeSpan.Zero);
 
         events.Post("log", s => new { message = s.Apply($"sent {Password}") });
         events.Post("gate", s => new { reason = s.Apply($"waiting on {Login}") });
@@ -245,7 +245,7 @@ public sealed class LocalApiPrivacyTests
         bool listening = false;
         using LocalApiMaskedEvents events = new(
             () => { Interlocked.Increment(ref built); return Task.FromResult(Scrubber()); },
-            () => listening, sink.Send);
+            () => listening, sink.Send, gather: TimeSpan.Zero);
 
         events.Post("log", s => new { message = s.Apply("unheard") });
         listening = true;
@@ -266,7 +266,7 @@ public sealed class LocalApiPrivacyTests
         bool readable = false;
         using LocalApiMaskedEvents events = new(
             () => readable ? Task.FromResult(Scrubber()) : throw new InvalidOperationException("key file gone"),
-            () => true, sink.Send);
+            () => true, sink.Send, gather: TimeSpan.Zero);
 
         events.Post("log", _ => new { message = $"sent {Password}" });
         (string Name, string Json)[] sent = await sink.WaitForAsync(1);

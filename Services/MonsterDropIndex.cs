@@ -53,12 +53,6 @@ public sealed class MonsterDropIndex
     // Set the index was last built from, or null if empty.
     public string? ActiveSet { get; private set; }
 
-    // Number of distinct dropped item ids in the active set.
-    public int ItemCount => _droppersByItem.Count;
-
-    // Fires after every successful (re)load, including the transition to no-set-active.
-    public event Action? StoreReloaded;
-
     public MonsterDropIndex(GameDataCache cache, LogService? log = null)
     {
         ArgumentNullException.ThrowIfNull(cache);
@@ -82,9 +76,6 @@ public sealed class MonsterDropIndex
             ? rooms
             : Array.Empty<RoomKey>();
 
-    // True when at least one monster in the active set drops the item.
-    public bool AnyMonsterDrops(int itemId) => _droppersByItem.ContainsKey(itemId);
-
     // Reload the index from setName's Monsters.json. Pass null to clear.
     // Wired by AppServices to GameDataCache.ActiveSetChanged.
     public void OnActiveSetChanged(string? setName)
@@ -96,7 +87,6 @@ public sealed class MonsterDropIndex
         if (string.IsNullOrWhiteSpace(setName))
         {
             _log?.Info("MonsterDropIndex", "No active set; cleared.");
-            StoreReloaded?.Invoke();
             return;
         }
 
@@ -104,7 +94,6 @@ public sealed class MonsterDropIndex
         if (doc is null)
         {
             _log?.Info("MonsterDropIndex", $"Active set '{setName}' has no Monsters.json; empty.");
-            StoreReloaded?.Invoke();
             return;
         }
 
@@ -141,7 +130,6 @@ public sealed class MonsterDropIndex
             $"Indexed {_droppersByItem.Count} dropped item(s) across " +
             $"{_spawnRoomsByMonster.Count} dropper(s) from '{setName}'.");
 
-        StoreReloaded?.Invoke();
     }
 
     private void IndexSpawnRooms(GameRow row, int monsterId)

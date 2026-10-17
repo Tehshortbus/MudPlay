@@ -92,15 +92,15 @@ public sealed class MovePlayerHandlerStartReplyTests : IDisposable
         LairTimerStore timers = new(cache, graph, tracker);
         AutoLairManager autoLair = new(walker, tracker, graph, bfs, timers, log: null, coordinator: coord);
         MovementController controller = new(walker, loopRunner, autoLair, coord);
-        ProfileService profile = new();
-        profile.LoadBlank();
+        ProfileService profile = TestProfiles.Service();
+        profile.LoadDefaultProfile();
         FavoritesStore favorites = new(profile, cache, () => cache.ActiveSet);
         BossStore bosses = new();
         RoomSearchService search = new(graph, cache, bfs, new RoomBlacklistStore(), favorites: favorites, bosses: bosses);
 
         MessageRouter router = new();
         DefaultPatterns.Seed(router);
-        RemoteCommandManager engine = new(new ChatRouter(router), new PartyState(), new PlayerDatabase());
+        RemoteCommandManager engine = new(new ChatRouter(router), new PartyState(), new PlayerDatabase(new ProfileService(), () => null));
         _ = new MovePlayerHandler(engine, search, graph, tracker, walker, loops, loopRunner,
             new LairManager(), autoLair, coord, controller, favorites, bosses, bfs, new LoopShareHandler(loops));
 

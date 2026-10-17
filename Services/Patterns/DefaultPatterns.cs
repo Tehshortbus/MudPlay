@@ -59,8 +59,7 @@ public static class DefaultPatterns
         }
     }
 
-    // Enumerate every default pattern instance. Exposed so tests can inspect the
-    // registry without having to wire a router.
+    // Enumerate every default pattern instance.
     public static IEnumerable<IMessagePattern> BuildDefaultPatterns()
     {
         // ----- Stealth ---------------------------------------------------

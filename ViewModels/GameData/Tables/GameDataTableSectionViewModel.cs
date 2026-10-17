@@ -36,12 +36,6 @@ public abstract partial class GameDataTableSectionViewModel : GameDataSectionVie
     // DisplayColumns.
     public abstract IReadOnlyList<string> Columns { get; }
 
-    // Columns rendered in the DataGrid: data columns + the trailing "Use" tier column (when
-    // applicable). The view's column builder reads from this.
-    public IReadOnlyList<string> DisplayColumns => ShowUseColumn
-        ? Columns.Concat(new[] { UseColumnName }).ToArray()
-        : Columns;
-
     // True when the trailing virtual "Use" tier column should render. MDB-overlay tables
     // (Monsters / Items / Spells / Messages) keep it — the tier badge tells the user which
     // layer owns each row. Engine-backed tables (Macros / Triggers / Aliases / Players) hide
@@ -55,9 +49,6 @@ public abstract partial class GameDataTableSectionViewModel : GameDataSectionVie
     // "AC" / "HP Regen" while keeping the raw MDB keys (ArmourClass / HPRegen) as the data
     // identity. Columns absent from the map fall back to their raw name.
     public virtual IReadOnlyDictionary<string, string>? ColumnHeaders => null;
-
-    // Column the search box filters against by default (kept for status-bar display only).
-    public abstract string SearchKeyColumn { get; }
 
     // ----- Column picker (per-character visible-column choices) -----------------
     // A dropdown at the tab's top-right lets the user check/uncheck which columns
@@ -402,8 +393,7 @@ public abstract partial class GameDataTableSectionViewModel : GameDataSectionVie
     // Async variant of Reload: row-build runs on a worker thread, then bulk-replace AllRows
     // back on the UI thread once the parse is done. Keeps the UI responsive on big tables
     // (Rooms reaches 27k+ rows in MajorMUD v1.11p, more on custom-edit realms).
-    // JsonTableSectionViewModel.OnActivated fires this through the dispatcher post; tests can
-    // await it directly for deterministic completion.
+    // JsonTableSectionViewModel.OnActivated fires this through the dispatcher post.
     internal async Task LoadAsync()
     {
         List<GameDataRow> rows = await Task.Run(() =>
@@ -414,7 +404,7 @@ public abstract partial class GameDataTableSectionViewModel : GameDataSectionVie
         });
         // Task.Run resumes the continuation on the captured
         // SynchronizationContext (Avalonia dispatcher in app context,
-        // none in tests — either way the property writes happen on a
+        // none outside it — either way the property writes happen on a
         // single thread per call).
         SelectedRow = null;
         AllRows = new ObservableCollection<GameDataRow>(rows);

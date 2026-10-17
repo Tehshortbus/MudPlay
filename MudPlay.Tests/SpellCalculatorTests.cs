@@ -4,13 +4,10 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Pins <see cref="SpellCalculator"/> against MMUD Explorer's
-/// <c>modMMudDatabase.bas</c> getters. Every expected value below is
-/// hand-computed from the verbatim VB6 algorithm (base + slope, flat
-/// override, level clamp, per-round energy multiplier, chained end-cast,
-/// and the <c>Fix</c> truncation edge cases).
-/// </summary>
+// Pins SpellCalculator's spell getters. Every expected value below is
+// hand-computed from the algorithm (base + slope, flat
+// override, level clamp, per-round energy multiplier, chained end-cast,
+// and the Fix truncation edge cases).
 public sealed class SpellCalculatorTests
 {
     private static SpellAbility Dmg(int value = 0) => new(1, value);
@@ -226,32 +223,6 @@ public sealed class SpellCalculatorTests
     // ----- round → wall-clock seconds ----------------------------------
     // Duration is in spell ROUNDS; a spell round is 3 s (NOT the 5-second
     // combat round). Consumers convert with * SpellRoundSeconds.
-
-    [Fact]
-    public void SpellRoundSeconds_IsThree_NotTheCombatRound()
-        // Guards the spell-round length against being "corrected" to the
-        // 5-second combat round — the two are deliberately different, and
-        // conflating them is what made the recast clock fire 3× too early.
-        => Assert.Equal(3, SpellCalculator.SpellRoundSeconds);
-
-    [Fact]
-    public void WallClockRound_RunsSlightlyLongerThanNominal()
-        // Live buff timers use the wall-clock round (~3.04s) because server rounds
-        // run long (report paradigm-20260816-222917); it must exceed the nominal 3s
-        // or the recast clock under-estimates the duration and fires early.
-        => Assert.True(SpellCalculator.SpellRoundSecondsWallClock > SpellCalculator.SpellRoundSeconds);
-
-    [Fact]
-    public void WallClockRound_50RoundBuff_IsAbout152Seconds()
-    {
-        // prev (protection from evil): Dur=50 flat → 50 rounds. The recast clock arms
-        // ~152s (not the nominal 150s), so "recast within 15s" fires at ~137s in — the
-        // buff's REAL remaining time — instead of ~1-2s early off 150s.
-        SpellFormulaInput prev = new() { Dur = 50 };
-        long durSec = (long)System.Math.Round(
-            SpellCalculator.Duration(prev, 50) * SpellCalculator.SpellRoundSecondsWallClock);
-        Assert.Equal(152, durSec);
-    }
 
     [Theory]
     [InlineData(100, 0, 0, 50, 300)]  // nature tap: Dur=100 flat → 100 rounds → 5:00

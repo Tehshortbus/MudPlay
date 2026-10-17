@@ -15,7 +15,7 @@ namespace MudPlay.Game.Tokens;
 // seen), so a failed use — blocked by an NPC in the room, too little gold, too
 // low a level — never mis-decrements. Charges reset server-side at cleanup; the
 // next login's look picks that up. Paradigm-only (Func onParadigm gates every
-// action). The parsing lives in TokenCatalog (pure, unit-tested); this owns the
+// action). The parsing lives in TokenCatalog (pure); this owns the
 // send/collect/observe plumbing, modelled on QuestFlagProbe.
 public sealed class TokenTracker : IDisposable
 {

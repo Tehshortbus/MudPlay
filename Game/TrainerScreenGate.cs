@@ -41,7 +41,7 @@ public sealed class TrainerScreenGate : IDisposable
     private bool _disposed;
 
     // True while the hold is up because the trainer / creation form owns the
-    // keyboard. Mirrors the EngineSendGate hold; exposed for diagnostics / tests.
+    // keyboard. Mirrors the EngineSendGate hold.
     public bool IsHeld => _held;
 
     public TrainerScreenGate(TrainerMenuTracker tracker, EngineSendGate gate, LogService? log = null)
@@ -63,8 +63,7 @@ public sealed class TrainerScreenGate : IDisposable
         Evaluate();
     }
 
-    // Recompute the hold from the tracker and flip it once per edge. Public so
-    // tests can drive it deterministically without raising tracker events.
+    // Recompute the hold from the tracker and flip it once per edge.
     public void Evaluate()
     {
         bool owns = _tracker.MenuOwnsKeyboard;

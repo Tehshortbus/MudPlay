@@ -71,12 +71,6 @@ public sealed class RankingWorldWatch(
     private readonly SortedSet<string> _lost = new(StringComparer.Ordinal);
     private object? _load;
 
-    // The tables that make this load unfit, in name order; empty is the usual case.
-    public IReadOnlyList<string> Changed
-    {
-        get { lock (_seenLock) return _changed.Union(_lost).Order(StringComparer.Ordinal).ToArray(); }
-    }
-
     // Why the load in hand has no one world, in words for a log or a report; null
     // when it has.
     public string? WhyUnfit

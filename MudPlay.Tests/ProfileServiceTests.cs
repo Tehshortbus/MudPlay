@@ -7,12 +7,10 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// <see cref="ProfileService.NormalizeForLoad"/> rebuilds the BBS credential
-/// lookup case-insensitively, so a profile that keyed credentials under
-/// "Playpen" resolves for a "playpen" BBS (BBS names are case-insensitive
-/// folder names).
-/// </summary>
+// ProfileService.NormalizeForLoad rebuilds the BBS credential
+// lookup case-insensitively, so a profile that keyed credentials under
+// "Playpen" resolves for a "playpen" BBS (BBS names are case-insensitive
+// folder names).
 public sealed class ProfileServiceTests
 {
     [Theory]

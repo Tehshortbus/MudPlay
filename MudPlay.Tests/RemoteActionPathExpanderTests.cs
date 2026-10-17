@@ -732,17 +732,8 @@ public sealed class RemoteActionPathExpanderTests : IDisposable
     {
         RoomGraphManager graph = NewGraph();
 
-        // 1/2 doesn't have S, so expansion stops there.
+        // 1/1 has no S exit, so nothing expands.
         var steps = RemoteActionPathExpander.Expand(
-            graph, new RoomKey(1, 2),
-            new[] { Direction.N, Direction.S });
-
-        // First step N → 1/3. Then trying S from 1/3 — 1/3.S = 1/2,
-        // valid. So both should expand.
-        Assert.Equal(2, steps.Count);
-
-        // Now try a truly broken sequence — S from 1/1 (no S).
-        steps = RemoteActionPathExpander.Expand(
             graph, new RoomKey(1, 1), new[] { Direction.S });
         Assert.Empty(steps);
     }

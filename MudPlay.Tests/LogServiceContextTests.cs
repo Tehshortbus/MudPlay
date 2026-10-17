@@ -3,32 +3,10 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// PR 9.0a sub-F — <see cref="LogEntry.Context"/> + the
-/// <see cref="LogService.Log(LogSeverity, string, string, string?)"/>
-/// overload's propagation path. Pins the field shape so a future
-/// refactor can't silently drop the payload and break the LogPane's
-/// double-click-to-copy + Phase 9 sub-G fix-dialog flow.
-/// </summary>
+// LogService's context overloads carry the payload through to subscribers, which
+// the LogPane's double-click-to-copy and the unknown-entity fix dialog read.
 public sealed class LogServiceContextTests
 {
-    [Fact]
-    public void LogEntry_ContextDefaultsToNull()
-    {
-        LogEntry e = new(DateTimeOffset.Now, LogSeverity.Info, "src", "msg");
-        Assert.Null(e.Context);
-    }
-
-    [Fact]
-    public void LogEntry_ContextRoundTripsThroughCtor()
-    {
-        LogEntry e = new(DateTimeOffset.Now, LogSeverity.Warn,
-            "RoomClassifier",
-            "WARN unknown entity 'foozle'",
-            "Also here: foozle, a giant rat, Bob");
-        Assert.Equal("Also here: foozle, a giant rat, Bob", e.Context);
-    }
-
     [Fact]
     public void LogService_LogWithContext_PropagatesToSubscriber()
     {
@@ -49,8 +27,8 @@ public sealed class LogServiceContextTests
     [Fact]
     public void LogService_Warn_ContextOverload_Propagates()
     {
-        // The Warn convenience overload is what Phase 9 RoomClassifier
-        // will actually call. Pin it as a distinct path so the overload
+        // The Warn convenience overload is what the room classifier
+        // calls. Pin it as a distinct path so the overload
         // resolution doesn't silently regress to the no-context Warn
         // (which would compile fine but drop the payload).
         LogService log = new();

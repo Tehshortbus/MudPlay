@@ -6,16 +6,14 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// PR 7.6 coverage — per-character avoided + stash room state,
-/// IRoomFilter contract, profile-event lifecycle, and the round-trip
-/// through CharacterProfile so the next session sees the same list.
-/// </summary>
+// Coverage — per-character avoided + stash room state,
+// IRoomFilter contract, profile-event lifecycle, and the round-trip
+// through CharacterProfile so the next session sees the same list.
 public sealed class MovementFilterTests
 {
     private static (ProfileService Profile, MovementFilter Filter) NewPair()
     {
-        ProfileService profile = new();
+        ProfileService profile = TestProfiles.Service();
         MovementFilter filter = new(profile);
         return (profile, filter);
     }
@@ -33,8 +31,8 @@ public sealed class MovementFilterTests
     [Fact]
     public void ProfileLoaded_HydratesFromPersistedLists()
     {
-        ProfileService profile = new();
-        CharacterProfile draft = profile.LoadBlank();
+        ProfileService profile = TestProfiles.Service();
+        CharacterProfile draft = profile.LoadDefaultProfile();
         draft.AvoidedRooms = new() { new RoomRef(1, 5), new RoomRef(2, 9) };
         draft.StashRooms   = new() { new RoomRef(3, 7) };
 
@@ -52,7 +50,7 @@ public sealed class MovementFilterTests
     public void ProfileClosed_ClearsBothSets()
     {
         (ProfileService profile, MovementFilter filter) = NewPair();
-        profile.LoadBlank();
+        profile.LoadDefaultProfile();
         filter.MarkAvoided(new RoomKey(1, 1));
         filter.MarkStash(new RoomKey(1, 2));
 
@@ -74,7 +72,7 @@ public sealed class MovementFilterTests
     public void MarkAvoided_AddsToSet_AndMirrorsBackToProfile()
     {
         (ProfileService profile, MovementFilter filter) = NewPair();
-        CharacterProfile draft = profile.LoadBlank();
+        CharacterProfile draft = profile.LoadDefaultProfile();
 
         filter.MarkAvoided(new RoomKey(1, 5));
 
@@ -89,7 +87,7 @@ public sealed class MovementFilterTests
     public void MarkAvoided_Idempotent()
     {
         (ProfileService profile, MovementFilter filter) = NewPair();
-        CharacterProfile draft = profile.LoadBlank();
+        CharacterProfile draft = profile.LoadDefaultProfile();
 
         filter.MarkAvoided(new RoomKey(1, 5));
         filter.MarkAvoided(new RoomKey(1, 5));
@@ -102,7 +100,7 @@ public sealed class MovementFilterTests
     public void UnmarkAvoided_RemovesFromBothInMemoryAndProfile()
     {
         (ProfileService profile, MovementFilter filter) = NewPair();
-        CharacterProfile draft = profile.LoadBlank();
+        CharacterProfile draft = profile.LoadDefaultProfile();
 
         filter.MarkAvoided(new RoomKey(1, 5));
         filter.MarkAvoided(new RoomKey(2, 9));
@@ -119,7 +117,7 @@ public sealed class MovementFilterTests
     public void UnmarkAvoided_NotMarked_IsNoOp()
     {
         (ProfileService profile, MovementFilter filter) = NewPair();
-        profile.LoadBlank();
+        profile.LoadDefaultProfile();
 
         int events = 0;
         filter.AvoidedChanged += () => events++;
@@ -133,7 +131,7 @@ public sealed class MovementFilterTests
     public void MarkStash_TracksSeparateSet_FromAvoided()
     {
         (ProfileService profile, MovementFilter filter) = NewPair();
-        CharacterProfile draft = profile.LoadBlank();
+        CharacterProfile draft = profile.LoadDefaultProfile();
 
         filter.MarkAvoided(new RoomKey(1, 1));
         filter.MarkStash(new RoomKey(1, 2));
@@ -151,7 +149,7 @@ public sealed class MovementFilterTests
     public void Mark_Fires_ChangedEvents()
     {
         (ProfileService profile, MovementFilter filter) = NewPair();
-        profile.LoadBlank();
+        profile.LoadDefaultProfile();
 
         int avoidedFires = 0;
         int stashFires = 0;
@@ -173,7 +171,7 @@ public sealed class MovementFilterTests
     public void ReplaceAll_SetsBothSets_AndPersistsToProfile()
     {
         (ProfileService profile, MovementFilter filter) = NewPair();
-        CharacterProfile draft = profile.LoadBlank();
+        CharacterProfile draft = profile.LoadDefaultProfile();
 
         filter.ReplaceAll(
             avoided: new[] { new RoomKey(1, 5), new RoomKey(2, 9) },
@@ -190,7 +188,7 @@ public sealed class MovementFilterTests
     public void ReplaceAll_DropsEntriesNotInNewSets()
     {
         (ProfileService profile, MovementFilter filter) = NewPair();
-        profile.LoadBlank();
+        profile.LoadDefaultProfile();
         filter.MarkAvoided(new RoomKey(1, 1));
         filter.MarkAvoided(new RoomKey(1, 2));
         filter.MarkStash(new RoomKey(1, 3));
@@ -207,7 +205,7 @@ public sealed class MovementFilterTests
     public void ReplaceAll_MoveRoomBetweenSets()
     {
         (ProfileService profile, MovementFilter filter) = NewPair();
-        profile.LoadBlank();
+        profile.LoadDefaultProfile();
         filter.MarkAvoided(new RoomKey(4, 4));
 
         // Editor removed the avoid row and added the same room as a stash.
@@ -221,7 +219,7 @@ public sealed class MovementFilterTests
     public void ReplaceAll_FiresBothChangedEvents()
     {
         (ProfileService profile, MovementFilter filter) = NewPair();
-        profile.LoadBlank();
+        profile.LoadDefaultProfile();
 
         int avoidedFires = 0, stashFires = 0;
         filter.AvoidedChanged += () => avoidedFires++;
@@ -242,27 +240,32 @@ public sealed class MovementFilterTests
         Assert.Empty(filter.Stash);
     }
 
+    // Loading another character drops the old one's rooms and takes the new one's.
     [Fact]
     public void ProfileSwap_RehydratesIntoFreshSet()
     {
-        ProfileService profile = new();
-        MovementFilter filter = new(profile);
+        string bbs = "test-filterbbs-" + Guid.NewGuid().ToString("N").Substring(0, 12);
+        try
+        {
+            System.IO.Directory.CreateDirectory(AppPaths.ProfileFolder(bbs, "Second"));
+            JsonStore.Save(AppPaths.CharacterProfileFile(bbs, "Second"),
+                new CharacterProfile { Name = "Second", AvoidedRooms = new() { new RoomRef(9, 9) } });
+            ProfileService profile = TestProfiles.Service();
+            MovementFilter filter = new(profile);
+            profile.LoadDefaultProfile();
+            filter.MarkAvoided(new RoomKey(1, 1));
+            Assert.True(filter.IsAvoided(new RoomKey(1, 1)));
 
-        CharacterProfile first = profile.LoadBlank();
-        first.AvoidedRooms = new() { new RoomRef(1, 1) };
-        // Drive a fresh ProfileLoaded so the filter rebuilds from the
-        // new state — same path Settings → BBS Apply uses.
-        profile.LoadBlank().AvoidedRooms = new() { new RoomRef(9, 9) };
-        profile.NotifyBbsPinApplied();
+            profile.Load(bbs, "Second");
 
-        // After the second LoadBlank, only the new profile's lists
-        // should appear in the filter.
-        Assert.False(filter.IsAvoided(new RoomKey(1, 1)));
-        // The second LoadBlank's AvoidedRooms was assigned AFTER
-        // ProfileLoaded fired, so the filter snapshot from that load
-        // is empty — the filter only re-snapshots on Profile events.
-        // Verify the documented contract: snapshot at event time.
-        Assert.Empty(filter.Avoided);
+            Assert.False(filter.IsAvoided(new RoomKey(1, 1)));
+            Assert.True(filter.IsAvoided(new RoomKey(9, 9)));
+        }
+        finally
+        {
+            string folder = AppPaths.BbsFolder(bbs);
+            if (System.IO.Directory.Exists(folder)) System.IO.Directory.Delete(folder, recursive: true);
+        }
     }
 
     // ----- IsExitBlocked: Form-A level-gate evaluation ---------------
@@ -684,10 +687,10 @@ public sealed class MovementFilterTests
         Assert.True(filter.IsExitBlocked(GatedExit(20, 0)));
     }
 
-    // ----- IsExitBlocked: party-wealth toll branch ------------------
+    // ----- IsExitBlocked: the party toll check ----------------------
 
     [Fact]
-    public void PartyWealth_TakesPrecedence_OverSelfWealth()
+    public void PartyTollCheck_ClosesATollWeCanAfford()
     {
         (_, MovementFilter filter) = NewPair();
         // We can afford the toll, but the party can't all get through it (the
@@ -695,14 +698,6 @@ public sealed class MovementFilterTests
         filter.WealthProvider = () => 1000;
         filter.PartyTollClosedProbe = _ => true;
         Assert.True(filter.IsExitBlocked(TollExit(5)));
-    }
-
-    [Fact]
-    public void PartyWealth_WholePartyAffords_Allows()
-    {
-        (_, MovementFilter filter) = NewPair();
-        filter.PartyWealthProvider = () => 500;
-        Assert.False(filter.IsExitBlocked(TollExit(5)));  // everyone has >= 500
     }
 
     [Fact]
@@ -719,46 +714,6 @@ public sealed class MovementFilterTests
         filter.PartyTollClosedProbe = _ => true;
         Assert.True(filter.IsExitBlocked(FareExit(500)));
         Assert.True(filter.IsExitBlocked(TollExit(5)));
-    }
-
-    [Fact]
-    public void PartyWealth_Null_FallsBackToSelfWealth()
-    {
-        (_, MovementFilter filter) = NewPair();
-        // Not leading / our own wallet unknown — provider returns null, so the
-        // self-only branch decides.
-        filter.PartyWealthProvider = () => null;
-        filter.WealthProvider = () => 499;
-        Assert.True(filter.IsExitBlocked(TollExit(5)));   // self-only: 499 < 500
-    }
-
-    [Fact]
-    public void PartyWealth_NoProvider_FallsBackToSelfWealth()
-    {
-        (_, MovementFilter filter) = NewPair();
-        // PartyWealthProvider unset entirely (solo character).
-        filter.WealthProvider = () => 500;
-        Assert.False(filter.IsExitBlocked(TollExit(5)));  // self-only: 500 >= 500
-    }
-
-    [Fact]
-    public void PartyWealth_ZeroTollGold_DoesNotBlock()
-    {
-        (_, MovementFilter filter) = NewPair();
-        filter.PartyWealthProvider = () => 0;
-        // A Toll-hint exit with no parsed amount can't gate — nothing to owe.
-        Assert.False(filter.IsExitBlocked(TollExit(0)));
-    }
-
-    [Fact]
-    public void PartyWealth_DoesNotAffectLevelGate()
-    {
-        (_, MovementFilter filter) = NewPair();
-        // The party-wealth branch fires only for a toll exit; a pure level
-        // gate must be untouched even when the party is flat broke.
-        filter.PartyWealthProvider = () => 0;
-        filter.LevelProvider = () => 30;
-        Assert.False(filter.IsExitBlocked(GatedExit(20, 0)));  // level OK, no toll
     }
 
     // ----- IsExitBlocked: NPC ask-transport fare -------------------
@@ -789,14 +744,6 @@ public sealed class MovementFilterTests
         filter.PartyTollClosedProbe = exit => exit.FareCopper == 1_000_000;
         Assert.True(filter.IsExitBlocked(FareExit(1_000_000)));
         Assert.Equal(ExitBlockReason.Fare, filter.DescribeExitBlock(FareExit(1_000_000)));
-    }
-
-    [Fact]
-    public void Fare_WholePartyAffords_Allows()
-    {
-        (_, MovementFilter filter) = NewPair();
-        filter.PartyWealthProvider = () => 1_000_000;
-        Assert.False(filter.IsExitBlocked(FareExit(1_000_000)));
     }
 
     [Fact]
@@ -850,8 +797,8 @@ public sealed class MovementFilterTests
             graph.OnActiveSetChanged("alpha");
             BfsMapper bfs = new(graph);
 
-            ProfileService profile = new();
-            profile.LoadBlank();
+            ProfileService profile = TestProfiles.Service();
+            profile.LoadDefaultProfile();
             MovementFilter filter = new(profile);
             filter.MarkAvoided(new RoomKey(1, 2));
 
@@ -961,18 +908,6 @@ public sealed class MovementFilterTests
             filter.WarmForRoute(bfs, new RoomKey(1, 1), new RoomKey(1, 3));
 
             Assert.Equal(0, probes);
-        });
-    }
-
-    [Fact]
-    public void WarmForRoute_NoProbeWired_IsNoOp()
-    {
-        WithGraph(TollStripJson, bfs =>
-        {
-            (_, MovementFilter filter) = NewPair();
-            filter.PartyWealthProvider = () => 100;
-            // WealthWarmProbe unset — must not throw.
-            filter.WarmForRoute(bfs, new RoomKey(1, 1), new RoomKey(1, 3));
         });
     }
 

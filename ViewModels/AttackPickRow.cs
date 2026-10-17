@@ -14,7 +14,6 @@ public sealed partial class AttackPickRow : ObservableObject
 {
     public string Key { get; }
     public string Label { get; }
-    public bool IsSpell { get; }
 
     // The basis row is a rounds-to-kill option only — it isn't an attack, so it has
     // no Your Matchup visibility to toggle. Its checkbox stays in the layout (hidden)
@@ -26,12 +25,11 @@ public sealed partial class AttackPickRow : ObservableObject
     [ObservableProperty] private bool _shown;
     [ObservableProperty] private bool _isRoundsAttack;
 
-    public AttackPickRow(string key, string label, bool isSpell, bool shown, bool isRoundsAttack,
+    public AttackPickRow(string key, string label, bool shown, bool isRoundsAttack,
         bool basisOnly = false)
     {
         Key = key;
         Label = label;
-        IsSpell = isSpell;
         _shown = shown;
         _isRoundsAttack = isRoundsAttack;
         BasisOnly = basisOnly;

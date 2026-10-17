@@ -360,5 +360,4 @@ public sealed class SplashCanvas
     public static double EaseInSoft(double p) => p * p * (0.6 + 0.4 * p);
     // Smoothstep 0→1.
     public static double Smooth(double p) { p = Math.Clamp(p, 0, 1); return p * p * (3 - 2 * p); }
-    public static int ClampI(int v, int lo, int hi) => v < lo ? lo : v > hi ? hi : v;
 }

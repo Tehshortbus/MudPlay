@@ -36,7 +36,7 @@ public static class RouteEtaEstimator
     //                      combat dwell — without this the ETA over-counts every
     //                      town "lair" as a fight (report paradigm-20260909-004947:
     //                      a hostile-free walk estimated ~30s over its real time).
-    //                      Null = count every lair (older callers / tests).
+    //                      Null = count every lair (older callers).
     public static TimeSpan Estimate(
         IReadOnlyList<RoomKey> remainingRooms,
         ITravelCostModel travel,

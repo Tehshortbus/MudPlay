@@ -65,7 +65,7 @@ public sealed class PartyReformCoordinator : IDisposable
         ArgumentNullException.ThrowIfNull(party);
         _party = party;
         // Master auto-responses gate — mirrors PartyRejoin. Defaults to always-on
-        // so tests behave without wiring it.
+        // when unwired.
         _isAutoEnabled = isAutoEnabled ?? (() => true);
         _log = log;
 

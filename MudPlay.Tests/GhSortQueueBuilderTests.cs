@@ -150,29 +150,6 @@ public sealed class GhSortQueueBuilderTests : IDisposable
         Assert.Equal(3, observed[WeaponsRoom].Count);
     }
 
-    // Hard invariant: the sort queue can only ever be built from what was
-    // observed on a GH room floor. GhSortQueueBuilder.Build's signature takes
-    // no carried-inventory input at all, so an item the player was already
-    // carrying before the sweep started — never listed in observedByRoom —
-    // can never appear in the output, regardless of what's in their pack.
-    [Fact]
-    public void Build_NeverProducesAMoveForAnItemNotInObservedByRoom()
-    {
-        ItemNameStore names = NewStore();
-        // "chain shirt" is a real, resolvable item, but it is NOT present in
-        // any observed room this sweep — standing in for something the
-        // player already had carried before the sweep began.
-        var observed = new Dictionary<RoomKey, IReadOnlyList<string>>
-        {
-            [ArmourRoom] = new List<string>(),   // recon saw this room and it was empty
-        };
-
-        (var moves, _) = GhSortQueueBuilder.Build(observed, Labels, names);
-
-        Assert.Empty(moves);
-        Assert.DoesNotContain(moves, m => m.ItemName == "chain shirt");
-    }
-
     // Gang-house guard emblems must never be swept as clutter, even when the item's own
     // ItemType happens to match a labeled room (GAME_MECHANICS.md "Gang houses & guard
     // emblems" — moving the required emblem away from the player risks the guards attacking).

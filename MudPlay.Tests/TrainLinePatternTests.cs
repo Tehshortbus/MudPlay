@@ -6,11 +6,9 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// PR 10.8 — the <see cref="KnownPatterns.TrainAttainLevel"/> pattern that
-/// detects a <c>train</c> level-up ("…you receive training to attain level N.")
-/// and captures the attained level for the auto-train coordinator.
-/// </summary>
+// the KnownPatterns.TrainAttainLevel pattern that
+// detects a train level-up ("…you receive training to attain level N.")
+// and captures the attained level for the auto-train coordinator.
 public sealed class TrainLinePatternTests
 {
     private static LineExtractor.EmittedLine Line(string text) =>

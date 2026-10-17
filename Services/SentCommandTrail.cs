@@ -55,7 +55,7 @@ public sealed class SentCommandTrail
     private int _withheld;
     private readonly StringBuilder _typedLine = new();
 
-    // True while a line must not be kept. Null in tests that don't care.
+    // True while a line must not be kept. Null = always kept.
     public Func<bool>? Withhold { get; set; }
 
     // Lines that went by while Withhold was true.
@@ -171,7 +171,7 @@ public sealed class SentCommandTrail
     // line's Enter goes out; the argument is the line. Anything else on that row
     // (a password prompt, a menu, a question, a prompt we don't know) means the
     // line answers it, and what answers a prompt is never kept: only that
-    // something was typed there. Null in tests that don't model a terminal.
+    // something was typed there. Null = always the game prompt.
     public Func<string, bool>? TypedAtGamePrompt { get; set; }
 
     public const string WithheldAtPrompt = "(typed at a prompt: withheld)";

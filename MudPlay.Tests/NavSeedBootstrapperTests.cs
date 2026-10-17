@@ -6,14 +6,12 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// The nav-seed ledger: additive (new bundled loops/favourites land), respects
-/// deletions (anything already offered is never re-added), and migrates a pre-ledger
-/// set (old binary marker) by marking everything currently bundled as already-applied
-/// so no shipped item — including ones the user deleted — is resurrected. Driven
-/// through the path-injected <see cref="NavSeedBootstrapper.Apply"/> so nothing touches
-/// the real data root.
-/// </summary>
+// The nav-seed ledger: additive (new bundled loops/favourites land), respects
+// deletions (anything already offered is never re-added), and migrates a pre-ledger
+// set (old binary marker) by marking everything currently bundled as already-applied
+// so no shipped item — including ones the user deleted — is resurrected. Driven
+// through the path-injected NavSeedBootstrapper.Apply so nothing touches
+// the real data root.
 public sealed class NavSeedBootstrapperTests : IDisposable
 {
     private readonly string _root;

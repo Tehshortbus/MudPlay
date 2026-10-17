@@ -39,15 +39,16 @@ public sealed class GreetManager : IDisposable
     // off (opt-in).
     public bool Enabled { get; set; }
 
-    // Test seam for the day-boundary clock. Returns the current UTC time.
-    public Func<DateTime> NowUtcProvider { get; set; } = static () => DateTime.UtcNow;
+    private readonly Func<DateTime> _now;
 
     public GreetManager(
         RoomEntityClassifier classifier,
         PlayerDatabase players,
         PartyState party,
-        Func<string?> selfNameProvider)
+        Func<string?> selfNameProvider,
+        Func<DateTime>? now = null)
     {
+        _now = now ?? (() => DateTime.UtcNow);
         ArgumentNullException.ThrowIfNull(classifier);
         ArgumentNullException.ThrowIfNull(players);
         ArgumentNullException.ThrowIfNull(party);
@@ -92,7 +93,7 @@ public sealed class GreetManager : IDisposable
         }
     }
 
-    // Test seam — runs the per-player greet decision directly.
+    // The per-player greet decision.
     internal void TryGreet(string? resolvedName)
     {
         if (_wireSender is null) return;
@@ -102,7 +103,7 @@ public sealed class GreetManager : IDisposable
         if (IsSelf(given)) return;
         if (IsPartyMember(given)) return;
 
-        DateTime nowUtc = NowUtcProvider();
+        DateTime nowUtc = _now();
         DateTime? last = _players.GetLastGreetedUtc(given);
         if (last is { } prev && prev.ToLocalTime().Date == nowUtc.ToLocalTime().Date)
             return; // already greeted today (local calendar day)

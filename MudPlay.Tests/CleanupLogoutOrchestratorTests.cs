@@ -7,14 +7,12 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Pins the proactive log-off FSM: warning → wait-for-safe → send the
-/// exit command → confirm out of the realm (character-saved line, or the
-/// main-menu row, or a timeout) → drop the carrier. The engine
-/// is opt-in (gated on the active BBS's ReconnectAfterCleanup), latched
-/// to one logout per cleanup cycle, and must never log off while the
-/// room is unsafe or after the wire has dropped.
-/// </summary>
+// Pins the proactive log-off FSM: warning → wait-for-safe → send the
+// exit command → confirm out of the realm (character-saved line, or the
+// main-menu row, or a timeout) → drop the carrier. The engine
+// is opt-in (gated on the active BBS's ReconnectAfterCleanup), latched
+// to one logout per cleanup cycle, and must never log off while the
+// room is unsafe or after the wire has dropped.
 public sealed class CleanupLogoutOrchestratorTests
 {
     private static readonly DateTime Now = new(2026, 6, 2, 12, 0, 0, DateTimeKind.Utc);
@@ -29,6 +27,10 @@ public sealed class CleanupLogoutOrchestratorTests
         public bool Enabled { get; set; } = true;
         public int DisconnectCalls { get; set; }
         public DateTime Clock { get; set; } = Now;
+        // What the engine put on the wire, through the sender the client binds.
+        public List<byte[]> Sent { get; } = new();
+        // The safe-poll ticks the engine armed and the timer hasn't run yet.
+        public required List<(TimeSpan Delay, Action Tick)> Polls { get; init; }
     }
 
     private static Harness Setup()
@@ -37,15 +39,17 @@ public sealed class CleanupLogoutOrchestratorTests
         DefaultPatterns.Seed(router);
         CleanupWarningWatcher cleanup = new();
 
-        CleanupLogoutOrchestrator engine = new(cleanup, router);
-        Harness h = new()
+        List<(TimeSpan, Action)> polls = new();
+        Harness h = null!;
+        CleanupLogoutOrchestrator engine = new(cleanup, router, schedulePoll: (delay, tick) => polls.Add((delay, tick)), now: () => h.Clock);
+        h = new()
         {
             Engine = engine,
             Cleanup = cleanup,
             Router = router,
+            Polls = polls,
         };
-        engine.NowProvider = () => h.Clock;
-        engine.SetWireSender(_ => { });
+        engine.SetWireSender(h.Sent.Add);
         engine.SetSafePredicate(() => h.Safe);
         engine.SetConnectedCheck(() => h.Connected);
         engine.SetAutoLogoutEnabledCheck(() => h.Enabled);
@@ -72,8 +76,21 @@ public sealed class CleanupLogoutOrchestratorTests
         router.Dispatch(line);
     }
 
-    private static string LastSent(CleanupLogoutOrchestrator engine)
-        => Encoding.Latin1.GetString(Assert.Single(engine.LastSentForTests));
+    private static string LastSent(Harness h)
+        => Encoding.Latin1.GetString(Assert.Single(h.Sent));
+
+    // The safe-poll timer comes round: every tick armed so far runs, as the
+    // dispatcher would run them once their interval is up.
+    private static void Poll(Harness h)
+    {
+        List<(TimeSpan Delay, Action Tick)> due = new(h.Polls);
+        h.Polls.Clear();
+        foreach ((TimeSpan delay, Action tick) in due)
+        {
+            Assert.Equal(h.Engine.SafePollInterval, delay);
+            tick();
+        }
+    }
 
     // ===== Arming + gating ==============================================
 
@@ -86,7 +103,7 @@ public sealed class CleanupLogoutOrchestratorTests
         FireWarning(h);
 
         Assert.Equal(CleanupLogoutPhase.Idle, h.Engine.Phase);
-        Assert.Empty(h.Engine.LastSentForTests);
+        Assert.Empty(h.Sent);
     }
 
     // The cleanup log-off is not a hang-up, but it is automatic: with the master
@@ -102,12 +119,12 @@ public sealed class CleanupLogoutOrchestratorTests
 
         FireWarning(h, 20);
         Assert.Equal(CleanupLogoutPhase.Idle, h.Engine.Phase);
-        Assert.Empty(h.Engine.LastSentForTests);
+        Assert.Empty(h.Sent);
 
         off = false;
         FireWarning(h, 5);
         Assert.Equal(CleanupLogoutPhase.Exiting, h.Engine.Phase);
-        Assert.Equal("x\r", LastSent(h.Engine));
+        Assert.Equal("x\r", LastSent(h));
     }
 
     [Fact]
@@ -122,12 +139,12 @@ public sealed class CleanupLogoutOrchestratorTests
 
         off = true;
         h.Safe = true;
-        h.Engine.EvaluateForTests();
+        Poll(h);
         Assert.Equal(CleanupLogoutPhase.Pending, h.Engine.Phase);
-        Assert.Empty(h.Engine.LastSentForTests);
+        Assert.Empty(h.Sent);
 
         off = false;
-        h.Engine.EvaluateForTests();
+        Poll(h);
         Assert.Equal(CleanupLogoutPhase.Exiting, h.Engine.Phase);
     }
 
@@ -156,7 +173,7 @@ public sealed class CleanupLogoutOrchestratorTests
         FireWarning(h);
 
         Assert.Equal(CleanupLogoutPhase.Exiting, h.Engine.Phase);
-        Assert.Equal("x\r", LastSent(h.Engine));
+        Assert.Equal("x\r", LastSent(h));
     }
 
     [Fact]
@@ -168,7 +185,7 @@ public sealed class CleanupLogoutOrchestratorTests
         FireWarning(h);
 
         Assert.Equal(CleanupLogoutPhase.Pending, h.Engine.Phase);
-        Assert.Empty(h.Engine.LastSentForTests);
+        Assert.Empty(h.Sent);
     }
 
     [Fact]
@@ -180,7 +197,7 @@ public sealed class CleanupLogoutOrchestratorTests
         FireWarning(h);
 
         Assert.Equal(CleanupLogoutPhase.Exiting, h.Engine.Phase);
-        Assert.Equal("x\r", LastSent(h.Engine));
+        Assert.Equal("x\r", LastSent(h));
     }
 
     // ===== Safe-poll transition =========================================
@@ -192,11 +209,11 @@ public sealed class CleanupLogoutOrchestratorTests
         FireWarning(h);
         Assert.Equal(CleanupLogoutPhase.Pending, h.Engine.Phase);
 
-        h.Engine.EvaluateForTests();
-        h.Engine.EvaluateForTests();
+        Poll(h);
+        Poll(h);
 
         Assert.Equal(CleanupLogoutPhase.Pending, h.Engine.Phase);
-        Assert.Empty(h.Engine.LastSentForTests);
+        Assert.Empty(h.Sent);
     }
 
     [Fact]
@@ -206,22 +223,10 @@ public sealed class CleanupLogoutOrchestratorTests
         FireWarning(h);
 
         h.Safe = true;
-        h.Engine.EvaluateForTests();
+        Poll(h);
 
         Assert.Equal(CleanupLogoutPhase.Exiting, h.Engine.Phase);
-        Assert.Equal("x\r", LastSent(h.Engine));
-    }
-
-    [Fact]
-    public void RespectsCustomExitCommand()
-    {
-        Harness h = Setup();
-        h.Engine.ExitCommand = "quit";
-        h.Safe = true;
-
-        FireWarning(h);
-
-        Assert.Equal("quit\r", LastSent(h.Engine));
+        Assert.Equal("x\r", LastSent(h));
     }
 
     // ===== Menu detection completes logout ==============================
@@ -296,11 +301,11 @@ public sealed class CleanupLogoutOrchestratorTests
         FireWarning(h);   // sends "x", Exiting
 
         h.Clock = Now.Add(h.Engine.MenuWaitTimeout).AddSeconds(1);
-        h.Engine.EvaluateForTests();
+        Poll(h);
 
         Assert.Equal(CleanupLogoutPhase.Exiting, h.Engine.Phase);
-        Assert.Equal(2, h.Engine.LastSentForTests.Count);   // original + retry
-        Assert.Equal("x\r", Encoding.Latin1.GetString(h.Engine.LastSentForTests[1]));
+        Assert.Equal(2, h.Sent.Count);   // original + retry
+        Assert.Equal("x\r", Encoding.Latin1.GetString(h.Sent[1]));
         Assert.Equal(0, h.DisconnectCalls);
     }
 
@@ -313,11 +318,11 @@ public sealed class CleanupLogoutOrchestratorTests
 
         // First timeout → retry.
         h.Clock = Now.Add(h.Engine.MenuWaitTimeout).AddSeconds(1);
-        h.Engine.EvaluateForTests();
+        Poll(h);
 
         // Second timeout after the retry → drop carrier anyway.
         h.Clock = h.Clock.Add(h.Engine.MenuWaitTimeout).AddSeconds(1);
-        h.Engine.EvaluateForTests();
+        Poll(h);
 
         Assert.Equal(CleanupLogoutPhase.Done, h.Engine.Phase);
         Assert.Equal(1, h.DisconnectCalls);
@@ -374,22 +379,22 @@ public sealed class CleanupLogoutOrchestratorTests
 
         // Both timeouts pass with the fight still on: no blind re-send, no drop.
         h.Clock = Now.Add(h.Engine.MenuWaitTimeout).Add(h.Engine.MenuWaitTimeout).AddSeconds(5);
-        h.Engine.EvaluateForTests();
+        Poll(h);
         Assert.Equal(CleanupLogoutPhase.Pending, h.Engine.Phase);
-        Assert.Single(h.Engine.LastSentForTests);
+        Assert.Single(h.Sent);
         Assert.Equal(0, h.DisconnectCalls);
 
         // The room clears, and has to stay clear for a round before the exit goes
         // out again, with its own fresh timeout.
         h.Safe = true;
-        h.Engine.EvaluateForTests();
+        Poll(h);
         Assert.Equal(CleanupLogoutPhase.Pending, h.Engine.Phase);
         h.Clock = h.Clock.Add(h.Engine.InterruptSettle);
-        h.Engine.EvaluateForTests();
+        Poll(h);
         Assert.Equal(CleanupLogoutPhase.Exiting, h.Engine.Phase);
-        Assert.Equal(2, h.Engine.LastSentForTests.Count);
-        h.Engine.EvaluateForTests();
-        Assert.Equal(2, h.Engine.LastSentForTests.Count);   // not re-sent at once
+        Assert.Equal(2, h.Sent.Count);
+        Poll(h);
+        Assert.Equal(2, h.Sent.Count);   // not re-sent at once
 
         DispatchSavedLine(h.Router);
         Assert.Equal(CleanupLogoutPhase.Done, h.Engine.Phase);
@@ -420,22 +425,22 @@ public sealed class CleanupLogoutOrchestratorTests
         FireWarning(h);
         DispatchLine(h.Router, "Your meditation has been interrupted - you may not exit now!");
 
-        h.Engine.EvaluateForTests();                           // safe: the count starts
+        Poll(h);                           // safe: the count starts
         h.Clock = h.Clock.AddSeconds(3);
         h.Safe = false;
-        h.Engine.EvaluateForTests();                           // broken
+        Poll(h);                           // broken
         h.Safe = true;
         h.Clock = h.Clock.AddSeconds(1);
-        h.Engine.EvaluateForTests();                           // the count starts over
+        Poll(h);                           // the count starts over
         h.Clock = h.Clock.Add(h.Engine.InterruptSettle).AddSeconds(-1);
-        h.Engine.EvaluateForTests();
+        Poll(h);
         Assert.Equal(CleanupLogoutPhase.Pending, h.Engine.Phase);
-        Assert.Single(h.Engine.LastSentForTests);
+        Assert.Single(h.Sent);
 
         h.Clock = h.Clock.AddSeconds(1);
-        h.Engine.EvaluateForTests();
+        Poll(h);
         Assert.Equal(CleanupLogoutPhase.Exiting, h.Engine.Phase);
-        Assert.Equal(2, h.Engine.LastSentForTests.Count);
+        Assert.Equal(2, h.Sent.Count);
     }
 
     // An attacker the safe check can't see calls every exit off. The retries stop
@@ -452,30 +457,30 @@ public sealed class CleanupLogoutOrchestratorTests
         {
             DispatchLine(h.Router, "Your meditation has been interrupted - you may not exit now!");
             Assert.Equal(CleanupLogoutPhase.Pending, h.Engine.Phase);
-            h.Engine.EvaluateForTests();
+            Poll(h);
             h.Clock = h.Clock.Add(h.Engine.InterruptSettle);
-            h.Engine.EvaluateForTests();                       // exit i + 1
+            Poll(h);                       // exit i + 1
             Assert.Equal(CleanupLogoutPhase.Exiting, h.Engine.Phase);
         }
-        Assert.Equal(h.Engine.MaxInterruptions, h.Engine.LastSentForTests.Count);
+        Assert.Equal(h.Engine.MaxInterruptions, h.Sent.Count);
 
         // The interruption that reaches the cap is not answered with another wait.
         DispatchLine(h.Router, "Your meditation has been interrupted - you may not exit now!");
         Assert.Equal(CleanupLogoutPhase.Exiting, h.Engine.Phase);
-        h.Engine.EvaluateForTests();
-        Assert.Equal(h.Engine.MaxInterruptions, h.Engine.LastSentForTests.Count);
+        Poll(h);
+        Assert.Equal(h.Engine.MaxInterruptions, h.Sent.Count);
 
         h.Clock = h.Clock.Add(h.Engine.MenuWaitTimeout).AddSeconds(1);
-        h.Engine.EvaluateForTests();                           // the blind re-send
-        Assert.Equal(h.Engine.MaxInterruptions + 1, h.Engine.LastSentForTests.Count);
+        Poll(h);                           // the blind re-send
+        Assert.Equal(h.Engine.MaxInterruptions + 1, h.Sent.Count);
         DispatchLine(h.Router, "Your meditation has been interrupted - you may not exit now!");
         Assert.Equal(CleanupLogoutPhase.Exiting, h.Engine.Phase);
 
         h.Clock = h.Clock.Add(h.Engine.MenuWaitTimeout).AddSeconds(1);
-        h.Engine.EvaluateForTests();
+        Poll(h);
         Assert.Equal(CleanupLogoutPhase.Done, h.Engine.Phase);
         Assert.Equal(1, h.DisconnectCalls);
-        Assert.Equal(h.Engine.MaxInterruptions + 1, h.Engine.LastSentForTests.Count);
+        Assert.Equal(h.Engine.MaxInterruptions + 1, h.Sent.Count);
     }
 
     // A new session starts the count again.
@@ -492,7 +497,7 @@ public sealed class CleanupLogoutOrchestratorTests
         FireWarning(h);                                        // safe: exits at once, no settle owed
 
         Assert.Equal(CleanupLogoutPhase.Exiting, h.Engine.Phase);
-        Assert.Equal(2, h.Engine.LastSentForTests.Count);
+        Assert.Equal(2, h.Sent.Count);
     }
 
     // The same line answers an exit the user typed; with no exit of ours out it
@@ -507,7 +512,7 @@ public sealed class CleanupLogoutOrchestratorTests
         FireWarning(h);   // unsafe: Pending
         DispatchLine(h.Router, "Your meditation has been interrupted - you may not exit now!");
         Assert.Equal(CleanupLogoutPhase.Pending, h.Engine.Phase);
-        Assert.Empty(h.Engine.LastSentForTests);
+        Assert.Empty(h.Sent);
     }
 
     // ===== Abort on lost wire ===========================================
@@ -520,7 +525,7 @@ public sealed class CleanupLogoutOrchestratorTests
         Assert.Equal(CleanupLogoutPhase.Pending, h.Engine.Phase);
 
         h.Connected = false;
-        h.Engine.EvaluateForTests();
+        Poll(h);
 
         Assert.Equal(CleanupLogoutPhase.Done, h.Engine.Phase);
         Assert.Equal(0, h.DisconnectCalls);   // wire already gone; nothing to drop
@@ -540,7 +545,7 @@ public sealed class CleanupLogoutOrchestratorTests
         FireWarning(h, 2);
 
         Assert.Equal(CleanupLogoutPhase.Pending, h.Engine.Phase);
-        Assert.Empty(h.Engine.LastSentForTests);
+        Assert.Empty(h.Sent);
     }
 
     [Fact]

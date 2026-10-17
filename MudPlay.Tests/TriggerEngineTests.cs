@@ -1,7 +1,9 @@
 using System.Text;
 using System.Text.RegularExpressions;
 using MudPlay.Models.GameData;
+using MudPlay.Game;
 using MudPlay.Services;
+using MudPlay.Services.Patterns;
 using Xunit;
 
 namespace MudPlay.Tests;
@@ -88,7 +90,7 @@ public sealed class TriggerEngineTests
     [Fact]
     public void TryInterpolate_SubstitutesKnownVariables()
     {
-        TriggerEngine engine = new();
+        TriggerEngine engine = new(TestProfiles.Loaded());
         engine.Variables["usr"] = "Joe";
         bool ok = engine.TryInterpolate("/{usr} hi there!", "test", out string result);
         Assert.True(ok);
@@ -98,7 +100,7 @@ public sealed class TriggerEngineTests
     [Fact]
     public void TryInterpolate_AbortsOnUndefinedVariable()
     {
-        TriggerEngine engine = new();
+        TriggerEngine engine = new(TestProfiles.Loaded());
         bool ok = engine.TryInterpolate("hello {foo}", "test", out string result);
         Assert.False(ok);
         Assert.Equal(string.Empty, result);
@@ -109,7 +111,7 @@ public sealed class TriggerEngineTests
     {
         // {a/b} holds a non-name character — left as literal text, not treated as a
         // wildcard reference. (A pure {123} now IS a wildcard name.)
-        TriggerEngine engine = new();
+        TriggerEngine engine = new(TestProfiles.Loaded());
         bool ok = engine.TryInterpolate("loose {a/b} braces", "test", out string result);
         Assert.True(ok);
         Assert.Equal("loose {a/b} braces", result);
@@ -118,7 +120,7 @@ public sealed class TriggerEngineTests
     [Fact]
     public void TryInterpolate_SubstitutesNumberedWildcards()
     {
-        TriggerEngine engine = new();
+        TriggerEngine engine = new(TestProfiles.Loaded());
         engine.Variables["1"] = "Raijin";
         engine.Variables["2"] = "exp";
         bool ok = engine.TryInterpolate("/{1} @{2}", "test", out string result);
@@ -129,7 +131,7 @@ public sealed class TriggerEngineTests
     [Fact]
     public void TryInterpolate_EmptyTemplateReturnsEmpty()
     {
-        TriggerEngine engine = new();
+        TriggerEngine engine = new(TestProfiles.Loaded());
         bool ok = engine.TryInterpolate(string.Empty, "test", out string result);
         Assert.True(ok);
         Assert.Equal(string.Empty, result);
@@ -138,7 +140,7 @@ public sealed class TriggerEngineTests
     [Fact]
     public void TryInterpolate_ChainsMultipleVariables()
     {
-        TriggerEngine engine = new();
+        TriggerEngine engine = new(TestProfiles.Loaded());
         engine.Variables["who"] = "Joe";
         engine.Variables["dmg"] = "12";
         bool ok = engine.TryInterpolate("{who} hit for {dmg}", "test", out string result);
@@ -148,17 +150,44 @@ public sealed class TriggerEngineTests
 
     // ----- End-to-end capture + response flow ----------------------------
 
-    // Drives a trigger through the real dispatch path and returns what was sent to
-    // the wire (decoded, trailing CR trimmed), plus the live engine for wildcard
-    // assertions.
+    // The engine as the client builds it, fed the way the client feeds it: server
+    // rows through the extractor it is attached to, chat through the router its
+    // ChatRouter reads, and the program log it watches.
+    private sealed class Rig
+    {
+        public MessageRouter Router { get; } = new();
+        public ServerFeed Feed { get; }
+        public LogService Log { get; } = new();
+        public TriggerEngine Engine { get; }
+        // What the engine sent (decoded, trailing CR trimmed).
+        public List<string> Sent { get; } = new();
+
+        public Rig(Trigger t)
+        {
+            DefaultPatterns.Seed(Router);
+            Feed = new ServerFeed(Router);
+            Engine = new TriggerEngine(TestProfiles.Loaded(), new ChatRouter(Router), Log, onUiThread: act => act());
+            Engine.AttachLineExtractor(Feed.Lines);
+            Engine.SetSender(bytes => Sent.Add(Encoding.Latin1.GetString(bytes).TrimEnd('\r')));
+            Engine.Add(t);
+        }
+
+        // A line where the scope's triggers read it: the program log for SystemLog,
+        // the game's output (a chat line among it) for the rest.
+        public void Arrive(TriggerScope scope, string line)
+        {
+            if (scope == TriggerScope.SystemLog) Log.Info("Test", line);
+            else Feed.Line(line);
+        }
+    }
+
+    // Drives a trigger through the client's own input path and returns what was sent
+    // to the wire, plus the live engine for wildcard assertions.
     private static (TriggerEngine Engine, List<string> Sent) FireOne(Trigger t, TriggerScope scope, string line)
     {
-        TriggerEngine engine = new();
-        List<string> sent = new();
-        engine.SetSender(bytes => sent.Add(Encoding.Latin1.GetString(bytes).TrimEnd('\r')));
-        engine.Triggers.Add(t);
-        engine.DispatchForTests(scope, line);
-        return (engine, sent);
+        Rig rig = new(t);
+        rig.Arrive(scope, line);
+        return (rig.Engine, rig.Sent);
     }
 
     [Fact]
@@ -195,7 +224,7 @@ public sealed class TriggerEngineTests
     // fires as before (NamedCaptures_PopulateWildcardStore_AndInterpolateResponse).
     [Theory]
     [InlineData(TriggerScope.GameMessages, "Joe enters the room.")]
-    [InlineData(TriggerScope.ChatAny, "Joe enters the room.")]
+    [InlineData(TriggerScope.ChatAny, "Joe gossips: Joe enters the room.")]
     [InlineData(TriggerScope.SystemLog, "Joe enters the room.")]
     public void MasterSwitchOff_MatchedTrigger_DoesNotCaptureSendOrPlay(TriggerScope scope, string line)
     {
@@ -203,19 +232,16 @@ public sealed class TriggerEngineTests
             Name: "enter", Enabled: true, Scope: scope,
             MatchType: TriggerMatchType.Literal,
             Pattern: "{usr} enters the room.", Response: "wave {usr}", SoundFile: "ding.wav");
-        TriggerEngine engine = new();
-        List<string> sent = new();
+        Rig rig = new(t);
         int played = 0, asked = 0;
-        engine.SetSender(bytes => sent.Add(Encoding.Latin1.GetString(bytes)));
-        engine.PlaySound = _ => played++;
-        engine.BlockedByMasterSwitch = () => { asked++; return true; };
-        engine.Triggers.Add(t);
+        rig.Engine.PlaySound = _ => played++;
+        rig.Engine.BlockedByMasterSwitch = () => { asked++; return true; };
 
-        engine.DispatchForTests(scope, line);
-        engine.DispatchForTests(scope, "nothing that matches");
+        rig.Arrive(scope, line);
+        rig.Arrive(scope, "nothing that matches");
 
-        Assert.Empty(sent);
-        Assert.Empty(engine.Variables);
+        Assert.Empty(rig.Sent);
+        Assert.Empty(rig.Engine.Variables);
         Assert.Equal(0, played);
         // Asked only for the line that matched, so the skip count means triggers
         // that would have fired.
@@ -225,7 +251,7 @@ public sealed class TriggerEngineTests
     [Fact]
     public void ClearWildcards_EmptiesStore_AndRaisesChanged()
     {
-        TriggerEngine engine = new();
+        TriggerEngine engine = new(TestProfiles.Loaded());
         engine.Variables["1"] = "Raijin";
         int raised = 0;
         engine.WildcardsChanged += () => raised++;
@@ -246,13 +272,11 @@ public sealed class TriggerEngineTests
             Name: "cap", Enabled: true, Scope: TriggerScope.GameMessages,
             MatchType: TriggerMatchType.Literal,
             Pattern: "hi {who}", Response: "");
-        TriggerEngine engine = new();
+        Rig rig = new(t);
         int raised = 0;
-        engine.WildcardsChanged += () => raised++;
-        engine.SetSender(_ => { });
-        engine.Triggers.Add(t);
-        engine.DispatchForTests(TriggerScope.GameMessages, "hi Joe");
-        Assert.Equal("Joe", engine.Variables["who"]);
+        rig.Engine.WildcardsChanged += () => raised++;
+        rig.Arrive(TriggerScope.GameMessages, "hi Joe");
+        Assert.Equal("Joe", rig.Engine.Variables["who"]);
         Assert.Equal(1, raised);
     }
 }

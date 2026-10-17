@@ -8,12 +8,10 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// FSM coverage for <see cref="DoorOpenManager"/>. Drives the manager
-/// through every transition by injecting fabricated server lines via
-/// <see cref="MessageRouter.Dispatch"/> and inspecting the wire bytes
-/// + terminal callback result.
-/// </summary>
+// FSM coverage for DoorOpenManager. Drives the manager
+// through every transition by injecting fabricated server lines via
+// MessageRouter.Dispatch and inspecting the wire bytes
+// + terminal callback result.
 public sealed class DoorOpenManagerTests
 {
     // ----- harness ---------------------------------------------------
@@ -117,7 +115,7 @@ public sealed class DoorOpenManagerTests
     {
         using Harness h = new();
         DoorOpenResult? result = null;
-        h.Mgr.Enqueue(Direction.E, 0, canBash: true, "walker", r => result = r);
+        h.Mgr.Enqueue(Direction.E, 0, canBash: true, keyItemId: 0, "walker", r => result = r);
 
         Assert.Equal("bash e", h.LastSent);
         Assert.Equal(DoorOpenManager.DoorState.WaitingBash, h.Mgr.CurrentState);
@@ -138,7 +136,7 @@ public sealed class DoorOpenManagerTests
     {
         using Harness h = new();
         DoorOpenResult? result = null;
-        h.Mgr.Enqueue(Direction.E, 0, canBash: true, "walker", r => result = r);
+        h.Mgr.Enqueue(Direction.E, 0, canBash: true, keyItemId: 0, "walker", r => result = r);
         Assert.Equal("bash e", h.LastSent);
 
         h.Line(refusal);
@@ -173,7 +171,7 @@ public sealed class DoorOpenManagerTests
         // back to pick and never fails — it just keeps swinging.
         using Harness h = new();
         DoorOpenResult? result = null;
-        h.Mgr.Enqueue(Direction.E, 0, canBash: true, "walker", r => result = r);
+        h.Mgr.Enqueue(Direction.E, 0, canBash: true, keyItemId: 0, "walker", r => result = r);
 
         Assert.Equal("bash e", h.LastSent);              // attempt 1
         Assert.True(h.HasWatchdogArmed);
@@ -191,7 +189,7 @@ public sealed class DoorOpenManagerTests
     {
         using Harness h = new();
         DoorOpenResult? result = null;
-        h.Mgr.Enqueue(Direction.E, 0, canBash: true, "walker", r => result = r);
+        h.Mgr.Enqueue(Direction.E, 0, canBash: true, keyItemId: 0, "walker", r => result = r);
         Assert.True(h.HasWatchdogArmed);
 
         h.Line("With a roar, you bashed the door open!");   // real success disarms it
@@ -207,7 +205,7 @@ public sealed class DoorOpenManagerTests
     {
         using Harness h = new() { PicklocksOverBash = true };
         DoorOpenResult? result = null;
-        h.Mgr.Enqueue(Direction.W, 0, canBash: true, "walker", r => result = r);
+        h.Mgr.Enqueue(Direction.W, 0, canBash: true, keyItemId: 0, "walker", r => result = r);
 
         Assert.Equal("pick w", h.LastSent);
 
@@ -230,7 +228,7 @@ public sealed class DoorOpenManagerTests
         // WaitingPick and never sent `open`.
         using Harness h = new() { PicklocksOverBash = true };
         DoorOpenResult? result = null;
-        h.Mgr.Enqueue(Direction.N, 0, canBash: true, "walker", r => result = r);
+        h.Mgr.Enqueue(Direction.N, 0, canBash: true, keyItemId: 0, "walker", r => result = r);
 
         Assert.Equal("pick n", h.LastSent);
 
@@ -249,7 +247,7 @@ public sealed class DoorOpenManagerTests
     {
         using Harness h = new() { PicklocksOverBash = true };
         DoorOpenResult? result = null;
-        h.Mgr.Enqueue(Direction.N, 0, canBash: true, "walker", r => result = r);
+        h.Mgr.Enqueue(Direction.N, 0, canBash: true, keyItemId: 0, "walker", r => result = r);
 
         h.Line("The door was not locked.");
         Assert.Equal("open n", h.LastSent);
@@ -265,7 +263,7 @@ public sealed class DoorOpenManagerTests
         // falling back to pick (no attempt cap), then a success ends it.
         using Harness h = new();
         DoorOpenResult? result = null;
-        h.Mgr.Enqueue(Direction.N, 0, canBash: true, "walker", r => result = r);
+        h.Mgr.Enqueue(Direction.N, 0, canBash: true, keyItemId: 0, "walker", r => result = r);
 
         Assert.Equal("bash n", h.LastSent);
         for (int i = 0; i < 5; i++) h.Line("Your attempts to bash through fail.");
@@ -285,7 +283,7 @@ public sealed class DoorOpenManagerTests
         // then resumes the swing.
         using Harness h = new() { BashRestNeeded = true, BashRestRecovered = false };
         DoorOpenResult? result = null;
-        h.Mgr.Enqueue(Direction.E, 0, canBash: true, "walker", r => result = r);
+        h.Mgr.Enqueue(Direction.E, 0, canBash: true, keyItemId: 0, "walker", r => result = r);
 
         // Arrived at the door already below the rest trigger — paused, nothing sent.
         Assert.Empty(h.AllSent);
@@ -314,7 +312,7 @@ public sealed class DoorOpenManagerTests
         // rather than immediately re-bashing.
         using Harness h = new();
         DoorOpenResult? result = null;
-        h.Mgr.Enqueue(Direction.N, 0, canBash: true, "walker", r => result = r);
+        h.Mgr.Enqueue(Direction.N, 0, canBash: true, keyItemId: 0, "walker", r => result = r);
         Assert.Equal("bash n", h.LastSent);
 
         h.BashRestNeeded = true;                         // HP dropped over that swing
@@ -337,7 +335,7 @@ public sealed class DoorOpenManagerTests
         // Manager should pick, not bash, regardless of preference.
         using Harness h = new() { PicklocksOverBash = false };
         DoorOpenResult? result = null;
-        h.Mgr.Enqueue(Direction.S, 0, canBash: false, "walker", r => result = r);
+        h.Mgr.Enqueue(Direction.S, 0, canBash: false, keyItemId: 0, "walker", r => result = r);
 
         Assert.Equal("pick s", h.LastSent);
     }
@@ -350,7 +348,7 @@ public sealed class DoorOpenManagerTests
         h.Stats.Strength = 0;
         h.Stats.Picklocks = 0;
         DoorOpenResult? result = null;
-        h.Mgr.Enqueue(Direction.N, 100, canBash: true, "walker", r => result = r);
+        h.Mgr.Enqueue(Direction.N, 100, canBash: true, keyItemId: 0, "walker", r => result = r);
 
         Assert.True(Assert.IsType<DoorOpenResult.Failed>(result).Unopenable);
         Assert.Empty(h.Sent);
@@ -366,7 +364,7 @@ public sealed class DoorOpenManagerTests
         h.Stats.Strength = 0;
         h.Stats.Picklocks = 0;
         DoorOpenResult? result = null;
-        h.Mgr.Enqueue(Direction.N, 100, canBash: true, "walker", r => result = r);
+        h.Mgr.Enqueue(Direction.N, 100, canBash: true, keyItemId: 0, "walker", r => result = r);
 
         Assert.False(Assert.IsType<DoorOpenResult.Failed>(result).Unopenable);
         Assert.Empty(h.Sent);
@@ -380,7 +378,7 @@ public sealed class DoorOpenManagerTests
         h.Stats.Strength = 120;
         h.Stats.Picklocks = 303;
         DoorOpenResult? result = null;
-        h.Mgr.Enqueue(Direction.D, 301, canBash: true, "walker", r => result = r);
+        h.Mgr.Enqueue(Direction.D, 301, canBash: true, keyItemId: 0, "walker", r => result = r);
 
         for (int i = 0; i < 3; i++)
         {
@@ -402,7 +400,7 @@ public sealed class DoorOpenManagerTests
         h.Stats.Strength = 120;
         h.Stats.Picklocks = 303;
         DoorOpenResult? result = null;
-        h.Mgr.Enqueue(Direction.D, 301, canBash: true, "walker", r => result = r);
+        h.Mgr.Enqueue(Direction.D, 301, canBash: true, keyItemId: 0, "walker", r => result = r);
 
         for (int i = 0; i < 3; i++)
         {
@@ -461,8 +459,8 @@ public sealed class DoorOpenManagerTests
         h.Stats.Strength = 120;
         h.Stats.Picklocks = 303;
         DoorOpenResult? second = null;
-        h.Mgr.Enqueue(Direction.D, 301, canBash: true, "walker",
-            _ => h.Mgr.Enqueue(Direction.D, 301, canBash: true, "walker", r => second = r));
+        h.Mgr.Enqueue(Direction.D, 301, canBash: true, keyItemId: 0, "walker",
+            _ => h.Mgr.Enqueue(Direction.D, 301, canBash: true, keyItemId: 0, "walker", r => second = r));
         Assert.Single(h.Sent);
 
         h.Line("Your skill fails you this time.");
@@ -483,8 +481,8 @@ public sealed class DoorOpenManagerTests
         h.Stats.Strength = 120;
         h.Stats.Picklocks = 0;
         DoorOpenResult? second = null;
-        h.Mgr.Enqueue(Direction.D, 301, canBash: true, "walker",
-            _ => h.Mgr.Enqueue(Direction.E, 21, canBash: true, "walker", r => second = r));
+        h.Mgr.Enqueue(Direction.D, 301, canBash: true, keyItemId: 0, "walker",
+            _ => h.Mgr.Enqueue(Direction.E, 21, canBash: true, keyItemId: 0, "walker", r => second = r));
 
         Assert.Equal("bash e", h.LastSent);
         Assert.Equal(DoorOpenManager.DoorState.WaitingBash, h.Mgr.CurrentState);
@@ -501,7 +499,7 @@ public sealed class DoorOpenManagerTests
         h.Stats.Strength = 500;
         h.Stats.Picklocks = 300;
         DoorOpenResult? result = null;
-        h.Mgr.Enqueue(Direction.E, 250, canBash: true, "walker", r => result = r);
+        h.Mgr.Enqueue(Direction.E, 250, canBash: true, keyItemId: 0, "walker", r => result = r);
 
         Assert.Equal("pick e", h.LastSent);
     }
@@ -514,8 +512,8 @@ public sealed class DoorOpenManagerTests
         using Harness h = new();
         DoorOpenResult? a = null;
         DoorOpenResult? b = null;
-        h.Mgr.Enqueue(Direction.N, 0, true, "walker", r => a = r);
-        h.Mgr.Enqueue(Direction.S, 0, true, "walker", r => b = r);
+        h.Mgr.Enqueue(Direction.N, 0, true, keyItemId: 0, "walker", r => a = r);
+        h.Mgr.Enqueue(Direction.S, 0, true, keyItemId: 0, "walker", r => b = r);
 
         h.Mgr.StopAll();
 
@@ -529,8 +527,8 @@ public sealed class DoorOpenManagerTests
     {
         using Harness h = new();
         var results = new List<DoorOpenResult>();
-        h.Mgr.Enqueue(Direction.N, 0, true, "walker", results.Add);
-        h.Mgr.Enqueue(Direction.S, 0, true, "walker", results.Add);
+        h.Mgr.Enqueue(Direction.N, 0, true, keyItemId: 0, "walker", results.Add);
+        h.Mgr.Enqueue(Direction.S, 0, true, keyItemId: 0, "walker", results.Add);
 
         Assert.Equal("n", h.Mgr.CurrentDirection);
         h.Line("you bashed the door open.");
@@ -558,7 +556,7 @@ public sealed class DoorOpenManagerTests
     public void Bash_UsesShortDirectionForm(Direction dir, string expected)
     {
         using Harness h = new();
-        h.Mgr.Enqueue(dir, 0, true, "walker", _ => { });
+        h.Mgr.Enqueue(dir, 0, true, keyItemId: 0, "walker", _ => { });
         Assert.Equal(expected, h.LastSent);
     }
 
@@ -734,7 +732,7 @@ public sealed class DoorOpenManagerTests
         // already-open response while we're bashing counts as success.
         using Harness h = new();
         DoorOpenResult? result = null;
-        h.Mgr.Enqueue(Direction.S, 0, true, "walker", r => result = r);
+        h.Mgr.Enqueue(Direction.S, 0, true, keyItemId: 0, "walker", r => result = r);
         Assert.Equal("bash s", h.LastSent);
 
         h.Line("The door is already open.");
@@ -748,7 +746,7 @@ public sealed class DoorOpenManagerTests
     {
         using Harness h = new() { PicklocksOverBash = true };
         DoorOpenResult? result = null;
-        h.Mgr.Enqueue(Direction.W, 0, true, "walker", r => result = r);
+        h.Mgr.Enqueue(Direction.W, 0, true, keyItemId: 0, "walker", r => result = r);
         Assert.Equal("pick w", h.LastSent);
 
         h.Line("The door is already open.");
@@ -795,7 +793,7 @@ public sealed class DoorOpenManagerTests
         using Harness h = new() { PicklocksOverBash = true };
         bool resting = true;
         h.Mgr.SetRestHold(() => resting);
-        h.Mgr.Enqueue(Direction.W, 0, canBash: true, "loop", _ => { });
+        h.Mgr.Enqueue(Direction.W, 0, canBash: true, keyItemId: 0, "loop", _ => { });
         Assert.Empty(h.AllSent);
 
         h.Mgr.NotifyRestHoldChanged();                  // still resting
@@ -813,7 +811,7 @@ public sealed class DoorOpenManagerTests
         using Harness h = new() { PicklocksOverBash = true };
         h.Mgr.SetRestHold(() => true);
         DoorOpenResult? result = null;
-        h.Mgr.Enqueue(Direction.W, 0, canBash: true, "loop", r => result = r);
+        h.Mgr.Enqueue(Direction.W, 0, canBash: true, keyItemId: 0, "loop", r => result = r);
 
         h.Line("The door is now open.");
 
@@ -831,7 +829,7 @@ public sealed class DoorOpenManagerTests
     {
         using Harness h = new();
         DoorOpenResult? result = null;
-        h.Mgr.Enqueue(Direction.SE, 11, canBash: true, "walker", r => result = r);
+        h.Mgr.Enqueue(Direction.SE, 11, canBash: true, keyItemId: 0, "walker", r => result = r);
         Assert.Equal("bash se", h.LastSent);
 
         h.Line("Your command had no effect.");
@@ -848,7 +846,7 @@ public sealed class DoorOpenManagerTests
     {
         using Harness h = new() { PicklocksOverBash = true };
         DoorOpenResult? result = null;
-        h.Mgr.Enqueue(Direction.W, 0, canBash: true, "walker", r => result = r);
+        h.Mgr.Enqueue(Direction.W, 0, canBash: true, keyItemId: 0, "walker", r => result = r);
         Assert.Equal("pick w", h.LastSent);
 
         h.Line("Your command had no effect.");
@@ -863,7 +861,7 @@ public sealed class DoorOpenManagerTests
     {
         using Harness h = new() { PicklocksOverBash = true };
         DoorOpenResult? result = null;
-        h.Mgr.Enqueue(Direction.W, 0, canBash: true, "walker", r => result = r);
+        h.Mgr.Enqueue(Direction.W, 0, canBash: true, keyItemId: 0, "walker", r => result = r);
         h.Line("You successfully unlocked the door.");
         Assert.Equal("open w", h.LastSent);
 
@@ -880,14 +878,14 @@ public sealed class DoorOpenManagerTests
     {
         using Harness opening = new() { PicklocksOverBash = true };
         DoorOpenResult? openResult = null;
-        opening.Mgr.Enqueue(Direction.W, 0, canBash: true, "walker", r => openResult = r);
+        opening.Mgr.Enqueue(Direction.W, 0, canBash: true, keyItemId: 0, "walker", r => openResult = r);
         opening.Line("You successfully unlocked the door.");
         opening.Line("Your command had no effect.");
         Assert.Null(openResult);
 
         using Harness bashing = new();
         DoorOpenResult? bashResult = null;
-        bashing.Mgr.Enqueue(Direction.SE, 11, canBash: true, "walker", r => bashResult = r);
+        bashing.Mgr.Enqueue(Direction.SE, 11, canBash: true, keyItemId: 0, "walker", r => bashResult = r);
         bashing.Line("That is not a door or a gate!");
         Assert.Null(bashResult);
         Assert.Equal(DoorOpenManager.DoorState.WaitingBash, bashing.Mgr.CurrentState);
@@ -901,10 +899,10 @@ public sealed class DoorOpenManagerTests
     {
         using Harness h = new();
         var results = new List<DoorOpenResult>();
-        h.Mgr.Enqueue(Direction.SE, 11, canBash: true, "walker", first =>
+        h.Mgr.Enqueue(Direction.SE, 11, canBash: true, keyItemId: 0, "walker", first =>
         {
             results.Add(first);
-            h.Mgr.Enqueue(Direction.SE, 11, canBash: true, "walker", results.Add);
+            h.Mgr.Enqueue(Direction.SE, 11, canBash: true, keyItemId: 0, "walker", results.Add);
         });
         Assert.Equal("bash se", h.LastSent);
 
@@ -925,7 +923,7 @@ public sealed class DoorOpenManagerTests
     {
         using Harness h = new();
         DoorOpenResult? result = null;
-        h.Mgr.Enqueue(Direction.SE, 0, canBash: true, "walker", r => result = r);
+        h.Mgr.Enqueue(Direction.SE, 0, canBash: true, keyItemId: 0, "walker", r => result = r);
 
         h.Echoed("bash se");
         h.Line("Your command had no effect.");
@@ -940,7 +938,7 @@ public sealed class DoorOpenManagerTests
     {
         using Harness h = new();
         DoorOpenResult? result = null;
-        h.Mgr.Enqueue(Direction.SE, 0, canBash: true, "walker", r => result = r);
+        h.Mgr.Enqueue(Direction.SE, 0, canBash: true, keyItemId: 0, "walker", r => result = r);
 
         h.Echoed("tige");
         h.Line("Your command had no effect.");
@@ -959,7 +957,7 @@ public sealed class DoorOpenManagerTests
     {
         using Harness h = new() { BashRestNeeded = true };
         DoorOpenResult? result = null;
-        h.Mgr.Enqueue(Direction.N, 0, canBash: true, "walker", r => result = r);
+        h.Mgr.Enqueue(Direction.N, 0, canBash: true, keyItemId: 0, "walker", r => result = r);
         Assert.Equal(DoorOpenManager.DoorState.WaitingBashRest, h.Mgr.CurrentState);
 
         h.Line("Your command had no effect.");
@@ -977,7 +975,7 @@ public sealed class DoorOpenManagerTests
         RoomKey? confirmed = DoorRoom;
         h.Mgr.SetConfirmedRoomProbe(() => confirmed);
         DoorOpenResult? result = null;
-        h.Mgr.Enqueue(Direction.SE, 0, canBash: true, "walker", r => result = r);
+        h.Mgr.Enqueue(Direction.SE, 0, canBash: true, keyItemId: 0, "walker", r => result = r);
         Assert.Equal("bash se", h.LastSent);
 
         confirmed = NextRoom;
@@ -995,7 +993,7 @@ public sealed class DoorOpenManagerTests
         RoomKey? confirmed = DoorRoom;
         h.Mgr.SetConfirmedRoomProbe(() => confirmed);
         DoorOpenResult? result = null;
-        h.Mgr.Enqueue(Direction.SE, 0, canBash: true, "walker", r => result = r);
+        h.Mgr.Enqueue(Direction.SE, 0, canBash: true, keyItemId: 0, "walker", r => result = r);
 
         confirmed = NextRoom;
         h.FireTimeout();
@@ -1013,7 +1011,7 @@ public sealed class DoorOpenManagerTests
         RoomKey? confirmed = DoorRoom;
         h.Mgr.SetConfirmedRoomProbe(() => confirmed);
         DoorOpenResult? result = null;
-        h.Mgr.Enqueue(Direction.SE, 0, canBash: true, "walker", r => result = r);
+        h.Mgr.Enqueue(Direction.SE, 0, canBash: true, keyItemId: 0, "walker", r => result = r);
 
         confirmed = NextRoom;
         h.Line("You bashed the door open.");
@@ -1030,7 +1028,7 @@ public sealed class DoorOpenManagerTests
         RoomKey? confirmed = DoorRoom;
         h.Mgr.SetConfirmedRoomProbe(() => confirmed);
         DoorOpenResult? first = null;
-        h.Mgr.Enqueue(Direction.SE, 0, canBash: true, "walker", r => first = r);
+        h.Mgr.Enqueue(Direction.SE, 0, canBash: true, keyItemId: 0, "walker", r => first = r);
 
         confirmed = null;
         h.Line("Your attempts to bash through fail!");
@@ -1041,7 +1039,7 @@ public sealed class DoorOpenManagerTests
 
         // Started unsure: a room confirmed later is no evidence of having left.
         DoorOpenResult? second = null;
-        h.Mgr.Enqueue(Direction.N, 0, canBash: true, "maze", r => second = r);
+        h.Mgr.Enqueue(Direction.N, 0, canBash: true, keyItemId: 0, "maze", r => second = r);
         confirmed = NextRoom;
         h.Line("Your attempts to bash through fail!");
         Assert.Null(second);

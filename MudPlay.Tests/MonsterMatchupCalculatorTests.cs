@@ -5,12 +5,10 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Behavioural coverage for <see cref="MonsterMatchupCalculator"/>: the
-/// player → monster DPS / rounds-to-kill projection, the monster → player
-/// return-fire preview, the prot-ward gating on monster alignment, DR
-/// flooring, and the unarmed / no-attack edge gates.
-/// </summary>
+// Behavioural coverage for MonsterMatchupCalculator: the
+// player → monster DPS / rounds-to-kill projection, the monster → player
+// return-fire preview, the prot-ward gating on monster alignment, DR
+// flooring, and the unarmed / no-attack edge gates.
 public sealed class MonsterMatchupCalculatorTests
 {
     private static PlayerMatchupProfile Player(
@@ -527,7 +525,7 @@ public sealed class MonsterMatchupCalculatorSpellsTests
     }
 
     // The class ArmourType only moves the ParaMUD hit FLOOR: light-armour classes
-    // (1..6) drop to 1%, everyone else stays at 2%; Stock ignores it (flat 8%).
+    // (1..6) drop to 1%, everyone else stays at 2%; Stock ignores it (flat 9%).
     // A huge AC forces the raw chance far below the floor so only GetHitMin decides.
     [Fact]
     public void AttackHitChance_ParaMudFloor_IsClassArmourTypeAware()

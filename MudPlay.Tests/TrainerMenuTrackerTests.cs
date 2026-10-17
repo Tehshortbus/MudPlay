@@ -7,11 +7,9 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Pins the trainer-menu detection state machine. The whole point is to
-/// be safe against chat-noise false positives — the outbound-command
-/// gate is the load-bearing guard.
-/// </summary>
+// Pins the trainer-menu detection state machine. The whole point is to
+// be safe against chat-noise false positives — the outbound-command
+// gate is the load-bearing guard.
 public sealed class TrainerMenuTrackerTests
 {
     private static readonly DateTime Now = new(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc);
@@ -21,10 +19,7 @@ public sealed class TrainerMenuTrackerTests
         MessageRouter router = new();
         DefaultPatterns.Seed(router);
         PartyState state = new();
-        TrainerMenuTracker tracker = new(router, state)
-        {
-            NowProvider = () => Now,
-        };
+        TrainerMenuTracker tracker = new(router, state, now: () => Now);
         return (tracker, router, state);
     }
 
@@ -174,7 +169,7 @@ public sealed class TrainerMenuTrackerTests
         MessageRouter router = new();
         DefaultPatterns.Seed(router);
         PartyState state = new();
-        TrainerMenuTracker tracker = new(router, state) { NowProvider = () => t };
+        TrainerMenuTracker tracker = new(router, state, now: () => t);
         tracker.ExpectingMenuWindow = TimeSpan.FromSeconds(5);
 
         tracker.ObserveOutbound(Encoding.Latin1.GetBytes("train stats\r"));

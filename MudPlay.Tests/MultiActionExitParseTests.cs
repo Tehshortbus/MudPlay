@@ -3,10 +3,8 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Parser-shape coverage for <see cref="MultiActionExitData"/> — the
-/// modifier text and the Action#N cell shape.
-/// </summary>
+// Parser-shape coverage for MultiActionExitData — the
+// modifier text and the Action#N cell shape.
 public sealed class MultiActionExitParseTests
 {
     // ----- modifier -----------------------------------------------------

@@ -7,11 +7,9 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Covers the PR 7.4 contract: seeding from <c>Rooms.json</c>, exit
-/// parsing (Door / Trap / unknown hint), uniqueness index, lair-flag
-/// recognition, and the per-set-swap reload.
-/// </summary>
+// Covers seeding from Rooms.json, exit
+// parsing (Door / Trap / unknown hint), uniqueness index, lair-flag
+// recognition, and the per-set-swap reload.
 public sealed class RoomGraphManagerTests : IDisposable
 {
     private readonly string _root;
@@ -199,35 +197,34 @@ public sealed class RoomGraphManagerTests : IDisposable
         Assert.Equal(rawHint, exit.RawHint);
     }
 
+    // A level or alignment restriction is a gate, not a hint: Hint stays None,
+    // the gate parses, and the raw text is kept.
     [Theory]
-    [InlineData("1/2 (Level: 30 to 999)",       "Level: 30 to 999")]
-    [InlineData("1/2 (Alignment: Saint to Outlaw)", "Alignment: Saint to Outlaw")]
-    public void RoomExit_GatedExits_FallThroughToNoneButPreserveRaw(string wire, string rawHint)
+    [InlineData("1/2 (Level: 30 to 999)",       "Level: 30 to 999", true, false)]
+    [InlineData("1/2 (Alignment: Saint to Outlaw)", "Alignment: Saint to Outlaw", false, true)]
+    public void RoomExit_GatedExits_ParseTheGate_AndPreserveRaw(string wire, string rawHint, bool level, bool alignment)
     {
-        // Level / Alignment / Class / Race / Ability restrictions
-        // aren't classified yet — they round-trip via RawHint until
-        // the path-time gate land in a later PR.
         Assert.True(RoomExit.TryParseWire(wire, out RoomExit exit));
         Assert.Equal(RoomExitHint.None, exit.Hint);
         Assert.Equal(rawHint, exit.RawHint);
+        Assert.Equal(level, exit.HasLevelGate);
+        Assert.Equal(alignment, exit.HasAlignmentGate);
     }
 
     [Fact]
-    public void RoomExit_KeyHint_NowClassified()
+    public void RoomExit_KeyHint_IsKeyLocked()
     {
-        // Previously fell through to None; commit-1 schema extension
-        // promotes (Key: N) to KeyLocked with item id captured.
+        // (Key: N) is KeyLocked with the item id captured.
         Assert.True(RoomExit.TryParseWire("1/2 (Key: 5)", out RoomExit exit));
         Assert.Equal(RoomExitHint.KeyLocked, exit.Hint);
         Assert.Equal(5, exit.KeyItemId);
     }
 
     [Fact]
-    public void RoomExit_HiddenHint_NowClassifiedAsSearchable()
+    public void RoomExit_HiddenHint_IsSearchable()
     {
-        // Previously fell through to None; commit-1 schema extension
-        // promotes plain (Hidden) to SearchableHidden so the walker
-        // knows to `sea <dir>` before stepping.
+        // Plain (Hidden) is SearchableHidden, so the walker knows to
+        // `sea <dir>` before stepping.
         Assert.True(RoomExit.TryParseWire("1/2 (Hidden)", out RoomExit exit));
         Assert.Equal(RoomExitHint.SearchableHidden, exit.Hint);
     }
@@ -239,12 +236,6 @@ public sealed class RoomGraphManagerTests : IDisposable
         Assert.Equal(new RoomKey(3, 7), exit.Target);
         Assert.Equal(RoomExitHint.None, exit.Hint);
         Assert.Equal("Climb", exit.RawHint);
-    }
-
-    [Fact]
-    public void RoomExit_ZeroSentinel_NotAnExit()
-    {
-        Assert.False(RoomExit.TryParseWire("0", out _));
     }
 
     // ----- RoomGraphManager seeding ----------------------------------
@@ -379,7 +370,7 @@ public sealed class RoomGraphManagerTests : IDisposable
         // of truth; the Rooms table is released, and gone at the cache's
         // next idle sweep since nothing reads it again.
         cache.EvictIdle(GameDataCache.IdleEvictAfter);
-        Assert.DoesNotContain("Rooms", cache.LoadedTables);
+        Assert.False(cache.IsTableLoaded("Rooms"));
     }
 
     [Fact]
@@ -515,8 +506,17 @@ public sealed class RoomGraphManagerTests : IDisposable
         Assert.Equal(new RoomKey(1, 11), both[0]);
     }
 
+    // The room's own name and exits find it and nothing else, as a sighting of it
+    // would.
+    private static bool FoundAlone(RoomGraphManager graph, RoomKey key)
+    {
+        Room room = graph.GetRoom(key)!;
+        return graph.FindCandidates(room.Name, new HashSet<Direction>(room.Exits.Keys))
+            .SequenceEqual(new[] { key });
+    }
+
     [Fact]
-    public void IsUnique_TrueForOneOfOneTuple()
+    public void FindCandidates_OneOfOneTuple_FindsTheRoomAlone()
     {
         SeedRooms("alpha", TwinRoomsJson);
         GameDataCache cache = NewCache();
@@ -526,13 +526,13 @@ public sealed class RoomGraphManagerTests : IDisposable
 
         // All three have distinct (name, exit-mask) tuples even though
         // the names are all identical.
-        Assert.True(graph.IsUnique(new RoomKey(1, 10)));
-        Assert.True(graph.IsUnique(new RoomKey(1, 11)));
-        Assert.True(graph.IsUnique(new RoomKey(1, 12)));
+        Assert.True(FoundAlone(graph, new RoomKey(1, 10)));
+        Assert.True(FoundAlone(graph, new RoomKey(1, 11)));
+        Assert.True(FoundAlone(graph, new RoomKey(1, 12)));
     }
 
     [Fact]
-    public void IsUnique_FalseForAmbiguousTuple()
+    public void FindCandidates_AmbiguousTuple_FindsEveryRoomInIt()
     {
         // Two rooms with same name AND same exit set.
         const string AmbiguousJson = """
@@ -562,28 +562,16 @@ public sealed class RoomGraphManagerTests : IDisposable
         graph.OnActiveSetChanged("beta");
 
         // 2/1 has Hallway + {N}; 2/3 has Hallway + {N}. Ambiguous.
-        Assert.False(graph.IsUnique(new RoomKey(2, 1)));
-        Assert.False(graph.IsUnique(new RoomKey(2, 3)));
+        Assert.False(FoundAlone(graph, new RoomKey(2, 1)));
+        Assert.False(FoundAlone(graph, new RoomKey(2, 3)));
 
         // 2/2 has Hallway + {S}; nothing else collides. Unique.
-        Assert.True(graph.IsUnique(new RoomKey(2, 2)));
-    }
-
-    [Fact]
-    public void IsUnique_FalseForUnknownKey()
-    {
-        SeedRooms("alpha", TwoRoomJson);
-        GameDataCache cache = NewCache();
-        cache.SwitchSet("alpha");
-        RoomGraphManager graph = new(cache);
-        graph.OnActiveSetChanged("alpha");
-
-        Assert.False(graph.IsUnique(new RoomKey(999, 999)));
+        Assert.True(FoundAlone(graph, new RoomKey(2, 2)));
     }
 
     // ----- unreachable filter (CannotBeReached) ----------------------
 
-    // Same fixture as IsUnique_FalseForAmbiguousTuple: 2/1 and 2/3 are both
+    // Same fixture as FindCandidates_AmbiguousTuple_FindsEveryRoomInIt: 2/1 and 2/3 are both
     // "Hallway" + {N}, so they share a candidate bucket the ConfigureUnreachable
     // predicate can prune.
     private const string HallwayAmbiguousJson = """

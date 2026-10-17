@@ -78,17 +78,6 @@ public sealed class SpellListParser : IDisposable
         if (_lines is not null) _lines.LineEmitted -= OnLineEmitted;
     }
 
-    // Test hook — drive a sequence of non-prompt text lines through the parser
-    // without a real LineExtractor. Use FeedTestLine to feed a line flagged as
-    // the prompt.
-    internal void FeedTestLines(IEnumerable<string> lines)
-    {
-        foreach (string text in lines) HandleLine(text, isPromptLine: false);
-    }
-
-    // Test hook — feed a single line, optionally flagged as the prompt.
-    internal void FeedTestLine(string text, bool isPromptLine = false) => HandleLine(text, isPromptLine);
-
     private void OnLineEmitted(LineExtractor.EmittedLine line) => HandleLine(line.Text, line.IsPromptLine);
 
     private void HandleLine(string text, bool isPromptLine)
@@ -176,9 +165,6 @@ public sealed class SpellListParser : IDisposable
         _namesThisBlock.Clear();
         _state = State.Idle;
     }
-
-    // Number of rows parsed in the most recent / in-progress block. Test/debug aid.
-    internal int LastBlockRowCount => _namesThisBlock.Count;
 
     // ----- line classification -----------------------------------------
 

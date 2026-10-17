@@ -3,13 +3,11 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Pins <see cref="SpellEffectFormatter"/>'s EndCast (Abil 151) expansion —
-/// the path that surfaces a weapon's chained on-hit / on-use spell (e.g. the
-/// Nexus Spear's "spear slam knockdown") inline instead of dropping the slot.
-/// Covers the percentage prefix (Abil 164), nested-chain recursion, the
-/// cycle guard, and the name-fallback when a chain can't resolve.
-/// </summary>
+// Pins SpellEffectFormatter's EndCast (Abil 151) expansion —
+// the path that surfaces a weapon's chained on-hit / on-use spell (e.g. the
+// Nexus Spear's "spear slam knockdown") inline instead of dropping the slot.
+// Covers the percentage prefix (Abil 164), nested-chain recursion, the
+// cycle guard, and the name-fallback when a chain can't resolve.
 public sealed class SpellEffectFormatterTests
 {
     private static SpellAbility Ab(int code, int value) => new(code, value);

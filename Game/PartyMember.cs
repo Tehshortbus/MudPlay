@@ -35,28 +35,24 @@ public sealed partial class PartyMember : ObservableObject
     // HpPercent are known.
     [ObservableProperty]
     [field: Owner(typeof(PartyManager))]
-    [NotifyPropertyChangedFor(nameof(HpDisplay))]
     [NotifyPropertyChangedFor(nameof(HpRichDisplay))]
     private int _baselineHp;
 
     // Baseline MA at join. Same provenance as BaselineHp.
     [ObservableProperty]
     [field: Owner(typeof(PartyManager))]
-    [NotifyPropertyChangedFor(nameof(MaDisplay))]
     [NotifyPropertyChangedFor(nameof(MaRichDisplay))]
     private int _baselineMp;
 
     // Current HP as a percentage (0–100) of BaselineHp. Updated by every `par` poll.
     [ObservableProperty]
     [field: Owner(typeof(PartyManager))]
-    [NotifyPropertyChangedFor(nameof(HpDisplay))]
     [NotifyPropertyChangedFor(nameof(HpRichDisplay))]
     private int _hpPercent;
 
     // Current MA as a percentage (0–100) of BaselineMp.
     [ObservableProperty]
     [field: Owner(typeof(PartyManager))]
-    [NotifyPropertyChangedFor(nameof(MaDisplay))]
     [NotifyPropertyChangedFor(nameof(MaRichDisplay))]
     private int _mpPercent;
 
@@ -94,32 +90,12 @@ public sealed partial class PartyMember : ObservableObject
         ? (Class.Length > 0 ? $"Level {KnownLevel} - {Class}" : $"Level {KnownLevel}")
         : Class;
 
-    // PartyWindow display string for HP. When BaselineHp is known (the on-join
-    // `@health` exchange completed and we captured this member's max), shows
-    // "current/max" computed from BaselineHp * HpPercent / 100. Until the
-    // baseline arrives, falls back to "percent%". Bound directly by the
-    // PartyWindow row template — no converter needed.
-    //
-    // Computed both ways instead of inverting the percent because the percent is
-    // the LIVE field every `par` poll refreshes; the baseline is captured once
-    // at join time and stays constant. Net result: as `par` percentages tick
-    // down during combat we rerender the exact current value (rounded) without
-    // sending an @health round-trip per tick.
-    public string HpDisplay => BaselineHp > 0
-        ? $"{BaselineHp * HpPercent / 100}/{BaselineHp}"
-        : $"{HpPercent}%";
-
-    // PartyWindow display string for MA / KAI. Same rules as HpDisplay.
-    // Warriors / no-mana classes have BaselineMp = 0 and the PartyWindow hides
-    // the whole MA column via GreaterThanZeroConverter, so the fallback "0%"
-    // never actually renders for those rows.
-    public string MaDisplay => BaselineMp > 0
-        ? $"{BaselineMp * MpPercent / 100}/{BaselineMp}"
-        : $"{MpPercent}%";
-
-    // PartyWindow rich display string for HP — form "H:cur/max pct%" (e.g.
-    // "H:779/817 95%"). Falls back to just "H:pct%" when baseline is unknown so
-    // the row doesn't render the awkward double-percent "H:95% 95%".
+    // PartyWindow display string for HP — form "H:cur/max pct%" (e.g.
+    // "H:779/817 95%"). The current value is BaselineHp * HpPercent / 100: the
+    // percent is the live field every `par` poll refreshes, the baseline the max
+    // captured once at join time (the on-join `@health` exchange). Falls back to
+    // just "H:pct%" when the baseline is unknown so the row doesn't render the
+    // awkward double-percent "H:95% 95%".
     public string HpRichDisplay => BaselineHp > 0
         ? $"H:{BaselineHp * HpPercent / 100}/{BaselineHp} {HpPercent}%"
         : $"H:{HpPercent}%";

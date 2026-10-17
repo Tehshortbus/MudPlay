@@ -9,16 +9,14 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// PR 10.10b — <see cref="QuestStepGraph"/> drafts an ordered, followable step
-/// checklist for a quest flag from its <c>TBInfo</c> chains. Cases reproduce the
-/// real data-v1.11p shapes: a verb-led chain exposes its player command, a
-/// guard-led chain does not; the <c>checkitem</c>→<c>takeitem</c>→<c>giveitem</c>
-/// turn-in flow is surfaced; chains order by give-step; the same step echoed from
-/// many rooms collapses to one entry; and a chain belongs to the flag its terminal
-/// <c>giveability</c> grants. Synthetic seeded caches keep it deterministic and
-/// CI-portable.
-/// </summary>
+// QuestStepGraph drafts an ordered, followable step
+// checklist for a quest flag from its TBInfo chains. Cases reproduce the
+// real data-v1.11p shapes: a verb-led chain exposes its player command, a
+// guard-led chain does not; the checkitem→takeitem→giveitem
+// turn-in flow is surfaced; chains order by give-step; the same step echoed from
+// many rooms collapses to one entry; and a chain belongs to the flag its terminal
+// giveability grants. Synthetic seeded caches keep it deterministic and
+// CI-portable.
 public sealed class QuestStepGraphTests : IDisposable
 {
     private readonly string _root;

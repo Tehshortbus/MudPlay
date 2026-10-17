@@ -4,14 +4,12 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// <see cref="AutoLightSettings"/> default values + JSON round-trip. Defaults
-/// shape what a fresh character sees in the Auto-Light tab on first open;
-/// round-trip protects against schema drift (JsonSerializer is name-keyed). The
-/// section VM itself does I/O through the <see cref="Services.AppServices"/>
-/// singleton, so — as with the other section tests — this pins the persistable
-/// shape rather than driving the VM.
-/// </summary>
+// AutoLightSettings default values + JSON round-trip. Defaults
+// shape what a fresh character sees in the Auto-Light tab on first open;
+// round-trip protects against schema drift (JsonSerializer is name-keyed). The
+// section VM itself does I/O through the Services.AppServices
+// singleton, so — as with the other section tests — this pins the persistable
+// shape rather than driving the VM.
 public sealed class AutoLightSettingsTests
 {
     [Fact]

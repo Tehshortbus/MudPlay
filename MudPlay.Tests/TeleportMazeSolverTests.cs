@@ -214,6 +214,10 @@ public sealed class TeleportMazeSolverTests : IDisposable
         public required TeleportMazeIndex Index { get; init; }
         public required TeleportMazeSolver Solver { get; init; }
         public required MovementCoordinator Coord { get; init; }
+        // The solver's settle and look-timeout timers.
+        public required ManualTimers SolverTimers { get; init; }
+        // The game's lines, through the router the `rm` resolver reads.
+        public required ServerFeed Server { get; init; }
         public int ManualMoves;
         public List<byte[]> Sent { get; } = new();
         public List<WalkEvent> Events { get; } = new();
@@ -256,18 +260,23 @@ public sealed class TeleportMazeSolverTests : IDisposable
         Action<Direction, Action<bool>>? opener = wireDoorOpener
             ? (dir, done) => doorOpens.Add((dir, done))
             : null;
-        // Synchronous post + no dispatcher timers: Start() runs inline in TryBegin
-        // and the settle / look timers are driven manually via test seams.
+        // Synchronous post: Start() runs inline in TryBegin.
         Harness? made = null;
+        MessageRouter router = new();
+        MudPlay.Services.Patterns.DefaultPatterns.Seed(router);
+        ParadigmPositionResolver resolver = new(router, tracker, new EngineRecoveryGate(graph, tracker), cache,
+            schedule: new ManualTimers().Arm);
+        ManualTimers solverTimers = new();
         TeleportMazeSolver solver = new(index, graph, tracker, bfs, walker,
-            log: null, useTimer: false, post: a => a(),
-            isParadigm: isParadigm ? () => true : null, openDoor: opener, coordinator: coord,
+            log: null, post: a => a(), schedule: solverTimers.Arm,
+            isParadigm: isParadigm ? () => true : null, paradigmResolver: resolver, openDoor: opener, coordinator: coord,
             stopDoor: () => made!.DoorStops++);
 
         Harness h = made = new()
         {
             Graph = graph, Bfs = bfs, Tracker = tracker,
             Walker = walker, Index = index, Solver = solver, DoorOpens = doorOpens, Coord = coord,
+            SolverTimers = solverTimers, Server = new ServerFeed(router),
         };
         tracker.ManualMoveObserved += _ => h.ManualMoves++;
         walker.SetWireSender(h.Sent.Add);
@@ -298,14 +307,9 @@ public sealed class TeleportMazeSolverTests : IDisposable
                OpenDoorDirections: null,
                ClosedDoorDirections: new HashSet<Direction> { closed });
 
-    // Mirror ParadigmPositionResolver.OnLocationObserved: hard-locate the tracker,
-    // then raise PositionResolved (which the solver keys its relocalization off).
-    // The harness has no real resolver, so drive both halves through the seam.
-    private static void FeedRm(Harness h, RoomKey key)
-    {
-        h.Tracker.SetLocated(key);
-        h.Solver.FireParadigmPositionResolvedForTests(key);
-    }
+    // The game's answer to `rm`, read by the position resolver the solver listens to.
+    private static void FeedRm(Harness h, RoomKey key) =>
+        h.Server.Line($"Location: {key.Map},{key.Room}");
 
     [Fact]
     public void RelocalizesAndDrivesFinalWalk_WhenPlainRouteExists()
@@ -319,7 +323,7 @@ public sealed class TeleportMazeSolverTests : IDisposable
         // The solver forces a self-look to render the landing (brief mode gives no
         // exits on entry); feed 1/31's own display, then settle onto it.
         h.Solver.OnRoomObserved(Asylum(Direction.E, Direction.D));  // 1/31's self-look render
-        h.Solver.FireSettleForTests();
+        h.SolverTimers.RunDue(TeleportMazeSolver.SettleWindow);
 
         // Look sweep of 1/31's exits (enum order E, D): peek each neighbour.
         h.Solver.OnRoomObserved(Asylum(Direction.W, Direction.D));  // look E → 1/30
@@ -332,7 +336,7 @@ public sealed class TeleportMazeSolverTests : IDisposable
         Assert.Equal("e\r", h.SentText[^1]);
 
         // One settle tick (pure pacing) finishes the one-step route deterministically.
-        h.Solver.FireSettleForTests();
+        h.SolverTimers.RunDue(TeleportMazeSolver.SettleWindow);
 
         Assert.False(h.Solver.Active);
         Assert.Equal(0, h.Solver.Attempts);
@@ -354,7 +358,7 @@ public sealed class TeleportMazeSolverTests : IDisposable
 
         // Self-look renders 1/31; its E exit is flagged "closed door".
         h.Solver.OnRoomObserved(AsylumClosed(Direction.E, Direction.E, Direction.D));
-        h.Solver.FireSettleForTests();
+        h.SolverTimers.RunDue(TeleportMazeSolver.SettleWindow);
 
         // The sweep reaches E first, sees a closed door, and requests an open —
         // WITHOUT sending the peek yet.
@@ -372,7 +376,7 @@ public sealed class TeleportMazeSolverTests : IDisposable
         h.Solver.OnRoomObserved(Asylum(Direction.E, Direction.D));   // look down → 1/10
 
         Assert.Equal(new RoomKey(1, 31), h.Tracker.State.CurrentRoom!.Key);
-        h.Solver.FireSettleForTests();
+        h.SolverTimers.RunDue(TeleportMazeSolver.SettleWindow);
         Assert.False(h.Solver.Active);
         Assert.Equal(new RoomKey(1, 30), h.Tracker.State.CurrentRoom!.Key);
         Assert.Contains(h.Events, e => e.Kind == WalkEventKind.Finished);
@@ -391,7 +395,7 @@ public sealed class TeleportMazeSolverTests : IDisposable
         Assert.True(h.Solver.Active);
 
         h.Solver.OnRoomObserved(AsylumClosed(Direction.E, Direction.E, Direction.D));
-        h.Solver.FireSettleForTests();
+        h.SolverTimers.RunDue(TeleportMazeSolver.SettleWindow);
 
         (Direction Dir, Action<bool> Done) req = Assert.Single(h.DoorOpens);
         Assert.Equal(Direction.E, req.Dir);
@@ -412,7 +416,7 @@ public sealed class TeleportMazeSolverTests : IDisposable
         Harness h = NewHarness(wireDoorOpener: true);
         Assert.True(h.Walker.WalkTo(new RoomKey(1, 30)));
         h.Solver.OnRoomObserved(AsylumClosed(Direction.E, Direction.E, Direction.D));
-        h.Solver.FireSettleForTests();
+        h.SolverTimers.RunDue(TeleportMazeSolver.SettleWindow);
         Assert.Single(h.DoorOpens);
 
         h.Solver.Cancel("test");
@@ -434,7 +438,7 @@ public sealed class TeleportMazeSolverTests : IDisposable
 
         // Self-look renders 1/10 (own exits E, D); settle, then sweep to relocalize.
         h.Solver.OnRoomObserved(Asylum(Direction.E, Direction.D));
-        h.Solver.FireSettleForTests();
+        h.SolverTimers.RunDue(TeleportMazeSolver.SettleWindow);
         h.Solver.OnRoomObserved(Asylum(Direction.W, Direction.S, Direction.D));  // look E → 1/11
         // Snapshot before the final look reply, which resolves the sweep and fires
         // the first drive move synchronously — everything from here on is the drive.
@@ -447,11 +451,11 @@ public sealed class TeleportMazeSolverTests : IDisposable
         Assert.Equal("e\r", h.SentText[^1]);
 
         // Pacing tick → the second move S. No `look` / `rm` interleaved between them.
-        h.Solver.FireSettleForTests();
+        h.SolverTimers.RunDue(TeleportMazeSolver.SettleWindow);
         Assert.Equal("s\r", h.SentText[^1]);
 
         // Final pacing tick → deterministic arrival at the goal cell 1/12.
-        h.Solver.FireSettleForTests();
+        h.SolverTimers.RunDue(TeleportMazeSolver.SettleWindow);
 
         Assert.False(h.Solver.Active);
         Assert.Equal(new RoomKey(1, 12), h.Tracker.State.CurrentRoom!.Key);
@@ -483,7 +487,7 @@ public sealed class TeleportMazeSolverTests : IDisposable
 
         // The teleport redisplays the room; the settle then elapses → a single `rm`.
         h.Solver.OnRoomObserved(Asylum(Direction.E, Direction.D));
-        h.Solver.FireSettleForTests();
+        h.SolverTimers.RunDue(TeleportMazeSolver.SettleWindow);
         Assert.Equal("rm\r", h.SentText[^1]);
         Assert.DoesNotContain("look\r", h.SentText);
 
@@ -498,7 +502,7 @@ public sealed class TeleportMazeSolverTests : IDisposable
         Assert.Equal(1, h.SentText.Count(s => s == "rm\r"));   // only the landing `rm`
 
         // One pacing tick finishes the one-step route deterministically — no more `rm`.
-        h.Solver.FireSettleForTests();
+        h.SolverTimers.RunDue(TeleportMazeSolver.SettleWindow);
 
         Assert.False(h.Solver.Active);
         Assert.Equal(0, h.Solver.Attempts);
@@ -520,12 +524,12 @@ public sealed class TeleportMazeSolverTests : IDisposable
 
         // Settle onto the teleport's redisplay → the first `rm`.
         h.Solver.OnRoomObserved(Asylum(Direction.E, Direction.D));
-        h.Solver.FireSettleForTests();
+        h.SolverTimers.RunDue(TeleportMazeSolver.SettleWindow);
         Assert.Equal("rm\r", h.SentText[^1]);
         Assert.Equal(1, h.SentText.Count(s => s == "rm\r"));
 
         // No Location: reply — the deadline elapses and `rm` is re-sent, never a look.
-        h.Solver.FireLookTimeoutForTests();
+        h.SolverTimers.RunDue(TeleportMazeSolver.LookTimeout);
         Assert.Equal("rm\r", h.SentText[^1]);
         Assert.Equal(2, h.SentText.Count(s => s == "rm\r"));
         Assert.DoesNotContain(h.SentText, s => s.StartsWith("look"));
@@ -534,7 +538,7 @@ public sealed class TeleportMazeSolverTests : IDisposable
         // drives the plain route with NO per-step `rm` and finishes on one pacing tick.
         FeedRm(h, new RoomKey(1, 31));                             // relocalized → step E
         Assert.Equal("e\r", h.SentText[^1]);
-        h.Solver.FireSettleForTests();                             // pacing → arrive goal 1/30
+        h.SolverTimers.RunDue(TeleportMazeSolver.SettleWindow);                             // pacing → arrive goal 1/30
 
         Assert.False(h.Solver.Active);
         Assert.DoesNotContain(h.SentText, s => s.StartsWith("look"));
@@ -559,7 +563,7 @@ public sealed class TeleportMazeSolverTests : IDisposable
 
         // Self-look renders 1/11 (own exits N, S); settle.
         h.Solver.OnRoomObserved(Asylum(Direction.N, Direction.S));
-        h.Solver.FireSettleForTests();
+        h.SolverTimers.RunDue(TeleportMazeSolver.SettleWindow);
 
         // Look sweep of 1/11 (enum order N, S).
         h.Solver.OnRoomObserved(Asylum(Direction.S, Direction.E));  // look N → 1/10
@@ -572,7 +576,7 @@ public sealed class TeleportMazeSolverTests : IDisposable
         int sentBeforeArrival = h.Sent.Count;
 
         // One pacing tick finishes on the goal cell — no further sends, no reshuffle.
-        h.Solver.FireSettleForTests();
+        h.SolverTimers.RunDue(TeleportMazeSolver.SettleWindow);
 
         Assert.False(h.Solver.Active);
         Assert.Equal(0, h.Solver.Attempts);
@@ -593,7 +597,7 @@ public sealed class TeleportMazeSolverTests : IDisposable
         Assert.True(h.Walker.WalkTo(new RoomKey(1, 12)));
         Assert.Equal(1, changes);                        // started
         h.Solver.OnRoomObserved(Asylum(Direction.E, Direction.D));
-        h.Solver.FireSettleForTests();
+        h.SolverTimers.RunDue(TeleportMazeSolver.SettleWindow);
         h.Solver.OnRoomObserved(Asylum(Direction.W, Direction.S, Direction.D));
         h.Solver.OnRoomObserved(Asylum(Direction.W, Direction.D));
         Assert.Equal("e\r", h.SentText[^1]);
@@ -601,7 +605,7 @@ public sealed class TeleportMazeSolverTests : IDisposable
         // Paused between the two moves: the pacing tick sends nothing.
         h.Coord.AssertGate(MovementCoordinator.UserGate, "test");
         int sent = h.Sent.Count;
-        h.Solver.FireSettleForTests();
+        h.SolverTimers.RunDue(TeleportMazeSolver.SettleWindow);
         Assert.Equal(sent, h.Sent.Count);
         Assert.True(h.Solver.IsHeld);
         Assert.True(h.Solver.Active);
@@ -611,7 +615,7 @@ public sealed class TeleportMazeSolverTests : IDisposable
         h.Coord.ClearGate(MovementCoordinator.UserGate, "test");
         Assert.False(h.Solver.IsHeld);
         Assert.Equal("s\r", h.SentText[^1]);
-        h.Solver.FireSettleForTests();
+        h.SolverTimers.RunDue(TeleportMazeSolver.SettleWindow);
 
         Assert.False(h.Solver.Active);
         Assert.Equal(new RoomKey(1, 12), h.Tracker.State.CurrentRoom!.Key);
@@ -624,11 +628,11 @@ public sealed class TeleportMazeSolverTests : IDisposable
         Harness h = NewHarness(SplitMaze);
         Assert.True(h.Walker.WalkTo(new RoomKey(1, 12)));
         h.Solver.OnRoomObserved(Asylum(Direction.E, Direction.D));
-        h.Solver.FireSettleForTests();
+        h.SolverTimers.RunDue(TeleportMazeSolver.SettleWindow);
         h.Solver.OnRoomObserved(Asylum(Direction.W, Direction.S, Direction.D));
         h.Solver.OnRoomObserved(Asylum(Direction.W, Direction.D));
         h.Coord.AssertGate(MovementCoordinator.UserGate, "test");
-        h.Solver.FireSettleForTests();
+        h.SolverTimers.RunDue(TeleportMazeSolver.SettleWindow);
         Assert.True(h.Solver.IsHeld);
 
         h.Solver.Cancel("stopped");
@@ -645,11 +649,11 @@ public sealed class TeleportMazeSolverTests : IDisposable
         Harness h = NewHarness(SplitMaze);
         Assert.True(h.Walker.WalkTo(new RoomKey(1, 12)));
         h.Solver.OnRoomObserved(Asylum(Direction.E, Direction.D));
-        h.Solver.FireSettleForTests();
+        h.SolverTimers.RunDue(TeleportMazeSolver.SettleWindow);
         h.Solver.OnRoomObserved(Asylum(Direction.W, Direction.S, Direction.D));
         h.Solver.OnRoomObserved(Asylum(Direction.W, Direction.D));
-        h.Solver.FireSettleForTests();
-        h.Solver.FireSettleForTests();
+        h.SolverTimers.RunDue(TeleportMazeSolver.SettleWindow);
+        h.SolverTimers.RunDue(TeleportMazeSolver.SettleWindow);
 
         Assert.False(h.Solver.Active);
         Assert.Equal(0, h.ManualMoves);
@@ -666,7 +670,7 @@ public sealed class TeleportMazeSolverTests : IDisposable
 
         // Self-look renders 1/10 (brief mode gives no exits on entry); settle.
         h.Solver.OnRoomObserved(Asylum(Direction.E, Direction.D));  // 1/10's self-look render
-        h.Solver.FireSettleForTests();
+        h.SolverTimers.RunDue(TeleportMazeSolver.SettleWindow);
 
         // Look sweep of 1/10 (E, D).
         h.Solver.OnRoomObserved(Asylum(Direction.W, Direction.S, Direction.D));  // look E → 1/11
@@ -679,7 +683,7 @@ public sealed class TeleportMazeSolverTests : IDisposable
 
         // The reshuffle teleported us into 1/30 (component B). Settle, then relocalize.
         h.Solver.OnRoomObserved(Asylum(Direction.W, Direction.D));  // 1/30's own display
-        h.Solver.FireSettleForTests();
+        h.SolverTimers.RunDue(TeleportMazeSolver.SettleWindow);
 
         h.Solver.OnRoomObserved(Asylum(Direction.E, Direction.D));  // look W → 1/31
         h.Solver.OnRoomObserved(Asylum(Direction.E, Direction.D));  // look D → 1/10
@@ -707,7 +711,7 @@ public sealed class TeleportMazeSolverTests : IDisposable
 
         // Self-look renders 1/10 (own exits E, U, D); settle.
         h.Solver.OnRoomObserved(Asylum(Direction.E, Direction.U, Direction.D));
-        h.Solver.FireSettleForTests();
+        h.SolverTimers.RunDue(TeleportMazeSolver.SettleWindow);
 
         // Look sweep of 1/10 (enum order E, U, D): peek each neighbour.
         h.Solver.OnRoomObserved(Asylum(Direction.W));      // look E → 1/11
@@ -747,7 +751,7 @@ public sealed class TeleportMazeSolverTests : IDisposable
         // Teleport drops us in 1/30. Feed the self-look render, settle, relocalize,
         // land on goal → done.
         h.Solver.OnRoomObserved(Asylum(Direction.W, Direction.D));
-        h.Solver.FireSettleForTests();
+        h.SolverTimers.RunDue(TeleportMazeSolver.SettleWindow);
         h.Solver.OnRoomObserved(Asylum(Direction.E, Direction.D));  // look W → 1/31
         h.Solver.OnRoomObserved(Asylum(Direction.E, Direction.D));  // look D → 1/10
 

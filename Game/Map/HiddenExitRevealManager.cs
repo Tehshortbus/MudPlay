@@ -137,9 +137,6 @@ public sealed class HiddenExitRevealManager : IDisposable
     // Bind the wire-sender — same shape as the rest of the engine-side handlers.
     public void SetWireSender(Action<byte[]> sender) => _wire.Bind(sender);
 
-    // Test seam — bytes the manager asked to write to the wire.
-    internal List<byte[]> LastSentForTests => _wire.LastSentForTests;
-
     public void Dispose()
     {
         if (_disposed) return;

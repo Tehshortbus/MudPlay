@@ -1,12 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using System.Text;
 using MudPlay.Game.Inventory;
 using MudPlay.Services;
 using MudPlay.Services.Patterns;
-using MudPlay.Terminal;
 using Xunit;
 
 namespace MudPlay.Tests;
@@ -21,7 +19,8 @@ public sealed class AutoDiscardInventoryWiringTests
     private sealed class Rig : IDisposable
     {
         private readonly MessageRouter _router = new();
-        private readonly LineExtractor _lines = new(new TerminalEmulator(80, 24));
+        // The game's output, fed the way the client receives it.
+        private readonly ServerFeed _feed = new();
         private readonly Dictionary<string, (int Number, bool Discard, int Keep)> _map =
             new(StringComparer.OrdinalIgnoreCase);
 
@@ -42,9 +41,9 @@ public sealed class AutoDiscardInventoryWiringTests
         {
             Inventory = new InventoryManager(log: null, itemWeightResolver: weights ? _ => 10 : null, slotResolver: null);
             DefaultPatterns.Seed(_router);
-            if (routerFirst) _lines.LineEmitted += l => _router.Dispatch(l);
-            Inventory.AttachLineExtractor(_lines);
-            if (!routerFirst) _lines.LineEmitted += l => _router.Dispatch(l);
+            if (routerFirst) _feed.Lines.LineEmitted += l => _router.Dispatch(l);
+            Inventory.AttachLineExtractor(_feed.Lines);
+            if (!routerFirst) _feed.Lines.LineEmitted += l => _router.Dispatch(l);
 
             Discard = new AutoDiscardManager(_router,
                 carriedItems: () => Inventory.Snapshot.CarriedItems,
@@ -105,14 +104,7 @@ public sealed class AutoDiscardInventoryWiringTests
                 : null;
         }
 
-        public void Feed(string text)
-        {
-            FieldInfo? field = typeof(LineExtractor).GetField(
-                "LineEmitted", BindingFlags.Instance | BindingFlags.NonPublic);
-            if (field?.GetValue(_lines) is Action<LineExtractor.EmittedLine> handler)
-                handler(new LineExtractor.EmittedLine(
-                    text, Array.Empty<CellAttributes>(), DateTimeOffset.UtcNow, IsPromptLine: false));
-        }
+        public void Feed(string text) => _feed.Line(text);
 
         public void FullInventory(string items)
         {

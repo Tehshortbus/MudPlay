@@ -3,11 +3,8 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Parser coverage for every modifier shape the MajorMUD MDB emits on
-/// an exit cell. Sources cross-referenced against real Rooms.json
-/// rows and MudProxy's RoomGraphManager.cs parser.
-/// </summary>
+// Parser coverage for every modifier shape the MajorMUD MDB emits on
+// an exit cell, cross-referenced against real Rooms.json rows.
 public sealed class RoomExitParseTests
 {
     // ----- Plain (no modifier) --------------------------------------

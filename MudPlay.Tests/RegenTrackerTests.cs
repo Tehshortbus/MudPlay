@@ -5,12 +5,10 @@ namespace MudPlay.Tests;
 
 public sealed class RegenTrackerTests
 {
-    /// <summary>
-    /// Test-controllable clock that the tracker reads via the
-    /// <see cref="RegenTracker(PlayerState, Func{DateTimeOffset}?)"/>
-    /// constructor's clock hook. Tests advance it manually so the
-    /// cycle's interval-vs-elapsed comparison sees realistic gaps.
-    /// </summary>
+    // Test-controllable clock that the tracker reads via the
+    // RegenTracker
+    // constructor's clock hook. Tests advance it manually so the
+    // cycle's interval-vs-elapsed comparison sees realistic gaps.
     private sealed class FakeClock
     {
         public DateTimeOffset Now { get; set; } = new(2026, 1, 1, 12, 0, 0, TimeSpan.Zero);
@@ -36,7 +34,6 @@ public sealed class RegenTrackerTests
         state.Hp = 100;
 
         Assert.Equal(0, fires);
-        Assert.Equal(0, tracker.HpNatural.Stat.SampleCount);
         Assert.False(tracker.HpNatural.IsActive);   // not anchored until first uptick.
         tracker.Dispose();
     }
@@ -49,9 +46,7 @@ public sealed class RegenTrackerTests
         clock.Advance(TimeSpan.FromSeconds(30));   // a natural tick later…
         state.Hp = 105;                            // …+5 HP
 
-        Assert.True(tracker.HpNatural.IsActive);
-        Assert.Equal(1, tracker.HpNatural.Stat.SampleCount);
-        Assert.True(tracker.HpNatural.Stat.EstimatedAmount > 0);
+        Assert.Equal(clock.Now, tracker.HpNatural.Anchor);   // the gain is its tick
         Assert.False(tracker.HpRest.IsActive);     // not resting → bonus cycle stays off.
         tracker.Dispose();
     }
@@ -65,8 +60,8 @@ public sealed class RegenTrackerTests
         clock.Advance(TimeSpan.FromSeconds(21));   // one rest cycle later.
         state.Hp = 108;
 
-        Assert.Equal(1, tracker.HpRest.Stat.SampleCount);
-        Assert.Equal(0, tracker.HpNatural.Stat.SampleCount);
+        Assert.Equal(clock.Now, tracker.HpRest.Anchor);
+        Assert.False(tracker.HpNatural.IsActive);
         tracker.Dispose();
     }
 
@@ -86,19 +81,18 @@ public sealed class RegenTrackerTests
     public void StandingUpBeforeRestInterval_GrantsNoRestTick()
     {
         // Server rule: rest only credits a tick if the player stayed for the
-        // full 20 s interval. Standing up at 15 s cancels outright; the next
+        // full 21 s interval. Standing up at 15 s cancels outright; the next
         // HP uptick gets claimed by HpNatural instead.
         var (state, tracker, clock) = Setup();
         state.Hp = 100;                            // baseline.
         state.Position = PlayerPosition.Resting;   // anchors HpRest at T0.
         clock.Advance(TimeSpan.FromSeconds(15));
-        state.Position = PlayerPosition.Standing;  // bailed before 20 s.
+        state.Position = PlayerPosition.Standing;  // bailed before 21 s.
         clock.Advance(TimeSpan.FromSeconds(15));   // T0 + 30 s total.
         state.Hp = 102;                            // uptick lands.
 
-        Assert.Equal(0, tracker.HpRest.Stat.SampleCount);
         Assert.False(tracker.HpRest.IsActive);
-        Assert.Equal(1, tracker.HpNatural.Stat.SampleCount);   // natural claimed it.
+        Assert.Equal(clock.Now, tracker.HpNatural.Anchor);   // natural claimed it.
         tracker.Dispose();
     }
 
@@ -110,7 +104,7 @@ public sealed class RegenTrackerTests
         clock.Advance(TimeSpan.FromSeconds(30));
         state.Hp = 80;                             // took damage.
 
-        Assert.Equal(0, tracker.HpNatural.Stat.SampleCount);
+        Assert.False(tracker.HpNatural.IsActive);
         tracker.Dispose();
     }
 
@@ -124,7 +118,7 @@ public sealed class RegenTrackerTests
         clock.Advance(TimeSpan.FromSeconds(1));    // still inside the 3 s grace window.
         state.Hp = 130;                            // looks like a heal — should be dropped.
 
-        Assert.Equal(0, tracker.HpNatural.Stat.SampleCount);
+        Assert.False(tracker.HpNatural.IsActive);
         tracker.Dispose();
     }
 
@@ -138,7 +132,7 @@ public sealed class RegenTrackerTests
         clock.Advance(TimeSpan.FromSeconds(10));   // well past the 3 s window.
         state.Hp = 103;
 
-        Assert.Equal(1, tracker.HpNatural.Stat.SampleCount);
+        Assert.Equal(clock.Now, tracker.HpNatural.Anchor);
         tracker.Dispose();
     }
 
@@ -151,7 +145,7 @@ public sealed class RegenTrackerTests
         clock.Advance(TimeSpan.FromSeconds(15));   // one medi cycle.
         state.Ma = 55;
 
-        Assert.Equal(1, tracker.MpMedi.Stat.SampleCount);
+        Assert.Equal(clock.Now, tracker.MpMedi.Anchor);
         tracker.Dispose();
     }
 
@@ -163,8 +157,8 @@ public sealed class RegenTrackerTests
         clock.Advance(TimeSpan.FromSeconds(30));
         state.Ma = 51;
 
-        Assert.Equal(1, tracker.MpNatural.Stat.SampleCount);
-        Assert.Equal(0, tracker.MpMedi.Stat.SampleCount);
+        Assert.Equal(clock.Now, tracker.MpNatural.Anchor);
+        Assert.False(tracker.MpMedi.IsActive);
         tracker.Dispose();
     }
 
@@ -224,54 +218,6 @@ public sealed class RegenTrackerTests
     }
 
     [Fact]
-    public void ConfidenceTiers_LowMediumHigh()
-    {
-        RegenStat stat = new(TimeSpan.FromSeconds(30));
-        Assert.Equal(RegenConfidence.Low, stat.Confidence);
-
-        for (int i = 0; i < 3; i++) stat.AddSample(TimeSpan.FromSeconds(30), 4);
-        Assert.Equal(RegenConfidence.Medium, stat.Confidence);
-
-        for (int i = 0; i < 10; i++) stat.AddSample(TimeSpan.FromSeconds(30), 4);
-        Assert.Equal(RegenConfidence.High, stat.Confidence);
-    }
-
-    [Fact]
-    public void OutlierInterval_IsDropped()
-    {
-        RegenStat stat = new(TimeSpan.FromSeconds(30));
-        stat.AddSample(TimeSpan.FromSeconds(5), 4);    // round(5/30) = 0 cycles → drop.
-        stat.AddSample(TimeSpan.FromSeconds(180), 4);  // round(180/30) = 6 cycles → drop.
-        Assert.Equal(0, stat.SampleCount);
-
-        stat.AddSample(TimeSpan.FromSeconds(30), 4);   // 1 cycle → accept.
-        Assert.Equal(1, stat.SampleCount);
-    }
-
-    [Fact]
-    public void Reset_ClearsSampleCountAndAmount_KeepsSeedInterval()
-    {
-        RegenStat stat = new(TimeSpan.FromSeconds(20));
-        stat.AddSample(TimeSpan.FromSeconds(22), 6);
-        Assert.Equal(1, stat.SampleCount);
-
-        stat.Reset();
-        Assert.Equal(0, stat.SampleCount);
-        Assert.Equal(TimeSpan.FromSeconds(20), stat.EstimatedInterval);
-        Assert.Equal(0, stat.EstimatedAmount);
-    }
-
-    [Fact]
-    public void SeedIntervalsMatchTheStockEngine()
-    {
-        // Pin the Stock engine's tick intervals (30 s natural, rest every 21 s,
-        // meditate every 15 s) so a stray refactor doesn't silently re-tune them.
-        Assert.Equal(TimeSpan.FromSeconds(30), RegenConstants.SeedStandingInterval);
-        Assert.Equal(TimeSpan.FromSeconds(21), RegenConstants.SeedRestingInterval);
-        Assert.Equal(TimeSpan.FromSeconds(15), RegenConstants.SeedMeditatingInterval);
-    }
-
-    [Fact]
     public void DefaultRealm_NaturalCadenceIsStockThirtySeconds()
     {
         var (state, tracker, _) = Setup();
@@ -322,6 +268,27 @@ public sealed class RegenTrackerTests
 
         Assert.Equal(TimeSpan.FromSeconds(20), tracker.GetTimeToNextMpNaturalTick());
         Assert.Equal(TimeSpan.FromSeconds(10), tracker.GetTimeToNextHpNaturalTick());
+        tracker.Dispose();
+    }
+
+    // On Paradigm meditating rides the mana grid. A gain while meditating that lands
+    // when the mana pass is due is the pass itself: the mana cycle takes it, and
+    // with no HP gains of its own lately the HP countdown follows it.
+    [Fact]
+    public void ParaMud_MeditatingGain_WhenTheManaPassIsDue_IsThePass()
+    {
+        var (state, tracker, clock) = Setup();
+        tracker.SetRealm(RealmType.ParaMud);
+        state.Hp = 100;
+        state.Ma = 50;
+        state.Ma = 57;                              // the mana pass, at T0
+        state.Position = PlayerPosition.Meditating;
+
+        clock.Advance(TimeSpan.FromSeconds(30));
+        state.Ma = 70;                              // the next pass, while meditating
+
+        Assert.Equal(clock.Now, tracker.MpNatural.Anchor);
+        Assert.Equal(clock.Now, tracker.HpNatural.Anchor);
         tracker.Dispose();
     }
 
@@ -912,23 +879,6 @@ public sealed class RegenTrackerTests
         state.Hp = 103;
 
         Assert.Equal(TimeSpan.FromSeconds(30), tracker.GetTimeToNextHpNaturalTick());
-        tracker.Dispose();
-    }
-
-    [Fact]
-    public void SetRealm_ClearsStaleAmountEstimate()
-    {
-        // The per-tick amount was learned under the old realm's divisor +
-        // cadence — a realm switch invalidates it.
-        var (state, tracker, clock) = Setup();
-        state.Hp = 100;
-        clock.Advance(TimeSpan.FromSeconds(30));
-        state.Hp = 106;                            // a stock-cadence sample lands.
-        Assert.Equal(1, tracker.HpNatural.Stat.SampleCount);
-
-        tracker.SetRealm(RealmType.ParaMud);
-        Assert.Equal(0, tracker.HpNatural.Stat.SampleCount);
-        Assert.Equal(0, tracker.HpNatural.Stat.EstimatedAmount);
         tracker.Dispose();
     }
 }

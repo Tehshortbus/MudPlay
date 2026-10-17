@@ -4,12 +4,10 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Phase 11 — <see cref="TimeAnalysisTracker"/> activity partition + affliction
-/// overlays. An injected clock makes the wall-clock arithmetic deterministic:
-/// inputs are pushed via the <c>Note*</c> forwarders and time advanced by hand,
-/// so each test pins exactly how a slice is attributed.
-/// </summary>
+// TimeAnalysisTracker activity partition + affliction
+// overlays. An injected clock makes the wall-clock arithmetic deterministic:
+// inputs are pushed via the Note* forwarders and time advanced by hand,
+// so each test pins exactly how a slice is attributed.
 public sealed class TimeAnalysisTrackerTests
 {
     private sealed class Clock

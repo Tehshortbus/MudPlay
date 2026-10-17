@@ -307,8 +307,7 @@ public sealed partial class RouteChoiceDialogViewModel
         // broke leader sees whether it's payable and from where before committing.
         string? economyNote = null,
         // The room the walk starts from, for the "From X to Y" title. Optional (defaults
-        // empty → a plain "Route to Y") so the picker's many unit tests, which don't
-        // exercise the heading, construct the VM without it.
+        // empty → a plain "Route to Y").
         string sourceLabel = "",
         Func<RouteChoiceResult, string?>? teleportsOn = null)
     {

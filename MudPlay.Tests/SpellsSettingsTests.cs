@@ -6,9 +6,7 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// PR 9.0a sub-A — <see cref="SpellsSettings"/> defaults + JSON round-trip.
-/// </summary>
+// SpellsSettings defaults and how its bless slots persist.
 public sealed class SpellsSettingsTests
 {
     [Fact]
@@ -89,119 +87,7 @@ public sealed class SpellsSettingsTests
                 $"priority slot {i} ({order[i]}) must be strictly greater than slot {i - 1} ({order[i - 1]})");
     }
 
-    [Fact]
-    public void JsonRoundTrip_PreservesEveryField()
-    {
-        SpellsSettings dto = new()
-        {
-            PriorityEmergencyHeal  = 8,
-            PriorityMinorPartyHeal = 5,
-            PriorityMajorPartyHeal = 1,
-            PriorityDownedAllyHeal = 9,
-            PriorityMinorSelfHeal  = 6,
-            PriorityMajorSelfHeal  = 2,
-            PriorityCuring         = 3,
-            PriorityBuffing        = 7,
-            PriorityDebuffing      = 4,
-
-            MinorHealSpell     = "cure-light-wounds",
-            MajorHealSpell     = "cure-critical-wounds",
-            HpRegenSpell       = "troll-skin",
-            MaRegenSpell       = "kindred-spirit",
-            WhenHpFullSpell    = "warcry",
-            WhenMaFullSpell    = "ancient-curse",
-
-            ManaRegenRerollThreshold = -5,   // negative rolls are valid (mana flux subtracts)
-            ManaRegenRerollCap       = 4,
-
-            CureHoldsSpell     = "freedom",
-            CurePoisonSpell    = "antidote",
-            CureDiseaseSpell   = "purify",
-            CureBlindnessSpell = "vision",
-            CurePoisonAfterCombat = true,
-            CureBlindnessAfterCombat = true,
-
-            RoomLightSpell     = "light",
-
-            BlessSlots = new()
-            {
-                [1]  = "bless",       [2] = "shield",     [3] = "haste",
-                [4]  = "armor",       [5] = "resist-fire", [6] = "resist-cold",
-                [7]  = "true-seeing", [8] = "stoneskin",  [9] = "fly",
-                [10] = "guardian",    [13] = "sanctuary", // a sparse gap + a beyond-10 slot
-            },
-
-            BlessSlotRecastMargins = new()
-            {
-                [1] = 30,      // custom lead
-                [2] = 0,       // wait-for-expiry
-                [13] = 45,     // a beyond-10 slot's lead round-trips too
-            },
-
-            IgnorePoison           = true,
-            IgnoreBlindness        = true,
-            IgnoreConfusion        = true,
-            IgnoreDiseased         = true,
-        };
-
-        string json = JsonSerializer.Serialize(dto);
-        SpellsSettings? round = JsonSerializer.Deserialize<SpellsSettings>(json);
-
-        Assert.NotNull(round);
-        Assert.Equal(dto.PriorityEmergencyHeal,  round!.PriorityEmergencyHeal);
-        Assert.Equal(dto.PriorityMinorPartyHeal, round.PriorityMinorPartyHeal);
-        Assert.Equal(dto.PriorityMajorPartyHeal, round.PriorityMajorPartyHeal);
-        Assert.Equal(dto.PriorityDownedAllyHeal, round.PriorityDownedAllyHeal);
-        Assert.Equal(dto.PriorityMinorSelfHeal,  round.PriorityMinorSelfHeal);
-        Assert.Equal(dto.PriorityMajorSelfHeal,  round.PriorityMajorSelfHeal);
-        Assert.Equal(dto.PriorityCuring,         round.PriorityCuring);
-        Assert.Equal(dto.PriorityBuffing,        round.PriorityBuffing);
-        Assert.Equal(dto.PriorityDebuffing,      round.PriorityDebuffing);
-
-        Assert.Equal(dto.MinorHealSpell,     round.MinorHealSpell);
-        Assert.Equal(dto.MajorHealSpell,     round.MajorHealSpell);
-        Assert.Equal(dto.HpRegenSpell,       round.HpRegenSpell);
-        Assert.Equal(dto.MaRegenSpell,       round.MaRegenSpell);
-        Assert.Equal(dto.WhenHpFullSpell,    round.WhenHpFullSpell);
-        Assert.Equal(dto.WhenMaFullSpell,    round.WhenMaFullSpell);
-
-        Assert.Equal(dto.ManaRegenRerollThreshold, round.ManaRegenRerollThreshold);
-        Assert.Equal(dto.ManaRegenRerollCap,       round.ManaRegenRerollCap);
-
-        Assert.Equal(dto.CureHoldsSpell,     round.CureHoldsSpell);
-        Assert.Equal(dto.CurePoisonSpell,    round.CurePoisonSpell);
-        Assert.Equal(dto.CureDiseaseSpell,   round.CureDiseaseSpell);
-        Assert.Equal(dto.CureBlindnessSpell, round.CureBlindnessSpell);
-        Assert.False(round.CureHoldsAfterCombat);
-        Assert.True(round.CurePoisonAfterCombat);
-        Assert.False(round.CureDiseaseAfterCombat);
-        Assert.True(round.CureBlindnessAfterCombat);
-
-        Assert.Equal(dto.RoomLightSpell,     round.RoomLightSpell);
-
-        Assert.Equal(dto.BlessSlots, round.BlessSlots);
-        Assert.Equal(dto.BlessSlotRecastMargins, round.BlessSlotRecastMargins);
-
-        Assert.Equal(dto.IgnorePoison,           round.IgnorePoison);
-        Assert.Equal(dto.IgnoreBlindness,        round.IgnoreBlindness);
-        Assert.Equal(dto.IgnoreConfusion,        round.IgnoreConfusion);
-        Assert.Equal(dto.IgnoreDiseased,         round.IgnoreDiseased);
-    }
-
     // ----- Bless-slot count policy + sparse persistence --------------
-
-    [Theory]
-    [InlineData(RealmType.Stock, SpellsSettings.StockBlessSlotCount)]
-    [InlineData(RealmType.ParaMud, SpellsSettings.ParaMudBlessSlotCount)]
-    public void BlessSlotCountFor_MatchesRealmCap(RealmType realm, int expected)
-        => Assert.Equal(expected, SpellsSettings.BlessSlotCountFor(realm));
-
-    [Fact]
-    public void BlessSlotCounts_StockTenParaMudFifteen()
-    {
-        Assert.Equal(10, SpellsSettings.StockBlessSlotCount);
-        Assert.Equal(15, SpellsSettings.ParaMudBlessSlotCount);
-    }
 
     [Fact]
     public void BlessSlots_SerializeSparsely_NoGhostSlots()

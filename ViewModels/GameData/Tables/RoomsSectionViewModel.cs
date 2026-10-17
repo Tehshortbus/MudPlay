@@ -40,8 +40,6 @@ public sealed class RoomsSectionViewModel : JsonTableSectionViewModel, IEditable
         "N", "S", "E", "W",
     };
 
-    public override string SearchKeyColumn => "Name";
-
     public override IEnumerable<string> SearchableLabels => new[]
     {
         Title, "room", "map", "area", "shop", "lair", "exit",

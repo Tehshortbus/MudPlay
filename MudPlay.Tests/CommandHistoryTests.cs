@@ -3,11 +3,9 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Pins the shared command-recall ring: newest-last ordering, a 10-entry
-/// cap that drops the oldest, blank / consecutive-duplicate suppression,
-/// and a Changed event on every real mutation.
-/// </summary>
+// Pins the shared command-recall ring: newest-last ordering, a 10-entry
+// cap that drops the oldest, blank / consecutive-duplicate suppression,
+// and a Changed event on every real mutation.
 public sealed class CommandHistoryTests
 {
     [Fact]

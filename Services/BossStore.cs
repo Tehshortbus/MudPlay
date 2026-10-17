@@ -47,8 +47,7 @@ public sealed class BossStore
     // refresh on an edit.
     public event Action? Changed;
 
-    // seedPath defaults to the bootstrapped Global copy; parameterized so tests can
-    // point at a scratch seed.
+    // seedPath defaults to the bootstrapped Global copy.
     public BossStore(LogService? log = null, string? seedPath = null)
     {
         _log = log;

@@ -37,8 +37,7 @@ public sealed class PartyWaitMovementGate : IDisposable
     private readonly LogService? _log;
     private bool _gateAsserted;
 
-    // Overridable clock so tests drive the wait-timer deterministically.
-    public Func<DateTime> NowProvider { get; set; } = () => DateTime.UtcNow;
+    private readonly Func<DateTime> _now;
 
     // Leader-side cap on how long a single @wait holds our movement before we
     // give up and resume (Settings → Party "If leading, wait only", mirrored
@@ -49,18 +48,24 @@ public sealed class PartyWaitMovementGate : IDisposable
     public TimeSpan WaitWindow { get; set; } = TimeSpan.FromSeconds(90);
 
     private DateTime _waitStarted;
-    private Avalonia.Threading.DispatcherTimer? _timer;
+    // Arms one tick after the delay; disposing what it returns cancels it.
+    private readonly Func<TimeSpan, Action, IDisposable> _schedule;
+    private IDisposable? _timer;
 
     public PartyWaitMovementGate(
         PartyEssentialHandlers essentials,
         MovementCoordinator coordinator,
-        LogService? log = null)
+        LogService? log = null,
+        Func<TimeSpan, Action, IDisposable>? schedule = null,
+        Func<DateTime>? now = null)
     {
+        _now = now ?? (() => DateTime.UtcNow);
         ArgumentNullException.ThrowIfNull(essentials);
         ArgumentNullException.ThrowIfNull(coordinator);
         _essentials = essentials;
         _coordinator = coordinator;
         _log = log;
+        _schedule = schedule ?? DispatcherTicks.Once;
 
         _essentials.PauseGateChanged += OnPauseGateChanged;
         Evaluate();
@@ -78,7 +83,7 @@ public sealed class PartyWaitMovementGate : IDisposable
 
         if (shouldHold)
         {
-            _waitStarted = NowProvider();
+            _waitStarted = _now();
             string who = string.Join(", ", _essentials.WaitingMembers);
             string reason = who.Length > 0 ? $"members={who}" : "party @wait";
             _coordinator.AssertGate(MovementCoordinator.PartyWaitGate, AsserterName, reason);
@@ -99,21 +104,21 @@ public sealed class PartyWaitMovementGate : IDisposable
     {
         if (WaitWindow <= TimeSpan.Zero) return;
         if (_timer is not null) return;
-        _timer = new Avalonia.Threading.DispatcherTimer(
-            interval: TimeSpan.FromSeconds(1),
-            priority: Avalonia.Threading.DispatcherPriority.Background,
-            callback: (_, _) => Tick());
-        _timer.Start();
+        _timer = _schedule(TimeSpan.FromSeconds(1), OnTimer);
+    }
+
+    // One tick of the 1 s cadence: the next is armed before this one runs.
+    private void OnTimer()
+    {
+        _timer = _schedule(TimeSpan.FromSeconds(1), OnTimer);
+        Tick();
     }
 
     private void StopTimer()
     {
-        _timer?.Stop();
+        _timer?.Dispose();
         _timer = null;
     }
-
-    // Test seam — runs one expiry check without a real timer.
-    internal void TickForTests() => Tick();
 
     // The master switch (true = off). Off, the inbound waits are still recorded
     // (the hold itself is parked by MovementCoordinator), and the wait limit does
@@ -126,10 +131,10 @@ public sealed class PartyWaitMovementGate : IDisposable
         if (!_gateAsserted || WaitWindow <= TimeSpan.Zero) { StopTimer(); return; }
         if (MasterSwitchOff?.Invoke() == true)
         {
-            _waitStarted = NowProvider();
+            _waitStarted = _now();
             return;
         }
-        if (NowProvider() - _waitStarted < WaitWindow) return;
+        if (_now() - _waitStarted < WaitWindow) return;
         _log?.Info("Party",
             $"Party @wait timer expired after {WaitWindow.TotalSeconds:0}s — resuming.");
         // Clears WaitingMembers + roster chips and fires PauseGateChanged(false),

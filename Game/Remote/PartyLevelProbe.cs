@@ -51,9 +51,6 @@ public sealed partial class PartyLevelProbe : IDisposable
 
         // An empty result — no party members to ask, or the probe was disposed.
         public static PartyLevelResult Empty => new(0, 0, NoLevels);
-
-        // True when at least one member answered (with a level or "unknown").
-        public bool AnyReplied => Replied > 0;
     }
 
     private sealed class PendingQuery

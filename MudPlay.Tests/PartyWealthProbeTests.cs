@@ -9,15 +9,13 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Mirrors <see cref="PartyLevelProbeTests"/>: the probe is wired to a real
-/// <see cref="ChatRouter"/> so replies flow through the same classification
-/// path production uses, a <see cref="PartyBroadcaster"/> whose wire is
-/// captured, and a captured <c>armWindow</c> seam so tests fire the reply
-/// window deterministically. The three @wealth reply shapes
-/// (<see cref="InventoryQueryHandler"/>.OnWealth) are exercised: a loaded
-/// wallet with coins, a real empty purse, and "wealth unknown".
-/// </summary>
+// Mirrors PartyLevelProbeTests: the probe is wired to a real
+// ChatRouter so replies flow through the same classification
+// path production uses, a PartyBroadcaster whose wire is
+// captured, and a captured armWindow seam so tests fire the reply
+// window deterministically. The three @wealth reply shapes
+// (InventoryQueryHandler.OnWealth) are exercised: a loaded
+// wallet with coins, a real empty purse, and "wealth unknown".
 public sealed class PartyWealthProbeTests
 {
     private sealed class Harness
@@ -93,7 +91,7 @@ public sealed class PartyWealthProbeTests
         PartyWealthProbe.PartyWealthResult r = await h.Probe.QueryAsync();
 
         Assert.Equal(0, r.Expected);
-        Assert.False(r.AnyReplied);
+        Assert.Equal(0, r.Replied);
         Assert.Empty(h.Wire);   // no broadcast fired
     }
 
@@ -130,7 +128,7 @@ public sealed class PartyWealthProbeTests
         Assert.Equal(2, r.Replied);
         Assert.Equal(4200, r.WealthByMember["Bob"]);
         Assert.Equal(150, r.WealthByMember["Al"]);
-        Assert.True(r.AnyReplied);
+        Assert.True(r.Replied > 0);
     }
 
     [Fact]
@@ -373,6 +371,6 @@ public sealed class PartyWealthProbeTests
 
         PartyWealthProbe.PartyWealthResult r = await task;
         Assert.Equal(0, r.Expected);
-        Assert.False(r.AnyReplied);
+        Assert.Equal(0, r.Replied);
     }
 }

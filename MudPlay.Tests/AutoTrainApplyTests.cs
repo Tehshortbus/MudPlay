@@ -24,6 +24,9 @@ namespace MudPlay.Tests;
 // Strength 133; raising it to 136 costs 25.
 public sealed class AutoTrainApplyTests : IDisposable
 {
+    // The game's output, fed the way the client receives it.
+    private readonly ServerFeed _feed = new();
+
     private const int Green = 2, Cyan = 6, Red = 1;
 
     // Payloads a pass sends into the form: eleven fields, then the bare return
@@ -35,7 +38,7 @@ public sealed class AutoTrainApplyTests : IDisposable
     private readonly StatParser _parser;
     private readonly MessageRouter _router = new();
     private readonly TrainerMenuTracker _trainer;
-    private readonly ProfileService _profile = new();
+    private readonly ProfileService _profile = TestProfiles.Service();
     private readonly InventoryManager _inventory = new();
     private readonly object _wireLock = new();
     private readonly List<string> _sent = new();
@@ -54,8 +57,9 @@ public sealed class AutoTrainApplyTests : IDisposable
         _root = Path.Combine(Path.GetTempPath(), "mudplay-autotrain-" + Guid.NewGuid().ToString("N"));
         DefaultPatterns.Seed(_router);
         _parser = new StatParser(_stats);
+        _parser.AttachLineExtractor(_feed.Lines);
         _trainer = new TrainerMenuTracker(_router, new PartyState());
-        _profile.LoadBlank();
+        _profile.LoadDefaultProfile();
     }
 
     public void Dispose()
@@ -137,22 +141,14 @@ public sealed class AutoTrainApplyTests : IDisposable
 
     private void Feed(params (string Text, int Colour)[] runs)
     {
-        var text = new StringBuilder();
-        var attrs = new List<CellAttributes>();
-        foreach ((string run, int colour) in runs)
-        {
-            text.Append(run);
-            for (int i = 0; i < run.Length; i++)
-                attrs.Add(CellAttributes.Default.WithForeground(TerminalColor.Indexed(colour)));
-        }
-        _parser.FeedTestLine(text.ToString(), attributes: attrs.ToArray());
+        _feed.Coloured(runs.Select(r => (r.Text, r.Colour, Bold: false)));
     }
 
     // A level-31 `stat` screen: Strength and Agility as given, with an optional
     // effect line under the stats.
     private void FeedStat(string str, int strColour, string agl, int aglColour, string? effect = null, int cp = 26)
     {
-        _parser.TestArm();
+        _parser.ObserveOutbound(Encoding.Latin1.GetBytes("stat\r"));
         Feed(("Name: ", Green), ("Someone Somewhere              ", Cyan), ("Lives/CP: ", Green), ($"    9/{cp}", Cyan));
         Feed(("Race: ", Green), ("Half-Orc    ", Cyan), ("Exp: ", Green), ("125379954       ", Cyan), ("Perception: ", Green), ("    50", Cyan));
         Feed(("Class: ", Green), ("Mystic     ", Cyan), ("Level: ", Green), ("31            ", Cyan), ("Stealth: ", Green), ("      107", Cyan));
@@ -160,8 +156,8 @@ public sealed class AutoTrainApplyTests : IDisposable
         Feed(("Strength: ", Green), (str.PadRight(7), strColour), ("Agility:", Green), (agl.PadRight(12), aglColour), ("Tracking:     ", Green), ("   0", Cyan));
         Feed(("Intellect: ", Green), ("40     ", Cyan), ("Health:  ", Green), ("60          ", Cyan), ("Martial Arts: ", Green), ("  97", Cyan));
         Feed(("Willpower: ", Green), ("30     ", Cyan), ("Charm:   ", Green), ("30          ", Cyan), ("MagicRes: ", Green), ("      47", Cyan));
-        if (effect is not null) _parser.FeedTestLine(effect);
-        _parser.FeedTestLine("[HP=318/KAI=14]:", isPromptLine: true);
+        if (effect is not null) _feed.Line(effect);
+        _feed.Line("[HP=318/KAI=14]:");
     }
 
     private void CleanStat(int cp = 26) => FeedStat(" 133", Cyan, " 100", Cyan, cp: cp);

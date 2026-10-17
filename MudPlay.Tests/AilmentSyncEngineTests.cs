@@ -4,7 +4,6 @@ using MudPlay.Game.Conditions;
 using MudPlay.Models.GameData;
 using MudPlay.Models.Profile;
 using MudPlay.Services;
-using MudPlay.Terminal;
 using Xunit;
 
 namespace MudPlay.Tests;
@@ -26,23 +25,26 @@ public sealed class AilmentSyncEngineTests
     {
         public MessageStore Messages { get; } = new();
         public ConditionTracker Tracker { get; }
+        // The game's output, fed the way the client receives it.
+        public ServerFeed Server { get; } = new();
         public PartyState Party { get; } = new();
         public PartyRestSync Rest { get; }
         public AilmentSyncEngine Engine { get; }
         public SpellsSettings Spells { get; set; } = new();
 
-        /// <summary>Ailment flags the player has a cure spell configured for.</summary>
+        // Ailment flags the player has a cure spell configured for.
         public MessageFlags CureConfigured { get; set; } = MessageFlags.None;
 
-        /// <summary>Say-channel wire (engine's own sender).</summary>
+        // Say-channel wire (engine's own sender).
         public List<string> Say { get; } = new();
 
-        /// <summary>Telepath wire (@wait / @ok via PartyRestSync).</summary>
+        // Telepath wire (@wait / @ok via PartyRestSync).
         public List<string> Telepath { get; } = new();
 
         public Harness()
         {
             Tracker = new ConditionTracker(Messages, null);
+            Tracker.AttachLineExtractor(Server.Lines);
             Rest = new PartyRestSync(Party);
             Rest.SetWireSender(b => Telepath.Add(Encoding.Latin1.GetString(b)));
             Engine = new AilmentSyncEngine(
@@ -57,17 +59,7 @@ public sealed class AilmentSyncEngineTests
             Party.LeaderName = "Leader";
         }
 
-        public void Feed(string text)
-        {
-            var emitted = new LineExtractor.EmittedLine(
-                text, Array.Empty<CellAttributes>(),
-                DateTimeOffset.UtcNow, IsPromptLine: false);
-            typeof(ConditionTracker)
-                .GetMethod("OnLine",
-                    System.Reflection.BindingFlags.Instance |
-                    System.Reflection.BindingFlags.NonPublic)!
-                .Invoke(Tracker, new object[] { emitted });
-        }
+        public void Feed(string text) => Server.Line(text);
 
         public void Dispose()
         {
@@ -310,14 +302,18 @@ public sealed class AilmentSyncEngineTests
     }
 
     [Fact]
-    public void NoSayWireSender_DoesNotThrow()
+    public void NoSayWireSender_TheAnnounceStillPlacesTheWait()
     {
-        // Engine with no say sender bound — the announce path must no-op
-        // silently rather than NRE.
+        // Engine with no say sender bound: blindness is announced on say, and with
+        // nowhere to say it the announce path still runs on to the @wait.
         MessageStore messages = new();
         ConditionTracker tracker = new(messages, null);
+        ServerFeed feed = new();
+        tracker.AttachLineExtractor(feed.Lines);
         PartyState party = new();
         PartyRestSync rest = new(party);
+        List<string> telepath = new();
+        rest.SetWireSender(b => telepath.Add(Encoding.Latin1.GetString(b)));
         party.IsInParty = true;
         party.LeaderName = "Leader";
         using AilmentSyncEngine engine = new(
@@ -325,15 +321,11 @@ public sealed class AilmentSyncEngineTests
             isInParty: () => party.IsInParty,
             hasCureConfigured: _ => false,
             log: null);
-        messages.Messages.Add(Ailment("Poison", MessageFlags.Poisoned, "poisoned!", "poison wears off."));
+        messages.Messages.Add(Ailment("Blind", MessageFlags.Blinded, "blinded!", "vision returns."));
 
-        var emitted = new LineExtractor.EmittedLine(
-            "You have been poisoned!", Array.Empty<CellAttributes>(),
-            DateTimeOffset.UtcNow, IsPromptLine: false);
-        typeof(ConditionTracker)
-            .GetMethod("OnLine", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
-            .Invoke(tracker, new object[] { emitted });
+        feed.Line("You have been blinded!");
 
+        Assert.Equal($"/Leader @wait {PartyRestSync.BlindNote}\r", Assert.Single(telepath));
         tracker.Dispose();
         rest.Dispose();
     }
@@ -371,7 +363,8 @@ public sealed class AilmentSyncEngineTests
         h.Spells = new SpellsSettings { IgnorePoison = true };
 
         h.Feed("You have been poisoned!");
-        Assert.Empty(h.Telepath);   // ignored at onset — say fired, no @wait
+        Assert.Empty(h.Telepath);   // ignored at onset — no @wait
+        Assert.Empty(h.Say);        // poison is never said
 
         // Flip IgnorePoison OFF while still poisoned → (re)place the wait.
         h.Spells.IgnorePoison = false;

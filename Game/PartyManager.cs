@@ -160,8 +160,7 @@ public sealed partial class PartyManager : IDisposable
     public Models.Profile.PartyRank LocalRankPreference { get; set; }
         = Models.Profile.PartyRank.Mid;
 
-    // Test-friendly clock — overridable so tests don't have to wait real time.
-    internal Func<DateTimeOffset> NowProvider { get; set; } = () => DateTimeOffset.UtcNow;
+    private readonly Func<DateTimeOffset> _now;
 
     // Locally-connected character's given name (matches the profile name; e.g.
     // "MudPlay" / "Raijin"). Used to detect PartyMember.IsSelf when parsing par
@@ -377,8 +376,9 @@ public sealed partial class PartyManager : IDisposable
     // main-window VM owns it because it lives only for the active terminal
     // session, while the manager is app-level so consumers (the remote-command
     // engine, the PartyWindow) can hold a stable reference.
-    public PartyManager(MessageRouter router, PartyState state, LogService? log = null)
+    public PartyManager(MessageRouter router, PartyState state, LogService? log = null, Func<DateTimeOffset>? now = null)
     {
+        _now = now ?? (() => DateTimeOffset.UtcNow);
         ArgumentNullException.ThrowIfNull(router);
         ArgumentNullException.ThrowIfNull(state);
         _router = router;
@@ -390,7 +390,7 @@ public sealed partial class PartyManager : IDisposable
         _subs.Add(_router.Subscribe(KnownPatterns.PartyStopsFollowing, OnStopsFollowing));
         _subs.Add(_router.Subscribe(KnownPatterns.PartyLeftBehind,     OnLeftBehind));
         _subs.Add(_router.Subscribe(KnownPatterns.PartyYouInvited,     OnYouInvited));
-        _subs.Add(_router.Subscribe(KnownPatterns.PartyParFollowing,   _ => _parFollowingLineAt = NowProvider()));
+        _subs.Add(_router.Subscribe(KnownPatterns.PartyParFollowing,   _ => _parFollowingLineAt = _now()));
         _subs.Add(_router.Subscribe(KnownPatterns.PartyHeader,         OnParHeader));
         // Disconnect / death / reconnect grace window. We watch every "X just
         // disconnected" / "X just entered the Realm" line because a party
@@ -445,8 +445,7 @@ public sealed partial class PartyManager : IDisposable
     // Send `uninvite X` on the wire — drops X's pending invite (or, on a member
     // who already joined, kicks them from the party); PartyDeathRosterCleanup uses
     // it for a member who died mid-route. Safe to call for any roster row. No-op when no
-    // wire-sender is bound (pre-connect / tests inspect LastSentForTests
-    // directly).
+    // wire-sender is bound (pre-connect).
     //
     // We do NOT pre-emptively remove the row from PartyState.Members — the
     // server-side echo ("X has been removed from your followers.") goes through
@@ -463,7 +462,6 @@ public sealed partial class PartyManager : IDisposable
         string given = GivenNameOf(playerGiven);
         if (string.IsNullOrEmpty(given)) return;
         byte[] bytes = System.Text.Encoding.Latin1.GetBytes($"uninvite {given}\r");
-        LastSentForTests.Add(bytes);
         _wireSender?.Invoke(bytes);
     }
 
@@ -482,7 +480,6 @@ public sealed partial class PartyManager : IDisposable
         string given = GivenNameOf(name);
         if (string.IsNullOrEmpty(given)) return;
         byte[] bytes = System.Text.Encoding.Latin1.GetBytes($"invite {given}\r");
-        LastSentForTests.Add(bytes);
         _wireSender?.Invoke(bytes);
     }
 
@@ -508,9 +505,6 @@ public sealed partial class PartyManager : IDisposable
         RemoveMember(given);
     }
 
-    // Test seam — most recent bytes the manager asked to write to the wire.
-    internal List<byte[]> LastSentForTests { get; } = new();
-
     // Bind the live PlayerState so the local character's PartyMember row stays
     // in sync with every prompt (PromptParser writes HP/MA on every status
     // line). Without this the self row only updates on a `par` poll, which means
@@ -518,7 +512,7 @@ public sealed partial class PartyManager : IDisposable
     //
     // We mirror absolute values into the same observable fields the rest of the
     // roster uses — PartyMember.BaselineHp + HpPercent, etc. — so the
-    // PartyMember.HpDisplay computation works identically for self and others.
+    // PartyMember.HpRichDisplay computation works identically for self and others.
     // For non-self members we only know percent from par + max from the on-join
     // @health round-trip (computed-back current = max × pct / 100); for self we
     // know exact current + max from PromptParser, and the percent is recomputed
@@ -570,9 +564,9 @@ public sealed partial class PartyManager : IDisposable
         foreach (PartyMember m in State.Members)
         {
             if (!m.IsSelf) continue;
-            // Baseline = max (drives HpDisplay's "cur/max" formatting).
+            // Baseline = max (drives HpRichDisplay's "cur/max" formatting).
             // Percent = exact current * 100 / max — int rounding here is
-            // fine because HpDisplay multiplies max back out the same
+            // fine because HpRichDisplay multiplies max back out the same
             // way for non-self members; self always has the precise
             // baseline so the cur it computes lines up.
             m.BaselineHp = _playerState.MaxHp;
@@ -734,7 +728,7 @@ public sealed partial class PartyManager : IDisposable
         // so stamp X into the grace window. If they re-enter the realm
         // inside the window, the Re-invite-lost-members flow picks
         // them up.
-        _recentlyDisconnected[name] = NowProvider();
+        _recentlyDisconnected[name] = _now();
         RemoveMember(name);
     }
 
@@ -749,7 +743,7 @@ public sealed partial class PartyManager : IDisposable
         string name = result.Groups[0];
         if (string.IsNullOrEmpty(name)) return;
         bool leading = State.SelfIsLeader;
-        _recentlyDisconnected[name] = NowProvider();
+        _recentlyDisconnected[name] = _now();
         RemoveMember(name);
         if (leading && AutoInviteEnabled) MemberLeftBehind?.Invoke(GivenNameOf(name));
     }
@@ -819,7 +813,7 @@ public sealed partial class PartyManager : IDisposable
         // we're still leader / soloed at that moment.
         if (State.SelfIsLeader)
         {
-            DateTimeOffset now = NowProvider();
+            DateTimeOffset now = _now();
             foreach (PartyMember m in State.Members)
             {
                 if (m.IsSelf) continue;
@@ -934,7 +928,7 @@ public sealed partial class PartyManager : IDisposable
             : null;
         // The game's own word outranks what we believe: told we follow someone, the
         // leader can't be an [Invited] row, and nothing in the block makes us lead.
-        bool saysFollowing = NowProvider() - _parFollowingLineAt <= ParFollowingLineWindow;
+        bool saysFollowing = _now() - _parFollowingLineAt <= ParFollowingLineWindow;
         _parFollowingLineAt = DateTimeOffset.MinValue;
         _parFollowing = saysFollowing || _parFollowedLeader is not null;
         if (saysFollowing)
@@ -1069,7 +1063,7 @@ public sealed partial class PartyManager : IDisposable
         }
         bool selfLeads = State.SelfIsLeader;
         RemoveMember(given);
-        _recentlyDisconnected[given] = NowProvider();
+        _recentlyDisconnected[given] = _now();
         // Leader-only: a follower's own movement is already held by FollowerGate,
         // so a second wait gate there would only linger to timeout.
         if (selfLeads) MemberDisconnected?.Invoke(given);
@@ -1093,7 +1087,7 @@ public sealed partial class PartyManager : IDisposable
         if (string.IsNullOrEmpty(name)) return;
         if (!_recentlyDisconnected.TryGetValue(name, out DateTimeOffset droppedAt)) return;
         _returnedAfterDrop[name] = droppedAt;
-        if (NowProvider() - droppedAt > DisconnectGraceWindow)
+        if (_now() - droppedAt > DisconnectGraceWindow)
         {
             // Past the window — clear the stale entry and bail.
             _recentlyDisconnected.Remove(name);
@@ -1157,7 +1151,7 @@ public sealed partial class PartyManager : IDisposable
     {
         if (string.IsNullOrEmpty(sender)) return false;
         string senderGiven = GivenNameOf(sender);
-        DateTimeOffset now = NowProvider();
+        DateTimeOffset now = _now();
         foreach (KeyValuePair<string, DateTimeOffset> kv in _recentlyDisconnected.Concat(_returnedAfterDrop))
         {
             if (now - kv.Value > ComebackWindow) continue;
@@ -1177,7 +1171,7 @@ public sealed partial class PartyManager : IDisposable
     public void ExpectComebackFrom(string given)
     {
         string name = GivenNameOf(given);
-        if (name.Length > 0) _recentlyDisconnected[name] = NowProvider();
+        if (name.Length > 0) _recentlyDisconnected[name] = _now();
     }
 
     // Given names of the followers we're currently leading (self + pending
@@ -1219,7 +1213,7 @@ public sealed partial class PartyManager : IDisposable
         _parBlockNames.Clear();
         ResetPartyMembership();
 
-        DateTimeOffset now = NowProvider();
+        DateTimeOffset now = _now();
         foreach (string name in followerGivens)
         {
             string given = GivenNameOf(name);
@@ -1263,7 +1257,7 @@ public sealed partial class PartyManager : IDisposable
         HashSet<string> present = new(StringComparer.OrdinalIgnoreCase);
         foreach (string n in _parBlockNames) present.Add(GivenNameOf(n));
 
-        DateTimeOffset now = NowProvider();
+        DateTimeOffset now = _now();
         List<PartyMember>? missing = null;
         foreach (PartyMember m in State.Members)
         {
@@ -1370,35 +1364,6 @@ public sealed partial class PartyManager : IDisposable
         // state machine HandleLine drives).
         TryCustomDisconnectLine(line.Text);
         HandleLine(line.Text, line.IsPromptLine);
-    }
-
-    // Test seam — feeds the par-block state machine without spinning up a real
-    // LineExtractor. Tests prime the state via TestEnterParBlock then pump rows
-    // here. Same shape as WhoListParser.FeedTestLines.
-    internal void FeedTestLines(IEnumerable<string> lines)
-    {
-        foreach (string text in lines) HandleLine(text, isPromptLine: false);
-    }
-
-    // Test seam — feeds a synthetic prompt line (IsPromptLine=true), the
-    // real-BBS par-block terminator, so tests can drive end-of-block
-    // reconciliation exactly the way the LineExtractor does in production.
-    internal void FeedTestPromptLine(string text = "[HP=0/MA=0]:") => HandleLine(text, isPromptLine: true);
-
-    // Test seam — drives the FULL emitted-line path (custom disconnect match +
-    // par-block state machine), the way the live LineExtractor feed does. The
-    // plain FeedTestLines seam only pumps HandleLine, so it can't exercise the
-    // board-specific disconnect pattern (TryCustomDisconnectLine).
-    internal void FeedTestEmittedLine(string text) => OnLineEmitted(
-        new LineExtractor.EmittedLine(
-            text, new CellAttributes[text.Length], DateTimeOffset.UnixEpoch, IsPromptLine: false));
-
-    // Test seam — flips the state machine into ReadingRows without dispatching
-    // the par-header pattern.
-    internal void TestEnterParBlock()
-    {
-        _parState = ParState.ReadingRows;
-        _parBlockNames.Clear();
     }
 
     private void HandleLine(string text, bool isPromptLine = false)
@@ -1791,7 +1756,7 @@ public sealed partial class PartyManager : IDisposable
         if (member.IsSelf) return;
         if (_hpEstimates.Remove(member) && member.HpPercent != percent)
             HpEstimateCorrected?.Invoke(member.Name, member.HpPercent, percent, source);
-        _hpReadings[member] = new PartyHpReading(percent, NowProvider(), source);
+        _hpReadings[member] = new PartyHpReading(percent, _now(), source);
     }
 
     private void OnMembersChangedForHpEstimates(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
@@ -1863,10 +1828,4 @@ public sealed partial class PartyManager : IDisposable
         if (removedSelf) State.SelfIsLeader = false;
     }
 
-    private static PlayerPosition ParsePosition(string raw) => raw.ToLowerInvariant() switch
-    {
-        "resting"    => PlayerPosition.Resting,
-        "meditating" => PlayerPosition.Meditating,
-        _            => PlayerPosition.Standing,
-    };
 }

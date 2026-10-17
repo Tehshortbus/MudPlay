@@ -7,11 +7,9 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// PR 7.18 — LairManager CRUD lifecycle, working against an isolated
-/// per-test game-data set folder so the suite never touches user data.
-/// Mirrors <see cref="LoopManagerTests"/>' isolation pattern.
-/// </summary>
+// LairManager CRUD lifecycle, working against an isolated
+// per-test game-data set folder so the suite never touches user data.
+// Mirrors LoopManagerTests' isolation pattern.
 public sealed class LairManagerTests : IDisposable
 {
     private readonly string _setName;
@@ -26,7 +24,7 @@ public sealed class LairManagerTests : IDisposable
     {
         // Lairs now persist under the game-data set's Loops/ folder; the
         // legacy-migration test also seeds a BBS-tree Lairs/ folder under
-        // the same name. Clean up both so nothing leaks into real Data/.
+        // the same name. Clean up both so nothing leaks into the app folder.
         try
         {
             string setFolder = Path.Combine(AppPaths.GameDataRoot, _setName);
@@ -227,7 +225,7 @@ public sealed class LairManagerTests : IDisposable
     [Fact]
     public void LoadAll_MigratesLegacyLairsFolder_IntoSharedLoopsFolder()
     {
-        // Pre-existing legacy file under Data/BBS/{bbs}/Lairs/<name>.json
+        // Pre-existing legacy file under BBS/{bbs}/Lairs/<name>.json
         // — the format we shipped before the storage unification.
         string legacy = AppPaths.LegacyBbsLairsFolder(_setName);
         Directory.CreateDirectory(legacy);

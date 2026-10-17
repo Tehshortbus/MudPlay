@@ -5,12 +5,10 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Phase 12 — <see cref="TransactionHistoryTracker"/> ledger. An injected clock
-/// stamps each entry deterministically; the tests pin the rendered detail
-/// strings (bank vs. stash, item grouping, coin denominations), the
-/// ignore-empty guards, the cap eviction, and the <c>Changed</c> signal.
-/// </summary>
+// TransactionHistoryTracker ledger. An injected clock
+// stamps each entry deterministically; the tests pin the rendered detail
+// strings (bank vs. stash, item grouping, coin denominations), the
+// ignore-empty guards, the cap eviction, and the Changed signal.
 public sealed class TransactionHistoryTrackerTests
 {
     private sealed class Clock

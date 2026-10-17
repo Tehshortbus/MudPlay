@@ -6,12 +6,10 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Coverage for <see cref="OutboundCastObserver"/> — the wire sniffer that arms
-/// the combat engine's between-round-cast resume when the player hand-types a
-/// spell cast-code. A recognised cast-code (bare or with a target) fires the
-/// signal; anything else stays silent.
-/// </summary>
+// Coverage for OutboundCastObserver — the wire sniffer that arms
+// the combat engine's between-round-cast resume when the player hand-types a
+// spell cast-code. A recognised cast-code (bare or with a target) fires the
+// signal; anything else stays silent.
 public sealed class OutboundCastObserverTests
 {
     // Stand-in cast-code table: the real observer resolves through

@@ -14,28 +14,32 @@ namespace MudPlay.Tests;
 
 public sealed class AutoPartyManagerTests
 {
+    // The clock the AutoPartyManager reads: the real one unless a test sets its own.
+    private Func<DateTime> _partyNow = () => DateTime.UtcNow;
+    // The manager's nag loop and reform-redisplay ticks.
+    private readonly ManualTimers _partyTimers = new();
+
     private static readonly DateTime Now = new(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc);
 
-    /// <summary>
-    /// Self-contained engine + every dependency. Default patterns are
-    /// seeded so the RoomAlsoHere / PartyInviteReceived regexes are
-    /// resolvable. Tests dispatch via the router with synthesised
-    /// EmittedLine values and inspect the engine's LastSentForTests.
-    /// </summary>
-    private static (AutoPartyManager engine, MessageRouter router, PlayerDatabase players, PartyState party) Setup()
+    // What the engine put on the wire, through the sender the client binds.
+    private readonly List<byte[]> _sent = new();
+
+    // Self-contained engine + every dependency. Default patterns are
+    // seeded so the RoomAlsoHere / PartyInviteReceived regexes are
+    // resolvable. Tests dispatch via the router with synthesised
+    // EmittedLine values and read what the engine sent from _sent.
+    private (AutoPartyManager engine, MessageRouter router, PlayerDatabase players, PartyState party) Setup()
     {
         MessageRouter router = new();
         DefaultPatterns.Seed(router);
-        PlayerDatabase players = new();
+        PlayerDatabase players = new(new ProfileService(), () => null);
         PartyState party = new();
-        AutoPartyManager engine = new(router, players, party);
-        engine.NowProvider = () => Now;
-        // Bind a no-op wire-sender so the engine doesn't short-circuit
-        // before recording to LastSentForTests. The wire-sender-null
-        // guard exists to prevent TTL burn during the startup window
-        // where AutoPartyManager subscribes before MainWindowViewModel
-        // binds the sender — tests model the post-bind state.
-        engine.SetWireSender(_ => { });
+        AutoPartyManager engine = new(router, players, party, schedule: _partyTimers.Arm, now: () => _partyNow());
+        _partyNow = () => Now;
+        // The wire-sender-null guard exists to prevent TTL burn during the
+        // startup window where AutoPartyManager subscribes before
+        // MainWindowViewModel binds the sender — tests model the post-bind state.
+        engine.SetWireSender(_sent.Add);
         return (engine, router, players, party);
     }
 
@@ -67,7 +71,7 @@ public sealed class AutoPartyManagerTests
 
         Dispatch(router, "Also here: Raijin.");
 
-        byte[] sent = Assert.Single(engine.LastSentForTests);
+        byte[] sent = Assert.Single(_sent);
         Assert.Equal("invite Raijin\r", Encoding.Latin1.GetString(sent));
     }
 
@@ -83,11 +87,11 @@ public sealed class AutoPartyManagerTests
         engine.SetNavigationProbe(() => navigating);
 
         Dispatch(router, "Also here: Raijin.");
-        Assert.Empty(engine.LastSentForTests);
+        Assert.Empty(_sent);
 
         navigating = true;
         Dispatch(router, "Also here: Raijin.");
-        byte[] sent = Assert.Single(engine.LastSentForTests);
+        byte[] sent = Assert.Single(_sent);
         Assert.Equal("invite Raijin\r", Encoding.Latin1.GetString(sent));
     }
 
@@ -105,15 +109,15 @@ public sealed class AutoPartyManagerTests
 
         Dispatch(router, "Also here: Raijin.");
         engine.OnNavigationStateChanged();
-        Assert.Empty(engine.LastSentForTests);
+        Assert.Empty(_sent);
 
         navigating = true;
         engine.OnNavigationStateChanged();
-        byte[] sent = Assert.Single(engine.LastSentForTests);
+        byte[] sent = Assert.Single(_sent);
         Assert.Equal("invite Raijin\r", Encoding.Latin1.GetString(sent));
 
         engine.OnNavigationStateChanged();
-        Assert.Single(engine.LastSentForTests);
+        Assert.Single(_sent);
     }
 
     [Fact]
@@ -135,7 +139,7 @@ public sealed class AutoPartyManagerTests
 
         navigating = true;
         engine.OnNavigationStateChanged();
-        Assert.Empty(engine.LastSentForTests);
+        Assert.Empty(_sent);
     }
 
     [Fact]
@@ -146,7 +150,7 @@ public sealed class AutoPartyManagerTests
 
         Dispatch(router, "Also here: Raijin.");
 
-        Assert.Empty(engine.LastSentForTests);
+        Assert.Empty(_sent);
     }
 
     [Fact]
@@ -158,7 +162,7 @@ public sealed class AutoPartyManagerTests
 
         Dispatch(router, "Also here: Stranger.");
 
-        Assert.Empty(engine.LastSentForTests);
+        Assert.Empty(_sent);
     }
 
     [Fact]
@@ -166,12 +170,14 @@ public sealed class AutoPartyManagerTests
     {
         var (engine, router, players, party) = Setup();
         SeedPlayer(players, "Raijin", inviteOnSeen: true);
+        // We lead and Raijin is already a joined member: no invite.
+        party.SelfIsLeader = true;
         party.Members.Add(new PartyMember { Name = "Raijin" });
         party.IsInParty = true;
 
         Dispatch(router, "Also here: Raijin.");
 
-        Assert.Empty(engine.LastSentForTests);
+        Assert.Empty(_sent);
     }
 
     [Fact]
@@ -185,9 +191,9 @@ public sealed class AutoPartyManagerTests
         // Oxford-and form covering the 3-name shape MajorMUD uses.
         Dispatch(router, "Also here: Raijin, Forged and Stranger.");
 
-        Assert.Equal(2, engine.LastSentForTests.Count);
-        string a = Encoding.Latin1.GetString(engine.LastSentForTests[0]);
-        string b = Encoding.Latin1.GetString(engine.LastSentForTests[1]);
+        Assert.Equal(2, _sent.Count);
+        string a = Encoding.Latin1.GetString(_sent[0]);
+        string b = Encoding.Latin1.GetString(_sent[1]);
         Assert.Contains("invite Raijin\r", new[] { a, b });
         Assert.Contains("invite Forged\r", new[] { a, b });
     }
@@ -206,7 +212,7 @@ public sealed class AutoPartyManagerTests
         Dispatch(router, "Also here: Raijin.");
         Dispatch(router, "Also here: Raijin.");
 
-        Assert.Single(engine.LastSentForTests);
+        Assert.Single(_sent);
     }
 
     [Fact]
@@ -216,14 +222,14 @@ public sealed class AutoPartyManagerTests
         SeedPlayer(players, "Raijin", inviteOnSeen: true);
 
         DateTime t0 = Now;
-        engine.NowProvider = () => t0;
+        _partyNow = () => t0;
         Dispatch(router, "Also here: Raijin.");
 
         // Advance past the default 60s cooldown.
-        engine.NowProvider = () => t0.AddSeconds(61);
+        _partyNow = () => t0.AddSeconds(61);
         Dispatch(router, "Also here: Raijin.");
 
-        Assert.Equal(2, engine.LastSentForTests.Count);
+        Assert.Equal(2, _sent.Count);
     }
 
     [Fact]
@@ -238,7 +244,7 @@ public sealed class AutoPartyManagerTests
 
         Dispatch(router, "Also here: Raijin WuzHere.");
 
-        byte[] sent = Assert.Single(engine.LastSentForTests);
+        byte[] sent = Assert.Single(_sent);
         Assert.Equal("invite Raijin\r", Encoding.Latin1.GetString(sent));
     }
 
@@ -257,7 +263,7 @@ public sealed class AutoPartyManagerTests
 
         Dispatch(router, "MudPlay has invited you to follow him.");
 
-        byte[] sent = Assert.Single(engine.LastSentForTests);
+        byte[] sent = Assert.Single(_sent);
         Assert.Equal("follow MudPlay\r", Encoding.Latin1.GetString(sent));
     }
 
@@ -269,7 +275,7 @@ public sealed class AutoPartyManagerTests
 
         Dispatch(router, "MudPlay has invited you to follow him.");
 
-        Assert.Empty(engine.LastSentForTests);
+        Assert.Empty(_sent);
     }
 
     [Fact]
@@ -279,7 +285,7 @@ public sealed class AutoPartyManagerTests
 
         Dispatch(router, "Stranger has invited you to follow her.");
 
-        Assert.Empty(engine.LastSentForTests);
+        Assert.Empty(_sent);
     }
 
     [Fact]
@@ -299,7 +305,7 @@ public sealed class AutoPartyManagerTests
 
         Dispatch(router, "Raijin has invited you to follow him.");
 
-        byte[] sent = Assert.Single(engine.LastSentForTests);
+        byte[] sent = Assert.Single(_sent);
         Assert.Equal("follow Raijin\r", Encoding.Latin1.GetString(sent));
     }
 
@@ -313,7 +319,7 @@ public sealed class AutoPartyManagerTests
 
         Dispatch(router, $"MudPlay has invited you to follow {pronoun}.");
 
-        Assert.Single(engine.LastSentForTests);
+        Assert.Single(_sent);
     }
 
     [Fact]
@@ -327,7 +333,7 @@ public sealed class AutoPartyManagerTests
 
         Dispatch(router, "MudPlay has invited you to follow it.");
 
-        Assert.Empty(engine.LastSentForTests);
+        Assert.Empty(_sent);
     }
 
     [Fact]
@@ -340,7 +346,7 @@ public sealed class AutoPartyManagerTests
 
         Dispatch(router, "MudPlay has invited you to follow him.");
 
-        Assert.Empty(engine.LastSentForTests);
+        Assert.Empty(_sent);
     }
 
     // ===== Wire-sender-null guard =====
@@ -353,26 +359,24 @@ public sealed class AutoPartyManagerTests
         // MainWindowViewModel binds SendUserInput as the sender.
         MessageRouter router = new();
         DefaultPatterns.Seed(router);
-        PlayerDatabase players = new();
+        PlayerDatabase players = new(new ProfileService(), () => null);
         PartyState party = new();
-        AutoPartyManager engine = new(router, players, party) { NowProvider = () => Now };
-        // NOTE: no SetWireSender. The pre-fix path would still record
-        // to LastSentForTests (because that happened in SendWire after
-        // setting the TTL), AND set _recentlyInvited[given]=now — so
+        _partyNow = () => Now;
+        AutoPartyManager engine = new(router, players, party, schedule: _partyTimers.Arm, now: () => _partyNow());
+        // NOTE: no SetWireSender. The pre-fix path set
+        // _recentlyInvited[given]=now before the send went nowhere — so
         // the next dispatch within 60 s would TTL-suppress even after
-        // the wire-sender was bound. Post-fix the engine bails before
-        // either of those side-effects.
+        // the wire-sender was bound. Post-fix the engine bails first.
         SeedPlayer(players, "Raijin", inviteOnSeen: true);
 
         Dispatch(router, "Also here: Raijin.");
-        Assert.Empty(engine.LastSentForTests);
 
         // Now bind the sender and re-fire — the TTL must NOT have been
         // burned, so this dispatch should produce the invite.
-        engine.SetWireSender(_ => { });
+        engine.SetWireSender(_sent.Add);
         Dispatch(router, "Also here: Raijin.");
 
-        byte[] sent = Assert.Single(engine.LastSentForTests);
+        byte[] sent = Assert.Single(_sent);
         Assert.Equal("invite Raijin\r", System.Text.Encoding.Latin1.GetString(sent));
     }
 
@@ -392,14 +396,14 @@ public sealed class AutoPartyManagerTests
 
         // Initial auto-invite — TTL stamped.
         Dispatch(router, "Also here: Raijin.");
-        Assert.Single(engine.LastSentForTests);
-        engine.LastSentForTests.Clear();
+        Assert.Single(_sent);
+        _sent.Clear();
 
         // Raijin joins the party (engine ignores subsequent "Also here:"
         // lines while they're in our roster). Simulate by adding the row.
         party.Members.Add(new PartyMember { Name = "Raijin" });
         Dispatch(router, "Also here: Raijin.");
-        Assert.Empty(engine.LastSentForTests);
+        Assert.Empty(_sent);
 
         // Raijin leaves the party — the membership-change subscriber
         // should drop "Raijin" from the cooldown map so a subsequent
@@ -407,7 +411,7 @@ public sealed class AutoPartyManagerTests
         party.Members.RemoveAt(0);
 
         Dispatch(router, "Also here: Raijin.");
-        byte[] sent = Assert.Single(engine.LastSentForTests);
+        byte[] sent = Assert.Single(_sent);
         Assert.Equal("invite Raijin\r", Encoding.Latin1.GetString(sent));
     }
 
@@ -425,7 +429,7 @@ public sealed class AutoPartyManagerTests
 
         Dispatch(router, "Also here: Raijin.");
 
-        Assert.Empty(engine.LastSentForTests);
+        Assert.Empty(_sent);
     }
 
     [Fact]
@@ -439,7 +443,7 @@ public sealed class AutoPartyManagerTests
 
         Dispatch(router, "Also here: Raijin.");
 
-        byte[] sent = Assert.Single(engine.LastSentForTests);
+        byte[] sent = Assert.Single(_sent);
         Assert.Equal("invite Raijin\r", Encoding.Latin1.GetString(sent));
     }
 
@@ -449,28 +453,27 @@ public sealed class AutoPartyManagerTests
     public void JoinNag_FiresAfterInitialDelay()
     {
         // Within the initial delay window, no @join. Past it, one @join
-        // fires. We tick the nag loop manually via the test seam to avoid
-        // depending on the real DispatcherTimer.
+        // fires on the nag loop's next tick.
         var (engine, router, players, _) = Setup();
         SeedPlayer(players, "Raijin", inviteOnSeen: true);
         DateTime t0 = Now;
-        engine.NowProvider = () => t0;
+        _partyNow = () => t0;
         engine.JoinNagInitialDelay = TimeSpan.FromSeconds(5);
         engine.JoinNagFrequency    = TimeSpan.FromSeconds(10);
         engine.JoinNagMaxTotal     = TimeSpan.FromSeconds(55);
 
         Dispatch(router, "Also here: Raijin.");
-        engine.LastSentForTests.Clear(); // ignore the initial invite
+        _sent.Clear(); // ignore the initial invite
 
         // 3s in — no nag yet.
-        engine.NowProvider = () => t0.AddSeconds(3);
-        engine.TickNagsForTests();
-        Assert.Empty(engine.LastSentForTests);
+        _partyNow = () => t0.AddSeconds(3);
+        _partyTimers.RunDue(AutoPartyManager.NagTick);
+        Assert.Empty(_sent);
 
         // 5s in — first @join.
-        engine.NowProvider = () => t0.AddSeconds(5);
-        engine.TickNagsForTests();
-        byte[] first = Assert.Single(engine.LastSentForTests);
+        _partyNow = () => t0.AddSeconds(5);
+        _partyTimers.RunDue(AutoPartyManager.NagTick);
+        byte[] first = Assert.Single(_sent);
         Assert.Equal("/Raijin @join\r", Encoding.Latin1.GetString(first));
     }
 
@@ -480,24 +483,24 @@ public sealed class AutoPartyManagerTests
         var (engine, router, players, _) = Setup();
         SeedPlayer(players, "Raijin", inviteOnSeen: true);
         DateTime t0 = Now;
-        engine.NowProvider = () => t0;
+        _partyNow = () => t0;
         engine.JoinNagInitialDelay = TimeSpan.FromSeconds(5);
         engine.JoinNagFrequency    = TimeSpan.FromSeconds(10);
         engine.JoinNagMaxTotal     = TimeSpan.FromSeconds(120);
 
         Dispatch(router, "Also here: Raijin.");
-        engine.LastSentForTests.Clear();
+        _sent.Clear();
 
         // First @join at t+5s, then re-fire at t+15s, t+25s.
-        engine.NowProvider = () => t0.AddSeconds(5);
-        engine.TickNagsForTests();
-        engine.NowProvider = () => t0.AddSeconds(15);
-        engine.TickNagsForTests();
-        engine.NowProvider = () => t0.AddSeconds(25);
-        engine.TickNagsForTests();
+        _partyNow = () => t0.AddSeconds(5);
+        _partyTimers.RunDue(AutoPartyManager.NagTick);
+        _partyNow = () => t0.AddSeconds(15);
+        _partyTimers.RunDue(AutoPartyManager.NagTick);
+        _partyNow = () => t0.AddSeconds(25);
+        _partyTimers.RunDue(AutoPartyManager.NagTick);
 
-        Assert.Equal(3, engine.LastSentForTests.Count);
-        foreach (byte[] sent in engine.LastSentForTests)
+        Assert.Equal(3, _sent.Count);
+        foreach (byte[] sent in _sent)
             Assert.Equal("/Raijin @join\r", Encoding.Latin1.GetString(sent));
     }
 
@@ -507,28 +510,28 @@ public sealed class AutoPartyManagerTests
         var (engine, router, players, _) = Setup();
         SeedPlayer(players, "Raijin", inviteOnSeen: true);
         DateTime t0 = Now;
-        engine.NowProvider = () => t0;
+        _partyNow = () => t0;
         engine.JoinNagInitialDelay = TimeSpan.FromSeconds(5);
         engine.JoinNagFrequency    = TimeSpan.FromSeconds(10);
         engine.JoinNagMaxTotal     = TimeSpan.FromSeconds(120);
 
         Dispatch(router, "Also here: Raijin.");
-        engine.LastSentForTests.Clear();
+        _sent.Clear();
 
-        engine.NowProvider = () => t0.AddSeconds(5);
-        engine.TickNagsForTests();
-        Assert.Single(engine.LastSentForTests); // first @join
+        _partyNow = () => t0.AddSeconds(5);
+        _partyTimers.RunDue(AutoPartyManager.NagTick);
+        Assert.Single(_sent); // first @join
 
         // Raijin replies {Ok} — further sends should halt even though
         // the cadence + cap windows would otherwise allow them.
         Dispatch(router, "Raijin telepaths: {Ok}");
-        engine.LastSentForTests.Clear();
+        _sent.Clear();
 
-        engine.NowProvider = () => t0.AddSeconds(20);
-        engine.TickNagsForTests();
-        engine.NowProvider = () => t0.AddSeconds(40);
-        engine.TickNagsForTests();
-        Assert.Empty(engine.LastSentForTests);
+        _partyNow = () => t0.AddSeconds(20);
+        _partyTimers.RunDue(AutoPartyManager.NagTick);
+        _partyNow = () => t0.AddSeconds(40);
+        _partyTimers.RunDue(AutoPartyManager.NagTick);
+        Assert.Empty(_sent);
     }
 
     [Fact]
@@ -537,25 +540,25 @@ public sealed class AutoPartyManagerTests
         var (engine, router, players, _) = Setup();
         SeedPlayer(players, "Raijin", inviteOnSeen: true);
         DateTime t0 = Now;
-        engine.NowProvider = () => t0;
+        _partyNow = () => t0;
         engine.JoinNagInitialDelay = TimeSpan.FromSeconds(5);
         engine.JoinNagFrequency    = TimeSpan.FromSeconds(10);
         engine.JoinNagMaxTotal     = TimeSpan.FromSeconds(120);
 
         Dispatch(router, "Also here: Raijin.");
-        engine.LastSentForTests.Clear();
+        _sent.Clear();
 
-        engine.NowProvider = () => t0.AddSeconds(5);
-        engine.TickNagsForTests();
-        Assert.Single(engine.LastSentForTests);
+        _partyNow = () => t0.AddSeconds(5);
+        _partyTimers.RunDue(AutoPartyManager.NagTick);
+        Assert.Single(_sent);
 
         // Non-braced free text is a human replying (a decline) — kill the nag.
         Dispatch(router, "Raijin telepaths: nah I'm good");
-        engine.LastSentForTests.Clear();
+        _sent.Clear();
 
-        engine.NowProvider = () => t0.AddSeconds(20);
-        engine.TickNagsForTests();
-        Assert.Empty(engine.LastSentForTests);
+        _partyNow = () => t0.AddSeconds(20);
+        _partyTimers.RunDue(AutoPartyManager.NagTick);
+        Assert.Empty(_sent);
     }
 
     [Fact]
@@ -569,21 +572,21 @@ public sealed class AutoPartyManagerTests
         var (engine, router, players, _) = Setup();
         SeedPlayer(players, "Raijin", inviteOnSeen: true);
         DateTime t0 = Now;
-        engine.NowProvider = () => t0;
+        _partyNow = () => t0;
         engine.JoinNagInitialDelay = TimeSpan.FromSeconds(5);
         engine.JoinNagFrequency    = TimeSpan.FromSeconds(10);
         engine.JoinNagMaxTotal     = TimeSpan.FromSeconds(120);
 
         Dispatch(router, "Also here: Raijin.");
-        engine.LastSentForTests.Clear();
+        _sent.Clear();
 
         // @health reply arrives within the initial-delay window, before any @join.
         Dispatch(router, "Raijin telepaths: {HP=43/43,MA=15/34, Resting}");
 
         // Past the delay — the nag survived, so the first @join still fires.
-        engine.NowProvider = () => t0.AddSeconds(5);
-        engine.TickNagsForTests();
-        byte[] sent = Assert.Single(engine.LastSentForTests);
+        _partyNow = () => t0.AddSeconds(5);
+        _partyTimers.RunDue(AutoPartyManager.NagTick);
+        byte[] sent = Assert.Single(_sent);
         Assert.Equal("/Raijin @join\r", Encoding.Latin1.GetString(sent));
     }
 
@@ -595,18 +598,18 @@ public sealed class AutoPartyManagerTests
         var (engine, router, players, _) = Setup();
         SeedPlayer(players, "Raijin", inviteOnSeen: true);
         DateTime t0 = Now;
-        engine.NowProvider = () => t0;
+        _partyNow = () => t0;
         engine.JoinNagInitialDelay = TimeSpan.FromSeconds(5);
         engine.JoinNagFrequency    = TimeSpan.FromSeconds(10);
         engine.JoinNagMaxTotal     = TimeSpan.FromSeconds(120);
 
         Dispatch(router, "Also here: Raijin.");
-        engine.LastSentForTests.Clear();
+        _sent.Clear();
         Dispatch(router, "Raijin telepaths: @where");
 
-        engine.NowProvider = () => t0.AddSeconds(5);
-        engine.TickNagsForTests();
-        byte[] sent = Assert.Single(engine.LastSentForTests);
+        _partyNow = () => t0.AddSeconds(5);
+        _partyTimers.RunDue(AutoPartyManager.NagTick);
+        byte[] sent = Assert.Single(_sent);
         Assert.Equal("/Raijin @join\r", Encoding.Latin1.GetString(sent));
     }
 
@@ -622,7 +625,7 @@ public sealed class AutoPartyManagerTests
         engine.ObserveOutbound(Encoding.Latin1.GetBytes("invite Raijin\r"));
         Dispatch(router, "Also here: Raijin.");
 
-        Assert.DoesNotContain(engine.LastSentForTests, b => Encoding.Latin1.GetString(b).StartsWith("invite", StringComparison.Ordinal));
+        Assert.DoesNotContain(_sent, b => Encoding.Latin1.GetString(b).StartsWith("invite", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -636,7 +639,7 @@ public sealed class AutoPartyManagerTests
 
         Dispatch(router, "Also here: Raijin.");
 
-        Assert.Contains(engine.LastSentForTests, b => Encoding.Latin1.GetString(b) == "invite Raijin\r");
+        Assert.Contains(_sent, b => Encoding.Latin1.GetString(b) == "invite Raijin\r");
         Assert.Contains(engine.ActiveNagSnapshot(), n => n.Given == "Raijin");
     }
 
@@ -648,7 +651,7 @@ public sealed class AutoPartyManagerTests
         var (engine, router, players, _) = Setup();
         SeedPlayer(players, "Raijin", inviteOnSeen: true);
         DateTime t0 = Now;
-        engine.NowProvider = () => t0;
+        _partyNow = () => t0;
         engine.JoinNagInitialDelay = TimeSpan.FromSeconds(5);
         engine.JoinNagFrequency    = TimeSpan.FromSeconds(10);
         engine.JoinNagMaxTotal     = TimeSpan.FromSeconds(120);
@@ -662,8 +665,8 @@ public sealed class AutoPartyManagerTests
         Assert.Null(armed.LastJoinAt);
         Assert.False(armed.Acknowledged);
 
-        engine.NowProvider = () => t0.AddSeconds(5);
-        engine.TickNagsForTests();          // first @join
+        _partyNow = () => t0.AddSeconds(5);
+        _partyTimers.RunDue(AutoPartyManager.NagTick);          // first @join
         Dispatch(router, "Raijin telepaths: {Ok}");
 
         AutoPartyManager.NagSnapshot acked = Assert.Single(engine.ActiveNagSnapshot());
@@ -678,24 +681,24 @@ public sealed class AutoPartyManagerTests
         var (engine, router, players, party) = Setup();
         SeedPlayer(players, "Raijin", inviteOnSeen: true);
         DateTime t0 = Now;
-        engine.NowProvider = () => t0;
+        _partyNow = () => t0;
         engine.JoinNagInitialDelay = TimeSpan.FromSeconds(5);
         engine.JoinNagFrequency    = TimeSpan.FromSeconds(10);
 
         Dispatch(router, "Also here: Raijin.");
-        engine.LastSentForTests.Clear();
+        _sent.Clear();
 
-        engine.NowProvider = () => t0.AddSeconds(5);
-        engine.TickNagsForTests();
-        Assert.Single(engine.LastSentForTests);
+        _partyNow = () => t0.AddSeconds(5);
+        _partyTimers.RunDue(AutoPartyManager.NagTick);
+        Assert.Single(_sent);
 
         // Target joins — CollectionChanged.Add fires the cancel.
         party.Members.Add(new PartyMember { Name = "Raijin" });
-        engine.LastSentForTests.Clear();
+        _sent.Clear();
 
-        engine.NowProvider = () => t0.AddSeconds(20);
-        engine.TickNagsForTests();
-        Assert.Empty(engine.LastSentForTests);
+        _partyNow = () => t0.AddSeconds(20);
+        _partyTimers.RunDue(AutoPartyManager.NagTick);
+        Assert.Empty(_sent);
     }
 
     [Fact]
@@ -708,7 +711,7 @@ public sealed class AutoPartyManagerTests
         // sees the real join, so the IsInvited-flip hook must cancel it.
         var (engine, router, _, party) = Setup();
         DateTime t0 = Now;
-        engine.NowProvider = () => t0;
+        _partyNow = () => t0;
         engine.JoinNagInitialDelay = TimeSpan.FromSeconds(5);
         engine.JoinNagFrequency    = TimeSpan.FromSeconds(10);
         engine.JoinNagMaxTotal     = TimeSpan.FromSeconds(120);
@@ -720,22 +723,22 @@ public sealed class AutoPartyManagerTests
         Dispatch(router, "You have invited Raijin to follow you.");
 
         // First @join fires after the delay — nag is live.
-        engine.NowProvider = () => t0.AddSeconds(5);
-        engine.TickNagsForTests();
-        Assert.Single(engine.LastSentForTests,
+        _partyNow = () => t0.AddSeconds(5);
+        _partyTimers.RunDue(AutoPartyManager.NagTick);
+        Assert.Single(_sent,
             b => Encoding.Latin1.GetString(b) == "/Raijin @join\r");
-        engine.LastSentForTests.Clear();
+        _sent.Clear();
 
         // Raijin accepts — PartyManager.OnFollowsYou flips the existing
         // row in place. This is a PropertyChanged, not a CollectionChanged.Add.
         row.IsInvited = false;
 
         // Subsequent ticks (past cadence + cap windows) produce no @join.
-        engine.NowProvider = () => t0.AddSeconds(15);
-        engine.TickNagsForTests();
-        engine.NowProvider = () => t0.AddSeconds(25);
-        engine.TickNagsForTests();
-        Assert.Empty(engine.LastSentForTests);
+        _partyNow = () => t0.AddSeconds(15);
+        _partyTimers.RunDue(AutoPartyManager.NagTick);
+        _partyNow = () => t0.AddSeconds(25);
+        _partyTimers.RunDue(AutoPartyManager.NagTick);
+        Assert.Empty(_sent);
     }
 
     [Fact]
@@ -744,28 +747,28 @@ public sealed class AutoPartyManagerTests
         var (engine, router, players, _) = Setup();
         SeedPlayer(players, "Raijin", inviteOnSeen: true);
         DateTime t0 = Now;
-        engine.NowProvider = () => t0;
+        _partyNow = () => t0;
         engine.JoinNagInitialDelay = TimeSpan.FromSeconds(5);
         engine.JoinNagFrequency    = TimeSpan.FromSeconds(10);
         engine.JoinNagMaxTotal     = TimeSpan.FromSeconds(55);
 
         Dispatch(router, "Also here: Raijin.");
-        engine.LastSentForTests.Clear();
+        _sent.Clear();
 
         // Tick across the entire 55s window — sends fire until then.
         for (int t = 5; t <= 55; t += 10)
         {
-            engine.NowProvider = () => t0.AddSeconds(t);
-            engine.TickNagsForTests();
+            _partyNow = () => t0.AddSeconds(t);
+            _partyTimers.RunDue(AutoPartyManager.NagTick);
         }
-        int sendsWithinWindow = engine.LastSentForTests.Count;
+        int sendsWithinWindow = _sent.Count;
 
-        engine.LastSentForTests.Clear();
+        _sent.Clear();
 
         // Anything past 55s — nothing further.
-        engine.NowProvider = () => t0.AddSeconds(70);
-        engine.TickNagsForTests();
-        Assert.Empty(engine.LastSentForTests);
+        _partyNow = () => t0.AddSeconds(70);
+        _partyTimers.RunDue(AutoPartyManager.NagTick);
+        Assert.Empty(_sent);
         Assert.True(sendsWithinWindow >= 1);
     }
 
@@ -775,22 +778,22 @@ public sealed class AutoPartyManagerTests
         var (engine, router, players, party) = Setup();
         SeedPlayer(players, "Raijin", inviteOnSeen: true);
         DateTime t0 = Now;
-        engine.NowProvider = () => t0;
+        _partyNow = () => t0;
         engine.JoinNagInitialDelay = TimeSpan.FromSeconds(5);
         engine.JoinNagFrequency    = TimeSpan.FromSeconds(10);
 
         Dispatch(router, "Also here: Raijin.");
-        engine.NowProvider = () => t0.AddSeconds(5);
-        engine.TickNagsForTests();
-        engine.LastSentForTests.Clear();
+        _partyNow = () => t0.AddSeconds(5);
+        _partyTimers.RunDue(AutoPartyManager.NagTick);
+        _sent.Clear();
 
         // We accept someone else's invite mid-nag — became a follower.
         party.IsInParty    = true;
         party.SelfIsLeader = false;
 
-        engine.NowProvider = () => t0.AddSeconds(20);
-        engine.TickNagsForTests();
-        Assert.Empty(engine.LastSentForTests);
+        _partyNow = () => t0.AddSeconds(20);
+        _partyTimers.RunDue(AutoPartyManager.NagTick);
+        Assert.Empty(_sent);
     }
 
     [Fact]
@@ -805,8 +808,8 @@ public sealed class AutoPartyManagerTests
 
         // Stamp both cooldowns from a first sighting.
         Dispatch(router, "Also here: Raijin, Helper.");
-        Assert.Equal(2, engine.LastSentForTests.Count);
-        engine.LastSentForTests.Clear();
+        Assert.Equal(2, _sent.Count);
+        _sent.Clear();
 
         // Both joined the party, then it dissolved.
         party.Members.Add(new PartyMember { Name = "Raijin" });
@@ -817,10 +820,10 @@ public sealed class AutoPartyManagerTests
 
         // Both should now be re-invite-eligible immediately.
         Dispatch(router, "Also here: Raijin, Helper.");
-        Assert.Equal(2, engine.LastSentForTests.Count);
-        Assert.Contains(engine.LastSentForTests,
+        Assert.Equal(2, _sent.Count);
+        Assert.Contains(_sent,
             b => Encoding.Latin1.GetString(b) == "invite Raijin\r");
-        Assert.Contains(engine.LastSentForTests,
+        Assert.Contains(_sent,
             b => Encoding.Latin1.GetString(b) == "invite Helper\r");
     }
 
@@ -853,7 +856,7 @@ public sealed class AutoPartyManagerTests
         Dispatch(router, "Also here: Raijin.");
 
         // Invite still goes out, but no loop hold when we're not looping.
-        Assert.Single(engine.LastSentForTests);
+        Assert.Single(_sent);
         Assert.False(coord.IsPaused);
     }
 
@@ -877,26 +880,26 @@ public sealed class AutoPartyManagerTests
         var (engine, router, players, _) = Setup();
         SeedPlayer(players, "Raijin", inviteOnSeen: true);
         DateTime t0 = Now;
-        engine.NowProvider = () => t0;
+        _partyNow = () => t0;
         MovementCoordinator coord = new();
         engine.InviteWaitWindow = TimeSpan.FromSeconds(90);
         engine.SetMovementGate(coord, isLooping: () => true);
 
         Dispatch(router, "Also here: Raijin.");
-        engine.LastSentForTests.Clear();
+        _sent.Clear();
         Assert.True(coord.IsPaused);
 
         // Before the window elapses — still holding, no uninvite.
-        engine.NowProvider = () => t0.AddSeconds(80);
-        engine.TickNagsForTests();
+        _partyNow = () => t0.AddSeconds(80);
+        _partyTimers.RunDue(AutoPartyManager.NagTick);
         Assert.True(coord.IsPaused);
-        Assert.DoesNotContain(engine.LastSentForTests,
+        Assert.DoesNotContain(_sent,
             b => Encoding.Latin1.GetString(b) == "uninvite Raijin\r");
 
         // Past the window — uninvite the no-show and release the gate.
-        engine.NowProvider = () => t0.AddSeconds(91);
-        engine.TickNagsForTests();
-        Assert.Contains(engine.LastSentForTests,
+        _partyNow = () => t0.AddSeconds(91);
+        _partyTimers.RunDue(AutoPartyManager.NagTick);
+        Assert.Contains(_sent,
             b => Encoding.Latin1.GetString(b) == "uninvite Raijin\r");
         Assert.False(coord.IsPaused);
     }
@@ -907,13 +910,13 @@ public sealed class AutoPartyManagerTests
         var (engine, router, players, party) = Setup();
         SeedPlayer(players, "Raijin", inviteOnSeen: true);
         DateTime t0 = Now;
-        engine.NowProvider = () => t0;
+        _partyNow = () => t0;
         MovementCoordinator coord = new();
         engine.InviteWaitWindow = TimeSpan.FromSeconds(90);
         engine.SetMovementGate(coord, isLooping: () => true);
 
         Dispatch(router, "Also here: Raijin.");
-        engine.LastSentForTests.Clear();
+        _sent.Clear();
         Assert.True(coord.IsPaused);
 
         // Production leader path: invite adds a placeholder row (still
@@ -926,9 +929,9 @@ public sealed class AutoPartyManagerTests
         Assert.False(coord.IsPaused);
 
         // Even past the window, no uninvite — they joined.
-        engine.NowProvider = () => t0.AddSeconds(120);
-        engine.TickNagsForTests();
-        Assert.DoesNotContain(engine.LastSentForTests,
+        _partyNow = () => t0.AddSeconds(120);
+        _partyTimers.RunDue(AutoPartyManager.NagTick);
+        Assert.DoesNotContain(_sent,
             b => Encoding.Latin1.GetString(b) == "uninvite Raijin\r");
     }
 
@@ -944,8 +947,11 @@ public sealed class AutoPartyManagerTests
         Dispatch(router, "Also here: Raijin.");
         Assert.True(coord.IsPaused);
 
-        // Whole-party wipe releases any pending loop hold.
+        // Leading a party, the hold stands; the whole party going releases it.
+        party.SelfIsLeader = true;
         party.IsInParty = true;
+        Assert.True(coord.IsPaused);
+
         party.IsInParty = false;
 
         Assert.False(coord.IsPaused);
@@ -980,16 +986,16 @@ public sealed class AutoPartyManagerTests
         // NOTHING is invited yet — the members haven't materialised.
         Assert.True(coord.IsPaused);
         Assert.Contains(MovementCoordinator.PartyInviteGate, coord.AssertedGates);
-        Assert.Empty(engine.LastSentForTests);
+        Assert.Empty(_sent);
 
         // Each member's teleport-arrival line fires their withheld invite.
         Dispatch(router, "Raijin appears in a blinding flash of light!");
         Dispatch(router, "Forged appears in a blinding flash of light!");
 
-        Assert.Equal(2, engine.LastSentForTests.Count);
-        Assert.Contains(engine.LastSentForTests,
+        Assert.Equal(2, _sent.Count);
+        Assert.Contains(_sent,
             b => Encoding.Latin1.GetString(b) == "invite Raijin\r");
-        Assert.Contains(engine.LastSentForTests,
+        Assert.Contains(_sent,
             b => Encoding.Latin1.GetString(b) == "invite Forged\r");
     }
 
@@ -1015,7 +1021,7 @@ public sealed class AutoPartyManagerTests
 
         Assert.Contains(MovementCoordinator.PartyInviteGate, coord.AssertedGates);
         Dispatch(router, "Raijin appears in a blinding flash of light!");
-        Assert.Contains(engine.LastSentForTests, b => Encoding.Latin1.GetString(b) == "invite Raijin\r");
+        Assert.Contains(_sent, b => Encoding.Latin1.GetString(b) == "invite Raijin\r");
         Assert.Contains(MovementCoordinator.PartyInviteGate, coord.AssertedGates);
 
         party.Members.Add(new PartyMember { Name = "Raijin" });
@@ -1048,10 +1054,10 @@ public sealed class AutoPartyManagerTests
         party.Members.Remove(self);
 
         Assert.Contains(MovementCoordinator.PartyInviteGate, coord.AssertedGates);
-        engine.FireReformRedisplayForTests();
+        _partyTimers.RunDue(AutoPartyManager.ReformRedisplayDelay);
         Dispatch(router, "Also here: Eddie.");
 
-        Assert.Contains(engine.LastSentForTests, b => Encoding.Latin1.GetString(b) == "invite Eddie\r");
+        Assert.Contains(_sent, b => Encoding.Latin1.GetString(b) == "invite Eddie\r");
         Assert.Contains(MovementCoordinator.PartyInviteGate, coord.AssertedGates);
     }
 
@@ -1074,16 +1080,16 @@ public sealed class AutoPartyManagerTests
         party.Members.Add(new PartyMember { Name = "Raijin" });
 
         engine.NotePartySplitTeleport();
-        engine.FireReformRedisplayForTests();
+        _partyTimers.RunDue(AutoPartyManager.ReformRedisplayDelay);
         Dispatch(router, "Also here: Raijin.");
 
-        Assert.Empty(engine.LastSentForTests);
+        Assert.Empty(_sent);
         Assert.Contains(MovementCoordinator.PartyInviteGate, coord.AssertedGates);
 
         here = new RoomKey(3, 740);
         Dispatch(router, "Raijin appears in a blinding flash of light!");
 
-        Assert.Contains(engine.LastSentForTests, b => Encoding.Latin1.GetString(b) == "invite Raijin\r");
+        Assert.Contains(_sent, b => Encoding.Latin1.GetString(b) == "invite Raijin\r");
     }
 
     // ===== Leader-side reconnect reform =====
@@ -1098,14 +1104,14 @@ public sealed class AutoPartyManagerTests
         var (engine, router, _, _) = Setup();
 
         engine.NoteLeaderReconnectReform(new[] { "Raijin", "Forged" });
-        Assert.Empty(engine.LastSentForTests);   // nothing sent until they're observed
+        Assert.Empty(_sent);   // nothing sent until they're observed
 
         Dispatch(router, "Also here: Raijin and Forged.");
 
-        Assert.Equal(2, engine.LastSentForTests.Count);
-        Assert.Contains(engine.LastSentForTests,
+        Assert.Equal(2, _sent.Count);
+        Assert.Contains(_sent,
             b => Encoding.Latin1.GetString(b) == "invite Raijin\r");
-        Assert.Contains(engine.LastSentForTests,
+        Assert.Contains(_sent,
             b => Encoding.Latin1.GetString(b) == "invite Forged\r");
     }
 
@@ -1119,7 +1125,7 @@ public sealed class AutoPartyManagerTests
 
         Dispatch(router, "Also here: Raijin.");
 
-        byte[] sent = Assert.Single(engine.LastSentForTests);
+        byte[] sent = Assert.Single(_sent);
         Assert.Equal("invite Raijin\r", Encoding.Latin1.GetString(sent));
     }
 
@@ -1137,13 +1143,13 @@ public sealed class AutoPartyManagerTests
 
         Dispatch(router, "Also here: Raijin and Forged.");   // the next room, seen through a look
 
-        Assert.Empty(engine.LastSentForTests);
+        Assert.Empty(_sent);
 
         peeking = false;
         Dispatch(router, "Also here: Raijin and Forged.");   // our own room
 
-        Assert.Equal(2, engine.LastSentForTests.Count);
-        Assert.Contains(engine.LastSentForTests, b => Encoding.Latin1.GetString(b) == "invite Raijin\r");
+        Assert.Equal(2, _sent.Count);
+        Assert.Contains(_sent, b => Encoding.Latin1.GetString(b) == "invite Raijin\r");
     }
 
     // The reform looks at the room once, two seconds in. A look the game answered
@@ -1157,19 +1163,19 @@ public sealed class AutoPartyManagerTests
         bool peeking = true;
         engine.SetPeekProbe(() => peeking);
         engine.NoteLeaderReconnectReform(new[] { "Raijin" });
-        engine.FireReformRedisplayForTests();                // the one redisplay goes out
-        Assert.False(engine.ReformRedisplayArmedForTests);
+        _partyTimers.RunDue(AutoPartyManager.ReformRedisplayDelay);                // the one redisplay goes out
+        Assert.DoesNotContain(AutoPartyManager.ReformRedisplayDelay, _partyTimers.PendingDelays);
 
         Dispatch(router, "Also here: Raijin.");             // its answer, read as a peek
 
-        Assert.DoesNotContain(engine.LastSentForTests, b => Encoding.Latin1.GetString(b) == "invite Raijin\r");
-        Assert.True(engine.ReformRedisplayArmedForTests);
+        Assert.DoesNotContain(_sent, b => Encoding.Latin1.GetString(b) == "invite Raijin\r");
+        Assert.Contains(AutoPartyManager.ReformRedisplayDelay, _partyTimers.PendingDelays);
 
         peeking = false;
-        engine.FireReformRedisplayForTests();
+        _partyTimers.RunDue(AutoPartyManager.ReformRedisplayDelay);
         Dispatch(router, "Also here: Raijin.");
 
-        Assert.Contains(engine.LastSentForTests, b => Encoding.Latin1.GetString(b) == "invite Raijin\r");
+        Assert.Contains(_sent, b => Encoding.Latin1.GetString(b) == "invite Raijin\r");
     }
 
     // The same goes for the everyday invite-on-seen: a flagged player seen through a
@@ -1183,16 +1189,7 @@ public sealed class AutoPartyManagerTests
 
         Dispatch(router, "Also here: Raijin.");
 
-        Assert.Empty(engine.LastSentForTests);
-    }
-
-    [Fact]
-    public void LeaderReconnectReform_EmptyList_NoOp()
-    {
-        var (engine, router, _, _) = Setup();
-        engine.NoteLeaderReconnectReform(System.Array.Empty<string>());
-        Dispatch(router, "Also here: Raijin.");
-        Assert.Empty(engine.LastSentForTests);
+        Assert.Empty(_sent);
     }
 
     [Fact]
@@ -1212,7 +1209,7 @@ public sealed class AutoPartyManagerTests
         engine.NotePartySplitTeleport();
         Dispatch(router, "Wanderer appears in a blinding flash of light!");
 
-        Assert.Empty(engine.LastSentForTests);
+        Assert.Empty(_sent);
     }
 
     [Fact]
@@ -1231,11 +1228,11 @@ public sealed class AutoPartyManagerTests
         party.Members.Add(new PartyMember { Name = "Raijin" });
 
         engine.NotePartySplitTeleport();
-        Assert.Empty(engine.LastSentForTests);
+        Assert.Empty(_sent);
 
         Dispatch(router, "Also here: Raijin.");
 
-        byte[] sent = Assert.Single(engine.LastSentForTests);
+        byte[] sent = Assert.Single(_sent);
         Assert.Equal("invite Raijin\r", Encoding.Latin1.GetString(sent));
     }
 
@@ -1257,7 +1254,7 @@ public sealed class AutoPartyManagerTests
         Dispatch(router, "Raijin appears in a blinding flash of light!");
         Dispatch(router, "Also here: Raijin.");
 
-        byte[] sent = Assert.Single(engine.LastSentForTests);
+        byte[] sent = Assert.Single(_sent);
         Assert.Equal("invite Raijin\r", Encoding.Latin1.GetString(sent));
     }
 
@@ -1296,11 +1293,11 @@ public sealed class AutoPartyManagerTests
         party.Members.Add(new PartyMember { Name = "Raijin" });
 
         engine.NotePartySplitTeleport();
-        Assert.Empty(engine.LastSentForTests);   // invite deferred, nothing yet
+        Assert.Empty(_sent);   // invite deferred, nothing yet
 
-        engine.FireReformRedisplayForTests();
+        _partyTimers.RunDue(AutoPartyManager.ReformRedisplayDelay);
 
-        byte[] sent = Assert.Single(engine.LastSentForTests);
+        byte[] sent = Assert.Single(_sent);
         Assert.Equal("\r", Encoding.Latin1.GetString(sent));
     }
 
@@ -1320,11 +1317,11 @@ public sealed class AutoPartyManagerTests
         engine.NotePartySplitTeleport();
         Dispatch(router, "Raijin appears in a blinding flash of light!");
 
-        int before = engine.LastSentForTests.Count;
-        engine.FireReformRedisplayForTests();
+        int before = _sent.Count;
+        _partyTimers.RunDue(AutoPartyManager.ReformRedisplayDelay);
 
-        Assert.Equal(before, engine.LastSentForTests.Count);
-        Assert.DoesNotContain(engine.LastSentForTests,
+        Assert.Equal(before, _sent.Count);
+        Assert.DoesNotContain(_sent,
             b => Encoding.Latin1.GetString(b) == "\r");
     }
 
@@ -1343,7 +1340,7 @@ public sealed class AutoPartyManagerTests
 
         engine.NotePartySplitTeleport();
 
-        Assert.Empty(engine.LastSentForTests);
+        Assert.Empty(_sent);
         Assert.False(coord.IsPaused);
     }
 
@@ -1386,17 +1383,17 @@ public sealed class AutoPartyManagerTests
         var (engine, router, players, _) = Setup();
         SeedPlayer(players, "Raijin", inviteOnSeen: true);
         DateTime t0 = Now;
-        engine.NowProvider = () => t0;
+        _partyNow = () => t0;
         engine.UninviteSuppression = TimeSpan.FromMinutes(60);
 
         Dispatch(router, "Raijin has been removed from your followers.");
-        engine.LastSentForTests.Clear();
+        _sent.Clear();
 
         // 10 min later — still inside the suppression window.
-        engine.NowProvider = () => t0.AddMinutes(10);
+        _partyNow = () => t0.AddMinutes(10);
         Dispatch(router, "Also here: Raijin.");
 
-        Assert.Empty(engine.LastSentForTests);
+        Assert.Empty(_sent);
     }
 
     [Fact]
@@ -1405,18 +1402,18 @@ public sealed class AutoPartyManagerTests
         var (engine, router, players, _) = Setup();
         SeedPlayer(players, "Raijin", inviteOnSeen: true);
         DateTime t0 = Now;
-        engine.NowProvider = () => t0;
+        _partyNow = () => t0;
         engine.UninviteSuppression = TimeSpan.FromMinutes(60);
 
         Dispatch(router, "Raijin has been removed from your followers.");
-        engine.LastSentForTests.Clear();
+        _sent.Clear();
 
         // Past the suppression window AND past the regular 60s
         // re-invite cooldown.
-        engine.NowProvider = () => t0.AddMinutes(61);
+        _partyNow = () => t0.AddMinutes(61);
         Dispatch(router, "Also here: Raijin.");
 
-        byte[] sent = Assert.Single(engine.LastSentForTests);
+        byte[] sent = Assert.Single(_sent);
         Assert.Equal("invite Raijin\r", Encoding.Latin1.GetString(sent));
     }
 
@@ -1433,13 +1430,14 @@ public sealed class AutoPartyManagerTests
         // roster name.
         MessageRouter router = new();
         DefaultPatterns.Seed(router);
-        PlayerDatabase players = new();
+        PlayerDatabase players = new(new ProfileService(), () => null);
         SeedPlayer(players, "Raijin", inviteOnSeen: true);
         PartyState party = new();
         party.SelfIsLeader = true;   // leader-side reform — only a leader re-invites its followers
-        TrainerMenuTracker tracker = new(router, party) { NowProvider = () => Now };
-        AutoPartyManager engine = new(router, players, party, tracker) { NowProvider = () => Now };
-        engine.SetWireSender(_ => { });
+        TrainerMenuTracker tracker = new(router, party, now: () => Now);
+        _partyNow = () => Now;
+        AutoPartyManager engine = new(router, players, party, tracker, schedule: _partyTimers.Arm, now: () => _partyNow());
+        engine.SetWireSender(_sent.Add);
 
         // Snapshot the roster the menu captured at entry — simulates
         // "Raijin was in the party before we visited the trainer".
@@ -1452,12 +1450,12 @@ public sealed class AutoPartyManagerTests
         // Drop Raijin to model the follower-view dissolution that
         // happened while we were in the menu.
         party.Members.Clear();
-        engine.LastSentForTests.Clear();
+        _sent.Clear();
 
         // Exit the menu — next in-game prompt fires MenuExited.
         Dispatch(router, "[HP=33]:");
 
-        byte[] sent = Assert.Single(engine.LastSentForTests);
+        byte[] sent = Assert.Single(_sent);
         Assert.Equal("invite Raijin\r", Encoding.Latin1.GetString(sent));
     }
 
@@ -1468,22 +1466,23 @@ public sealed class AutoPartyManagerTests
         // menu trip, there's nothing to re-invite.
         MessageRouter router = new();
         DefaultPatterns.Seed(router);
-        PlayerDatabase players = new();
+        PlayerDatabase players = new(new ProfileService(), () => null);
         SeedPlayer(players, "Raijin", inviteOnSeen: true);
         PartyState party = new();
         party.SelfIsLeader = true;   // leader-side reform — only a leader re-invites its followers
-        TrainerMenuTracker tracker = new(router, party) { NowProvider = () => Now };
-        AutoPartyManager engine = new(router, players, party, tracker) { NowProvider = () => Now };
-        engine.SetWireSender(_ => { });
+        TrainerMenuTracker tracker = new(router, party, now: () => Now);
+        _partyNow = () => Now;
+        AutoPartyManager engine = new(router, players, party, tracker, schedule: _partyTimers.Arm, now: () => _partyNow());
+        engine.SetWireSender(_sent.Add);
 
         party.Members.Add(new PartyMember { Name = "Raijin WuzHere" });
         tracker.ObserveOutbound(Encoding.Latin1.GetBytes("train stats\r"));
         Dispatch(router, "    Point Cost Chart");
-        engine.LastSentForTests.Clear();
+        _sent.Clear();
 
         Dispatch(router, "[HP=33]:");
 
-        Assert.Empty(engine.LastSentForTests);
+        Assert.Empty(_sent);
     }
 
     [Fact]
@@ -1496,13 +1495,14 @@ public sealed class AutoPartyManagerTests
         // the follower re-forms rather than sitting at [Invited] forever.
         MessageRouter router = new();
         DefaultPatterns.Seed(router);
-        PlayerDatabase players = new();
+        PlayerDatabase players = new(new ProfileService(), () => null);
         SeedPlayer(players, "Raijin", inviteOnSeen: true);
         PartyState party = new();
         party.SelfIsLeader = true;   // leader-side reform — only a leader re-invites its followers
-        TrainerMenuTracker tracker = new(router, party) { NowProvider = () => Now };
-        AutoPartyManager engine = new(router, players, party, tracker) { NowProvider = () => Now };
-        engine.SetWireSender(_ => { });
+        TrainerMenuTracker tracker = new(router, party, now: () => Now);
+        _partyNow = () => Now;
+        AutoPartyManager engine = new(router, players, party, tracker, schedule: _partyTimers.Arm, now: () => _partyNow());
+        engine.SetWireSender(_sent.Add);
 
         party.Members.Add(new PartyMember { Name = "Raijin WuzHere" });
         tracker.ObserveOutbound(Encoding.Latin1.GetBytes("train stats\r"));
@@ -1512,11 +1512,11 @@ public sealed class AutoPartyManagerTests
         // Follower view dissolved → row is now a bare [Invited] placeholder.
         party.Members.Clear();
         party.Members.Add(new PartyMember { Name = "Raijin WuzHere", IsInvited = true });
-        engine.LastSentForTests.Clear();
+        _sent.Clear();
 
         Dispatch(router, "[HP=33]:");
 
-        byte[] sent = Assert.Single(engine.LastSentForTests);
+        byte[] sent = Assert.Single(_sent);
         Assert.Equal("invite Raijin\r", Encoding.Latin1.GetString(sent));
     }
 
@@ -1530,13 +1530,14 @@ public sealed class AutoPartyManagerTests
         // the rejoin.
         MessageRouter router = new();
         DefaultPatterns.Seed(router);
-        PlayerDatabase players = new();
+        PlayerDatabase players = new(new ProfileService(), () => null);
         PartyState party = new();
         party.SelfIsLeader = false;      // we're a follower
         party.LeaderName = "MudPlay";
-        TrainerMenuTracker tracker = new(router, party) { NowProvider = () => Now };
-        AutoPartyManager engine = new(router, players, party, tracker) { NowProvider = () => Now };
-        engine.SetWireSender(_ => { });
+        TrainerMenuTracker tracker = new(router, party, now: () => Now);
+        _partyNow = () => Now;
+        AutoPartyManager engine = new(router, players, party, tracker, schedule: _partyTimers.Arm, now: () => _partyNow());
+        engine.SetWireSender(_sent.Add);
 
         // Roster at menu entry holds our leader.
         party.Members.Add(new PartyMember { Name = "MudPlay" });
@@ -1546,11 +1547,11 @@ public sealed class AutoPartyManagerTests
 
         // Follower-side view dissolved during the trip.
         party.Members.Clear();
-        engine.LastSentForTests.Clear();
+        _sent.Clear();
 
         Dispatch(router, "[HP=33]:");
 
-        Assert.Empty(engine.LastSentForTests);   // no invite — the leader reforms
+        Assert.Empty(_sent);   // no invite — the leader reforms
     }
 
     [Fact]
@@ -1561,24 +1562,24 @@ public sealed class AutoPartyManagerTests
         var (engine, router, players, _) = Setup();
         SeedPlayer(players, "Raijin", inviteOnSeen: true);
         DateTime t0 = Now;
-        engine.NowProvider = () => t0;
+        _partyNow = () => t0;
         engine.JoinNagInitialDelay = TimeSpan.FromSeconds(5);
         engine.JoinNagFrequency    = TimeSpan.FromSeconds(10);
 
         Dispatch(router, "Also here: Raijin.");
-        engine.NowProvider = () => t0.AddSeconds(5);
-        engine.TickNagsForTests();
-        Assert.Equal(2, engine.LastSentForTests.Count); // invite + 1st @join
+        _partyNow = () => t0.AddSeconds(5);
+        _partyTimers.RunDue(AutoPartyManager.NagTick);
+        Assert.Equal(2, _sent.Count); // invite + 1st @join
 
         Dispatch(router, "Raijin has been removed from your followers.");
-        engine.LastSentForTests.Clear();
+        _sent.Clear();
 
         // Further ticks — no more @join because the nag was cancelled.
-        engine.NowProvider = () => t0.AddSeconds(20);
-        engine.TickNagsForTests();
-        engine.NowProvider = () => t0.AddSeconds(40);
-        engine.TickNagsForTests();
-        Assert.Empty(engine.LastSentForTests);
+        _partyNow = () => t0.AddSeconds(20);
+        _partyTimers.RunDue(AutoPartyManager.NagTick);
+        _partyNow = () => t0.AddSeconds(40);
+        _partyTimers.RunDue(AutoPartyManager.NagTick);
+        Assert.Empty(_sent);
     }
 
     // ===== Manual-invite path: @join nag starts on the server echo =======
@@ -1595,7 +1596,7 @@ public sealed class AutoPartyManagerTests
         // echo for `invite Raijin` should still spin up the @join nag.
         var (engine, router, _, _) = Setup();
         DateTime t0 = Now;
-        engine.NowProvider = () => t0;
+        _partyNow = () => t0;
         engine.JoinNagInitialDelay = TimeSpan.FromSeconds(5);
         engine.JoinNagFrequency    = TimeSpan.FromSeconds(10);
         engine.JoinNagMaxTotal     = TimeSpan.FromSeconds(55);
@@ -1603,9 +1604,9 @@ public sealed class AutoPartyManagerTests
         Dispatch(router, "You have invited Raijin to follow you.");
 
         // First nag fires after JoinNagInitialDelay.
-        engine.NowProvider = () => t0.AddSeconds(6);
-        engine.TickNagsForTests();
-        byte[] sent = Assert.Single(engine.LastSentForTests);
+        _partyNow = () => t0.AddSeconds(6);
+        _partyTimers.RunDue(AutoPartyManager.NagTick);
+        byte[] sent = Assert.Single(_sent);
         Assert.Equal("/Raijin @join\r", Encoding.Latin1.GetString(sent));
     }
 
@@ -1619,24 +1620,26 @@ public sealed class AutoPartyManagerTests
         var (engine, router, players, _) = Setup();
         SeedPlayer(players, "Raijin", inviteOnSeen: true);
         DateTime t0 = Now;
-        engine.NowProvider = () => t0;
+        _partyNow = () => t0;
         engine.JoinNagInitialDelay = TimeSpan.FromSeconds(5);
         engine.JoinNagFrequency    = TimeSpan.FromSeconds(10);
         engine.JoinNagMaxTotal     = TimeSpan.FromSeconds(55);
 
         // Auto-path fires the invite + arms the nag.
         Dispatch(router, "Also here: Raijin.");
-        Assert.Single(engine.LastSentForTests, b => Encoding.Latin1.GetString(b) == "invite Raijin\r");
-        engine.LastSentForTests.Clear();
+        Assert.Single(_sent, b => Encoding.Latin1.GetString(b) == "invite Raijin\r");
+        _sent.Clear();
 
-        // Server echo arrives — handler is idempotent.
+        // Server echo arrives a few seconds on — handler is idempotent. A nag
+        // re-armed by the echo would start at t0+3 and not fire until t0+8.
+        _partyNow = () => t0.AddSeconds(3);
         Dispatch(router, "You have invited Raijin to follow you.");
 
         // Advance past the initial delay and tick — only ONE @join
         // should fire (single armed nag entry).
-        engine.NowProvider = () => t0.AddSeconds(6);
-        engine.TickNagsForTests();
-        Assert.Single(engine.LastSentForTests);
+        _partyNow = () => t0.AddSeconds(6);
+        _partyTimers.RunDue(AutoPartyManager.NagTick);
+        Assert.Single(_sent);
     }
 
     [Fact]
@@ -1649,14 +1652,14 @@ public sealed class AutoPartyManagerTests
         party.IsInParty    = true;
         party.SelfIsLeader = false;
         DateTime t0 = Now;
-        engine.NowProvider = () => t0;
+        _partyNow = () => t0;
         engine.JoinNagInitialDelay = TimeSpan.FromSeconds(5);
 
         Dispatch(router, "You have invited Raijin to follow you.");
 
-        engine.NowProvider = () => t0.AddSeconds(6);
-        engine.TickNagsForTests();
-        Assert.Empty(engine.LastSentForTests);
+        _partyNow = () => t0.AddSeconds(6);
+        _partyTimers.RunDue(AutoPartyManager.NagTick);
+        Assert.Empty(_sent);
     }
 
     [Fact]
@@ -1667,14 +1670,14 @@ public sealed class AutoPartyManagerTests
         var (engine, router, _, party) = Setup();
         party.Members.Add(new PartyMember { Name = "Raijin", IsInvited = false });
         DateTime t0 = Now;
-        engine.NowProvider = () => t0;
+        _partyNow = () => t0;
         engine.JoinNagInitialDelay = TimeSpan.FromSeconds(5);
 
         Dispatch(router, "You have invited Raijin to follow you.");
 
-        engine.NowProvider = () => t0.AddSeconds(6);
-        engine.TickNagsForTests();
-        Assert.Empty(engine.LastSentForTests);
+        _partyNow = () => t0.AddSeconds(6);
+        _partyTimers.RunDue(AutoPartyManager.NagTick);
+        Assert.Empty(_sent);
     }
 
     [Fact]
@@ -1686,14 +1689,14 @@ public sealed class AutoPartyManagerTests
         var (engine, router, _, party) = Setup();
         party.Members.Add(new PartyMember { Name = "Raijin", IsInvited = true });
         DateTime t0 = Now;
-        engine.NowProvider = () => t0;
+        _partyNow = () => t0;
         engine.JoinNagInitialDelay = TimeSpan.FromSeconds(5);
 
         Dispatch(router, "You have invited Raijin to follow you.");
 
-        engine.NowProvider = () => t0.AddSeconds(6);
-        engine.TickNagsForTests();
-        Assert.Single(engine.LastSentForTests, b => Encoding.Latin1.GetString(b) == "/Raijin @join\r");
+        _partyNow = () => t0.AddSeconds(6);
+        _partyTimers.RunDue(AutoPartyManager.NagTick);
+        Assert.Single(_sent, b => Encoding.Latin1.GetString(b) == "/Raijin @join\r");
     }
 
     // ===== Party-split teleport reform: plain arrival + disband survival =====
@@ -1714,11 +1717,11 @@ public sealed class AutoPartyManagerTests
         party.Members.Add(new PartyMember { Name = "Raijin" });
 
         engine.NotePartySplitTeleport();
-        Assert.Empty(engine.LastSentForTests);
+        Assert.Empty(_sent);
 
         engine.OnPlayerArrival(new RoomEntryArrivalEvent("Raijin", EntityKind.Player, "nowhere", default));
 
-        byte[] sent = Assert.Single(engine.LastSentForTests);
+        byte[] sent = Assert.Single(_sent);
         Assert.Equal("invite Raijin\r", Encoding.Latin1.GetString(sent));
     }
 
@@ -1739,7 +1742,7 @@ public sealed class AutoPartyManagerTests
         engine.NotePartySplitTeleport();
         engine.OnPlayerArrival(new RoomEntryArrivalEvent("Raijin", EntityKind.Monster, "east", default));
 
-        Assert.Empty(engine.LastSentForTests);
+        Assert.Empty(_sent);
     }
 
     [Fact]
@@ -1763,11 +1766,11 @@ public sealed class AutoPartyManagerTests
 
         // Cardinal follow-in (staging room) must NOT fire the invite.
         engine.OnPlayerArrival(new RoomEntryArrivalEvent("Raijin", EntityKind.Player, "east", default));
-        Assert.Empty(engine.LastSentForTests);
+        Assert.Empty(_sent);
 
         // The real through-hole arrival ("from nowhere") fires it.
         engine.OnPlayerArrival(new RoomEntryArrivalEvent("Raijin", EntityKind.Player, "nowhere", default));
-        byte[] sent = Assert.Single(engine.LastSentForTests);
+        byte[] sent = Assert.Single(_sent);
         Assert.Equal("invite Raijin\r", Encoding.Latin1.GetString(sent));
     }
 
@@ -1798,12 +1801,12 @@ public sealed class AutoPartyManagerTests
 
         // Reform survived — still holding, nothing prematurely invited.
         Assert.True(coord.IsPaused);
-        Assert.Empty(engine.LastSentForTests);
+        Assert.Empty(_sent);
 
         // Member finally walks in — the withheld invite goes out and reforms.
         engine.OnPlayerArrival(new RoomEntryArrivalEvent("Raijin", EntityKind.Player, "nowhere", default));
 
-        byte[] sent = Assert.Single(engine.LastSentForTests);
+        byte[] sent = Assert.Single(_sent);
         Assert.Equal("invite Raijin\r", Encoding.Latin1.GetString(sent));
     }
 
@@ -1834,7 +1837,7 @@ public sealed class AutoPartyManagerTests
         Assert.Contains(MovementCoordinator.PartyInviteGate, coord.AssertedGates);
 
         engine.OnPlayerArrival(new RoomEntryArrivalEvent("Raijin", EntityKind.Player, "nowhere", default));
-        Assert.Single(engine.LastSentForTests);
+        Assert.Single(_sent);
     }
 
     // ----- a follower an exit refused: Stock keeps them on the leader's list -----
@@ -1845,21 +1848,21 @@ public sealed class AutoPartyManagerTests
 
     // A member who followed us and now reads [Invited] is seen in the room while a
     // loop runs: re-invited, and the loop held for them. Returns the loop's gate.
-    private static MovementCoordinator InvitedRowSeenWhileLooping(
+    private MovementCoordinator InvitedRowSeenWhileLooping(
         AutoPartyManager engine, MessageRouter router, PlayerDatabase players, PartyState party, DateTime t0)
     {
         SeedPlayer(players, "Tank", inviteOnSeen: true);
         party.Members.Add(new PartyMember { Name = "Tank", IsInvited = true });
         party.IsInParty = true;
         party.SelfIsLeader = true;
-        engine.NowProvider = () => t0;
+        _partyNow = () => t0;
         MovementCoordinator coord = new();
         engine.InviteWaitWindow = TimeSpan.FromSeconds(90);
         engine.SetMovementGate(coord, isLooping: () => true);
         Dispatch(router, "Also here: Tank.");
-        Assert.Contains(engine.LastSentForTests, b => Encoding.Latin1.GetString(b) == "invite Tank\r");
+        Assert.Contains(_sent, b => Encoding.Latin1.GetString(b) == "invite Tank\r");
         Assert.True(coord.IsPaused);
-        engine.LastSentForTests.Clear();
+        _sent.Clear();
         return coord;
     }
 
@@ -1870,10 +1873,10 @@ public sealed class AutoPartyManagerTests
         DateTime t0 = Now;
         MovementCoordinator coord = InvitedRowSeenWhileLooping(engine, router, players, party, t0);
 
-        engine.NowProvider = () => t0.AddSeconds(91);
-        engine.TickNagsForTests();
+        _partyNow = () => t0.AddSeconds(91);
+        _partyTimers.RunDue(AutoPartyManager.NagTick);
 
-        Assert.Contains(engine.LastSentForTests, b => Encoding.Latin1.GetString(b) == "uninvite Tank\r");
+        Assert.Contains(_sent, b => Encoding.Latin1.GetString(b) == "uninvite Tank\r");
         Assert.False(coord.IsPaused);
     }
 
@@ -1888,17 +1891,17 @@ public sealed class AutoPartyManagerTests
         DateTime t0 = Now;
         MovementCoordinator coord = InvitedRowSeenWhileLooping(engine, router, players, party, t0);
 
-        engine.NowProvider = () => t0.AddSeconds(91);
-        engine.TickNagsForTests();
+        _partyNow = () => t0.AddSeconds(91);
+        _partyTimers.RunDue(AutoPartyManager.NagTick);
 
-        Assert.DoesNotContain(engine.LastSentForTests, b => Encoding.Latin1.GetString(b) == "uninvite Tank\r");
+        Assert.DoesNotContain(_sent, b => Encoding.Latin1.GetString(b) == "uninvite Tank\r");
         Assert.False(coord.IsPaused);
 
         // And the loop isn't held for them again on the next lap.
-        engine.LastSentForTests.Clear();
-        engine.NowProvider = () => t0.AddSeconds(200);
+        _sent.Clear();
+        _partyNow = () => t0.AddSeconds(200);
         Dispatch(router, "Also here: Tank.");
-        Assert.Empty(engine.LastSentForTests);
+        Assert.Empty(_sent);
         Assert.False(coord.IsPaused);
     }
 
@@ -1911,10 +1914,10 @@ public sealed class AutoPartyManagerTests
         DateTime t0 = Now;
         MovementCoordinator coord = InvitedRowSeenWhileLooping(engine, router, players, party, t0);
 
-        engine.NowProvider = () => t0.AddSeconds(91);
-        engine.TickNagsForTests();
+        _partyNow = () => t0.AddSeconds(91);
+        _partyTimers.RunDue(AutoPartyManager.NagTick);
 
-        Assert.Contains(engine.LastSentForTests, b => Encoding.Latin1.GetString(b) == "uninvite Tank\r");
+        Assert.Contains(_sent, b => Encoding.Latin1.GetString(b) == "uninvite Tank\r");
         Assert.False(coord.IsPaused);
     }
 }

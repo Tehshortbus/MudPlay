@@ -3,12 +3,10 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Pure fold of leader + member level estimates into the party's
-/// most-constraining (Low, High) window. Drives
-/// <see cref="Services.MovementFilter.IsExitBlocked"/>'s party branch,
-/// which routes a following party around gates a member can't clear.
-/// </summary>
+// Pure fold of leader + member level estimates into the party's
+// most-constraining (Low, High) window. Drives
+// Services.MovementFilter.IsExitBlocked's party branch,
+// which routes a following party around gates a member can't clear.
 public sealed class PartyLevelBoundsTests
 {
     private static PartyLevelEstimate Exact(int level) => new(level, null);

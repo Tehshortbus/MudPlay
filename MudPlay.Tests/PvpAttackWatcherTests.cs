@@ -17,7 +17,7 @@ public sealed class PvpAttackWatcherTests
     {
         public MessageRouter Router { get; } = new();
         public MonsterMessageStore Monsters { get; } = new();
-        public PlayerDatabase Players { get; } = new();
+        public PlayerDatabase Players { get; } = new(new ProfileService(), () => null);
         public PartyState Party { get; } = new();
         public RoomEntityClassifier Classifier { get; }
         public RoomEntryWatcher Entry { get; }

@@ -7,8 +7,8 @@ namespace MudPlay.Tests;
 
 // Pins what the default profile is: the template in the Global folder that a new
 // character starts from, and never something a session writes. A session on it
-// (LoadDefaultProfile) or on a scratch draft (LoadBlank) is an unnamed draft whose
-// Save writes nothing; naming it is what keeps it.
+// (LoadDefaultProfile) is an unnamed draft whose Save writes nothing; naming it is
+// what keeps it.
 //
 // Each test has a template folder of its own, never the Global one: every profile
 // created in the run starts from that, and a template written here was handed to
@@ -103,20 +103,6 @@ public sealed class DefaultProfilePersistenceTests : IDisposable
         session.DiscardUnnamedDraftChanges();
 
         Assert.False(session.UnnamedDraftHasChanges);
-    }
-
-    [Fact]
-    public void LoadBlank_Save_DoesNotWriteDefaultFile()
-    {
-        ProfileService scratch = Service();
-        scratch.LoadBlank();                  // throwaway in-memory draft
-        scratch.Current!.Settings ??= new();
-        scratch.Current.Settings["Probe"] =
-            JsonSerializer.SerializeToElement(new { Flag = true });
-        scratch.Save();                       // must stay a no-op — nothing persisted
-
-        Assert.False(File.Exists(Template),
-            "A LoadBlank scratch draft must never persist to the Global default-profile file.");
     }
 
     // The startup-animation preference is install-global: written to the Global

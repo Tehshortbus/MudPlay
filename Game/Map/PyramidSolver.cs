@@ -9,7 +9,7 @@ namespace MudPlay.Game.Map;
 
 // The minimal surface the walker needs to hand a pyramid-climb destination off to
 // the solver. Parallel to IMazeSolver — kept tiny so AutoWalkManager takes no hard
-// dependency on the solver internals (and its tests can inject a fake).
+// dependency on the solver internals.
 public interface IPyramidSolver
 {
     // True when this destination is a Great Pyramid room the solver can climb to
@@ -148,7 +148,9 @@ public sealed class PyramidSolver : IPyramidSolver, IDisposable
     private readonly Func<string, bool>? _gateEngineOn;
     private readonly Action<Action> _post;
 
-    private readonly DispatcherTimer? _settleTimer;
+    private IDisposable? _settleTimer;
+    // Arms one tick after the delay; disposing what it returns cancels it.
+    private readonly Func<TimeSpan, Action, IDisposable> _schedule;
 
     private Action<byte[]>? _wireSender;
     private LineExtractor? _lines;
@@ -253,7 +255,7 @@ public sealed class PyramidSolver : IPyramidSolver, IDisposable
     // to draw and read "Idle" (report paradigm-20261007-234656). These give it the
     // same two things a walk does: the rooms still ahead, and where it is headed.
 
-    public Func<DateTimeOffset> NowProvider { get; set; } = () => DateTimeOffset.UtcNow;
+    private readonly Func<DateTimeOffset> _now;
     private DateTimeOffset? _floor1Since;
 
     // Time left on floor 1 before the party is scattered: five minutes from the
@@ -264,7 +266,7 @@ public sealed class PyramidSolver : IPyramidSolver, IDisposable
         get
         {
             if (!Active || _floor != PyramidFloor.F1 || _floor1Since is not { } since) return null;
-            TimeSpan left = PyramidScript.Floor1Budget - (NowProvider() - since);
+            TimeSpan left = PyramidScript.Floor1Budget - (_now() - since);
             return left > TimeSpan.Zero ? left : TimeSpan.Zero;
         }
     }
@@ -355,31 +357,13 @@ public sealed class PyramidSolver : IPyramidSolver, IDisposable
         Action<Direction, int, bool, int, string, Action<DoorOpenResult>>? openDoor = null,
         Func<int, bool>? holdsItem = null,
         Func<string, bool>? gateEngineOn = null,
-        Action? stopDoor = null)
-        : this(tracker, walker, snapshot, quickness, log, useTimer: true, post: null,
-               isParadigm, canDrive, leaderName, enabled, coordinator, isPartyMember, askPosition,
-               openDoor, holdsItem, gateEngineOn, stopDoor) { }
-
-    internal PyramidSolver(
-        RoomTracker tracker,
-        AutoWalkManager walker,
-        Func<InventorySnapshot> snapshot,
-        Func<int> quickness,
-        LogService? log,
-        bool useTimer,
-        Action<Action>? post,
-        Func<bool>? isParadigm = null,
-        Func<bool>? canDrive = null,
-        Func<string?>? leaderName = null,
-        Func<bool>? enabled = null,
-        MovementCoordinator? coordinator = null,
-        Func<string, bool>? isPartyMember = null,
-        Func<string, Action<RoomKey>, Action, bool>? askPosition = null,
-        Action<Direction, int, bool, int, string, Action<DoorOpenResult>>? openDoor = null,
-        Func<int, bool>? holdsItem = null,
-        Func<string, bool>? gateEngineOn = null,
-        Action? stopDoor = null)
+        Action? stopDoor = null,
+        Func<DateTimeOffset>? now = null,
+        Action<Action>? post = null,
+        Func<TimeSpan, Action, IDisposable>? schedule = null)
     {
+        _now = now ?? (() => DateTimeOffset.UtcNow);
+        _schedule = schedule ?? DispatcherTicks.Once;
         ArgumentNullException.ThrowIfNull(tracker);
         ArgumentNullException.ThrowIfNull(walker);
         ArgumentNullException.ThrowIfNull(snapshot);
@@ -407,12 +391,6 @@ public sealed class PyramidSolver : IPyramidSolver, IDisposable
         _tracker.MoveBlocked += OnTrackerMoveBlocked;
         _tracker.PlayerDeathObserved += OnPlayerDied;
         if (_coordinator is not null) _coordinator.GatesChanged += OnGatesChanged;
-
-        if (useTimer)
-        {
-            _settleTimer = new DispatcherTimer(DispatcherPriority.Background);
-            _settleTimer.Tick += (_, _) => OnSettleTick();
-        }
     }
 
     // Main-window VM supplies the EngineSendGate-wrapped SendUserInput. Without it
@@ -670,7 +648,7 @@ public sealed class PyramidSolver : IPyramidSolver, IDisposable
 
         // Floor 1's clock starts with the firepit `up`, which is the move that
         // brought us onto it.
-        if (floor == PyramidFloor.F1 && _floor == PyramidFloor.Firepit) _floor1Since = NowProvider();
+        if (floor == PyramidFloor.F1 && _floor == PyramidFloor.Firepit) _floor1Since = _now();
         if (floor != _floor)
             _log?.Log(LogSeverity.Info, LogSource,
                 best == 0 ? $"driving {floor}" : $"driving {floor} from step {best + 1} (12/{key.Room})");
@@ -1026,21 +1004,20 @@ public sealed class PyramidSolver : IPyramidSolver, IDisposable
     private void ScheduleSettle(TimeSpan interval, Action continuation)
     {
         _settleCont = continuation;
-        if (_settleTimer is null) return;   // tests fire OnSettleTick / continuations by hand
-        _settleTimer.Stop();
-        _settleTimer.Interval = interval;
-        _settleTimer.Start();
+        _settleTimer?.Dispose();
+        _settleTimer = _schedule(interval, OnSettleTick);
     }
 
     private void StopTimer()
     {
-        _settleTimer?.Stop();
+        _settleTimer?.Dispose();
+        _settleTimer = null;
         _settleCont = null;
     }
 
     private void OnSettleTick()
     {
-        _settleTimer?.Stop();
+        _settleTimer = null;
         if (!Active) return;
         Action? cont = _settleCont;
         _settleCont = null;
@@ -1423,13 +1400,6 @@ public sealed class PyramidSolver : IPyramidSolver, IDisposable
     private void SendCommand(string cmd) => Send(Encoding.Latin1.GetBytes(cmd + "\r"));
     private void Send(byte[] bytes) => _wireSender?.Invoke(bytes);
 
-    // ----- test seams ------------------------------------------------
-    internal void FireSettleForTests() => OnSettleTick();
-    internal bool HasSettlePendingForTests => _settleCont is not null;
-    internal void FeedLineForTests(string text)
-        => OnLine(new LineExtractor.EmittedLine(
-            text, Array.Empty<MudPlay.Terminal.CellAttributes>(), DateTimeOffset.UnixEpoch, IsPromptLine: false));
-
     public void Dispose()
     {
         if (_disposed) return;
@@ -1439,6 +1409,7 @@ public sealed class PyramidSolver : IPyramidSolver, IDisposable
         _tracker.MoveBlocked -= OnTrackerMoveBlocked;
         _tracker.PlayerDeathObserved -= OnPlayerDied;
         if (_coordinator is not null) _coordinator.GatesChanged -= OnGatesChanged;
-        _settleTimer?.Stop();
+        _settleTimer?.Dispose();
+        _settleTimer = null;
     }
 }

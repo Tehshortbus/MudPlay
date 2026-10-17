@@ -877,8 +877,8 @@ public sealed class BfsMapper
     }
 
     // BFS-planar layout from origin. Caches the result; OnGraphReloaded
-    // evicts. The origin sits at (0, 0). Rooms whose grid position
-    // collides with an already-placed room go into RoomLayout.OffGrid.
+    // evicts. The origin sits at (0, 0). A room whose grid position
+    // collides with an already-placed room is dropped (see BuildLayoutCore).
     //
     // maxRadius: cap on hop distance from origin. int.MaxValue means
     //   "until queue drains". Map UIs typically pass a small number (e.g.
@@ -919,7 +919,6 @@ public sealed class BfsMapper
                 Origin: origin,
                 Positions: new Dictionary<RoomKey, (int X, int Y)>(),
                 VerticalHints: new Dictionary<RoomKey, VerticalHint>(),
-                OffGrid: Array.Empty<RoomKey>(),
                 CoordToRoom: new Dictionary<(int X, int Y), RoomKey>(),
                 EdgesFromCoord: new Dictionary<(int X, int Y), IReadOnlySet<Direction>>(),
                 TrapEdgesFromCoord: new Dictionary<(int X, int Y), IReadOnlySet<Direction>>(),
@@ -1345,7 +1344,6 @@ public sealed class BfsMapper
             Origin: origin,
             Positions: positions,
             VerticalHints: vertical,
-            OffGrid: Array.Empty<RoomKey>(),
             CoordToRoom: coordToRoom,
             EdgesFromCoord: edgesFromCoord.ToDictionary(
                 kvp => kvp.Key,
@@ -1364,9 +1362,8 @@ public sealed class BfsMapper
     // places the same number with FEWER stubs. Coverage dominates because
     // a dropped room disappears from the map entirely (strictly worse than
     // a bent connector); stub count only breaks ties between equal-
-    // coverage layouts. Extracted + internal so the ordering is
-    // unit-testable without standing up a full graph — optimising on stubs
-    // alone silently prefers layouts that drop whole clusters.
+    // coverage layouts. Optimising on stubs alone silently prefers
+    // layouts that drop whole clusters.
     internal static bool RetryImproves(
         int candidatePlaced, int candidateStubs,
         int bestPlaced, int bestStubs)
@@ -1525,7 +1522,6 @@ public sealed class BfsMapper
             Origin: newOrigin,
             Positions: positions,
             VerticalHints: source.VerticalHints,
-            OffGrid: source.OffGrid,
             CoordToRoom: coordToRoom,
             EdgesFromCoord: edges,
             TrapEdgesFromCoord: trapEdges,

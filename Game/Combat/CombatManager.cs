@@ -83,7 +83,7 @@ public sealed partial class CombatManager : IDisposable
     private readonly Func<int, MonsterOverlay> _resolveOverlay;
     // Optional room-aware name→Number resolver: prefers the record actually in the
     // current room so a display name shared across zones picks this room's variant.
-    // Null (tests / legacy ctor) → the name→Number step keeps its first-match scan.
+    // Null (legacy ctor) → the name→Number step keeps its first-match scan.
     private readonly Func<string, int?>? _roomAwareResolve;
     // Resolves a debuff slot's cast-code to its catalog row so the between-round
     // debuff dispatch can reject a mis-slotted spell (an attack spell with
@@ -148,8 +148,7 @@ public sealed partial class CombatManager : IDisposable
     // weapon + off-hand immediately (the fast, unpaced path that must land before
     // the next swing); prepBackstabArmor applies the Backstab set's armor as a
     // synchronous burst in the pre-move sequence, before the sn. Until wired both
-    // no-op, so the manager stays a pure decider (tests assert on the decision,
-    // not the actuation).
+    // no-op, so the manager stays a pure decider.
     private Action<string?, string?, bool>? _swapWeapon;
     private Action? _prepBackstabArmor;
     // Live worn-weapon reader (EquipmentManager.WornWeapon). Server-confirmed, so
@@ -287,7 +286,7 @@ public sealed partial class CombatManager : IDisposable
     // OnEntitiesObserved). _arrivalSettleArmed latches while a burst's first engage
     // is held; _arrivalSettleBypass is set only for the settle callback's re-entrant
     // OnEntitiesObserved so it dispatches instead of re-arming. _scheduleArrivalSettle
-    // is the injected UI-thread one-shot (null in tests that don't opt in → the old
+    // is the injected UI-thread one-shot (null → the
     // immediate-engage path). The window only needs to span the synchronous
     // processing of a burst + its room re-display; it doubles as the (rare) lone-spawn
     // engage latency, so keep it short.
@@ -328,8 +327,8 @@ public sealed partial class CombatManager : IDisposable
     // only needs on the order of a round-trip, not half a second, so the window is cut
     // to 200ms — still enough for the trailing kill packet to land and re-validate away,
     // while leaving far more of the round for the switch to actually beat the server's
-    // next auto-repeat. Injected one-shot scheduler; null in tests that don't opt in
-    // (falls back to _post).
+    // next auto-repeat. Injected one-shot scheduler; null falls
+    // back to _post.
     private static readonly TimeSpan SwitchDispatchDelay = TimeSpan.FromMilliseconds(200);
     private Action<TimeSpan, Action>? _scheduleSwitchDispatch;
 
@@ -571,7 +570,7 @@ public sealed partial class CombatManager : IDisposable
 
     // Real-time stamp of the last attack-spell MaxCasts tally in the spell heartbeat,
     // gated by AttackTallyMinGap. LEGACY FALLBACK — only used when ReadRoundCount is
-    // unwired (tests that don't opt in). Reset to MinValue wherever the per-target
+    // unwired. Reset to MinValue wherever the per-target
     // cascade resets (alongside _lastAlternationAdvanceAt).
     private DateTimeOffset _lastAttackTallyAt = DateTimeOffset.MinValue;
 
@@ -586,7 +585,7 @@ public sealed partial class CombatManager : IDisposable
     // CLOSE; unwired leaves it -1 and the legacy wall-clock path runs.
     //
     // Wired (AppServices) to ConfirmedAttackCastCount, NOT RoundDamageTracker's own
-    // RoundCount — that tracker's 5s timer-driven window is sized for DPS/session
+    // round counter — that tracker's 5s timer-driven window is sized for DPS/session
     // stats, not for this. A fast multi-projectile caster can complete more than one
     // real cast inside a single RoundDamageTracker window (its "first hit" anchor
     // only starts counting once combat produces a damage line, so a slow-opening
@@ -611,7 +610,7 @@ public sealed partial class CombatManager : IDisposable
     // never advanced for it — the round-count tally froze, MaxCastsPerRoom was never
     // perceived as reached, and the configured alternate attack spell could never be
     // reached (report paradigm-20260913-040159: soul capped at 1 cast/room, never
-    // switched to god's wrath). Null when unwired (tests) or the spell has no usable
+    // switched to god's wrath). Null when unwired or the spell has no usable
     // caster-message record — those callers keep the physical-only behavior.
     //
     // A list, because a spell's own record can hold only its cast emote ("You make a
@@ -621,7 +620,7 @@ public sealed partial class CombatManager : IDisposable
 
     // How many real single-target attack-spell casts OnAttackCastConfirmed has
     // observed landing this session — the precise signal ReadRoundCount is wired to
-    // (see its comment). Monotonic, like RoundDamageTracker.RoundCount; callers
+    // (see its comment). Monotonic, like RoundDamageTracker's round counter; callers
     // baseline against it via _lastTalliedRound, never read it as a target-scoped
     // count.
     internal int ConfirmedAttackCastCount { get; private set; }
@@ -646,12 +645,10 @@ public sealed partial class CombatManager : IDisposable
     // next-round tick is never itself rejected.
     private static readonly TimeSpan AttackTallyMinGap = AlternationAdvanceMinGap;
 
-    // Clock for AlternationAdvanceMinGap, mirroring CastingDirector.SetClock —
-    // tests inject a fake clock so a synchronous burst of Tick() calls can
-    // exercise multi-round phase timing without real elapsed wall-clock time.
-    // Scoped to just this one check; every other timestamp in this file still
-    // reads DateTimeOffset.Now directly.
-    private Func<DateTimeOffset> _now = () => DateTimeOffset.Now;
+    // Clock for AlternationAdvanceMinGap and the move hold, so a synchronous burst
+    // of combat ticks can carry multi-round phase timing. Every other timestamp in
+    // this file still reads DateTimeOffset.Now directly.
+    private readonly Func<DateTimeOffset> _now;
 
     private string? _lastAttackCommand;
     private DateTimeOffset _lastRoomRefreshAt = DateTimeOffset.MinValue;
@@ -1005,8 +1002,10 @@ public sealed partial class CombatManager : IDisposable
         LogService? log = null,
         Func<PartySettings>? readPartySettings = null,
         Func<string, int?>? roomAwareResolve = null,
-        Func<string, Game.Spells.KnownSpell?>? resolveSpellByCode = null)
+        Func<string, Game.Spells.KnownSpell?>? resolveSpellByCode = null,
+        Func<DateTimeOffset>? now = null)
     {
+        _now = now ?? (() => DateTimeOffset.Now);
         ArgumentNullException.ThrowIfNull(router);
         ArgumentNullException.ThrowIfNull(classifier);
         ArgumentNullException.ThrowIfNull(monsters);
@@ -1133,13 +1132,6 @@ public sealed partial class CombatManager : IDisposable
         if (verb.Equals("bs", StringComparison.OrdinalIgnoreCase)) _backstabOpenerConsumed = false;
         _log?.Combat(LogCategory, $"attack on '{target}' held — the send gate is up; re-decided when it lifts");
         return true;
-    }
-
-    // Test-only clock override for AlternationAdvanceMinGap — see _now.
-    public void SetClock(Func<DateTimeOffset> now)
-    {
-        ArgumentNullException.ThrowIfNull(now);
-        _now = now;
     }
 
     // Wire the recovery anchor for a blocked initial combat-spell dispatch. The
@@ -1556,8 +1548,8 @@ public sealed partial class CombatManager : IDisposable
 
     // Inject the UI-thread one-shot that defers a simultaneous-arrival burst's first
     // engage. Shaped like the walker's voyage scheduler so the Game layer stays
-    // UI-free and tests drive a fake clock. Wired in AppServices to a DispatcherTimer;
-    // left null in tests that don't exercise the settle (they keep the immediate path).
+    // UI-free. Wired in AppServices to a DispatcherTimer; left unset, the first
+    // engage goes immediately.
     public void SetArrivalSettleScheduler(Action<TimeSpan, Action> schedule)
         => _scheduleArrivalSettle = schedule;
 
@@ -1595,14 +1587,13 @@ public sealed partial class CombatManager : IDisposable
     }
 
     // The one-shot delay scheduler for the cascade switch dispatch (see
-    // SwitchDispatchDelay). Wired in AppServices to a DispatcherTimer; tests inject a
-    // controllable seam.
+    // SwitchDispatchDelay). Wired in AppServices to a DispatcherTimer.
     public void SetSwitchDispatchScheduler(Action<TimeSpan, Action> schedule)
         => _scheduleSwitchDispatch = schedule;
 
     // The one-shot delay scheduler for the attack-order re-fire's quiet window
-    // (RefireSettle). Wired in AppServices to a DispatcherTimer; left null in tests
-    // that keep the next-turn flush.
+    // (RefireSettle). Wired in AppServices to a DispatcherTimer; null keeps
+    // the next-turn flush.
     public void SetRefireSettleScheduler(Action<TimeSpan, Action> schedule)
         => _scheduleRefireSettle = schedule;
 
@@ -2008,8 +1999,8 @@ public sealed partial class CombatManager : IDisposable
         // so a room that qualifies rooms on its first action. Only the initial engage
         // debounces (_currentTarget is null); a mob wandering in mid-fight is handled
         // by the guard / heartbeat as before, and a lone spawn just engages a beat
-        // later. No-op until a scheduler is wired (tests without one keep the old
-        // immediate path); the settle callback re-enters with _arrivalSettleBypass so
+        // later. No-op until a scheduler is wired (the
+        // immediate path stands); the settle callback re-enters with _arrivalSettleBypass so
         // it dispatches instead of re-arming.
         if (obs.Source == RoomObservationSource.Arrival && _currentTarget is null
             && _scheduleArrivalSettle is not null && !_arrivalSettleBypass)
@@ -4386,9 +4377,6 @@ public sealed partial class CombatManager : IDisposable
     private bool _heldRoomLookPending;
     private DateTimeOffset _heldRoomLookSentAt = DateTimeOffset.MinValue;
     private static readonly TimeSpan HeldRoomReadWait = TimeSpan.FromSeconds(3);
-
-    // The monster a typed `break` is holding the attack on, or null.
-    public string? UserBreakHoldTarget => _userBreakHold;
 
     // The hold is keeping an engine that would otherwise fight from fighting. The
     // combat tracker's idle watchdog reads it: a quiet room under the hold is meant,

@@ -11,12 +11,10 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Coverage for the @suicide remote-command consumer. The interesting
-/// behaviours: sends both commands when a password is stored, replies
-/// to the original sender on invalid response, and ignores invalid
-/// lines that don't belong to one of our pending invocations.
-/// </summary>
+// Coverage for the @suicide remote-command consumer. The interesting
+// behaviours: sends both commands when a password is stored, replies
+// to the original sender on invalid response, and ignores invalid
+// lines that don't belong to one of our pending invocations.
 public sealed class SuicideHandlerTests
 {
     private sealed class Harness : IDisposable
@@ -26,11 +24,13 @@ public sealed class SuicideHandlerTests
         public PasswordProtector Protector { get; }
         public PartyState Party { get; } = new();
         public PlayerState PlayerState { get; } = new();
-        public PlayerDatabase Players { get; } = new();
+        public PlayerDatabase Players { get; } = new(new ProfileService(), () => null);
         public LogService Log { get; } = new();
         public WirePromptScanner PromptScanner { get; } = new();
         public RemoteCommandManager Engine { get; }
         public SuicideHandler Handler { get; }
+        // The clock the Handler reads: the real one unless a test sets its own.
+        public Func<DateTimeOffset> HandlerNow { get; set; } = () => DateTimeOffset.UtcNow;
         public List<byte[]> Wire { get; } = new();
         public string TmpDir { get; }
 
@@ -41,8 +41,8 @@ public sealed class SuicideHandlerTests
             // ChatRouter is required for RemoteCommandManager to receive
             // telepath input.
             ChatRouter chat = new(Router);
-            Profile = new ProfileService();
-            Profile.LoadBlank();
+            Profile = TestProfiles.Service();
+            Profile.LoadDefaultProfile();
             TmpDir = Path.Combine(Path.GetTempPath(), "fterm-suicide-handler-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(TmpDir);
             Protector = new PasswordProtector(Path.Combine(TmpDir, ".credkey"));
@@ -52,7 +52,7 @@ public sealed class SuicideHandlerTests
                 MaxSuicideLivesThreshold = 3,
             };
             Engine.SetWireSender(Wire.Add);
-            Handler = new SuicideHandler(Engine, Router, Profile, Protector, PromptScanner, Log);
+            Handler = new SuicideHandler(Engine, Router, Profile, Protector, PromptScanner, Log, now: () => HandlerNow());
             Handler.SetWireSender(Wire.Add);
         }
 
@@ -63,6 +63,10 @@ public sealed class SuicideHandlerTests
             Directory.Delete(TmpDir, recursive: true);
         }
     }
+
+    // The game's next prompt, as the wire delivers it.
+    private static void NextPrompt(Harness h) =>
+        h.PromptScanner.Append(Encoding.Latin1.GetBytes("[HP=100]: "));
 
     private static void DispatchTelepath(MessageRouter router, string from, string body)
     {
@@ -148,7 +152,7 @@ public sealed class SuicideHandlerTests
         GrantElevated(h.Players, "Trusted");
         h.Profile.Current!.EncryptedSuicidePassword = h.Protector.Protect("hunter2");
         DateTimeOffset now = new(2026, 10, 10, 12, 0, 0, TimeSpan.Zero);
-        h.Handler.Clock = () => now;
+        h.HandlerNow = () => now;
 
         DispatchTelepath(h.Router, "Trusted", "@suicide");
         h.Wire.Clear();
@@ -202,7 +206,7 @@ public sealed class SuicideHandlerTests
             H.Handler.SetWireSender(Pacer.Send);
             H.Engine.SetWireSender(Pacer.Send);
             H.Handler.Telepaths = Pacer;
-            H.Handler.Clock = () => Now;
+            H.HandlerNow = () => Now;
             GrantElevated(H.Players, "Trusted");
             H.Profile.Current!.EncryptedSuicidePassword = H.Protector.Protect(password);
         }
@@ -469,12 +473,12 @@ public sealed class SuicideHandlerTests
         GrantElevated(h.Players, "Trusted");
         h.Profile.Current!.EncryptedSuicidePassword = h.Protector.Protect("hunter2");
         DateTimeOffset now = new(2026, 10, 10, 12, 0, 0, TimeSpan.Zero);
-        h.Handler.Clock = () => now;
+        h.HandlerNow = () => now;
 
         DispatchTelepath(h.Router, "Trusted", "@suicide");
         Assert.True(gate.IsLocked);
         now += SuicideHandler.PromptWait + TimeSpan.FromSeconds(1);
-        h.Handler.FireNextPromptForTests();
+        NextPrompt(h);
 
         Assert.False(gate.IsLocked);
         Assert.DoesNotContain(h.Wire, b => Encoding.Latin1.GetString(b).Contains("hunter2"));
@@ -487,7 +491,7 @@ public sealed class SuicideHandlerTests
         GrantElevated(h.Players, "Trusted");
         h.Profile.Current!.EncryptedSuicidePassword = h.Protector.Protect("hunter2");
         DateTimeOffset now = new(2026, 10, 10, 12, 0, 0, TimeSpan.Zero);
-        h.Handler.Clock = () => now;
+        h.HandlerNow = () => now;
 
         DispatchTelepath(h.Router, "Trusted", "@suicide");
         h.Wire.Clear();
@@ -510,12 +514,12 @@ public sealed class SuicideHandlerTests
         h.Engine.WarnOnDenial = false;
         h.Profile.Current!.EncryptedSuicidePassword = h.Protector.Protect("hunter2");
         DateTimeOffset now = new(2026, 10, 10, 12, 0, 0, TimeSpan.Zero);
-        h.Handler.Clock = () => now;
+        h.HandlerNow = () => now;
 
         DispatchTelepath(h.Router, "Trusted", "@suicide");
         h.Wire.Clear();
         now += SuicideHandler.PromptWait + TimeSpan.FromSeconds(1);
-        h.Handler.FireNextPromptForTests();
+        NextPrompt(h);
 
         Assert.Empty(h.Wire);
         Assert.False(h.Handler.AwaitingPasswordPrompt);
@@ -575,7 +579,7 @@ public sealed class SuicideHandlerTests
         // Server response: "not set" line during the window...
         DispatchLine(h.Router, "You do not have a suicide password set.");
         // ...then the next statline closes the window.
-        h.Handler.FireNextPromptForTests();
+        NextPrompt(h);
 
         byte[] sent = Assert.Single(h.Wire);
         Assert.Equal("suicide\r", Encoding.Latin1.GetString(sent));
@@ -595,7 +599,7 @@ public sealed class SuicideHandlerTests
 
         // Pro output arrives + next statline closes the window
         // without "not set" ever appearing.
-        h.Handler.FireNextPromptForTests();
+        NextPrompt(h);
 
         byte[] sent = Assert.Single(h.Wire);
         string text = Encoding.Latin1.GetString(sent);
@@ -613,7 +617,7 @@ public sealed class SuicideHandlerTests
         DispatchTelepath(h.Router, "Trusted", "@suicide");
         h.Wire.Clear();
 
-        h.Handler.FireNextPromptForTests();
+        NextPrompt(h);
 
         Assert.Empty(h.Wire);
     }

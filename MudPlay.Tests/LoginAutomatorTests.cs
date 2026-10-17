@@ -110,30 +110,6 @@ public sealed class LoginAutomatorTests
         Assert.Equal("\r", sentVal);
     }
 
-    [Fact]
-    public void UsernamePlaceholder_Substitutes()
-    {
-        AutomationStep s = new("Login:", "{username}");
-        (LoginAutomator a, var sent) = Build(username: "alice", steps: s);
-        a.Start();
-        a.Feed(Ascii("Login:"));
-
-        Assert.True(sent.TryDequeue(out string? sentVal));
-        Assert.Equal("alice\r", sentVal);
-    }
-
-    [Fact]
-    public void UseridPlaceholder_AlsoSubstitutes()
-    {
-        AutomationStep s = new("Login:", "{userid}");
-        (LoginAutomator a, var sent) = Build(username: "alice", steps: s);
-        a.Start();
-        a.Feed(Ascii("Login:"));
-
-        Assert.True(sent.TryDequeue(out string? sentVal));
-        Assert.Equal("alice\r", sentVal);
-    }
-
     [Theory]
     [InlineData("{user}")]
     [InlineData("{userid}")]
@@ -147,19 +123,6 @@ public sealed class LoginAutomatorTests
 
         Assert.True(sent.TryDequeue(out string? sentVal));
         Assert.Equal("alice\r", sentVal);
-    }
-
-    [Fact]
-    public void PasswordPlaceholder_Substitutes()
-    {
-        AutomationStep s = new("Password:", "{password}");
-        (LoginAutomator a, var sent) = Build(
-            resolvePassword: () => Task.FromResult<string?>("hunter2"), steps: s);
-        a.Start();
-        a.Feed(Ascii("Password:"));
-
-        Assert.True(sent.TryDequeue(out string? sentVal));
-        Assert.Equal("hunter2\r", sentVal);
     }
 
     [Theory]

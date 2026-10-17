@@ -11,22 +11,19 @@ using Harness = MudPlay.Tests.EventEngineHarness;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Coverage for the walk-to auto-resume flow in
-/// <see cref="EventManager"/> — snapshot precedence, the OnResume
-/// walker-event handler's three outcomes (Finished / Failed /
-/// Stopped), and the cascade case where one event-walk fires while
-/// another's still in flight. Uses a real engine fixture (graph +
-/// BFS + tracker + walker + loop runner + auto-lair) because the
-/// resume contract spans all of them.
-/// </summary>
+// Coverage for the walk-to auto-resume flow in
+// EventManager — snapshot precedence, the OnResume
+// walker-event handler's three outcomes (Finished / Failed /
+// Stopped), and the cascade case where one event-walk fires while
+// another's still in flight. Uses a real engine fixture (graph +
+// BFS + tracker + walker + loop runner + auto-lair) because the
+// resume contract spans all of them.
 public sealed class EventManagerResumeTests : IDisposable
 {
-    // BBS name LoopManager.Save writes under. AppPaths roots are cached
-    // at static-init, so saved loops land in the real Data/BBS tree; the
-    // "test-" prefix lets TestSessionCleanup's module sweep reclaim the
-    // folder, and Dispose removes it eagerly on a clean run.
-    private const string TestBbs = "test-event-resume";
+    // The game-data set LoopManager.Save writes loops under, in the data root's
+    // game-data folder; the "test-" prefix lets TestSessionCleanup's module sweep
+    // reclaim the folder, and Dispose removes it eagerly on a clean run.
+    private const string TestLoopSet = "test-event-resume";
 
     private readonly string _root;
 
@@ -40,11 +37,11 @@ public sealed class EventManagerResumeTests : IDisposable
     {
         try { Directory.Delete(_root, recursive: true); }
         catch { /* best-effort */ }
-        try { Directory.Delete(AppPaths.BbsFolder(TestBbs), recursive: true); }
+        try { Directory.Delete(AppPaths.GameDataSetDir(TestLoopSet), recursive: true); }
         catch { /* best-effort */ }
     }
 
-    private Harness NewHarness() => Harness.Create(_root, TestBbs);
+    private Harness NewHarness() => Harness.Create(_root, TestLoopSet);
 
     private static ScheduledEvent WalkToEvent(int map, int room) => new()
     {
@@ -386,7 +383,7 @@ public sealed class EventManagerResumeTests : IDisposable
     {
         using Harness h = NewHarness();
         DateTimeOffset now = new(2026, 9, 29, 20, 0, 0, TimeSpan.Zero);
-        h.Events.Now = () => now;
+        h.EventsNow = () => now;
         bool off = false;
         h.Events.IsMasterSwitchOff = () => off;
         Loop loop = RunLoop(h);
@@ -423,7 +420,7 @@ public sealed class EventManagerResumeTests : IDisposable
     {
         using Harness h = NewHarness();
         DateTimeOffset now = new(2026, 9, 29, 20, 0, 0, TimeSpan.Zero);
-        h.Events.Now = () => now;
+        h.EventsNow = () => now;
         Loop loop = RunLoop(h);
 
         h.Events.Fire(new ScheduledEvent
@@ -493,7 +490,7 @@ public sealed class EventManagerResumeTests : IDisposable
     {
         using Harness h = NewHarness();
         DateTimeOffset now = new(2026, 9, 29, 20, 0, 0, TimeSpan.Zero);
-        h.Events.Now = () => now;
+        h.EventsNow = () => now;
         h.Events.Events.Add(new ScheduledEvent
         {
             Name = "pause", ActionType = EventActionType.Wait, WaitSeconds = 5, Then = EventThenType.Resume,

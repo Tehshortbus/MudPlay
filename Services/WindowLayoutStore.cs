@@ -86,7 +86,7 @@ public sealed class WindowLayoutStore
 
     // Edge-snapping / cluster-move for the panel windows. Registered per window in
     // AttachWindow; notified before a programmatic reposition so it doesn't read a
-    // layout restore as a user drag. Null in tests that construct the store bare.
+    // layout restore as a user drag. Null when none was supplied.
     private readonly WindowSnapManager? _snap;
 
     public WindowLayoutStore(ProfileService profile, WindowSnapManager? snap = null)

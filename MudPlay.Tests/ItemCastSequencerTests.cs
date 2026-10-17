@@ -8,12 +8,10 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Pins <see cref="ItemCastSequencer"/> — the equip → use → re-equip wire
-/// sequence that casts a spell from an item. Only unlimited-use items are
-/// eligible; the displaced weapon is read from the inventory snapshot and
-/// re-wielded afterward.
-/// </summary>
+// Pins ItemCastSequencer — the equip → use → re-equip wire
+// sequence that casts a spell from an item. Only unlimited-use items are
+// eligible; the displaced weapon is read from the inventory snapshot and
+// re-wielded afterward.
 public sealed class ItemCastSequencerTests
 {
     private static readonly IReadOnlyList<ClassCastItem> Items = new[]
@@ -37,16 +35,18 @@ public sealed class ItemCastSequencerTests
     private static (ItemCastSequencer Seq, List<byte[]> Sent) NewSeq(InventorySnapshot inv)
     {
         ItemCastSequencer seq = new(() => Items, () => inv);
-        seq.SetWireSender(_ => { });
-        return (seq, seq.LastSentForTests);
+        List<byte[]> sent = new();
+        seq.SetWireSender(sent.Add);
+        return (seq, sent);
     }
 
     private static (ItemCastSequencer Seq, List<byte[]> Sent) NewSeqWithDesired(
         InventorySnapshot inv, System.Func<string, string?> desiredSlotItem)
     {
         ItemCastSequencer seq = new(() => Items, () => inv, log: null, desiredSlotItem: desiredSlotItem);
-        seq.SetWireSender(_ => { });
-        return (seq, seq.LastSentForTests);
+        List<byte[]> sent = new();
+        seq.SetWireSender(sent.Add);
+        return (seq, sent);
     }
 
     private static (ItemCastSequencer Seq, List<byte[]> Sent) NewSeqWithOffHandNames(
@@ -54,8 +54,9 @@ public sealed class ItemCastSequencerTests
     {
         ItemCastSequencer seq = new(() => Items, () => inv, isOffHandItem:
             name => System.Array.Exists(offHandNames, n => string.Equals(n, name, System.StringComparison.OrdinalIgnoreCase)));
-        seq.SetWireSender(_ => { });
-        return (seq, seq.LastSentForTests);
+        List<byte[]> sent = new();
+        seq.SetWireSender(sent.Add);
+        return (seq, sent);
     }
 
     private static (ItemCastSequencer Seq, List<byte[]> Sent) NewSeqWithTwoHandedWorn(
@@ -63,8 +64,9 @@ public sealed class ItemCastSequencerTests
     {
         ItemCastSequencer seq = new(() => Items, () => inv, isWornWeaponTwoHanded:
             name => System.Array.Exists(twoHandedWeapons, n => string.Equals(n, name, System.StringComparison.OrdinalIgnoreCase)));
-        seq.SetWireSender(_ => { });
-        return (seq, seq.LastSentForTests);
+        List<byte[]> sent = new();
+        seq.SetWireSender(sent.Add);
+        return (seq, sent);
     }
 
     private static List<string> Decode(IEnumerable<byte[]> sent)
@@ -78,8 +80,8 @@ public sealed class ItemCastSequencerTests
         // Defer and request one dump (the false-buff-on-login case, reports
         // -144339 / -150242).
         ItemCastSequencer seq = new(() => Items, () => InvWith(), wornLoadoutKnown: () => false);
-        seq.SetWireSender(_ => { });
-        List<byte[]> sent = seq.LastSentForTests;
+        List<byte[]> sent = new();
+        seq.SetWireSender(sent.Add);
 
         Assert.False(seq.Execute("#emerald tipped crozier"));
         Assert.Equal(new[] { "i" }, Decode(sent));   // one refresh request, no eq/use
@@ -443,7 +445,6 @@ public sealed class ItemCastSequencerTests
         ItemCastSequencer seq = new(() => Items, () => InventorySnapshot.Empty);
         // No SetWireSender — must not act.
         Assert.False(seq.Execute("#emerald tipped crozier"));
-        Assert.Empty(seq.LastSentForTests);
     }
 
     // A carried item (a deck of cards) has no equip slot: one `use`, nothing readied
@@ -455,10 +456,11 @@ public sealed class ItemCastSequencerTests
         InventorySnapshot inv = InvWith(new EquippedItem("silver rapier", "Weapon Hand"))
             with { CarriedItems = new[] { "deck of cards" } };
         ItemCastSequencer seq = new(() => new[] { deck }, () => inv);
-        seq.SetWireSender(_ => { });
+        List<byte[]> sent = new();
+        seq.SetWireSender(sent.Add);
 
         Assert.True(seq.Execute("#deck of cards"));
-        Assert.Equal(new[] { "use deck of cards" }, Decode(seq.LastSentForTests));
+        Assert.Equal(new[] { "use deck of cards" }, Decode(sent));
     }
 
     [Fact]
@@ -467,9 +469,10 @@ public sealed class ItemCastSequencerTests
         ClassCastItem deck = new(1441, "deck of cards", 5144, "card deck draw", 0, 9999, Carried: true);
         InventorySnapshot inv = InvWith(new EquippedItem("silver rapier", "Weapon Hand"));
         ItemCastSequencer seq = new(() => new[] { deck }, () => inv);
-        seq.SetWireSender(_ => { });
+        List<byte[]> sent = new();
+        seq.SetWireSender(sent.Add);
 
         Assert.False(seq.Execute("#deck of cards"));
-        Assert.Empty(seq.LastSentForTests);
+        Assert.Empty(sent);
     }
 }

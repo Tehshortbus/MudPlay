@@ -64,10 +64,9 @@ public sealed partial class SpellsSectionViewModel : SettingsSectionViewModel
 
     public override Control View => _view ??= new SpellsSectionView { DataContext = this };
 
-    public override IEnumerable<string> SearchableLabels =>
-        _staticSearchLabels.Concat(
-            Enumerable.Range(1, SpellsSettings.ParaMudBlessSlotCount)
-                      .Select(i => $"Bless {i}"));
+    // The tab's own text: bless timing and self buffs live in the Buff Watchdog now,
+    // so a search for them lands on the note that says so.
+    public override IEnumerable<string> SearchableLabels => _staticSearchLabels;
 
     private static readonly string[] _staticSearchLabels =
     {
@@ -80,6 +79,7 @@ public sealed partial class SpellsSectionViewModel : SettingsSectionViewModel
         "Other spells", "Cure Holds", "Cure poison", "Cure disease", "Cure blindness",
         "Ailment handling", "Coordination",
         "Ignore poison", "Ignore blindness", "Ignore confusion", "Ignore disease",
+        "Bless", "Self bless slots", "Buff Watchdog",
     };
 
     // ----- Category priority (1-10) ---------------------------------
@@ -171,11 +171,6 @@ public sealed partial class SpellsSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private bool _ignoreConfusion;
     [ObservableProperty] private bool _ignoreDiseased;
 
-    // Standalone session for the parameterless (design-time) path; the Settings
-    // window builds the shared instance and injects it.
-    public SpellsSectionViewModel()
-        : this(AppServices.Current.Profile, CreateStandaloneSession()) { }
-
     // "Include in combat profile" checkboxes, one per header on this tab.
     // The profile chips, so profiles can be switched from this tab too.
     public CombatProfileChipBar ChipBar { get; }
@@ -230,10 +225,6 @@ public sealed partial class SpellsSectionViewModel : SettingsSectionViewModel
         LoadPerProfileBoxesFromActive();         // per-profile from the session's active profile
         _suppressDirty = false;
     }
-
-    private static CombatProfileStagingSession CreateStandaloneSession() =>
-        new(AppServices.Current.CombatProfiles, AppServices.Current.Profile,
-            () => AppServices.Current.Profile.Current?.Equipment);
 
     // ----- Shared-session participation -----------------------------
 

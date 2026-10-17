@@ -1,97 +1,66 @@
-using MudPlay.Models.Profile;
 using MudPlay.Services;
 using Xunit;
 
 namespace MudPlay.Tests;
 
+// ProfileService.Save's "Backup profile when making changes" path: with backup on,
+// the file as it stood is copied to profile.json.bak before the new one is written.
 public sealed class ProfileBackupTests : IDisposable
 {
-    private readonly string _profileDir;
-    private readonly string _restoreXdg;
-
-    public ProfileBackupTests()
-    {
-        // Reroute XDG_DATA_HOME so AppPaths writes into a scratch folder.
-        // AppPaths reads the env var only inside its static ctor, so this
-        // test relies on AppPaths having been resolved before — fine, every
-        // earlier test forces it.
-        _restoreXdg = Environment.GetEnvironmentVariable("XDG_DATA_HOME") ?? string.Empty;
-        _profileDir = Path.Combine(Path.GetTempPath(), $"MudPlayTest-{Guid.NewGuid():N}", "profiles");
-        Directory.CreateDirectory(_profileDir);
-    }
+    private readonly string _bbs = "test-backupbbs-" + Guid.NewGuid().ToString("N").Substring(0, 12);
 
     public void Dispose()
     {
         try
         {
-            string parent = Path.GetDirectoryName(_profileDir)!;
-            if (Directory.Exists(parent)) Directory.Delete(parent, recursive: true);
+            string folder = AppPaths.BbsFolder(_bbs);
+            if (Directory.Exists(folder)) Directory.Delete(folder, recursive: true);
         }
-        catch
-        {
-            // Best-effort cleanup — leaving a temp dir behind isn't a test
-            // failure.
-        }
-        Environment.SetEnvironmentVariable("XDG_DATA_HOME", _restoreXdg);
+        catch { /* best-effort */ }
+    }
+
+    private (ProfileService Profile, string Path) Loaded(string name)
+    {
+        ScratchRoot.Require();
+        ProfileService profile = new();
+        profile.CreateProfile(_bbs, name);
+        profile.Load(_bbs, name);
+        return (profile, AppPaths.CharacterProfileFile(_bbs, name));
     }
 
     [Fact]
     public void Save_BackupFalse_NoBakWritten()
     {
-        string path = Path.Combine(_profileDir, "alice.json");
-        File.WriteAllText(path, "{\"Name\":\"old\"}");
+        (ProfileService profile, string path) = Loaded("Alice");
 
-        // Write directly via JsonStore to exercise the no-backup code path
-        // through the same atomic-write helper Profile.Save uses.
-        JsonStoreSpy.Save(path, new CharacterProfile { Name = "new" }, backup: false);
+        profile.Save(backup: false);
 
+        Assert.True(File.Exists(path));
         Assert.False(File.Exists(path + ".bak"));
     }
 
     [Fact]
     public void Save_BackupTrue_WritesBakOfPriorContent()
     {
-        string path = Path.Combine(_profileDir, "alice.json");
-        File.WriteAllText(path, "{\"Name\":\"original\"}");
+        (ProfileService profile, string path) = Loaded("Alice");
+        string before = File.ReadAllText(path);
+        profile.Current!.PendingReconnectLeader = "after the change";
 
-        JsonStoreSpy.Save(path, new CharacterProfile { Name = "updated" }, backup: true);
+        profile.Save(backup: true);
 
-        Assert.True(File.Exists(path + ".bak"));
-        string bakContent = File.ReadAllText(path + ".bak");
-        Assert.Contains("original", bakContent);
-        string mainContent = File.ReadAllText(path);
-        Assert.Contains("updated", mainContent);
+        Assert.Equal(before, File.ReadAllText(path + ".bak"));
+        Assert.Contains("after the change", File.ReadAllText(path));
     }
 
     [Fact]
     public void Save_BackupTrue_NoPriorFile_NoBakWritten()
     {
-        string path = Path.Combine(_profileDir, "fresh.json");
-        Assert.False(File.Exists(path));
+        (ProfileService profile, string path) = Loaded("Fresh");
+        File.Delete(path);
 
-        JsonStoreSpy.Save(path, new CharacterProfile { Name = "first" }, backup: true);
+        profile.Save(backup: true);
 
         Assert.True(File.Exists(path));
         Assert.False(File.Exists(path + ".bak"));
-    }
-
-    /// <summary>
-    /// Mirrors <see cref="ProfileService.Save"/>'s backup-then-write sequence
-    /// so the test stays decoupled from <see cref="ProfileService"/>'s
-    /// AppPaths-routed path resolution. Pins the contract we expect of the
-    /// service: pre-existing file copied to .bak first, then atomic write.
-    /// </summary>
-    private static class JsonStoreSpy
-    {
-        public static void Save<T>(string path, T value, bool backup) where T : class
-        {
-            if (backup && File.Exists(path))
-            {
-                File.Copy(path, path + ".bak", overwrite: true);
-            }
-            // Use the same shape as ProfileService.Save's downstream write.
-            string json = System.Text.Json.JsonSerializer.Serialize(value);
-            File.WriteAllText(path, json);
-        }
     }
 }

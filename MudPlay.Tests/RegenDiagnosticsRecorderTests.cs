@@ -6,12 +6,10 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Issue #11 — the <see cref="RegenDiagnosticsRecorder"/> Debug-channel trace
-/// used to capture a realm's real per-tick regen amount / cadence from a live
-/// session (Paradigm splits some cycles into uneven thirds, which a single
-/// editable interval can't model).
-/// </summary>
+// Issue #11 — the RegenDiagnosticsRecorder Debug-channel trace
+// used to capture a realm's real per-tick regen amount / cadence from a live
+// session (Paradigm splits some cycles into uneven thirds, which a single
+// editable interval can't model).
 public sealed class RegenDiagnosticsRecorderTests
 {
     private sealed class FakeClock

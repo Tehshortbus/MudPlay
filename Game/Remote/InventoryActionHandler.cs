@@ -52,7 +52,7 @@ public sealed class InventoryActionHandler : IDisposable
     // True for a cursed item: Get All leaves it on the floor (user, 2026-10-02).
     // Unwired: nothing is left.
     private readonly Func<string, bool> _isCursed;
-    // Paces the sweeps (BulkCommandPacer). Null when no scheduler is wired (tests):
+    // Paces the sweeps (BulkCommandPacer). Null when no scheduler is wired:
     // every command then goes straight out.
     private readonly BulkCommandPacer? _pacer;
     private Action<byte[]>? _wireSender;

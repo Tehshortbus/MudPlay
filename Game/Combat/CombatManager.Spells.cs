@@ -931,7 +931,7 @@ public sealed partial class CombatManager
             // multi-hit, the mob's counter-swing, a stale interval — collapse to a
             // single tally, and a genuine cast that lands fast still counts (fixes the
             // -055820 vs -120938 wall-clock tension). Falls back to the wall-clock gate
-            // only when no count source is wired (legacy tests).
+            // only when no count source is wired.
             if (ReadRoundCount is { } readRound)
             {
                 int round = readRound();
@@ -983,8 +983,8 @@ public sealed partial class CombatManager
     //
     // The ReadRoundCount comparison is intentional. Production wires it to
     // ConfirmedAttackCastCount, so the just-incremented value differs from the
-    // per-target baseline and is consumed here. Tests/legacy callers that wire a
-    // different round source retain the heartbeat-owned tally path unchanged.
+    // per-target baseline and is consumed here. A caller that wires a
+    // different round source keeps the heartbeat-owned tally path.
     private void ApplyConfirmedAttackCastToCap()
     {
         if (!CombatSpellsWired || !Fighting()) return;
@@ -1053,7 +1053,7 @@ public sealed partial class CombatManager
     // window is short enough (SwitchDispatchDelay) to still land ahead of the server's
     // next round even for a fast multi-projectile caster (report paradigm-20260822-003106).
     // _pendingSwitch keeps a re-tick inside the delay from arming the same switch twice.
-    // Falls back to a bare _post when no scheduler is wired (tests that don't opt in).
+    // Falls back to a bare _post when no scheduler is wired.
     // Pending deferred switch (target→spell). While one is armed, a re-tick during
     // the dispatch delay can't schedule the same switch again — the double-cast in
     // reports paradigm-20260819-121003 / -142147 (mmis fired twice after lbol

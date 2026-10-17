@@ -646,17 +646,10 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     private void OnAutoLairActiveChanged(bool active)
     {
         IsAutoLairing = active;
+        OnPropertyChanged(nameof(CanClearBuilder));
         EnsureLairTickRunning();
         RefreshEngineActionKind();
         RefreshAutoLairApproachPath();
-    }
-
-    [RelayCommand]
-    private void ToggleAutoLair()
-    {
-        if (_services.AutoLair.IsActive) _services.AutoLair.Stop();
-        else if (_services.RefuseStartForMasterSwitch("Auto-Lair")) return;
-        else _services.MovementControl.StartUserRun(() => _services.AutoLair.Start());
     }
 
     // Right-click → "Add this room to Blacklist". Captures the selected
@@ -854,7 +847,6 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     private void RefreshLoopOverlays()
     {
         Game.Map.LoopRunner runner = _services.LoopRunner;
-        _loopPathIsPreview = false;
         LoopSequenceNumbers = null;     // per UX rule: no number overlay during execution
         LoopRunningWaypoints = null;    // set below only while the circle is actually running
 
@@ -1386,11 +1378,9 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
 
     // What the map is handed of the three above, per the Loop lines chip. The
     // properties themselves stay whole: the CURRENT NAV rows and the route details
-    // read them whatever the map shows. A saved loop previewed by hand is drawn even
-    // with the chip off — asking for it is the point.
-    private bool _loopPathIsPreview;
+    // read them whatever the map shows.
     public IReadOnlyList<RoomKey>? MapLoopPath =>
-        LoopLinesMode == LoopLinesMode.Off && !_loopPathIsPreview ? null : LoopPath;
+        LoopLinesMode == LoopLinesMode.Off ? null : LoopPath;
     public IReadOnlyList<RoomKey>? MapLoopRunningWaypoints =>
         LoopLinesMode == LoopLinesMode.Steps ? LoopRunningWaypoints : null;
     public IReadOnlyList<RoomKey>? MapLoopApproachPreviewPath =>
@@ -2067,18 +2057,6 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         // the CURRENT NAV rows; no manual refresh needed.
     }
 
-    // Right-click → Delete on a Setups row. Confirms via the shared
-    // ConfirmService (which honours the user's "skip delete confirms"
-    // setting), then removes the setup from disk + refreshes the rail.
-    [RelayCommand]
-    private async Task DeleteSetupAsync(LairSetupRowViewModel? row)
-    {
-        if (row is null) return;
-        bool ok = await _services.Confirm.ConfirmDeleteAsync($"auto-lair setup \"{row.Source.Name}\"");
-        if (!ok) return;
-        _services.Lairs.Delete(row.Source.Name);
-    }
-
     // Right-click → Add / Remove from favourites on a Setups row. The favourite is
     // this character's, so the setup file isn't touched; LairManager fires
     // SetupsChanged so the rail refreshes and the Favourites flyouts (amber) update.
@@ -2116,18 +2094,29 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         }
     }
 
-    // True when the "Clear all" chip (left of Save) should be active — Loop build
-    // mode with at least one selected step. Wipes the whole click list so the user
-    // can start a fresh loop, or clear the last-loop the Loop chip pre-loaded.
-    public bool CanClearBuilder =>
-        CurrentMode == NavigationMode.LoopBuild && LoopBuilder is { HasClicks: true };
+    // True when the "Clear all" chip (left of Save) should be active: Loop build
+    // mode with at least one selected step, or Lair build mode with a lair marked
+    // and no Auto-Lair run using the marks.
+    public bool CanClearBuilder => CurrentMode switch
+    {
+        NavigationMode.LoopBuild => LoopBuilder is { HasClicks: true },
+        NavigationMode.AutoLair => !_services.AutoLair.IsActive && _services.AutoLair.Marked.Count > 0,
+        _ => false,
+    };
 
-    // "Clear all" chip. Drops every selected step from the current loop-build
-    // session (LoopBuilderSessionViewModel.Clear already resets the preview + save-ability),
+    // "Clear all" chip. In Loop build it drops every selected step from the session
+    // (LoopBuilderSessionViewModel.Clear already resets the preview + save-ability),
     // then repaints the map so the red preview polyline + numbered pins disappear.
+    // In Lair build it wipes the lair marks.
     [RelayCommand]
     private void ClearBuilder()
     {
+        if (CurrentMode == NavigationMode.AutoLair)
+        {
+            if (!_services.AutoLair.IsActive) _services.AutoLair.Clear();
+            OnPropertyChanged(nameof(CanClearBuilder));
+            return;
+        }
         if (LoopBuilder is not { } builder) return;
         builder.Clear();
         LoopBuilderPath = null;
@@ -2190,7 +2179,6 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     // the user has set) as a new named setup. Opens LairEditorDialog on a
     // draft so the user can pick a name + adjust overrides before committing.
     // No-op when no markers are placed.
-    [RelayCommand]
     private async Task SaveCurrentMarkersAsSetupAsync()
     {
         if (_services.AutoLair.Marked.Count == 0) return;
@@ -2423,10 +2411,9 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     }
 
     // Load a saved loop's waypoints into LoopBuild mode so the user can
-    // preview it on the map (red polyline + numbered markers) and
-    // optionally edit before hitting Run. Distinct from RunLoop (which
-    // starts the runner immediately) and from PreviewLoop (which just
-    // paints an overlay without entering build mode).
+    // see it on the map (red polyline + numbered markers) and optionally
+    // edit before hitting Run. Distinct from RunLoop (which starts the
+    // runner immediately).
     [RelayCommand]
     private void LoadLoop(LoopRowViewModel? row)
     {
@@ -2470,9 +2457,6 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         RefreshLoopOverlays();
     }
 
-    [RelayCommand]
-    private void StopLoop() => _services.LoopRunner.Stop();
-
     // Right-click → Edit… on a Loops-pane row. Opens the modeless loop
     // editor dialog; the editor mutates the loop in place + persists via
     // LoopManager.Save which fires LoopsChanged so the pane refreshes.
@@ -2493,18 +2477,6 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
             .OpenWindowAsync<LoopEditorDialogViewModel, Loop?>(vm);
     }
 
-    // Right-click → Delete on a Loops-pane row. Confirms via the shared
-    // ConfirmService (which honours the user's "skip delete confirms"
-    // setting), then removes the loop from disk and refreshes the pane.
-    [RelayCommand]
-    private async Task DeleteLoopAsync(LoopRowViewModel? row)
-    {
-        if (row is null) return;
-        bool ok = await _services.Confirm.ConfirmDeleteAsync($"loop \"{row.Source.Name}\"");
-        if (!ok) return;
-        _services.Loops.Delete(row.Source.Name);
-    }
-
     // Right-click → Add / Remove from favourites on a Loops row. The favourite is
     // this character's, so the loop file isn't touched; LoopManager fires
     // LoopsChanged so the rail refreshes and the Favourites flyouts (green) update.
@@ -2513,29 +2485,6 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     {
         if (row is null) return;
         _services.Loops.SetFavorite(row.Source.Name, !row.Source.Favorite);
-    }
-
-    // Right-click → Preview on a Loops-pane row. Lays the loop's expanded
-    // room sequence onto the map's LoopPath polyline without starting it.
-    // Clicking the same row again clears the preview. While a loop is
-    // actually running the live LoopPath wins; previewing an idle loop is
-    // the only path this overlay surfaces.
-    [RelayCommand]
-    private void PreviewLoop(LoopRowViewModel? row)
-    {
-        if (row is null || row.Source.Waypoints.Count < 2)
-        {
-            _loopPathIsPreview = false;
-            LoopPath = null;
-            return;
-        }
-        // Render the full cycle anchored at waypoint 0, sourced via
-        // LoopExpander so the polyline matches what the runner would
-        // actually drive at start time.
-        IReadOnlyList<RoomKey> keys = LoopExpander.ResolveCycleRoomKeys(
-            row.Source.Waypoints, _services.Bfs, _services.RoomGraph, _services.Movement);
-        _loopPathIsPreview = keys.Count >= 2;
-        LoopPath = keys.Count >= 2 ? keys : null;
     }
 
     // ----- Rail folder commands --------------------------------------
@@ -2686,21 +2635,6 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     {
         NavFolderNameDialogViewModel vm = new(title, prompt, initial, whyNot);
         return await _services.Dialogs.OpenWindowAsync<NavFolderNameDialogViewModel, string?>(vm);
-    }
-
-    private IReadOnlyList<RoomKey> WalkLoopSteps(RoomKey from, IReadOnlyList<LoopStep> steps)
-    {
-        var seq = new List<RoomKey>(steps.Count + 1) { from };
-        RoomKey cursor = from;
-        foreach (LoopStep step in steps)
-        {
-            if (step is not MoveLoopStep move) continue;
-            if (_services.RoomGraph.GetRoom(cursor) is not { } room) break;
-            if (!room.Exits.TryGetValue(move.Direction, out RoomExit exit)) break;
-            cursor = exit.Target;
-            seq.Add(cursor);
-        }
-        return seq;
     }
 
     public bool IsLoopRunning => _services.LoopRunner.State != LoopState.Idle;
@@ -3187,6 +3121,11 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
 
     public bool IsLoopMode => CurrentMode == NavigationMode.LoopBuild;
     public bool IsLairMode => CurrentMode == NavigationMode.AutoLair;
+    // The "Clear all" chip shows in either build mode.
+    public bool ShowClearBuilder => IsLoopMode || IsLairMode;
+    public string ClearBuilderTip => IsLairMode
+        ? "Remove every lair you've marked."
+        : "Remove every selected step from the loop you're building.";
 
     // True while the user is in NavigationMode.AutoLair AND the Auto-Lair
     // scheduler isn't actively running. Drives the bottom-strip "Building
@@ -3231,6 +3170,8 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
             TearDownExpEstimator();
         OnPropertyChanged(nameof(IsLoopMode));
         OnPropertyChanged(nameof(IsLairMode));
+        OnPropertyChanged(nameof(ShowClearBuilder));
+        OnPropertyChanged(nameof(ClearBuilderTip));
         OnPropertyChanged(nameof(IsExpEstimatorMode));
         OnPropertyChanged(nameof(IsLairBuilding));
         OnPropertyChanged(nameof(LairBuildStatusText));
@@ -3404,7 +3345,6 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         }
     }
 
-    [RelayCommand]
     private void ToggleLoopMode()
     {
         if (CurrentMode == NavigationMode.LoopBuild)
@@ -3741,7 +3681,6 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     // the live engine. The Lair-mode chip then shows "Stop" instead of
     // "Building" and routes through the LairModeButtonCommand dispatcher
     // (per LairModeButtonIsStop).
-    [RelayCommand]
     private void ToggleLairMode()
     {
         if (CurrentMode == NavigationMode.AutoLair)
@@ -3775,17 +3714,6 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanCenterOnDestination))]
     private bool _isWalking;
-
-    [RelayCommand]
-    private void StopWalk()
-    {
-        // The first Stop holds a money or training errand; a second ends it.
-        if (_services.MovementControl.HoldErrandOnStop()) return;
-        _services.TokenRoute.Cancel();
-        // Between two of its legs the walker has nothing to stop and says nothing.
-        _services.DeathRecovery.StopSpillSweep("user stop from Navigation");
-        _services.Walker.Stop("user stop from Navigation");
-    }
 
     // Backs the walk-to Pause/Resume chip (col 4, replacing the disabled Save
     // button during a walk-to). Routes through the shared controller so it keys
@@ -5129,10 +5057,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         bool loopRunReady = CurrentMode == NavigationMode.LoopBuild && LoopBuilder?.CanSave == true;
         if (!loopRunReady && _services.Walker.State is WalkState.Walking or WalkState.Paused)
         {
-            if (_services.MovementControl.HoldErrandOnStop()) return;
-            _services.Walker.Stop("user stop from Navigation");
-            _services.NoteUserStoppedRun?.Invoke();
-            _services.Events.NoteUserStop();
+            StopAsTheToolbarDoes();
             return;
         }
 
@@ -5256,26 +5181,20 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         RefreshLoopOverlays();
     }
 
-    // Full-stop action. Always returns the user to the idle map view —
-    // engines stopped, builder closed, user gate cleared so the next Run
-    // isn't accidentally held paused.
-    [RelayCommand]
+    // The toolbar's Stop (MovementController.StopByUser), then what the toolbar's
+    // does after it. False when the press only held an errand.
+    private bool StopAsTheToolbarDoes()
+    {
+        if (!_services.MovementControl.StopByUser("user stop from Navigation")) return false;
+        _services.NoteUserStoppedRun?.Invoke();
+        return true;
+    }
+
+    // Full-stop action: the toolbar's Stop, then back to the idle map view with
+    // the builder closed.
     private void StopAll()
     {
-        if (_services.MovementControl.HoldErrandOnStop()) return;
-        _services.TokenRoute.Cancel();
-        _services.DeathRecovery.StopSpillSweep("user stop from Navigation");
-        if (_services.AutoLair.IsActive) _services.AutoLair.Stop();
-        if (_services.LoopRunner.State != Game.Map.LoopState.Idle)
-            _services.LoopRunner.Stop();
-        if (_services.Walker.State is WalkState.Walking or WalkState.Paused)
-            _services.Walker.Stop("user stop from Navigation");
-        _services.NoteUserStoppedRun?.Invoke();
-        // An event with no engine running to report the stop (waiting, resting, or
-        // suspended behind a detour) ends here, with the events behind it.
-        _services.Events.NoteUserStop();
-
-        _services.MovementCoordinator.ClearGate(Game.Map.MovementCoordinator.UserGate);
+        if (!StopAsTheToolbarDoes()) return;
 
         if (CurrentMode == NavigationMode.LoopBuild)
         {

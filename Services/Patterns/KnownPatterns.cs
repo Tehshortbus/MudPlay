@@ -263,8 +263,7 @@ public static class KnownPatterns
     public const string CashOnGround        = "cash.on-ground";
 
     // "You picked up N <coin> pieces." / singular variant — confirmation that a
-    // get succeeded. CashManager updates internal tallies + the auto-deposit
-    // trigger check.
+    // get succeeded. CashManager settles the get and re-checks auto-deposit.
     public const string CashPickedUp        = "cash.picked-up";
 
     // "You dropped N <coin> pieces." — discard confirmation.
@@ -276,8 +275,7 @@ public static class KnownPatterns
 
     // "You hid N <coin> pieces." — stash-room confirmation. Wire shape distinct
     // from CashDropped because the `hide` command is the stash-room verb in stock
-    // MajorMUD. Without this, the held-coin tally goes stale after a stash and
-    // the auto-deposit threshold fires on phantom wealth.
+    // MajorMUD.
     public const string CashHidden          = "cash.hidden";
 
     // "N <coin> drop to the ground." — corpse-spawned cash after a monster kill

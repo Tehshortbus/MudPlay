@@ -5,13 +5,11 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Coverage for <see cref="PartyVitalsWatcher"/>: it asserts the
-/// <see cref="MovementCoordinator.PartyVitalsGate"/> while another party
-/// member's HP% is below the configured threshold and clears it once
-/// everyone recovers — excluding the self row and members whose vitals
-/// haven't been observed yet (HpPercent == 0).
-/// </summary>
+// Coverage for PartyVitalsWatcher: it asserts the
+// MovementCoordinator.PartyVitalsGate while another party
+// member's HP% is below the configured threshold and clears it once
+// everyone recovers — excluding the self row and members whose vitals
+// haven't been observed yet (HpPercent == 0).
 public sealed class PartyVitalsWatcherTests
 {
     private sealed class Harness : IDisposable

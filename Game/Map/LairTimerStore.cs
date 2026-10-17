@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.Text.Json;
 using MudPlay.Services;
 
 namespace MudPlay.Game.Map;
@@ -7,11 +6,9 @@ namespace MudPlay.Game.Map;
 // Per-session lair-arrival tracker + per-room respawn-timer resolver. Two
 // responsibilities, kept in one service because they share the game-data
 // lookup pipeline:
-//   Default respawn lookup — given a RoomKey, walk
-//     Rooms.Lair → Lairs[GroupIndex].AvgDelay (or, pre-1.83, the slowest
-//     Monsters[id].RegenTime across the listed monsters) and return the
-//     canonical respawn time in seconds. Lookups are cached; the cache
-//     invalidates on GameDataCache.ActiveSetChanged.
+//   Default respawn lookup — given a RoomKey, read the lair room's Delay
+//     and return the canonical respawn time in seconds. Lookups are cached;
+//     the cache invalidates on GameDataCache.ActiveSetChanged.
 //   In-session clock anchors — observes RoomTracker.StateChanged; whenever
 //     the player lands Confirmed in a known lair room, the arrival timestamp
 //     is stamped, and NoteKill stamps a kill in the lair the player stands
@@ -25,8 +22,6 @@ public sealed class LairTimerStore : IDisposable
     private readonly LogService? _log;
 
     private readonly Dictionary<RoomKey, int?> _respawnSecCache = new();
-    private readonly Dictionary<string, int?> _groupDelaySecCache = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<int, int?> _monsterRegenSecCache = new();
     private readonly Dictionary<RoomKey, DateTimeOffset> _lastEntered = new();
     private readonly Dictionary<RoomKey, DateTimeOffset> _lastKilled = new();
     private readonly object _arrivalLock = new();   // guards _lastEntered + _lastKilled
@@ -36,11 +31,6 @@ public sealed class LairTimerStore : IDisposable
     // (null result) from "not yet scanned".
     private int? _maxRespawnSec;
     private bool _maxRespawnComputed;
-
-    // Time unit conversion for the AvgDelay field. Stock MajorMUD exports
-    // AvgDelay in minutes-per-respawn; Paradigm / GreaterMUD differs.
-    // First-cut assumption: stock minutes.
-    private const int AvgDelayUnitSeconds = 60;
 
     public LairTimerStore(
         GameDataCache cache,
@@ -68,7 +58,7 @@ public sealed class LairTimerStore : IDisposable
 
     // Default respawn time for key in seconds. Returns null when the room
     // isn't a lair OR the lookup couldn't resolve a delay (room not in
-    // graph, no Lairs table, etc.).
+    // graph, no Delay).
     public int? DefaultRespawnSeconds(RoomKey key)
     {
         if (_respawnSecCache.TryGetValue(key, out int? cached)) return cached;
@@ -177,8 +167,6 @@ public sealed class LairTimerStore : IDisposable
     private void OnActiveSetChanged(string? _)
     {
         _respawnSecCache.Clear();
-        _groupDelaySecCache.Clear();
-        _monsterRegenSecCache.Clear();
         _maxRespawnSec = null;
         _maxRespawnComputed = false;
         _log?.Debug("LairTimerStore", "active set changed; respawn caches dropped.");
@@ -210,37 +198,9 @@ public sealed class LairTimerStore : IDisposable
         if (_graph.GetRoom(key) is not { } room) return null;
         if (!room.HasLair) return null;
 
-        // Primary: the per-room MDB Delay field, read by realm (see
-        // RespawnSecondsForDelay). Delay = 0 means unset; fall through to
-        // the lair-tag paths below.
-        if (room.Delay > 0)
-            return RespawnSecondsForDelay(room.Delay, _cache.ActiveRealm);
-
-        LairTagInfo? info = LairTagParser.TryParse(room.RawLairTag);
-        if (info is null) return null;
-
-        // NMR 1.83+ shape (rooms with no per-room Delay): try the
-        // GroupIndex → Lairs.AvgDelay path. Stock exports populate
-        // Lairs.AvgDelay in minutes; we convert to seconds.
-        if (info.GroupIndex is { } gi && ResolveGroupDelaySeconds(gi) is int groupSeconds)
-            return groupSeconds;
-
-        // Pre-1.83 fallback: pick the slowest RegenTime across the
-        // listed monsters. "Slowest" because the player has to wait
-        // for the latest-respawning mob in the lair before the room
-        // is fully populated again — that's the binding constraint.
-        if (info.MonsterIds.Count > 0)
-        {
-            int slowest = 0;
-            foreach (int id in info.MonsterIds)
-            {
-                int? r = ResolveMonsterRegenSeconds(id);
-                if (r is int s && s > slowest) slowest = s;
-            }
-            return slowest > 0 ? slowest : null;
-        }
-
-        return null;
+        // The per-room MDB Delay field, read by realm (see RespawnSecondsForDelay).
+        // Every lair in the imported sets carries one; 0 means unset.
+        return room.Delay > 0 ? RespawnSecondsForDelay(room.Delay, _cache.ActiveRealm) : null;
     }
 
     // A room's Delay as seconds from the kill that starts its lair clock. Stock
@@ -250,67 +210,4 @@ public sealed class LairTimerStore : IDisposable
     // same timer. GAME_MECHANICS "Lair respawn timers".
     public static int RespawnSecondsForDelay(int delay, RealmType realm)
         => realm == RealmType.ParaMud ? (delay - 1) * 60 + 30 : delay * 60 + 30;
-
-    private int? ResolveGroupDelaySeconds(string groupIndex)
-    {
-        if (_groupDelaySecCache.TryGetValue(groupIndex, out int? cached)) return cached;
-
-        int? seconds = null;
-        GameTable? doc = _cache.GetTable("Lairs");
-        if (doc is not null)
-        {
-            foreach (GameRow row in doc.Rows)
-            {
-                if (!row.TryGetProperty("GroupIndex", out GameValue giEl)
-                    || giEl.ValueKind != JsonValueKind.String) continue;
-                if (!string.Equals(giEl.GetString(), groupIndex, StringComparison.OrdinalIgnoreCase))
-                    continue;
-                if (!row.TryGetProperty("AvgDelay", out GameValue delayEl)) break;
-                int avgDelay = TryReadInt(delayEl);
-                if (avgDelay > 0) seconds = avgDelay * AvgDelayUnitSeconds;
-                break;
-            }
-        }
-        _groupDelaySecCache[groupIndex] = seconds;
-        return seconds;
-    }
-
-    private int? ResolveMonsterRegenSeconds(int monsterId)
-    {
-        if (_monsterRegenSecCache.TryGetValue(monsterId, out int? cached)) return cached;
-
-        int? seconds = null;
-        GameTable? doc = _cache.GetTable("Monsters");
-        if (doc is not null)
-        {
-            foreach (GameRow row in doc.Rows)
-            {
-                if (!row.TryGetProperty("Number", out GameValue numEl)
-                    || numEl.ValueKind != JsonValueKind.Number
-                    || !numEl.TryGetInt32(out int id)
-                    || id != monsterId) continue;
-                if (row.TryGetProperty("RegenTime", out GameValue regenEl))
-                {
-                    int v = TryReadInt(regenEl);
-                    if (v > 0) seconds = v * AvgDelayUnitSeconds;
-                }
-                break;
-            }
-        }
-        _monsterRegenSecCache[monsterId] = seconds;
-        return seconds;
-    }
-
-    private static int TryReadInt(GameValue el)
-    {
-        switch (el.ValueKind)
-        {
-            case JsonValueKind.Number:
-                return el.TryGetInt32(out int n) ? n : 0;
-            case JsonValueKind.String:
-                return int.TryParse(el.GetString(), out int s) ? s : 0;
-            default:
-                return 0;
-        }
-    }
 }

@@ -6,7 +6,7 @@ namespace MudPlay.Tests;
 
 public sealed class KeybindRegistryTests
 {
-    /// <summary>Fresh KeybindingStore seeded with the default chords — same as a brand-new profile.</summary>
+    // Fresh KeybindingStore seeded with the default chords — same as a brand-new profile.
     private static KeybindingStore DefaultStore() => new();
 
     [Theory]

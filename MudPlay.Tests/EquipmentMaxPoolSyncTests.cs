@@ -5,12 +5,10 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Pins <see cref="EquipmentMaxPoolSync"/> — diffs the worn set's aggregate
-/// flat HP/mana bonus across observations and applies only the delta, so an
-/// equip/remove mid-session composes with whatever base the prompt ratchet or
-/// stat screen already established instead of overriding it.
-/// </summary>
+// Pins EquipmentMaxPoolSync — diffs the worn set's aggregate
+// flat HP/mana bonus across observations and applies only the delta, so an
+// equip/remove mid-session composes with whatever base the prompt ratchet or
+// stat screen already established instead of overriding it.
 public sealed class EquipmentMaxPoolSyncTests
 {
     private static IReadOnlyList<EquippedItem> Worn(params EquippedItem[] items) => items;

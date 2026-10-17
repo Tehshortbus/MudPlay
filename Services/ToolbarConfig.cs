@@ -50,22 +50,6 @@ public sealed partial class ToolbarConfig : ObservableObject
         Position = dto.Position;
     }
 
-    // Capture the live state into a fresh DTO for serialisation.
-    public ToolbarSettings Snapshot()
-    {
-        List<ToolbarItem> copy = new(Layout.Count);
-        foreach (ToolbarItem item in Layout)
-        {
-            copy.Add(new ToolbarItem { Kind = item.Kind, ActionId = item.ActionId });
-        }
-        return new ToolbarSettings
-        {
-            Layout   = copy,
-            Visible  = Visible,
-            Position = Position,
-        };
-    }
-
     private void ReplaceAll(IEnumerable<ToolbarItem> items)
     {
         Layout.Clear();

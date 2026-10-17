@@ -3,7 +3,6 @@ using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
-using Avalonia.Threading;
 using MudPlay.Game.Inventory;
 using MudPlay.Models.Profile;
 using MudPlay.Services;
@@ -56,7 +55,7 @@ public sealed class GhSweepManager : IDisposable
     // Settle after a recon `sea` before the next one goes out: the reply is just
     // command→reply latency (~150ms, no server-side delay), so this only needs to
     // outlast that round-trip plus a little parse margin.
-    private static readonly TimeSpan ReconSearchSettle = TimeSpan.FromMilliseconds(350);
+    internal static readonly TimeSpan ReconSearchSettle = TimeSpan.FromMilliseconds(350);
 
     // Backstop for a dispatched get/drop that never confirms — e.g. a get for
     // an item recon saw but that's genuinely no longer there ("You don't see
@@ -65,12 +64,12 @@ public sealed class GhSweepManager : IDisposable
     // don't parse would otherwise strand the hold forever). Resets on every
     // confirmation that DOES land, so a legitimately slow multi-item room
     // isn't cut short — only fires once confirmations stop arriving entirely.
-    private static readonly TimeSpan DispatchSettleTimeout = TimeSpan.FromSeconds(2);
+    internal static readonly TimeSpan DispatchSettleTimeout = TimeSpan.FromSeconds(2);
 
     // Fallback pace when a prompt doesn't arrive to release the next queued
     // command. Comfortably slower than the game's limit, so a batch that loses
     // its prompts still drains — just at the safe rate instead of the live one.
-    private static readonly TimeSpan PromptWaitTimeout = TimeSpan.FromMilliseconds(800);
+    internal static readonly TimeSpan PromptWaitTimeout = TimeSpan.FromMilliseconds(800);
 
     // Hard floor between sends, prompt or no prompt. A prompt alone is NOT a safe
     // release token: every rate-limit line the game emits carries one, so
@@ -83,13 +82,13 @@ public sealed class GhSweepManager : IDisposable
     // "Command rate limit (typing/sending too fast)": the paced @roomba sync uses
     // it), so it's the floor rather than a guess. The
     // prompt still gates — it just can't release EARLY.
-    private static readonly TimeSpan MinCommandInterval = TimeSpan.FromMilliseconds(800);
+    internal static readonly TimeSpan MinCommandInterval = TimeSpan.FromMilliseconds(800);
 
     // Pause after the game complains about our command rate before resuming the
     // queue. Matches PacedReplySender's clobber backoff, for the same reason:
     // give the limiter time to forgive before pushing again.
-    private static readonly TimeSpan RateLimitBackoff = TimeSpan.FromSeconds(3);
-    private static readonly TimeSpan InventoryVerificationTimeout = TimeSpan.FromSeconds(3);
+    internal static readonly TimeSpan RateLimitBackoff = TimeSpan.FromSeconds(3);
+    internal static readonly TimeSpan InventoryVerificationTimeout = TimeSpan.FromSeconds(3);
 
     // A dispatched `get` can come back as a failure this manager must act on
     // rather than retry forever. Four shapes (GAME_MECHANICS "`get` failure responses"):
@@ -215,11 +214,15 @@ public sealed class GhSweepManager : IDisposable
     // The active game-data set, for stamping the unfinished queue. Unset → none.
     private readonly Func<string?> _activeGameData;
 
-    private readonly DispatcherTimer _reconSearchSettle;
-    private readonly DispatcherTimer _dispatchSettle;
-    private readonly DispatcherTimer _inventorySettle;
-    private readonly DispatcherTimer _promptWait;
-    private readonly DispatcherTimer _rateLimitBackoff;
+    private IDisposable? _reconSearchSettle;
+    private IDisposable? _dispatchSettle;
+    private IDisposable? _inventorySettle;
+    private IDisposable? _promptWait;
+    private IDisposable? _rateLimitBackoff;
+    // Arms one tick after the delay; disposing what it returns cancels it.
+    private readonly Func<TimeSpan, Action, IDisposable> _schedule;
+    // The clock the command pacing reads.
+    private readonly Func<DateTimeOffset> _now;
 
     private Action<byte[]>? _wireSender;
     private bool _disposed;
@@ -437,6 +440,11 @@ public sealed class GhSweepManager : IDisposable
     public IReadOnlyList<GhSweepStranded> Stranded => _stranded;
     public int CircuitRoomCount => _sweepRooms.Count;
     public int PendingMoveCount => _pending.Count(p => !p.Delivered);
+    // The moves still to make, in the order they were queued.
+    public IReadOnlyList<GhSweepPendingMove> PendingMoves => _pending
+        .Where(p => !p.Delivered)
+        .Select(p => new GhSweepPendingMove(p.From, p.To, p.ItemName, p.Count, p.RequiresSearch, p.IsCarried))
+        .ToList();
     public int CarriedPendingCount => _pending.Count(p => p.IsCarried && !p.Delivered);
     public int HiddenPendingCount => _pending.Count(p => p.RequiresSearch && !p.Delivered);
     public int CompletedSortLaps => _sortLapCount;
@@ -489,8 +497,12 @@ public sealed class GhSweepManager : IDisposable
         WirePromptScanner? promptScanner = null,
         GhSuspendedSweepStore? suspendedStore = null,
         Func<string?>? activeGameData = null,
-        Func<long>? timestamp = null)
+        Func<long>? timestamp = null,
+        Func<DateTimeOffset>? now = null,
+        Func<TimeSpan, Action, IDisposable>? schedule = null)
     {
+        _schedule = schedule ?? DispatcherTicks.Once;
+        _now = now ?? (static () => DateTimeOffset.UtcNow);
         ArgumentNullException.ThrowIfNull(labels);
         ArgumentNullException.ThrowIfNull(loopRunner);
         ArgumentNullException.ThrowIfNull(tracker);
@@ -513,25 +525,13 @@ public sealed class GhSweepManager : IDisposable
         _inventory = inventory;
         _itemLocations = itemLocations;
         // Which labeled rooms THIS character sweeps (per-character; labels are shared
-        // per-BBS). Defaults to "all managed" when unwired so tests that only label
-        // rooms sweep them exactly as before.
+        // per-BBS). Defaults to "all managed" when unwired.
         _isRoomActivelyManaged = isRoomActivelyManaged ?? (static _ => true);
         _promptScanner = promptScanner;
         _suspendedStore = suspendedStore;
         _activeGameData = activeGameData ?? (static () => null);
         _timestamp = timestamp ?? Stopwatch.GetTimestamp;
         _log = log;
-
-        _reconSearchSettle = new DispatcherTimer { Interval = ReconSearchSettle };
-        _reconSearchSettle.Tick += (_, _) => OnReconSearchSettleElapsed();
-        _dispatchSettle = new DispatcherTimer { Interval = DispatchSettleTimeout };
-        _dispatchSettle.Tick += (_, _) => OnDispatchSettleElapsed();
-        _inventorySettle = new DispatcherTimer { Interval = InventoryVerificationTimeout };
-        _inventorySettle.Tick += (_, _) => OnInventoryVerificationTimeout();
-        _promptWait = new DispatcherTimer { Interval = PromptWaitTimeout };
-        _promptWait.Tick += (_, _) => SendNextQueuedCommand();
-        _rateLimitBackoff = new DispatcherTimer { Interval = RateLimitBackoff };
-        _rateLimitBackoff.Tick += (_, _) => { _rateLimitBackoff.Stop(); SendNextQueuedCommand(); };
 
         _getSub = _router.Subscribe(KnownPatterns.PlayerGets, OnGetLine);
         _dropSub = _router.Subscribe(KnownPatterns.PlayerDrops, OnDropLine);
@@ -639,22 +639,22 @@ public sealed class GhSweepManager : IDisposable
         _saturated.Clear();
         _commandQueue.Clear();
         _lastQueuedCommand = null;
-        _promptWait.Stop();
-        _rateLimitBackoff.Stop();
+        Cancel(ref _promptWait);
+        Cancel(ref _rateLimitBackoff);
         CompletedReconLaps = 0;
         _sortLapCount = 0;
         _progressSnapshotMoved = 0;
         _progressSnapshotCarried = 0;
         _noProgressSortLaps = 0;
-        _reconSearchSettle.Stop();
+        Cancel(ref _reconSearchSettle);
         _reconSearchRoom = null;
         _reconSearchesSent = 0;
         _sortSearchRoom = null;
         _sortSearchesSent = 0;
-        _dispatchSettle.Stop();
+        Cancel(ref _dispatchSettle);
         _dispatchRoom = null;
         _outstandingDispatch.Clear();
-        _inventorySettle.Stop();
+        Cancel(ref _inventorySettle);
         _awaitingInventoryResync = false;
         _resyncPending = false;
         _verifyCarriedAfterResync = false;
@@ -1700,13 +1700,12 @@ public sealed class GhSweepManager : IDisposable
         Send("sea");
         _log?.Debug(LogCategory,
             $"recon search {_reconSearchesSent}/{_labels.SearchesPerRoom} at {room}");
-        _reconSearchSettle.Stop();
-        _reconSearchSettle.Start();
+        Arm(ref _reconSearchSettle, ReconSearchSettle, OnReconSearchSettleElapsed);
     }
 
     private void OnReconSearchSettleElapsed()
     {
-        _reconSearchSettle.Stop();
+        Cancel(ref _reconSearchSettle);
         if (Phase == SweepPhase.Sorting && _sortSearchRoom is { } sortRoom)
         {
             if (_sortSearchesSent < Math.Max(1, _labels.SearchesPerRoom))
@@ -1841,8 +1840,7 @@ public sealed class GhSweepManager : IDisposable
         Send("sea");
         _log?.Debug(LogCategory,
             $"sort search {_sortSearchesSent}/{Math.Max(1, _labels.SearchesPerRoom)} at {room}");
-        _reconSearchSettle.Stop();
-        _reconSearchSettle.Start();
+        Arm(ref _reconSearchSettle, ReconSearchSettle, OnReconSearchSettleElapsed);
     }
 
     private void DispatchAtRoomAfterSearch(RoomKey room)
@@ -1910,27 +1908,24 @@ public sealed class GhSweepManager : IDisposable
     // prompt-timeout backstop.
     private void SendNextQueuedCommand()
     {
-        _promptWait.Stop();
+        Cancel(ref _promptWait);
         if (_commandQueue.Count == 0) return;
 
         // Never send early, whatever woke us. A prompt arriving sooner than the
         // floor means the game is talking to us for some other reason — very often
         // a rate-limit line, whose prompt would otherwise release the next command
         // and earn another one. Re-arm and wait out the remainder instead.
-        TimeSpan since = DateTimeOffset.UtcNow - _lastCommandSentAt;
+        TimeSpan since = _now() - _lastCommandSentAt;
         if (since < MinCommandInterval)
         {
-            _promptWait.Interval = MinCommandInterval - since;
-            _promptWait.Start();
+            Arm(ref _promptWait, MinCommandInterval - since, SendNextQueuedCommand);
             return;
         }
-        _promptWait.Interval = PromptWaitTimeout;
 
         (string verb, PendingSortMove move) = _commandQueue.Dequeue();
-        _lastCommandSentAt = DateTimeOffset.UtcNow;
+        _lastCommandSentAt = _now();
         _lastQueuedCommand = (verb, move);
-        _dispatchSettle.Stop();
-        _dispatchSettle.Start();
+        Arm(ref _dispatchSettle, DispatchSettleTimeout, OnDispatchSettleElapsed);
         if (verb == LookAgainVerb)
         {
             _awaitingLook = true;
@@ -1949,7 +1944,7 @@ public sealed class GhSweepManager : IDisposable
         // A prompt normally releases the next one. Arm a bounded fallback so a
         // prompt we never see (or one swallowed by an interleaved burst) can't
         // strand the rest of the batch.
-        if (_commandQueue.Count > 0) _promptWait.Start();
+        if (_commandQueue.Count > 0) Arm(ref _promptWait, PromptWaitTimeout, SendNextQueuedCommand);
     }
 
     // The wire prompt came back, so the game has processed the last command.
@@ -1960,7 +1955,7 @@ public sealed class GhSweepManager : IDisposable
         if (Phase != SweepPhase.Sorting) return;
         // Held off while the game is telling us to slow down; the backoff timer
         // owns the restart from there.
-        if (_rateLimitBackoff.IsEnabled) return;
+        if (_rateLimitBackoff is not null) return;
         SendNextQueuedCommand();
     }
 
@@ -2010,44 +2005,27 @@ public sealed class GhSweepManager : IDisposable
     {
         _commandQueue.Clear();
         _lastQueuedCommand = null;
-        _promptWait.Stop();
-        _rateLimitBackoff.Stop();
+        Cancel(ref _promptWait);
+        Cancel(ref _rateLimitBackoff);
     }
 
-    // Test seams — drive the paced dispatch headless, without a wire or timers.
-    // A prompt arriving right now. Deliberately does NOT fast-forward the pace
-    // clock — a test asserting that an early prompt is ignored depends on that.
-    internal void FirePromptForTests() => OnPromptObserved();
-
-    // The pacing timer elapsing, which in production means the minimum interval
-    // has genuinely passed. Tests have no wall clock to wait on, so age the last
-    // send to match rather than sleeping.
-    internal void FirePromptWaitTimeoutForTests()
+    private void OnRateLimitBackoffElapsed()
     {
-        _lastCommandSentAt = DateTimeOffset.MinValue;
+        _rateLimitBackoff = null;
         SendNextQueuedCommand();
     }
-    // The rate-limit backoff elapsing. Like the pace timer, real time has passed
-    // by the time this fires in production (the backoff is several times the
-    // minimum interval), so age the clock to match.
-    internal void FireRateLimitBackoffForTests()
-    {
-        _rateLimitBackoff.Stop();
-        _lastCommandSentAt = DateTimeOffset.MinValue;
-        SendNextQueuedCommand();
-    }
-    internal int QueuedCommandCountForTests => _commandQueue.Count;
 
-    // Weight model, for asserting that a pack temporarily loaded with things
-    // Roomba didn't collect narrows headroom without writing anything off.
-    internal int BestCaseBudgetForTests => BestCaseBudget();
-    internal void SetCarryWeightsForTests(int max, int baseWeight)
+    private void Arm(ref IDisposable? timer, TimeSpan delay, Action tick)
     {
-        _maxCarryWeight = max;
-        _baseCarryWeight = baseWeight;
-        _minBaseCarryWeight = Math.Min(_minBaseCarryWeight, baseWeight);
+        timer?.Dispose();
+        timer = _schedule(delay, tick);
     }
-    internal void StrandUnmovableForTests() => StrandUnmovableItems();
+
+    private static void Cancel(ref IDisposable? timer)
+    {
+        timer?.Dispose();
+        timer = null;
+    }
 
     // The game reported a rate-limit clobber. On the hard form the last command
     // was DROPPED, so re-queue it at the front; on the soft nudge it probably
@@ -2061,7 +2039,7 @@ public sealed class GhSweepManager : IDisposable
         // they arrive together. Treat the run as one event: already backing off
         // and not told a command was lost means there's nothing new to do, and
         // logging each line turns one incident into a wall of warnings.
-        if (_rateLimitBackoff.IsEnabled && !commandDropped) return;
+        if (_rateLimitBackoff is not null && !commandDropped) return;
 
         if (commandDropped && _lastQueuedCommand is { } last)
         {
@@ -2077,9 +2055,8 @@ public sealed class GhSweepManager : IDisposable
         _log?.Warn(LogCategory,
             $"rate-limited mid-dispatch ({(commandDropped ? "command dropped" : "slow-down nudge")}); "
             + $"backing off with {_commandQueue.Count} command(s) still queued");
-        _promptWait.Stop();
-        _rateLimitBackoff.Stop();
-        _rateLimitBackoff.Start();
+        Cancel(ref _promptWait);
+        Arm(ref _rateLimitBackoff, RateLimitBackoff, OnRateLimitBackoffElapsed);
     }
 
     // Backstop for a dispatched get/drop that fails without a confirmation line
@@ -2092,13 +2069,13 @@ public sealed class GhSweepManager : IDisposable
     // queued for a later-lap retry (a transient block, not a proven-gone item).
     private void OnDispatchSettleElapsed()
     {
-        _dispatchSettle.Stop();
+        Cancel(ref _dispatchSettle);
         if (Phase != SweepPhase.Sorting || _outstandingDispatch.Count == 0) return;
 
         // The room was read again for refused pickups and no list came: a floor
         // with nothing in plain sight prints none, and a search that finds nothing
         // answers in other words.
-        if ((_awaitingLook || _awaitingSearch) && !_rateLimitBackoff.IsEnabled)
+        if ((_awaitingLook || _awaitingSearch) && _rateLimitBackoff is null)
         {
             SettleRefused(hidden: !_awaitingLook, Array.Empty<string>());
             return;
@@ -2108,9 +2085,9 @@ public sealed class GhSweepManager : IDisposable
         // is deliberately longer than this window). "Confirmations stopped" isn't
         // a meaningful reading until every command has actually been sent, so
         // wait rather than abandoning a batch that's simply being paced.
-        if (_commandQueue.Count > 0 || _rateLimitBackoff.IsEnabled)
+        if (_commandQueue.Count > 0 || _rateLimitBackoff is not null)
         {
-            _dispatchSettle.Start();
+            Arm(ref _dispatchSettle, DispatchSettleTimeout, OnDispatchSettleElapsed);
             return;
         }
 
@@ -2188,7 +2165,7 @@ public sealed class GhSweepManager : IDisposable
     // done here, then the room is let go.
     private void EndDispatch()
     {
-        _dispatchSettle.Stop();
+        Cancel(ref _dispatchSettle);
         if (_dispatchRoom is { } room && _log is not null
             && (_pickedUpHere.Count + _deliveredHere.Count + _failedHere.Count > 0))
         {
@@ -2334,8 +2311,7 @@ public sealed class GhSweepManager : IDisposable
             _log?.Debug(LogCategory,
                 $"{(isDrop ? "dropped" : "took")} {match.ConfirmedUnits}/{match.Count} "
                 + $"{match.ItemName} — awaiting the rest of the stack");
-            _dispatchSettle.Stop();
-            _dispatchSettle.Start();
+            Arm(ref _dispatchSettle, DispatchSettleTimeout, OnDispatchSettleElapsed);
             return;
         }
 
@@ -2368,8 +2344,7 @@ public sealed class GhSweepManager : IDisposable
             // A real confirmation landed — a genuine failure (no confirmation
             // line at all) is what OnDispatchSettleElapsed exists to catch, so
             // keep pushing the deadline out while commands are still resolving.
-            _dispatchSettle.Stop();
-            _dispatchSettle.Start();
+            Arm(ref _dispatchSettle, DispatchSettleTimeout, OnDispatchSettleElapsed);
         }
     }
 
@@ -2568,8 +2543,7 @@ public sealed class GhSweepManager : IDisposable
         }
         else
         {
-            _dispatchSettle.Stop();
-            _dispatchSettle.Start();
+            Arm(ref _dispatchSettle, DispatchSettleTimeout, OnDispatchSettleElapsed);
         }
     }
 
@@ -2755,8 +2729,7 @@ public sealed class GhSweepManager : IDisposable
         }
         else
         {
-            _dispatchSettle.Stop();
-            _dispatchSettle.Start();
+            Arm(ref _dispatchSettle, DispatchSettleTimeout, OnDispatchSettleElapsed);
         }
     }
 
@@ -2789,8 +2762,7 @@ public sealed class GhSweepManager : IDisposable
         }
         else
         {
-            _dispatchSettle.Stop();
-            _dispatchSettle.Start();
+            Arm(ref _dispatchSettle, DispatchSettleTimeout, OnDispatchSettleElapsed);
         }
     }
 
@@ -2805,8 +2777,7 @@ public sealed class GhSweepManager : IDisposable
             return;
         }
         _awaitingInventoryResync = true;
-        _inventorySettle.Stop();
-        _inventorySettle.Start();
+        Arm(ref _inventorySettle, InventoryVerificationTimeout, OnInventoryVerificationTimeout);
         Send("i");
         _log?.Info(LogCategory, $"requesting inventory resync after {reason}");
     }
@@ -2814,7 +2785,7 @@ public sealed class GhSweepManager : IDisposable
     private void OnFullInventoryParsed()
     {
         if (!_awaitingInventoryResync || Phase != SweepPhase.Sorting) return;
-        _inventorySettle.Stop();
+        Cancel(ref _inventorySettle);
         _awaitingInventoryResync = false;
         if (_verifyCarriedAfterResync)
         {
@@ -2832,7 +2803,7 @@ public sealed class GhSweepManager : IDisposable
 
     private void OnInventoryVerificationTimeout()
     {
-        _inventorySettle.Stop();
+        Cancel(ref _inventorySettle);
         if (!_awaitingInventoryResync) return;
         _awaitingInventoryResync = false;
         _log?.Warn(LogCategory,
@@ -3151,16 +3122,16 @@ public sealed class GhSweepManager : IDisposable
 
     private void ResetToIdle(string? stopSweepLoopReason = null)
     {
-        _reconSearchSettle.Stop();
+        Cancel(ref _reconSearchSettle);
         // A sweep stopped part-way through a room's searches still writes what it
         // read of that room.
         if (_reconSearchRoom is { } searching) RecordItemLocations(searching);
         _reconSearchRoom = null;
         _sortSearchRoom = null;
-        _dispatchSettle.Stop();
+        Cancel(ref _dispatchSettle);
         _dispatchRoom = null;
         _outstandingDispatch.Clear();
-        _inventorySettle.Stop();
+        Cancel(ref _inventorySettle);
         _awaitingInventoryResync = false;
         _resyncPending = false;
         _pendingArrivalSurvey = null;
@@ -3200,17 +3171,17 @@ public sealed class GhSweepManager : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
-        _reconSearchSettle.Stop();
-        _dispatchSettle.Stop();
-        _inventorySettle.Stop();
+        Cancel(ref _reconSearchSettle);
+        Cancel(ref _dispatchSettle);
+        Cancel(ref _inventorySettle);
         _getSub.Dispose();
         _dropSub.Dispose();
         _dropRefusedSub.Dispose();
         _commandIgnoredSub.Dispose();
         _slowDownSub.Dispose();
         if (_promptScanner is not null) _promptScanner.PromptObserved -= OnPromptObservedFromWire;
-        _promptWait.Stop();
-        _rateLimitBackoff.Stop();
+        Cancel(ref _promptWait);
+        Cancel(ref _rateLimitBackoff);
         _router.LineDispatched -= OnLineForGetFailure;
         _loopRunner.Event -= OnLoopEvent;
         _groundItems.SurveyUpdated -= OnSurveyUpdated;

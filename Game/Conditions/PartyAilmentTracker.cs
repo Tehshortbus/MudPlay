@@ -80,8 +80,8 @@ public sealed class PartyAilmentTracker : IDisposable
     private readonly PartyEssentialHandlers _essentials;
     private readonly Func<IReadOnlyList<CureCastMatcher>> _readCureMatchers;
     // Apply-cast matchers (ailment-inflicting monster spells) + the spell-data
-    // duration resolver. Null when apply-witnessing is disabled (tests that only
-    // exercise the cure/say paths). See AppServices for the production bindings.
+    // duration resolver. Null when apply-witnessing is disabled (only the cure/say
+    // paths clear chips). See AppServices for the production bindings.
     private readonly Func<IReadOnlyList<ApplyCastMatcher>>? _readApplyMatchers;
     // (spell number, the caster the witness line named or null) → seconds.
     private readonly Func<int, string?, double?>? _resolveDurationSeconds;
@@ -311,7 +311,7 @@ public sealed class PartyAilmentTracker : IDisposable
     // member's chip and arm its spell-data duration (the authoritative clear for a
     // landed effect; a "resist" prints no apply line, so no chip). Poison is
     // excluded (par-owned); self is excluded (ConditionTracker owns it).
-    // No-op when no apply-matchers are wired (cure/say-only test harnesses).
+    // No-op when no apply-matchers are wired.
     private void WitnessApplies(LineExtractor.EmittedLine line)
     {
         if (_readApplyMatchers is null) return;
@@ -412,7 +412,6 @@ public sealed class PartyAilmentTracker : IDisposable
     // Clear any chip whose armed duration has elapsed — the spell-data "duration
     // timed out" clear. Every non-timeout clear (cure / par / @status / inbound
     // off) removes the entry first, so this only fires when nothing else cleared.
-    // Internal so tests can drive it with a controlled clock.
     internal void SweepExpiredChips()
     {
         if (_expiryAtMs.Count == 0) return;

@@ -5,13 +5,11 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// PR 9.J — <see cref="AcquisitionGate"/> drives the single
-/// <see cref="MovementCoordinator.AcquisitionGate"/> on behalf of both
-/// the item and cash engines. These tests cover the synchronous state
-/// machine; the time-based settle release (a <c>DispatcherTimer</c>
-/// tick) is Avalonia plumbing not exercised in headless xUnit.
-/// </summary>
+// AcquisitionGate drives the single
+// MovementCoordinator.AcquisitionGate on behalf of both
+// the item and cash engines. These tests cover the synchronous state
+// machine; the time-based settle release (a DispatcherTimer
+// tick) is Avalonia plumbing not exercised in headless xUnit.
 public sealed class AcquisitionGateTests
 {
     private static bool Asserted(MovementCoordinator c) =>

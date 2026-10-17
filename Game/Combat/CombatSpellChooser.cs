@@ -341,7 +341,7 @@ public sealed class CombatSpellChooser
 
     // Is there a mob in the room this round the AoE debuff hasn't already tagged — the
     // first cast (nothing tagged yet) or a new arrival / summon? When the roster isn't
-    // wired (unwired callers / tests supply no RoomMobKeys), degrade to once-per-room:
+    // wired (unwired callers supply no RoomMobKeys), degrade to once-per-room:
     // fire only while no AoE debuff has gone out yet.
     private bool AoeHasNewTarget(in CombatSpellContext ctx)
     {
@@ -497,7 +497,7 @@ public sealed class CombatSpellChooser
             case CombatSpellAction.AreaDebuff:
                 // Count the AoE cast toward its per-room cap and tag every mob present, so
                 // it re-fires only for a later NEW arrival rather than every round. A null
-                // roster (unwired callers / tests) still bumps the counter → once-per-room.
+                // roster (unwired callers) still bumps the counter → once-per-room.
                 _areaDebuffCasts++;
                 if (roomMobKeys is not null)
                     foreach (string key in roomMobKeys) _areaDebuffedMobs.Add(key);
@@ -734,7 +734,7 @@ public readonly record struct CombatSpellDecision(CombatSpellAction Action, stri
 // when nothing is level-blocked; AllowNukes is the Auto-Nuke auto-engine gate —
 // when false the chooser never offers the multi-target attack spell or the area
 // debuff (the single-target debuff and Normal / Alternate attack spells are NOT
-// nukes and stay available). Defaults true so unwired callers / tests behave as
+// nukes and stay available). Defaults true so unwired callers behave as
 // before.
 // ResistBlockedActions is the set of single-target attack actions whose damage
 // *element* the current target resists ≥ 100% (0 damage or heal), or null when
@@ -746,11 +746,11 @@ public readonly record struct CombatSpellDecision(CombatSpellAction Action, stri
 // working alternate — proven by game-data HitMagic or a "no effect" line this
 // room); it only matters for PhysicalFirst, where it flips the round from a
 // useless swing to the attack-spell cascade. Defaults false so SpellsFirst and
-// unwired callers / tests behave as before. AlternationPreferSpell forces this
+// unwired callers behave as before. AlternationPreferSpell forces this
 // round's spell-vs-physical preference for the alternating action orders (true =
 // treat the round as SpellsFirst, false = as PhysicalFirst); null — the default —
 // leaves the choice to settings.ActionOrder, so the fixed orders and unwired
-// callers / tests behave as before.
+// callers behave as before.
 //
 // The six Override* fields carry the current target's per-monster spell
 // overrides (game-data Monster overlay), already resolved from Spell.Number to
@@ -795,18 +795,18 @@ public readonly record struct CombatSpellContext(
     // releases at the trigger (no hysteresis band). DrainTargetEligible is true when
     // the current target is living AND not undead (a drain can't affect NonLiving /
     // Undead). Both default false so a drain never fires unless BuildContext populates
-    // them — unwired callers / tests behave exactly as before.
+    // them — unwired callers behave exactly as before.
     bool HpBelowDrainTrigger = false,
     bool DrainTargetEligible = false,
     // RawNames of every engageable monster in the room this round — the roster the AoE
     // debuff tags on cast and checks for new (untagged) arrivals to decide a re-fire.
-    // null when unwired (weapon-only context, tests), where the AoE degrades to
+    // null when unwired (weapon-only context), where the AoE degrades to
     // once-per-room.
     IReadOnlyList<string>? RoomMobKeys = null,
     // Resolves a spell's actual mana cost by cast-code (Spellbook.ManaCostOf). ManaOk
     // uses it as a hard affordability floor beneath the slot's MinManaPerCast reserve:
     // a MinManaPerCast of 0 means "no reserve", NOT "cast even when you can't afford
     // it" — a below-cost cast is a silent no-op (report paradigm-20260820-082741, DTCH
-    // spammed at 5/13/20 mana vs its 25 cost). null (unwired / tests) → no cost floor,
+    // spammed at 5/13/20 mana vs its 25 cost). null (unwired) → no cost floor,
     // old behavior.
     System.Func<string, int?>? ManaCostOf = null);

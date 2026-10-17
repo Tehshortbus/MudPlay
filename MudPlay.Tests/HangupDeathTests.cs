@@ -668,6 +668,8 @@ public sealed class HangupDeathTests
         public RoomTracker Tracker { get; }
         public MovementCoordinator Coordinator { get; } = new();
         public PlayerDeathMovementHalt Halt { get; }
+        // The post-death graveyard resync.
+        public ManualTimers Resync { get; } = new();
         public int EngineStops { get; private set; }
         public int Observed { get; private set; }
         public int Inferred { get; private set; }
@@ -689,7 +691,7 @@ public sealed class HangupDeathTests
             Tracker.PlayerDeathObserved += () => Observed++;
             Tracker.PlayerDeathInferred += () => Inferred++;
             Tracker.UnwitnessedDeathRecorded += () => Recorded++;
-            Halt = new PlayerDeathMovementHalt(Tracker, Coordinator);
+            Halt = new PlayerDeathMovementHalt(Tracker, Coordinator, schedule: Resync.Arm);
             Halt.SetEngineStopper(() => EngineStops++);
             Halt.SetWireSender(Sent.Add);
         }
@@ -826,7 +828,8 @@ public sealed class HangupDeathTests
         h.Coordinator.AssertGate(MovementCoordinator.UserGate, "user");
 
         h.Tracker.NoteUnwitnessedDeath(Unseen());
-        h.Halt.FireGraveyardResyncForTests();
+        Assert.Equal(0, h.Resync.Pending);
+        h.Resync.RunAll();
 
         Assert.Equal(1, h.EngineStops);
         Assert.False(h.Coordinator.IsGateAsserted(MovementCoordinator.UserGate));

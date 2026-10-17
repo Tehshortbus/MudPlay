@@ -20,9 +20,6 @@ public sealed class CaptureSession : IAsyncDisposable
     // Path of the currently-open file, or null if inactive.
     public string? FilePath { get; private set; }
 
-    // true between Start and Stop.
-    public bool IsActive => _writer is not null;
-
     public CaptureSession(ScrollbackBuffer source)
     {
         ArgumentNullException.ThrowIfNull(source);

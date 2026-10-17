@@ -9,11 +9,10 @@ namespace MudPlay.Game.Calculators;
 // A code-145 roll spell (nature tap / mana flux) rolls a magnitude from its
 // level-scaled [Min,Max] range each cast, and that magnitude adds straight into
 // the +ManaRgn% total (it is a percent modifier, not flat mana). So the question
-// "what roll pushes me over the next tick, and where should I stop rerolling?"
-// reduces to: sweep the roll value across [Min,Max] and find where the tick steps
-// up, then map each step back to the roll value — and its 0-100% position in the
-// range — needed to reach it. Anything the range can't reach is a reroll that
-// only burns mana for no extra tick, which is exactly what a planner wants to see.
+// "what roll pushes me over the next tick?" reduces to: sweep the roll value
+// across [Min,Max], find where the tick steps up, and map each step back to the
+// roll value needed to reach it. Anything the range can't reach is a reroll that
+// only burns mana for no extra tick.
 //
 // Pure and gear-independent of any UI: the caller supplies the resolved inputs
 // (level, magery type/level, stats, gear +ManaRgn%, realm) and the spell's
@@ -35,21 +34,16 @@ public static class ManaRegenBreakpointCalculator
         RealmType Realm,
         int Charm = 0);
 
-    // One reachable tick step the roll spell can push us to: the tick it yields,
-    // the total +ManaRgn% and roll value it needs, and where that roll sits in the
-    // spell's [Min,Max] range (0 = worst roll, 1 = best roll).
-    public readonly record struct Breakpoint(
-        int Tick, int RegenPercentNeeded, int RollValueNeeded, double RollFractionOfRange);
+    // One reachable tick step the roll spell can push us to: the tick it yields
+    // and the roll value it needs.
+    public readonly record struct Breakpoint(int Tick, int RollValueNeeded);
 
     public readonly record struct Result(
-        int BaseTick,      // level + stat only (no gear, no spell)
-        int GearTick,      // + gear/quest +ManaRgn% (no spell)
-        int WorstTick,     // + gear + spell rolling its minimum
-        int BestTick,      // + gear + spell rolling its maximum
+        int WorstTick,     // gear + spell rolling its minimum
+        int BestTick,      // gear + spell rolling its maximum
         int RollMin,       // level-scaled spell roll range
         int RollMax,
-        IReadOnlyList<Breakpoint> Breakpoints,   // steps in (WorstTick, BestTick]
-        int? RecommendedRollThreshold);          // suggested reroll target (roll value), or null when no step is reachable
+        IReadOnlyList<Breakpoint> Breakpoints);   // steps in (WorstTick, BestTick]
 
     // Per-tick amount at a given rolled +ManaRgn% (0 = no spell). Gear is always
     // folded in; the engine formula truncates, so this is the whole-MP tick.
@@ -59,39 +53,17 @@ public static class ManaRegenBreakpointCalculator
             i.MageryType, i.MageryLevel, i.GearRegenPercent + rolledRegenPercent,
             isMeditating: false, i.Realm);
 
-    // recommendCutoff: the highest roll fraction we'll suggest chasing. A step that
-    // needs a roll past this (e.g. > 75% of the range) costs too many rerolls per
-    // extra tick to be worth it, so the recommendation stops at the best step
-    // reachable within the cutoff. The full ladder is still returned so the caller
-    // can show every step and let the player judge.
-    public static Result Compute(in Inputs i, int rollMin, int rollMax, double recommendCutoff = 0.75)
+    public static Result Compute(in Inputs i, int rollMin, int rollMax)
     {
         if (rollMax < rollMin) (rollMin, rollMax) = (rollMax, rollMin);
-
-        int baseTick = CharacterCalculator.CalcManaRegen(
-            i.Level, i.Intellect, i.Willpower, i.Charm,
-            i.MageryType, i.MageryLevel, mpRegenPercent: 0, isMeditating: false, i.Realm);
-        int gearTick = Tick(i, 0);
         int worst = Tick(i, rollMin);
         int best = Tick(i, rollMax);
 
         var steps = new List<Breakpoint>();
         for (int t = worst + 1; t <= best; t++)
-        {
-            if (MinRollFor(i, t, rollMin, rollMax) is not { } v) continue;
-            double frac = rollMax > rollMin ? (double)(v - rollMin) / (rollMax - rollMin) : 0;
-            steps.Add(new Breakpoint(t, i.GearRegenPercent + v, v, frac));
-        }
+            if (MinRollFor(i, t, rollMin, rollMax) is { } v) steps.Add(new Breakpoint(t, v));
 
-        // Recommend the highest step reachable within the cutoff; if every step
-        // needs a roll past the cutoff, still suggest the cheapest (first) one so a
-        // planner has a target — the returned fraction shows how dear it is.
-        int? recommended = null;
-        for (int s = steps.Count - 1; s >= 0; s--)
-            if (steps[s].RollFractionOfRange <= recommendCutoff) { recommended = steps[s].RollValueNeeded; break; }
-        if (recommended is null && steps.Count > 0) recommended = steps[0].RollValueNeeded;
-
-        return new Result(baseTick, gearTick, worst, best, rollMin, rollMax, steps, recommended);
+        return new Result(worst, best, rollMin, rollMax, steps);
     }
 
     // The rolls in [rollMin, rollMax] whose natural tick is exactly `tick` — how Stock,

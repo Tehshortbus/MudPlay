@@ -1,6 +1,4 @@
-using System.Collections;
 using System.Diagnostics;
-using System.Reflection;
 using System.Text;
 using MudPlay.Game.Cash;
 using MudPlay.Game.Conditions;
@@ -23,6 +21,19 @@ namespace MudPlay.Tests;
 // floor several times the reported one.
 public sealed class GhSweepHugeRoomTests : IDisposable
 {
+    // The sweep's settle, pacing and backoff timers, the clock its pacing reads,
+    // and the game's prompts as it reads them.
+    private readonly ManualTimers _sweepTimers = new();
+    private DateTimeOffset _sweepNow = new(2026, 10, 1, 12, 0, 0, TimeSpan.Zero);
+    private readonly WirePromptScanner _sweepPrompt = new();
+
+    // The pace between queued commands runs out.
+    private void PaceOut()
+    {
+        _sweepNow += GhSweepManager.MinCommandInterval;
+        _sweepTimers.RunDue(GhSweepManager.PromptWaitTimeout);
+    }
+
     private static readonly RoomKey Weapons = new(1, 1);
     private static readonly RoomKey Armour = new(1, 2);
     private static readonly RoomKey Vault = new(1, 3);
@@ -68,8 +79,8 @@ public sealed class GhSweepHugeRoomTests : IDisposable
         ItemNameStore names = new(cache);
         names.OnActiveSetChanged("alpha");
 
-        ProfileService profile = new();
-        profile.LoadBlank();
+        ProfileService profile = TestProfiles.Service();
+        profile.LoadDefaultProfile();
         _labels = new GhRoomLabelStore(profile);
         _labels.OnRealmChanged(AppPaths.BbsFolder(_scratchBbs));
         _labels.SetLabel(Weapons, new[] { GhCategoryRule.ForItemType(1) }, isCatchAll: false);
@@ -116,7 +127,7 @@ public sealed class GhSweepHugeRoomTests : IDisposable
             postToUi: action => action());
         _sweep = sweep = new GhSweepManager(_labels, runner, _tracker, bfs, ground, names,
             router, coordinator, isOtherEngineBusy: () => false, log: _log,
-            isParadigm: () => true, itemLocations: locations, timestamp: Timestamp);
+            isParadigm: () => true, itemLocations: locations, timestamp: Timestamp, promptScanner: _sweepPrompt, now: () => _sweepNow, schedule: _sweepTimers.Arm);
         _sweep.SetWireSender(bytes => _sent.Add(Encoding.Latin1.GetString(bytes).TrimEnd('\r')));
         runner.SetWireSender(bytes => _sent.Add(Encoding.Latin1.GetString(bytes).TrimEnd('\r')));
 
@@ -146,33 +157,16 @@ public sealed class GhSweepHugeRoomTests : IDisposable
         _tracker.NoteRoomObserved(new RoomObservation(roomName, new HashSet<Direction>(exits)),
             DateTimeOffset.UtcNow.AddSeconds(++_clock));
 
-    private void SearchSettles() =>
-        typeof(GhSweepManager).GetMethod("OnReconSearchSettleElapsed",
-            BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(_sweep, null);
+    private void SearchSettles() => _sweepTimers.RunDue(GhSweepManager.ReconSearchSettle);
 
     private List<string> SweepLog() => _log.Snapshot()
         .Where(e => e.Source == GhSweepManager.LogCategory)
         .Select(e => e.Message)
         .ToList();
 
-    // The sort queue as (item, count, from, to, hidden), read off the sweep's ledger.
-    private List<(string Item, int Count, RoomKey From, RoomKey To, bool Hidden)> Queue()
-    {
-        object pending = typeof(GhSweepManager)
-            .GetField("_pending", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(_sweep)!;
-        var queue = new List<(string, int, RoomKey, RoomKey, bool)>();
-        foreach (object move in (IEnumerable)pending)
-        {
-            Type t = move.GetType();
-            queue.Add((
-                (string)t.GetProperty("ItemName")!.GetValue(move)!,
-                (int)t.GetProperty("Count")!.GetValue(move)!,
-                (RoomKey)t.GetProperty("From")!.GetValue(move)!,
-                (RoomKey)t.GetProperty("To")!.GetValue(move)!,
-                (bool)t.GetProperty("RequiresSearch")!.GetValue(move)!));
-        }
-        return queue;
-    }
+    // The sort queue as (item, count, from, to, hidden).
+    private List<(string Item, int Count, RoomKey From, RoomKey To, bool Hidden)> Queue() =>
+        _sweep.PendingMoves.Select(m => (m.ItemName, m.Count, m.From, m.To, m.Hidden)).ToList();
 
     [Fact]
     public void AVaultOfSixHundredStacks_IsQueuedStackForStack_AndLoggedInOneBoundedLine()

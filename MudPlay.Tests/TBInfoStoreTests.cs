@@ -6,11 +6,9 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Load + lookup coverage for <see cref="TBInfoStore"/>. Commit 5
-/// (teleport handler) layers the Action-chain directive parser on
-/// top; commit 1 just verifies the raw rows round-trip.
-/// </summary>
+// Load + lookup coverage for TBInfoStore. Commit 5
+// (teleport handler) layers the Action-chain directive parser on
+// top; commit 1 just verifies the raw rows round-trip.
 public sealed class TBInfoStoreTests : IDisposable
 {
     private readonly string _root;

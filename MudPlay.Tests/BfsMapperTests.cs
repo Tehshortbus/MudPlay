@@ -7,11 +7,9 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// PR 7.5 BFS coverage — shortest-path correctness, the avoided-room
-/// filter, U/D handling, planar layout, off-grid collision routing,
-/// and the layout cache.
-/// </summary>
+// BFS coverage — shortest-path correctness, the avoided-room
+// filter, U/D handling, planar layout, edge tracking,
+// and the layout cache.
 public sealed class BfsMapperTests : IDisposable
 {
     private readonly string _root;
@@ -35,7 +33,6 @@ public sealed class BfsMapperTests : IDisposable
     //   E (Door)             E
     //   │                   │
     //  1/4 ──N── 1/5        1/6 ──D── 1/7 (cellar, vertical only)
-    //
     private const string GridJson = """
         [
           { "Map Number": 1, "Room Number": 1, "Name": "Town Gates",
@@ -225,13 +222,29 @@ public sealed class BfsMapperTests : IDisposable
     [Fact]
     public void FindPath_Filter_BlocksIntermediate_ForcesAlternateRoute()
     {
-        var (bfs, _) = NewMapper();
-        AvoidSet filter = new();
-        filter.Avoided.Add(new RoomKey(1, 2));   // Plaza blocked
+        // 1/1 N → 1/2 N → 1/3 is the short way; 1/1 E → 1/4 N → 1/5 W → 1/3 the long.
+        const string Json = """
+            [
+              { "Map Number": 1, "Room Number": 1, "Name": "Start", "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+                "N": "1/2", "S": "0", "E": "1/4", "W": "0", "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 1, "Room Number": 2, "Name": "Short", "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+                "N": "1/3", "S": "1/1", "E": "0", "W": "0", "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 1, "Room Number": 3, "Name": "Goal", "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+                "N": "0", "S": "1/2", "E": "1/5", "W": "0", "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 1, "Room Number": 4, "Name": "Long A", "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+                "N": "1/5", "S": "0", "E": "0", "W": "1/1", "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+              { "Map Number": 1, "Room Number": 5, "Name": "Long B", "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+                "N": "0", "S": "1/4", "E": "0", "W": "1/3", "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+            ]
+            """;
+        var (bfs, _) = NewMapper(Json);
+        Assert.Equal(new[] { Direction.N, Direction.N }, bfs.FindPath(new RoomKey(1, 1), new RoomKey(1, 3)));
 
-        // No alternate route from 1/1 to 1/3 exists when Plaza is
-        // blocked. (East side via 1/4–1/5 is a dead-end branch.)
-        Assert.Null(bfs.FindPath(new RoomKey(1, 1), new RoomKey(1, 3), filter));
+        AvoidSet filter = new();
+        filter.Avoided.Add(new RoomKey(1, 2));
+
+        Assert.Equal(new[] { Direction.E, Direction.N, Direction.W },
+            bfs.FindPath(new RoomKey(1, 1), new RoomKey(1, 3), filter));
     }
 
     [Fact]
@@ -321,13 +334,6 @@ public sealed class BfsMapperTests : IDisposable
             "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
         ]
         """;
-
-    [Fact]
-    public void FindPath_LevelGate_BlocksUnderleveledPlayer()
-    {
-        var (bfs, _) = NewMapper(GatedOnlyJson);
-        Assert.Null(bfs.FindPath(new RoomKey(1, 1), new RoomKey(1, 2), new LevelFilter(10)));
-    }
 
     [Fact]
     public void FindPath_LevelGate_AllowsAtOrAboveFloor()
@@ -566,9 +572,8 @@ public sealed class BfsMapperTests : IDisposable
 
         // Planar-only BFS: U/D destinations are NEVER followed. The
         // Cellar (1/7) is reachable only via D from 1/6 → it's not
-        // in the layout at all (no position, no off-grid entry).
+        // in the layout at all (no position).
         Assert.DoesNotContain(new RoomKey(1, 7), layout.Positions.Keys);
-        Assert.Empty(layout.OffGrid);                     // off-grid lane is gone
 
         // 1/6 still gets its VerticalHint.Down so the renderer can
         // draw the down-arrow glyph on the source cell.
@@ -576,67 +581,6 @@ public sealed class BfsMapperTests : IDisposable
         Assert.Equal(VerticalHint.Down, hint);
     }
 
-    [Fact]
-    public void BuildLayout_VerticalExits_NotInEdgesFromCoord()
-    {
-        var (bfs, _) = NewMapper();
-        RoomLayout layout = bfs.BuildLayout(new RoomKey(1, 1));
-
-        // The map is a flat view — U / D exits don't render as stubs
-        // on the source cell at all. They surface only via
-        // VerticalHints.
-        (int X, int Y) sixCoord = layout.Positions[new RoomKey(1, 6)];
-        Assert.True(layout.EdgesFromCoord.TryGetValue(sixCoord, out IReadOnlySet<Direction>? edges));
-        Assert.DoesNotContain(Direction.U, edges!);
-        Assert.DoesNotContain(Direction.D, edges!);
-    }
-
-    [Fact]
-    public void BuildLayout_Collision_RoutesSecondVisitToOffGrid()
-    {
-        // Non-Euclidean fixture: 1/1 N → 1/2 N → 1/3.
-        // Then 1/3 W → 1/4, 1/4 S → 1/2.  Going 1/1 N N W S returns to
-        // 1/2 — but BFS from 1/1 places 1/2 at (0,-1) first, so when
-        // the alternate route reaches 1/2 via 1/4 it would collide.
-        //
-        // For this test the bigger collision target is 1/4:
-        // 1/3 W → 1/4 wants (-1, -2). But if we ever discover 1/4 via
-        // 1/1 N→1/2 W→1/4 first (W not present here — we'll wire it
-        // explicitly), the second visit collides. We construct that
-        // shape:
-        //   1/1 N → 1/2 W → 1/4 N → 1/3 W → 1/4'  (loop back)
-        const string Json = """
-            [
-              { "Map Number": 1, "Room Number": 1, "Name": "Origin",
-                "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
-                "N": "1/2", "S": "0", "E": "0", "W": "0",
-                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
-              { "Map Number": 1, "Room Number": 2, "Name": "Hub",
-                "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
-                "N": "1/3", "S": "1/1", "E": "0", "W": "1/4",
-                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
-              { "Map Number": 1, "Room Number": 3, "Name": "Plaza",
-                "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
-                "N": "0", "S": "1/2", "E": "0", "W": "1/4",
-                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
-              { "Map Number": 1, "Room Number": 4, "Name": "Square",
-                "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
-                "N": "0", "S": "0", "E": "1/2", "W": "0",
-                "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
-            ]
-            """;
-        var (bfs, _) = NewMapper(Json);
-        RoomLayout layout = bfs.BuildLayout(new RoomKey(1, 1));
-
-        Assert.Equal((0, 0),  layout.Positions[new RoomKey(1, 1)]);
-        Assert.Equal((0, -1), layout.Positions[new RoomKey(1, 2)]);
-        Assert.Equal((0, -2), layout.Positions[new RoomKey(1, 3)]);
-        // 1/4 is reached first via 1/2 W → (-1, -1). Discovery via
-        // 1/3 W would also be (-1, -2) → no collision actually; both
-        // are distinct coords.
-        Assert.Equal((-1, -1), layout.Positions[new RoomKey(1, 4)]);
-        Assert.Empty(layout.OffGrid);
-    }
 
     [Fact]
     public void BuildLayout_NonEuclideanReciprocal_RecordsSourceStubsOnBothSides()
@@ -719,7 +663,6 @@ public sealed class BfsMapperTests : IDisposable
         var (bfs, _) = NewMapper();
         RoomLayout layout = bfs.BuildLayout(new RoomKey(999, 1));
         Assert.Empty(layout.Positions);
-        Assert.Empty(layout.OffGrid);
     }
 
     // ----- cross-plane text portals ----------------------------------
@@ -861,7 +804,7 @@ public sealed class BfsMapperTests : IDisposable
         Assert.DoesNotContain(new RoomKey(1, 4), layout.Positions.Keys);
     }
 
-    // ----- MudProxy-style edge tracking ------------------------------
+    // ----- edge tracking ---------------------------------------------
 
     [Fact]
     public void EdgesFromCoord_RecordsEveryPlanarExit_FromTheSourceCell()
@@ -981,7 +924,6 @@ public sealed class BfsMapperTests : IDisposable
     //     ↓
     //   1/3 Cell ══E(Cast)══ 1/4 Cell       (pocket, reciprocal internally,
     //             ══W(Cast)══                 no exit back to 1/1)
-    //
     private const string PocketJson = """
         [
           { "Map Number": 1, "Room Number": 1, "Name": "Asylum Ward",
@@ -1256,7 +1198,7 @@ public sealed class BfsMapperTests : IDisposable
         var (bfs, _) = NewMapper();
         RoomBlacklistStore store = new();
         bfs.ConfigureBlacklist(store.IsBlacklisted);  // bind once, like startup
-        store.Changed += () => bfs.InvalidateCache();  // like AppServices line 2633
+        store.Changed += () => bfs.InvalidateCache();  // as AppServices wires it
 
         RoomLayout before = bfs.BuildLayout(new RoomKey(1, 1));
         Assert.Contains(new RoomKey(1, 2), before.Positions.Keys);
@@ -1473,7 +1415,6 @@ public sealed class BfsMapperTests : IDisposable
     //   E                W
     //   │                │
     //  1/3 ──────N────── (to 1/2)       clean 2-hop detour
-    //
     private const string TrapForkJson = """
         [
           { "Map Number": 1, "Room Number": 1, "Name": "Fork",

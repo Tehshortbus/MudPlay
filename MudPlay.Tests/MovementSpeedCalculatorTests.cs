@@ -3,11 +3,9 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Behavioural coverage for <see cref="MovementSpeedCalculator"/>: the base
-/// 1100 ms speed, the encumbrance / slowness / quickness terms, and the
-/// three-way cap classification with its quickness-to-cap distance.
-/// </summary>
+// Behavioural coverage for MovementSpeedCalculator: the base
+// 1100 ms speed, the encumbrance / slowness / quickness terms, and the
+// three-way cap classification with its quickness-to-cap distance.
 public sealed class MovementSpeedCalculatorTests
 {
     [Fact]

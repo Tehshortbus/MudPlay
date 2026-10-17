@@ -1482,14 +1482,6 @@ public sealed class MapControl : Control
         ViewMoved();
     }
 
-    // Re-centre on the player's current room (Home key / explicit recenter).
-    public void FitToCurrent()
-    {
-        if (Layout is null) return;
-        RoomKey origin = CurrentRoomKey ?? Layout.Origin;
-        CenterOnRoom(origin);
-    }
-
     // Explicit "show me where I am right now" — clears the browse-suppression
     // window (so live moves resume centring), moves the crawler selection to
     // the live current room, and centres on it. Drives both the Home key and

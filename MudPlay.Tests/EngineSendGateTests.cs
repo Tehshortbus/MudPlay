@@ -1,14 +1,13 @@
+using System.Collections.Generic;
 using System.Text;
 using MudPlay.Services;
 using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// <see cref="EngineSendGate"/> named-hold composition — more than one flow
-/// (suicide-password entry, mortally-wounded drop) can gate engine sends at
-/// once, so the gate stays locked until EVERY hold releases.
-/// </summary>
+// EngineSendGate named-hold composition — more than one flow
+// (suicide-password entry, mortally-wounded drop) can gate engine sends at
+// once, so the gate stays locked until EVERY hold releases.
 public sealed class EngineSendGateTests
 {
     [Fact]
@@ -173,7 +172,12 @@ public sealed class EngineSendGateTests
         // Nothing sent yet (e.g. the only traffic was user-typed, which bypasses the
         // gate) → nothing to replay.
         EngineSendGate gate = new();
-        gate.ReplayLastClientCommand();   // must not throw
+        List<byte[]> sent = new();
+        gate.WrapEngineSender(sent.Add);
+
+        gate.ReplayLastClientCommand();
+
+        Assert.Empty(sent);
     }
 
     // Report paradigm-20261007-225617: sneak keeping took the walker's `say

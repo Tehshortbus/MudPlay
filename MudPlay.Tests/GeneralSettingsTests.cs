@@ -1,5 +1,6 @@
 using System.Text.Json;
 using MudPlay.Models.Profile;
+using MudPlay.Services;
 using Xunit;
 
 namespace MudPlay.Tests;
@@ -58,8 +59,8 @@ public sealed class GeneralSettingsTests
             ReEnableAutoSearchOnReconnect   = true,
         };
 
-        string json = JsonSerializer.Serialize(original);
-        GeneralSettings? round = JsonSerializer.Deserialize<GeneralSettings>(json);
+        string json = JsonSerializer.Serialize(original, JsonStore.Options);
+        GeneralSettings? round = JsonSerializer.Deserialize<GeneralSettings>(json, JsonStore.Options);
 
         Assert.NotNull(round);
         Assert.Equal(original.DefaultTask,         round!.DefaultTask);
@@ -93,7 +94,7 @@ public sealed class GeneralSettingsTests
             }
             """;
 
-        GeneralSettings? dto = JsonSerializer.Deserialize<GeneralSettings>(partial);
+        GeneralSettings? dto = JsonSerializer.Deserialize<GeneralSettings>(partial, JsonStore.Options);
 
         Assert.NotNull(dto);
         Assert.Equal(InitialTask.BeginAutoLair, dto!.DefaultTask);
@@ -129,7 +130,7 @@ public sealed class GeneralSettingsTests
             }
             """;
 
-        GeneralSettings? dto = JsonSerializer.Deserialize<GeneralSettings>(legacy);
+        GeneralSettings? dto = JsonSerializer.Deserialize<GeneralSettings>(legacy, JsonStore.Options);
 
         Assert.NotNull(dto);
         Assert.True(dto!.AutoMode.AutoCombat);
@@ -146,15 +147,15 @@ public sealed class GeneralSettingsTests
     {
         string old = $$"""{ "AutoCombat": true, "AutoHealRest": {{(saved ? "true" : "false")}} }""";
 
-        AutoActionDefaults modes = JsonSerializer.Deserialize<AutoActionDefaults>(old)!;
+        AutoActionDefaults modes = JsonSerializer.Deserialize<AutoActionDefaults>(old, JsonStore.Options)!;
         Assert.Equal(saved, modes.AutoHeal);
         Assert.Equal(saved, modes.AutoRest);
 
         modes.AutoRest = !saved;   // the switches move apart
-        string written = JsonSerializer.Serialize(modes);
+        string written = JsonSerializer.Serialize(modes, JsonStore.Options);
         Assert.DoesNotContain("AutoHealRest", written);
 
-        AutoActionDefaults back = JsonSerializer.Deserialize<AutoActionDefaults>(written)!;
+        AutoActionDefaults back = JsonSerializer.Deserialize<AutoActionDefaults>(written, JsonStore.Options)!;
         Assert.Equal(saved, back.AutoHeal);
         Assert.Equal(!saved, back.AutoRest);
     }

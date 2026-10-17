@@ -116,6 +116,17 @@ public sealed class MovementController : IDisposable
         return true;
     }
 
+    // The user's Stop, the toolbar's and the Navigation window's alike. The first
+    // press with an errand under way only holds it and returns false; otherwise the
+    // walk, loop or Auto-Lair, the solves, the errand and any run queued behind it
+    // all stop, and it returns true.
+    public bool StopByUser(string reason = "user stop from toolbar")
+    {
+        if (HoldErrandOnStop()) return false;
+        Stop(reason);
+        return true;
+    }
+
     // A walk, loop or Auto-Lair the user starts. Runs straight away unless Stop is
     // holding an errand; then the user is asked. Yes carries the errand on and
     // starts this once it is done; No ends the errand and starts this now.

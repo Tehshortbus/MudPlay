@@ -126,9 +126,6 @@ public sealed class AutoLightShopRouter : IDisposable
     // Bind the wire sink used to issue the buy command.
     public void SetWireSender(Action<byte[]> sender) => _wire.Bind(sender);
 
-    // Every buffer this router pushed to the wire, in order (test seam).
-    internal IReadOnlyList<byte[]> LastSentForTests => _wire.LastSentForTests;
-
     // True while a provisioning detour is in progress.
     public bool DetourActive => _phase != Phase.Idle;
 

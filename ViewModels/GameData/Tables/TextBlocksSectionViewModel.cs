@@ -27,8 +27,6 @@ public sealed class TextBlocksSectionViewModel : JsonTableSectionViewModel
         "Called From",
     };
 
-    public override string SearchKeyColumn => "Action";
-
     public override IEnumerable<string> SearchableLabels => new[]
     {
         Title, "textblock", "tb", "quest", "dialogue", "sign", "action",

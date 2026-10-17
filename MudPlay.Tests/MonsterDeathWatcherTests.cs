@@ -18,12 +18,14 @@ public sealed class MonsterDeathWatcherTests
         public MessageRouter Router { get; } = new();
         public LogService Log { get; } = new();
         public MonsterDeathWatcher Watcher { get; }
+        // The clock the Watcher reads: the real one unless a test sets its own.
+        public Func<DateTimeOffset> WatcherNow { get; set; } = () => DateTimeOffset.UtcNow;
         public List<MonsterDeathEvent> Events { get; } = new();
 
         public Harness()
         {
             DefaultPatterns.Seed(Router);
-            Watcher = new MonsterDeathWatcher(Router, Log);
+            Watcher = new MonsterDeathWatcher(Router, Log, now: () => WatcherNow());
             Watcher.MonsterDied += Events.Add;
         }
 
@@ -102,7 +104,7 @@ public sealed class MonsterDeathWatcherTests
         // A *Combat Off* more than the 5s window after the exp isn't that kill's Off.
         using Harness h = new();
         DateTimeOffset clock = DateTimeOffset.UnixEpoch;
-        h.Watcher.NowProvider = () => clock;
+        h.WatcherNow = () => clock;
 
         h.FeedRouter("You gain 9 experience.");
         clock += TimeSpan.FromSeconds(6);

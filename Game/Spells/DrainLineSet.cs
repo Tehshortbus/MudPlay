@@ -19,8 +19,6 @@ public sealed class DrainLineSet
     private readonly string[] _anchors;
     private readonly (CasterMessageMatcher Matcher, int Anchor)[] _lines;
 
-    public int TemplateCount => _lines.Length;
-
     public DrainLineSet(IEnumerable<int> drainSpells, IEnumerable<MessageRecord> records)
     {
         HashSet<int> numbers = new(drainSpells);

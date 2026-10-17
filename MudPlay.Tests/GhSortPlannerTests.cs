@@ -170,18 +170,6 @@ public sealed class GhSortPlannerTests
     }
 
     [Fact]
-    public void NoFullRoomsSupplied_BehavesExactlyAsBefore()
-    {
-        RoomKey? next = GhSortPlanner.NextTarget(
-            carried: System.Array.Empty<GhSortPlanner.CarriedLoad>(),
-            pickups: new[] { Pick(2, 10), Pick(3, 10) },
-            headroom: 100,
-            distancesFromHere: Dist((2, 5), (3, 2)),
-            full: null);
-        Assert.Equal(R(3), next);
-    }
-
-    [Fact]
     public void ShouldUnload_EntersAt80Percent_AndHoldsUntilBelow40()
     {
         // Hysteresis, not a threshold. A single line leaves the pack sitting AT

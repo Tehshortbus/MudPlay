@@ -214,8 +214,8 @@ public sealed class RecentLogFileTests : IDisposable
             {
                 if (Interlocked.Increment(ref opens) <= 2) throw new InvalidOperationException("no writer today");
                 return new StreamWriter(new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.Read));
-            })
-        { RetryDelay = TimeSpan.FromMilliseconds(20) };
+            },
+            retryDelay: TimeSpan.FromMilliseconds(20));
 
         log.Info("Walker", "first");
         await file.WhenWrittenAsync();

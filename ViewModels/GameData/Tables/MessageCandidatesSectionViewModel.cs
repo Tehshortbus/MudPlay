@@ -25,7 +25,7 @@ public sealed class MessageCandidatesSectionViewModel : GameDataTableSectionView
     private readonly LogDiagnosticState? _diagnostics;
     // (map, room, rawText) -> a "Likely source" hint. Takes the captured text because
     // the attribution is derived from it — a monster the line names, else the room's
-    // own on-entry spell. Null when no attributor was supplied (tests / no game data).
+    // own on-entry spell. Null when no attributor was supplied (no game data).
     private readonly Func<int, int, string, string?>? _likelySource;
 
     public override string Id => "message-candidates";
@@ -35,8 +35,6 @@ public sealed class MessageCandidatesSectionViewModel : GameDataTableSectionView
     {
         "Raw Text", "Seen In", "Likely source", "Occurrences", "First Seen", "Last Seen", "Status",
     };
-
-    public override string SearchKeyColumn => "Raw Text";
 
     public override IEnumerable<string> SearchableLabels => new[]
     {

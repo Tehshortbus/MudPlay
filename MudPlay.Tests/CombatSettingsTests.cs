@@ -1,13 +1,12 @@
 using System.Text.Json;
 using MudPlay.Models.Profile;
+using MudPlay.Services;
 using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// PR 9.0a sub-A — <see cref="CombatSettings"/> defaults + JSON round-trip
-/// + supporting enums + <see cref="CombatSpellSlot"/>.
-/// </summary>
+// CombatSettings defaults + JSON round-trip
+// + supporting enums + CombatSpellSlot.
 public sealed class CombatSettingsTests
 {
     [Fact]
@@ -67,50 +66,6 @@ public sealed class CombatSettingsTests
     }
 
     [Fact]
-    public void AttackTiming_HasAllFourModes()
-    {
-        // Locks the enum names — the engine in PR 9.A keys off these exact
-        // identifiers, and the JSON storage uses them as serialised
-        // strings. Renames here must be matched in CombatManager.
-        Assert.Equal(AttackTiming.Default,          (AttackTiming)0);
-        Assert.Equal(AttackTiming.AttackLastParty,  (AttackTiming)1);
-        Assert.Equal(AttackTiming.AttackLastRoom,   (AttackTiming)2);
-        Assert.Equal(AttackTiming.AttackAfter,      (AttackTiming)3);
-    }
-
-    [Fact]
-    public void TargetPriority_HasAllThreeModes()
-    {
-        // Locks the enum names + integer order — the engine keys off these
-        // identifiers and the JSON storage serialises them as strings.
-        Assert.Equal(TargetPriority.Default,      (TargetPriority)0);
-        Assert.Equal(TargetPriority.FollowLeader, (TargetPriority)1);
-        Assert.Equal(TargetPriority.FollowMember, (TargetPriority)2);
-    }
-
-    [Fact]
-    public void CombatActionOrder_HasAllFiveModes()
-    {
-        // Locks the enum names + integer order — CombatSpellChooser /
-        // CombatManager key off these identifiers and the JSON storage
-        // serialises them as strings.
-        Assert.Equal(CombatActionOrder.SpellsFirst,           (CombatActionOrder)0);
-        Assert.Equal(CombatActionOrder.PhysicalFirst,         (CombatActionOrder)1);
-        Assert.Equal(CombatActionOrder.AlternateSpellPhysical, (CombatActionOrder)2);
-        Assert.Equal(CombatActionOrder.AlternatePhysicalSpell, (CombatActionOrder)3);
-        Assert.Equal(CombatActionOrder.CustomRoundCycle,       (CombatActionOrder)4);
-    }
-
-    [Fact]
-    public void PoliteMode_HasAllFourModes()
-    {
-        Assert.Equal(PoliteMode.Off,             (PoliteMode)0);
-        Assert.Equal(PoliteMode.WaitForOthers,   (PoliteMode)1);
-        Assert.Equal(PoliteMode.SkipRoom,        (PoliteMode)2);
-        Assert.Equal(PoliteMode.AttackDifferent, (PoliteMode)3);
-    }
-
-    [Fact]
     public void JsonRoundTrip_PreservesScalars()
     {
         CombatSettings dto = new()
@@ -145,8 +100,8 @@ public sealed class CombatSettingsTests
             ShowCombatRoundTotals      = true,
         };
 
-        string json = JsonSerializer.Serialize(dto);
-        CombatSettings? round = JsonSerializer.Deserialize<CombatSettings>(json);
+        string json = JsonSerializer.Serialize(dto, JsonStore.Options);
+        CombatSettings? round = JsonSerializer.Deserialize<CombatSettings>(json, JsonStore.Options);
 
         Assert.NotNull(round);
         Assert.Equal(dto.NormalAttackCommand,       round!.NormalAttackCommand);
@@ -205,8 +160,8 @@ public sealed class CombatSettingsTests
             },
         };
 
-        string json = JsonSerializer.Serialize(dto);
-        CombatSettings? round = JsonSerializer.Deserialize<CombatSettings>(json);
+        string json = JsonSerializer.Serialize(dto, JsonStore.Options);
+        CombatSettings? round = JsonSerializer.Deserialize<CombatSettings>(json, JsonStore.Options);
 
         Assert.NotNull(round);
         Assert.Equal("star",   round!.MultiAttackSpell.SpellName);
@@ -248,7 +203,7 @@ public sealed class CombatSettingsTests
     [InlineData("""{}""", false)]
     public void OlderSettings_RowsFollowTheTableSwitch(string json, bool rows)
     {
-        CombatSettings c = JsonSerializer.Deserialize<CombatSettings>(json)!;
+        CombatSettings c = JsonSerializer.Deserialize<CombatSettings>(json, JsonStore.Options)!;
         Assert.Equal(rows, c.ShowsRoundTotalsRow(c.ShowCombatRoundTotalsSelf));
         Assert.Equal(rows, c.ShowsRoundTotalsRow(c.ShowCombatRoundTotalsMonsters));
     }

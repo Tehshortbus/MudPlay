@@ -1,4 +1,3 @@
-using Avalonia.Threading;
 using MudPlay.Services;
 
 namespace MudPlay.Game.Map;
@@ -45,7 +44,7 @@ public sealed class AutoSearchManager : IDisposable
     // start of a fight (where the server drops it). Trimmed from a longer wait once the
     // roster-already-parsed timing was understood — the leftover was dead per-room
     // latency on a search-along-route walk (report paradigm-20260909-004947).
-    private static readonly TimeSpan ClassifyDelay = TimeSpan.FromMilliseconds(90);
+    internal static readonly TimeSpan ClassifyDelay = TimeSpan.FromMilliseconds(90);
 
     // Keep the Search gate held this long after the post-fight `sea` goes out,
     // bridging the search's server round-trip so the revealed "You notice" survey
@@ -53,7 +52,7 @@ public sealed class AutoSearchManager : IDisposable
     // this releases. The `sea` reply is just the command→reply latency (~150 ms, no
     // server-side delay) and the get path parses the survey immediately, so this
     // only has to outlast that round-trip plus a little parse margin.
-    private static readonly TimeSpan SearchSettle = TimeSpan.FromMilliseconds(200);
+    internal static readonly TimeSpan SearchSettle = TimeSpan.FromMilliseconds(200);
 
     private readonly Func<bool> _isEnabled;
     private readonly Func<bool> _isDemandActive;
@@ -74,8 +73,10 @@ public sealed class AutoSearchManager : IDisposable
     private readonly MovementCoordinator? _coordinator;
     private readonly LogService? _log;
     private readonly WireSender _wire = new();
-    private readonly DispatcherTimer _classify;
-    private readonly DispatcherTimer _settle;
+    private IDisposable? _classify;
+    // Arms one tick after the delay; disposing what it returns cancels it.
+    private readonly Func<TimeSpan, Action, IDisposable> _schedule;
+    private IDisposable? _settle;
 
     // The room a search is owed for, keyed to its confirmed identity — armed on entry
     // while a gate is on, null when nothing is owed. Keying by room (not a bare bool)
@@ -109,23 +110,21 @@ public sealed class AutoSearchManager : IDisposable
         Func<bool>? hasGetEngineArmed = null,
         Func<bool>? hasQueuedMoves = null,
         MovementCoordinator? coordinator = null,
-        LogService? log = null)
+        LogService? log = null,
+        Func<TimeSpan, Action, IDisposable>? schedule = null)
     {
+        _schedule = schedule ?? DispatcherTicks.Once;
         ArgumentNullException.ThrowIfNull(isEnabled);
         _isEnabled = isEnabled;
         _isDemandActive = isDemandActive ?? (static () => false);
         _hasEngageableHostiles = hasEngageableHostiles ?? (static () => false);
-        // Default true so an unwired manager (tests) keeps the original defer-on-
-        // hostile behaviour; production wires the auto-attack-aware flag.
+        // Default true so an unwired manager keeps the defer-on-hostile
+        // behaviour; AppServices wires the auto-attack-aware flag.
         _isCombatEngaging = isCombatEngaging ?? (static () => true);
         _hasGetEngineArmed = hasGetEngineArmed ?? (static () => false);
         _hasQueuedMoves = hasQueuedMoves ?? (static () => false);
         _coordinator = coordinator;
         _log = log;
-        _classify = new DispatcherTimer { Interval = ClassifyDelay };
-        _classify.Tick += (_, _) => OnClassifyElapsed();
-        _settle = new DispatcherTimer { Interval = SearchSettle };
-        _settle.Tick += (_, _) => OnSettleElapsed();
     }
 
     // True from the moment a `sea` goes out until its settle window elapses — the
@@ -137,14 +136,11 @@ public sealed class AutoSearchManager : IDisposable
     // so the window can never straddle a room change (a stale flag can't leak into
     // the next room's entry survey). False when no loot consumer is armed — nothing
     // collects then, so there is nothing to suppress.
-    public bool IsRevealInFlight => _settle.IsEnabled;
+    public bool IsRevealInFlight => _settle is not null;
 
     // Bind the wire-sender — the gate-wrapped engine pipeline from
     // MainWindowViewModel.
     public void SetWireSender(Action<byte[]> sender) => _wire.Bind(sender);
-
-    // Test seam — bytes the manager asked to write to the wire.
-    internal List<byte[]> LastSentForTests => _wire.LastSentForTests;
 
     private bool ShouldSearch() => _isEnabled() || _isDemandActive();
 
@@ -159,8 +155,10 @@ public sealed class AutoSearchManager : IDisposable
     // delay that resolves clear-room-vs-fight.
     public void OnRoomChanged(RoomKey? key)
     {
-        _classify.Stop();
-        _settle.Stop();
+        _classify?.Dispose();
+        _classify = null;
+        _settle?.Dispose();
+        _settle = null;
         ReleaseGate("room changed");
         _deferredForCombat = false;
         // A null room (death → respawn-pending) leaves nothing to search AND must
@@ -178,7 +176,8 @@ public sealed class AutoSearchManager : IDisposable
             // the loop's, so this pauses the coordinator before the loop's
             // SendNextStep runs.
             AssertGate("room entered — holding to search");
-            _classify.Start();
+            _classify?.Dispose();
+            _classify = _schedule(ClassifyDelay, OnClassifyElapsed);
         }
     }
 
@@ -201,7 +200,8 @@ public sealed class AutoSearchManager : IDisposable
         if (_lastSearchedFor is { } last && last.Equals(currentRoom.Value)) return;
         _owedFor = currentRoom;
         AssertGate("movement starting — search start room");
-        _classify.Start();
+        _classify?.Dispose();
+        _classify = _schedule(ClassifyDelay, OnClassifyElapsed);
     }
 
     // Each room-entity observation (wired after the combat tracker so the hostile
@@ -218,7 +218,8 @@ public sealed class AutoSearchManager : IDisposable
             // walker so it can't step out before we've searched the cleared room.
             // Only one search per room: once it has fired (_owedFor cleared), a fight
             // that wanders in later doesn't re-arm another.
-            _classify.Stop();
+            _classify?.Dispose();
+            _classify = null;
             if (_owedFor is not null && !_deferredForCombat)
             {
                 _deferredForCombat = true;
@@ -235,9 +236,10 @@ public sealed class AutoSearchManager : IDisposable
 
     // Classify delay elapsed with no fight seen — treat the room as clear and
     // search now. A fight that revealed in the window stopped this timer.
-    internal void OnClassifyElapsed()
+    private void OnClassifyElapsed()
     {
-        _classify.Stop();
+        _classify?.Dispose();
+        _classify = null;
         if (_owedFor is null || _deferredForCombat) return;
         if (_hasEngageableHostiles() && _isCombatEngaging())
         {
@@ -252,9 +254,10 @@ public sealed class AutoSearchManager : IDisposable
 
     // Search settle elapsed — the revealed survey has had time to come back and the
     // get engines to take over the hold; release the Search gate.
-    internal void OnSettleElapsed()
+    private void OnSettleElapsed()
     {
-        _settle.Stop();
+        _settle?.Dispose();
+        _settle = null;
         ReleaseGate("search settle elapsed");
     }
 
@@ -276,14 +279,16 @@ public sealed class AutoSearchManager : IDisposable
     // here." instead, which the get engines act on and the settle timer still covers.
     public void NotifySearchRevealedNothing()
     {
-        if (_disposed || !_settle.IsEnabled) return;
-        _settle.Stop();
+        if (_disposed || _settle is null) return;
+        _settle?.Dispose();
+        _settle = null;
         ReleaseGate("search revealed nothing");
     }
 
     private void FireSearch(bool postCombat)
     {
-        _classify.Stop();
+        _classify?.Dispose();
+        _classify = null;
 
         // Moves still queued → the player hasn't settled in this room (a transit room
         // of an n;e;n burst). A `sea` only searches the server's current room, so it
@@ -342,8 +347,8 @@ public sealed class AutoSearchManager : IDisposable
         // Search gate (asserted in OnRoomChanged / OnRoomObserved).
         if (HasLootConsumer())
         {
-            _settle.Stop();
-            _settle.Start();
+            _settle?.Dispose();
+            _settle = _schedule(SearchSettle, OnSettleElapsed);
         }
         else
         {
@@ -369,8 +374,10 @@ public sealed class AutoSearchManager : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
-        _classify.Stop();
-        _settle.Stop();
+        _classify?.Dispose();
+        _classify = null;
+        _settle?.Dispose();
+        _settle = null;
         ReleaseGate("disposed");
     }
 }

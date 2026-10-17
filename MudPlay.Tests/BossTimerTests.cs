@@ -23,6 +23,9 @@ namespace MudPlay.Tests;
 // remote report (format / substring filter / "expired").
 public sealed class BossTimerTests : IDisposable
 {
+    // The router each engine reads, which a test's chat lines go through.
+    private readonly Dictionary<RemoteCommandManager, MessageRouter> _routers = new();
+
     private readonly string _set = "boss-timer-test-" + Path.GetRandomFileName();
     private readonly string _seedPath =
         Path.Combine(Path.GetTempPath(), "bts-" + Path.GetRandomFileName() + ".json");
@@ -482,28 +485,32 @@ public sealed class BossTimerTests : IDisposable
         DefaultPatterns.Seed(router);
         ChatRouter chat = new(router);
         PartyState party = new();
-        PlayerDatabase players = new();
-        RemoteCommandManager engine = new(chat, party, players);
+        PlayerDatabase players = new(new ProfileService(), () => null);
+        RemoteCommandManager engine = new(chat, party, players, now: () => _engineNow);
+        _routers[engine] = router;
+        engine.SetWireSender(_replies.Add);
         players.RecordObservation("Bob", null, null, null, null, null, null, Now);
         players.EditCustomization("Bob", new PlayerCustomization(RemoteControls: PlayerRemoteControls.QueryBossTimers));
         // The broadcast channel opened, as with its Talk-tab box unticked.
         engine.DisableBroadcastChannel = false;
-        engine.Now = () => _engineNow;
         _ = new BossTimerQueryHandler(engine, store, timers, cache);
         return (engine, timers);
     }
 
+    // What the remote-command engine put on the wire, through the sender the client binds.
+    private readonly List<byte[]> _replies = new();
+
     // The engine's clock: it bounds what it says on the broadcast channel by the minute.
     private DateTimeOffset _engineNow = new(2026, 8, 4, 0, 0, 0, TimeSpan.Zero);
 
-    private static ChatLogEntry Telepath(string msg) =>
-        new(Now, ChatChannel.TelepathIncoming, "Bob", msg, $"Bob telepaths: {msg}");
+    private static ChatLine Telepath(string msg) =>
+        new(ChatChannel.TelepathIncoming, "Bob", msg);
 
-    private static string Reply(RemoteCommandManager engine) =>
-        engine.LastSentForTests.Select(b => Encoding.Latin1.GetString(b)).Select(StripWire).Single();
+    private string Reply() =>
+        _replies.Select(b => Encoding.Latin1.GetString(b)).Select(StripWire).Single();
 
-    private static List<string> Replies(RemoteCommandManager engine) =>
-        engine.LastSentForTests.Select(b => Encoding.Latin1.GetString(b)).Select(StripWire).ToList();
+    private List<string> Replies() =>
+        _replies.Select(b => Encoding.Latin1.GetString(b)).Select(StripWire).ToList();
 
     private static string StripWire(string wire)
     {
@@ -526,12 +533,12 @@ public sealed class BossTimerTests : IDisposable
         var (engine, timers) = SetupHandler(RealmType.ParaMud, ("ogre king", 50, 24));
         timers.MarkKilled("ogre king");
 
-        engine.DispatchForTests(new ChatLogEntry(Now, channel, "Bob", "@timer sync", "raw"));
+        ChatLines.Hear(_routers[engine], new ChatLine(channel, "Bob", "@timer sync"));
 
-        string[] wire = engine.LastSentForTests.Select(b => Encoding.Latin1.GetString(b)).ToArray();
+        string[] wire = _replies.Select(b => Encoding.Latin1.GetString(b)).ToArray();
         Assert.NotEmpty(wire);
         Assert.All(wire, line => Assert.StartsWith(opening, line));
-        string blob = string.Concat(Replies(engine).Select(r => r.Split(' ', 3)[2]));
+        string blob = string.Concat(Replies().Select(r => r.Split(' ', 3)[2]));
         Assert.Equal(50, Assert.Single(BossTimerSyncCodec.Decode(blob)).MonsterNumber);
     }
 
@@ -545,9 +552,9 @@ public sealed class BossTimerTests : IDisposable
         timers.MarkKilled("ogre king");
         engine.StealthedProvider = () => true;
 
-        engine.DispatchForTests(new ChatLogEntry(Now, ChatChannel.Local, "Bob", "@timer sync", "raw"));
+        ChatLines.Hear(_routers[engine], new ChatLine(ChatChannel.Local, "Bob", "@timer sync"));
 
-        Assert.All(engine.LastSentForTests.Select(b => Encoding.Latin1.GetString(b)),
+        Assert.All(_replies.Select(b => Encoding.Latin1.GetString(b)),
             line => Assert.StartsWith("/Bob {@timerdata ", line));
     }
 
@@ -562,12 +569,11 @@ public sealed class BossTimerTests : IDisposable
             Enumerable.Range(1, 30).Select(i => ($"boss number {i}", 1000 + i, 24)).ToArray();
         var (engine, timers) = SetupHandler(RealmType.ParaMud, bosses);
         foreach ((string name, _, _) in bosses) timers.MarkKilled(name);
-        ChatLogEntry Asks(string who, ChatChannel channel = ChatChannel.Broadcast) =>
-            new(Now, channel, who, "@timer sync", "raw");
+        ChatLine Asks(string who, ChatChannel channel = ChatChannel.Broadcast) => new(channel, who, "@timer sync");
         string[] Sent()
         {
-            string[] wire = engine.LastSentForTests.Select(b => Encoding.Latin1.GetString(b)).ToArray();
-            engine.LastSentForTests.Clear();
+            string[] wire = _replies.Select(b => Encoding.Latin1.GetString(b)).ToArray();
+            _replies.Clear();
             return wire;
         }
 
@@ -582,11 +588,11 @@ public sealed class BossTimerTests : IDisposable
             Assert.Equal(30, BossTimerSyncCodec.Decode(blob).Count);
         }
 
-        engine.DispatchForTests(Asks("Bob"));
+        ChatLines.Hear(_routers[engine], Asks("Bob"));
         SentTheTimersWhole("br ");
 
         _engineNow += TimeSpan.FromSeconds(59);
-        engine.DispatchForTests(Asks("Bob"));
+        ChatLines.Hear(_routers[engine], Asks("Bob"));
         Assert.Empty(Sent());
 
         // The several lines were one answer, and an answer to a player who holds the
@@ -595,19 +601,19 @@ public sealed class BossTimerTests : IDisposable
         // few, and no more.
         for (int i = 1; i <= BroadcastAnswerBudget.AnswersPerWindow; i++)
         {
-            engine.DispatchForTests(Asks($"Passerby{i}"));
+            ChatLines.Hear(_routers[engine], Asks($"Passerby{i}"));
             Assert.Equal("br {command invalid or not allowed}\r", Sent().Single());
         }
-        engine.DispatchForTests(Asks("OneMore"));
+        ChatLines.Hear(_routers[engine], Asks("OneMore"));
         Assert.Empty(Sent());
 
         // The bound is on that channel alone: the same player is answered by telepath.
-        engine.DispatchForTests(Asks("Bob", ChatChannel.TelepathIncoming));
+        ChatLines.Hear(_routers[engine], Asks("Bob", ChatChannel.TelepathIncoming));
         SentTheTimersWhole("/Bob ");
 
         // A minute after the answer, it is given again.
         _engineNow += TimeSpan.FromSeconds(1);
-        engine.DispatchForTests(Asks("Bob"));
+        ChatLines.Hear(_routers[engine], Asks("Bob"));
         SentTheTimersWhole("br ");
     }
 
@@ -620,9 +626,9 @@ public sealed class BossTimerTests : IDisposable
         timers.MarkKilled("ogre king");
         engine.DisableBroadcastChannel = true;
 
-        engine.DispatchForTests(new ChatLogEntry(Now, ChatChannel.Broadcast, "Bob", "@timer sync", "raw"));
+        ChatLines.Hear(_routers[engine], new ChatLine(ChatChannel.Broadcast, "Bob", "@timer sync"));
 
-        Assert.Empty(engine.LastSentForTests);
+        Assert.Empty(_replies);
     }
 
     // ----- the merge window: what is written without a pick -----------------
@@ -746,16 +752,16 @@ public sealed class BossTimerTests : IDisposable
 
     // The same timer as the chat lines the window's own collector reads, heard on a
     // channel from a player.
-    private static void Hears(BossTimerSyncViewModel window, ChatChannel channel, string sender, double hoursLater = 0)
+    private void Hears(ChatChannel channel, string sender, double hoursLater = 0)
     {
         string blob = BossTimerSyncCodec.Encode(new[] { new BossTimerSyncRecord(50, null, Killed.AddHours(hoursLater)) });
         string line = $"{{{BossTimerQueryHandler.SyncResponseToken} 1/1 {blob}}}";
-        window.CollectorForTests.Ingest(new ChatLogEntry(Now, channel, sender, line, line));
+        ChatLines.Hear(_syncRouter, channel, sender, line);
     }
 
     // Our own request coming back on a shared channel, as the chat log shows it.
-    private static void SeesUsAsk(BossTimerSyncViewModel window, ChatChannel channel) =>
-        window.CollectorForTests.Ingest(new ChatLogEntry(Now, channel, "Us", "@timer sync", "raw"));
+    private void SeesUsAsk(ChatChannel channel) =>
+        ChatLines.Hear(_syncRouter, channel, "Us", "@timer sync");
 
     // The window's Request Timers button. 0 gang, 1 telepath, 2 say, 3 broadcast.
     private static void Requests(BossTimerSyncViewModel window, int channelIndex, string target = "")
@@ -1056,12 +1062,12 @@ public sealed class BossTimerTests : IDisposable
             Assert.Equal("/bo @timer sync", _syncSent.Single());
             GameConfirms("Bob");
 
-            Hears(window, ChatChannel.TelepathIncoming, "Bo", hoursLater: 2);
-            Hears(window, ChatChannel.TelepathIncoming, "Sue", hoursLater: 3);
+            Hears(ChatChannel.TelepathIncoming, "Bo", hoursLater: 2);
+            Hears(ChatChannel.TelepathIncoming, "Sue", hoursLater: 3);
             Assert.Equal(ours, timers.KilledAt("ogre king"));
             Assert.Equal(new[] { "Bo", "Sue" }, Assert.Single(window.Rows).Responders.Select(c => c.Responder));
 
-            Hears(window, ChatChannel.TelepathIncoming, "Bob");
+            Hears(ChatChannel.TelepathIncoming, "Bob");
             Assert.Equal(Killed, timers.KilledAt("ogre king"));
             Assert.Contains(weHoldOne ? "1 to pick, 0 merged in, 1 synced" : "1 to pick, 1 merged in, 0 synced", window.Status);
         }
@@ -1078,7 +1084,7 @@ public sealed class BossTimerTests : IDisposable
         {
             Requests(window, 1, "Bob");
 
-            Hears(window, ChatChannel.TelepathIncoming, "Bob");
+            Hears(ChatChannel.TelepathIncoming, "Bob");
 
             Assert.Null(timers.KilledAt("ogre king"));
             Assert.Equal("Bob", Assert.Single(Assert.Single(window.Rows).Responders).Responder);
@@ -1103,7 +1109,7 @@ public sealed class BossTimerTests : IDisposable
             Assert.Empty(_syncSent);
             Assert.False(window.Requested);
             Assert.StartsWith(status, window.Status);
-            Hears(window, ChatChannel.TelepathIncoming, "Sir");
+            Hears(ChatChannel.TelepathIncoming, "Sir");
             Assert.Empty(window.Rows);
             Assert.Null(timers.KilledAt("ogre king"));
         }
@@ -1151,8 +1157,8 @@ public sealed class BossTimerTests : IDisposable
             window.CloseRequested += wrote => closedWithWrites = wrote;
             AsksSeveral(window, button);
 
-            Hears(window, answeredOn, "Bob");
-            Hears(window, answeredOn, "Sue", hoursLater: 20.0 / 3600);
+            Hears(answeredOn, "Bob");
+            Hears(answeredOn, "Sue", hoursLater: 20.0 / 3600);
 
             Assert.Null(timers.KilledAt("ogre king"));
             BossTimerSyncRowViewModel row = Assert.Single(window.Rows);
@@ -1189,8 +1195,8 @@ public sealed class BossTimerTests : IDisposable
         {
             AsksSeveral(window, button);
 
-            Hears(window, answeredOn, "Bob");
-            Hears(window, answeredOn, "Sue", hoursLater: 3);
+            Hears(answeredOn, "Bob");
+            Hears(answeredOn, "Sue", hoursLater: 3);
             QuietPasses();
 
             Assert.Null(timers.KilledAt("ogre king"));
@@ -1220,7 +1226,7 @@ public sealed class BossTimerTests : IDisposable
         {
             AsksSeveral(window, button);
 
-            Hears(window, answeredOn, "Bob");
+            Hears(answeredOn, "Bob");
             Assert.Null(timers.KilledAt("ogre king"));
             QuietPasses();
 
@@ -1242,8 +1248,8 @@ public sealed class BossTimerTests : IDisposable
             timers.MarkKilled("ogre king", Killed);
             AsksSeveral(window, button);
 
-            Hears(window, answeredOn, "Bob", hoursLater: 20.0 / 3600);
-            Hears(window, answeredOn, "Sue", hoursLater: -30.0 / 3600);
+            Hears(answeredOn, "Bob", hoursLater: 20.0 / 3600);
+            Hears(answeredOn, "Sue", hoursLater: -30.0 / 3600);
             QuietPasses();
 
             Assert.Equal(Killed, timers.KilledAt("ogre king"));
@@ -1269,9 +1275,9 @@ public sealed class BossTimerTests : IDisposable
             timers.MarkKilled("ogre king", Killed);
             AsksSeveral(window, button);
 
-            Hears(window, answeredOn, "Bob", hoursLater: 20.0 / 3600);
-            Hears(window, answeredOn, "Sue", hoursLater: 3);
-            Hears(window, answeredOn, "Ann");
+            Hears(answeredOn, "Bob", hoursLater: 20.0 / 3600);
+            Hears(answeredOn, "Sue", hoursLater: 3);
+            Hears(answeredOn, "Ann");
             QuietPasses();
 
             Assert.Equal(Killed, timers.KilledAt("ogre king"));
@@ -1295,12 +1301,12 @@ public sealed class BossTimerTests : IDisposable
         using (window)
         {
             AsksSeveral(window, button);
-            Hears(window, answeredOn, "Bob");
+            Hears(answeredOn, "Bob");
             QuietPasses();
             Assert.Equal(Killed, timers.KilledAt("ogre king"));
 
-            Hears(window, answeredOn, "Sue", hoursLater: 3);
-            Hears(window, answeredOn, "Ann", hoursLater: 20.0 / 3600);
+            Hears(answeredOn, "Sue", hoursLater: 3);
+            Hears(answeredOn, "Ann", hoursLater: 20.0 / 3600);
 
             BossTimerSyncRowViewModel row = Assert.Single(window.Rows);
             Assert.True(row.HasConflict);
@@ -1323,8 +1329,8 @@ public sealed class BossTimerTests : IDisposable
         return pieces.Select((p, i) => $"{{{BossTimerQueryHandler.SyncResponseToken} {i + 1}/{pieces.Count} {p}}}").ToArray();
     }
 
-    private static void HearsLine(BossTimerSyncViewModel window, ChatChannel channel, string sender, string line) =>
-        window.CollectorForTests.Ingest(new ChatLogEntry(Now, channel, sender, line, line));
+    private void HearsLine(ChatChannel channel, string sender, string line) =>
+        ChatLines.Hear(_syncRouter, channel, sender, line);
 
     // A late reply that is the first to name a boss starts a gather of its own:
     // nothing is written for that boss until the replies have settled again.
@@ -1336,14 +1342,14 @@ public sealed class BossTimerTests : IDisposable
         {
             _syncBosses.Save(_syncBosses.Resolve().Append(Boss("guardian golem", number: 51, rooms: "1/2")).ToList());
             Requests(window, 0);
-            Hears(window, ChatChannel.Gangpath, "Bob");
+            Hears(ChatChannel.Gangpath, "Bob");
             QuietPasses();
             Assert.Equal(Killed, timers.KilledAt("ogre king"));
 
             foreach (string line in SetLines(200,
                          new BossTimerSyncRecord(50, null, Killed.AddSeconds(20)),
                          new BossTimerSyncRecord(51, null, Killed.AddHours(1))))
-                HearsLine(window, ChatChannel.Gangpath, "Sue", line);
+                HearsLine(ChatChannel.Gangpath, "Sue", line);
 
             Assert.Null(timers.KilledAt("guardian golem"));
             Assert.Contains("1 waiting for every reply", window.Status);
@@ -1365,13 +1371,13 @@ public sealed class BossTimerTests : IDisposable
         using (window)
         {
             Requests(window, 0);
-            Hears(window, ChatChannel.Gangpath, "Bob");
+            Hears(ChatChannel.Gangpath, "Bob");
             string[] sues = SetLines(6, new BossTimerSyncRecord(50, null, Killed.AddHours(3)));
             Assert.True(sues.Length >= 2);
-            HearsLine(window, ChatChannel.Gangpath, "Sue", sues[0]);
+            HearsLine(ChatChannel.Gangpath, "Sue", sues[0]);
             var armedBeforeTheLastLine = _syncTimers.ToList();
             _syncTimers.Clear();
-            foreach (string line in sues.Skip(1)) HearsLine(window, ChatChannel.Gangpath, "Sue", line);
+            foreach (string line in sues.Skip(1)) HearsLine(ChatChannel.Gangpath, "Sue", line);
 
             foreach ((_, Action fire) in armedBeforeTheLastLine) fire();
             Assert.Null(timers.KilledAt("ogre king"));
@@ -1400,8 +1406,8 @@ public sealed class BossTimerTests : IDisposable
             foreach (string line in SetLines(200,
                          new BossTimerSyncRecord(50, null, Killed),
                          new BossTimerSyncRecord(51, null, Killed.AddHours(1))))
-                HearsLine(window, answeredOn, "Bob", line);
-            Hears(window, answeredOn, "Sue", hoursLater: 3);
+                HearsLine(answeredOn, "Bob", line);
+            Hears(answeredOn, "Sue", hoursLater: 3);
 
             RowOf(window, "ogre king").Responders[1].AdoptCommand.Execute(null);
             window.ApplyCommand.Execute(null);
@@ -1429,8 +1435,8 @@ public sealed class BossTimerTests : IDisposable
             bool? closedWithWrites = null;
             window.CloseRequested += wrote => closedWithWrites = wrote;
             AsksSeveral(window, button);
-            Hears(window, answeredOn, "Bob");
-            Hears(window, answeredOn, "Sue", hoursLater: 20.0 / 3600);
+            Hears(answeredOn, "Bob");
+            Hears(answeredOn, "Sue", hoursLater: 20.0 / 3600);
             Assert.Contains("closing the window writes nothing more", window.Status);
 
             window.CancelCommand.Execute(null);
@@ -1454,7 +1460,7 @@ public sealed class BossTimerTests : IDisposable
         {
             Requests(window, 1, "bo");
             GameConfirms("Bob");
-            Hears(window, ChatChannel.TelepathIncoming, "Bob");
+            Hears(ChatChannel.TelepathIncoming, "Bob");
 
             Assert.Equal(Killed, timers.KilledAt("ogre king"));
             Assert.Empty(_syncTimers);
@@ -1475,8 +1481,8 @@ public sealed class BossTimerTests : IDisposable
         var (window, timers) = NewSyncWindow(sentOn, to: null, byUser: false);
         using (window)
         {
-            Hears(window, answeredOn, "Mallory");
-            Hears(window, answeredOn, "Sue", hoursLater: 20.0 / 3600);
+            Hears(answeredOn, "Mallory");
+            Hears(answeredOn, "Sue", hoursLater: 20.0 / 3600);
             Assert.Empty(_syncTimers);
             QuietPasses();
 
@@ -1504,13 +1510,13 @@ public sealed class BossTimerTests : IDisposable
             Requests(window, button, "Bob");
             if (button == 1) GameConfirms("Bob");
 
-            Hears(window, answeredOn, "Bob", hoursLater: -10 + 20.0 / 3600);   // ours, marked 20 s later
+            Hears(answeredOn, "Bob", hoursLater: -10 + 20.0 / 3600);   // ours, marked 20 s later
             Assert.Equal(Held, timers.KilledAt("ogre king"));
             Assert.Contains("0 to pick, 0 merged in, 0 synced, 1 already in sync", window.Status);
 
             Requests(window, button, "Bob");
             if (button == 1) GameConfirms("Bob");
-            Hears(window, answeredOn, "Bob");
+            Hears(answeredOn, "Bob");
 
             Assert.Equal(syncs ? Killed : Held, timers.KilledAt("ogre king"));
             Assert.Contains(syncs ? "0 to pick, 0 merged in, 1 synced" : "1 to pick, 0 merged in, 0 synced", window.Status);
@@ -1532,9 +1538,9 @@ public sealed class BossTimerTests : IDisposable
             GameConfirms("Bob");
             GameConfirms("Sue");
 
-            Hears(window, ChatChannel.TelepathIncoming, "Sue");
+            Hears(ChatChannel.TelepathIncoming, "Sue");
             Assert.Null(timers.KilledAt("ogre king"));
-            Hears(window, ChatChannel.TelepathIncoming, "Bob", hoursLater: 3);
+            Hears(ChatChannel.TelepathIncoming, "Bob", hoursLater: 3);
             QuietPasses();
 
             Assert.Null(timers.KilledAt("ogre king"));
@@ -1564,7 +1570,7 @@ public sealed class BossTimerTests : IDisposable
             Assert.Equal(2, _syncSent.Count);
             GameConfirms("Bob");
 
-            Hears(window, ChatChannel.TelepathIncoming, "Bob");
+            Hears(ChatChannel.TelepathIncoming, "Bob");
 
             Assert.Equal(Held, timers.KilledAt("ogre king"));
             Assert.Equal("Bob", Assert.Single(Assert.Single(window.Rows).Responders).Responder);
@@ -1582,11 +1588,11 @@ public sealed class BossTimerTests : IDisposable
         {
             timers.MarkKilled("ogre king", Held);
             Requests(window, 0);
-            Hears(window, ChatChannel.Gangpath, "Bob");
+            Hears(ChatChannel.Gangpath, "Bob");
             Requests(window, 2);
 
-            Hears(window, ChatChannel.Gangpath, "Sue", hoursLater: 3);   // a late answer to the first
-            Hears(window, ChatChannel.Local, "Bob", hoursLater: 5);      // Bob again, to the second
+            Hears(ChatChannel.Gangpath, "Sue", hoursLater: 3);   // a late answer to the first
+            Hears(ChatChannel.Local, "Bob", hoursLater: 5);      // Bob again, to the second
 
             BossTimerSyncRowViewModel row = Assert.Single(window.Rows);
             Assert.Equal(new[] { "Sue", "Bob" }, row.Responders.Select(c => c.Responder));
@@ -1605,9 +1611,9 @@ public sealed class BossTimerTests : IDisposable
         {
             Assert.Contains("from the player your telepath reached", window.Status);
 
-            Hears(window, ChatChannel.TelepathIncoming, "Sue", hoursLater: 3);
+            Hears(ChatChannel.TelepathIncoming, "Sue", hoursLater: 3);
             Assert.Equal(Held, timers.KilledAt("ogre king"));
-            Hears(window, ChatChannel.TelepathIncoming, "Bob");
+            Hears(ChatChannel.TelepathIncoming, "Bob");
 
             Assert.Equal(Killed, timers.KilledAt("ogre king"));
             Assert.Contains("1 to pick, 0 merged in, 1 synced", window.Status);
@@ -1626,13 +1632,13 @@ public sealed class BossTimerTests : IDisposable
             Requests(window, 1, "Sue");
             GameConfirms("Sue");
             UserTypes("bg @timer sync");
-            SeesUsAsk(window, ChatChannel.Gangpath);
+            SeesUsAsk(ChatChannel.Gangpath);
 
-            Hears(window, ChatChannel.Gangpath, "Ann");
+            Hears(ChatChannel.Gangpath, "Ann");
             Assert.Null(timers.KilledAt("ogre king"));
             QuietPasses();
             Assert.Equal(Killed, timers.KilledAt("ogre king"));
-            Hears(window, ChatChannel.TelepathIncoming, "Sue", hoursLater: 3);
+            Hears(ChatChannel.TelepathIncoming, "Sue", hoursLater: 3);
             Assert.Equal(Killed, timers.KilledAt("ogre king"));
             Assert.Equal("Sue", Assert.Single(Assert.Single(window.Rows).Responders).Responder);
         }
@@ -1644,10 +1650,9 @@ public sealed class BossTimerTests : IDisposable
     [Fact]
     public void SyncWindow_ATypedRequestAmongClientSends_StillAsksThePlayerItReached()
     {
-        var (window, timers) = NewSyncWindow(askedOn: null);
+        var (window, timers) = NewSyncWindow(askedOn: RemoteChannel.Telepath, byUser: false);
         using (window)
         {
-            window.CollectorForTests.Begin(RemoteChannel.Telepath, byUser: false);   // open and listening, nobody asked
             ClientSends("/Sue @health");
             ClientSends("/Mallory {ok}");
             UserTypes("/bo @timer sync");
@@ -1657,9 +1662,9 @@ public sealed class BossTimerTests : IDisposable
             GameConfirms("Mallory");
             GameConfirms("Bob");
 
-            Hears(window, ChatChannel.TelepathIncoming, "Sue", hoursLater: 3);
+            Hears(ChatChannel.TelepathIncoming, "Sue", hoursLater: 3);
             Assert.Null(timers.KilledAt("ogre king"));
-            Hears(window, ChatChannel.TelepathIncoming, "Bob");
+            Hears(ChatChannel.TelepathIncoming, "Bob");
             Assert.Equal(Killed, timers.KilledAt("ogre king"));
         }
     }
@@ -1691,8 +1696,8 @@ public sealed class BossTimerTests : IDisposable
             Assert.Contains("this client sent for another player's remote command", window.Status);
             Assert.DoesNotContain("your @timer sync", window.Status);
 
-            Hears(window, answeredOn, "Mallory");
-            Hears(window, answeredOn, "Sue", hoursLater: 3);
+            Hears(answeredOn, "Mallory");
+            Hears(answeredOn, "Sue", hoursLater: 3);
 
             Assert.Equal(ours, timers.KilledAt("ogre king"));
             Assert.Equal(new[] { "Mallory", "Sue" }, Assert.Single(window.Rows).Responders.Select(c => c.Responder));
@@ -1719,14 +1724,14 @@ public sealed class BossTimerTests : IDisposable
             GameConfirms("Bob");
 
             ClientSends(sent);
-            if (answeredOn == ChatChannel.Gangpath) SeesUsAsk(window, ChatChannel.Gangpath);
+            if (answeredOn == ChatChannel.Gangpath) SeesUsAsk(ChatChannel.Gangpath);
             else GameConfirms("Mallory");
-            Hears(window, answeredOn, "Mallory", hoursLater: 3);
+            Hears(answeredOn, "Mallory", hoursLater: 3);
 
             Assert.Null(timers.KilledAt("ogre king"));
             Assert.Equal("Mallory", Assert.Single(Assert.Single(window.Rows).Responders).Responder);
 
-            Hears(window, ChatChannel.TelepathIncoming, "Bob");
+            Hears(ChatChannel.TelepathIncoming, "Bob");
             if (answeredOn == ChatChannel.Gangpath)
             {
                 Assert.Null(timers.KilledAt("ogre king"));
@@ -1761,7 +1766,7 @@ public sealed class BossTimerTests : IDisposable
                 GameConfirms("Mallory");
             }
 
-            Hears(window, ChatChannel.TelepathIncoming, "Mallory");
+            Hears(ChatChannel.TelepathIncoming, "Mallory");
 
             Assert.Null(timers.KilledAt("ogre king"));
             Assert.Equal("Mallory", Assert.Single(Assert.Single(window.Rows).Responders).Responder);
@@ -1807,7 +1812,7 @@ public sealed class BossTimerTests : IDisposable
             GameConfirms("Mallory");
             GameConfirms("Mallory");
 
-            Hears(window, ChatChannel.TelepathIncoming, "Mallory");
+            Hears(ChatChannel.TelepathIncoming, "Mallory");
 
             Assert.Null(timers.KilledAt("ogre king"));
             Assert.Equal("Mallory", Assert.Single(Assert.Single(window.Rows).Responders).Responder);
@@ -1826,15 +1831,14 @@ public sealed class BossTimerTests : IDisposable
     public void SyncWindow_AConfirmationForAnotherTelepath_AsksNobody(
         string request, bool requestIsUsers, string other, bool otherIsUsers, string confirmed)
     {
-        var (window, timers) = NewSyncWindow(askedOn: null);
+        var (window, timers) = NewSyncWindow(askedOn: RemoteChannel.Telepath, byUser: false);
         using (window)
         {
-            window.CollectorForTests.Begin(RemoteChannel.Telepath, byUser: false);   // listening
             if (requestIsUsers) UserTypes(request); else ClientSends(request);
             if (otherIsUsers) UserTypes(other); else ClientSends(other);
             GameConfirms(confirmed);
 
-            Hears(window, ChatChannel.TelepathIncoming, confirmed);
+            Hears(ChatChannel.TelepathIncoming, confirmed);
 
             Assert.Null(timers.KilledAt("ogre king"));
             Assert.Equal(confirmed, Assert.Single(Assert.Single(window.Rows).Responders).Responder);
@@ -1854,9 +1858,9 @@ public sealed class BossTimerTests : IDisposable
             GameConfirms("Sue");
             GameConfirms("Bob");
 
-            Hears(window, ChatChannel.TelepathIncoming, "Sue", hoursLater: 3);
+            Hears(ChatChannel.TelepathIncoming, "Sue", hoursLater: 3);
             Assert.Null(timers.KilledAt("ogre king"));
-            Hears(window, ChatChannel.TelepathIncoming, "Bob");
+            Hears(ChatChannel.TelepathIncoming, "Bob");
             Assert.Equal(Killed, timers.KilledAt("ogre king"));
         }
     }
@@ -1950,7 +1954,7 @@ public sealed class BossTimerTests : IDisposable
             DateTimeOffset ownKill = Killed.AddHours(6);
             timers.MarkKilled("ogre king", ownKill);
 
-            Hears(window, ChatChannel.TelepathIncoming, "Bob");
+            Hears(ChatChannel.TelepathIncoming, "Bob");
 
             Assert.Equal(ownKill, timers.KilledAt("ogre king"));
             BossTimerSyncRowViewModel row = Assert.Single(window.Rows);
@@ -1980,7 +1984,7 @@ public sealed class BossTimerTests : IDisposable
             GameConfirms("Bob");
             timers.Reset("ogre king");
 
-            Hears(window, ChatChannel.TelepathIncoming, "Bob");
+            Hears(ChatChannel.TelepathIncoming, "Bob");
 
             Assert.Null(timers.KilledAt("ogre king"));
             BossTimerSyncRowViewModel row = Assert.Single(window.Rows);
@@ -2001,12 +2005,12 @@ public sealed class BossTimerTests : IDisposable
         {
             Requests(window, 1, "bo");
             GameConfirms("Bob");
-            Hears(window, ChatChannel.TelepathIncoming, "Bob");
+            Hears(ChatChannel.TelepathIncoming, "Bob");
             Assert.Equal(Killed, timers.KilledAt("ogre king"));
 
             Requests(window, 1, "bo");
             GameConfirms("Bob");
-            Hears(window, ChatChannel.TelepathIncoming, "Bob", hoursLater: 3);
+            Hears(ChatChannel.TelepathIncoming, "Bob", hoursLater: 3);
 
             Assert.Equal(Killed.AddHours(3), timers.KilledAt("ogre king"));
             Assert.True(Assert.Single(window.Rows).WasSynced);
@@ -2025,10 +2029,10 @@ public sealed class BossTimerTests : IDisposable
         using (window)
         {
             AsksSeveral(window, button);
-            Hears(window, answeredOn, "Bob");
+            Hears(answeredOn, "Bob");
             DateTimeOffset ownKill = Killed.AddHours(6);
             timers.MarkKilled("ogre king", ownKill);
-            Hears(window, answeredOn, "Sue", hoursLater: 20.0 / 3600);
+            Hears(answeredOn, "Sue", hoursLater: 20.0 / 3600);
             QuietPasses();
 
             Assert.Equal(ownKill, timers.KilledAt("ogre king"));
@@ -2040,7 +2044,7 @@ public sealed class BossTimerTests : IDisposable
 
             // Cleared: replies that agree are still not merged into its place.
             timers.Reset("ogre king");
-            Hears(window, answeredOn, "Ann");
+            Hears(answeredOn, "Ann");
             QuietPasses();
             Assert.Null(timers.KilledAt("ogre king"));
             Assert.Equal(3, row.Responders.Count);
@@ -2057,21 +2061,19 @@ public sealed class BossTimerTests : IDisposable
     [InlineData(true)]
     public void SyncWindow_AClientTelepathToAPlayerTheTypedLettersBegin_DoesNotMakeHerTheOneAsked(bool weHoldOne)
     {
-        var (window, timers) = NewSyncWindow(askedOn: null);
+        var (window, timers) = NewSyncWindow(askedOn: RemoteChannel.Telepath, byUser: false);
         using (window)
         {
             DateTimeOffset? ours = weHoldOne ? Held : null;
             if (weHoldOne) timers.MarkKilled("ogre king", Held);
-            window.CollectorForTests.Begin(RemoteChannel.Telepath, byUser: false);   // open and listening, nobody asked
             UserTypes("/b @timer sync");
             BoardShows("Please be more specific.  You could have meant any of these:");
             ClientSends("/Betty {command invalid or not allowed}");
             GameConfirms("Betty");
 
-            Hears(window, ChatChannel.TelepathIncoming, "Betty");
+            Hears(ChatChannel.TelepathIncoming, "Betty");
 
             Assert.Equal(ours, timers.KilledAt("ogre king"));
-            Assert.False(window.CollectorForTests.OnePlayerAsked);
             BossTimerSyncRowViewModel row = Assert.Single(window.Rows);
             Assert.False(row.WasAutoMerged);
             Assert.False(row.WasSynced);
@@ -2114,10 +2116,9 @@ public sealed class BossTimerTests : IDisposable
             UserTypes(refusedOnEveryTry ? "/Bob hi" : "/bo hi");
             GameConfirms("Bob");
 
-            Hears(window, ChatChannel.TelepathIncoming, "Bob");
+            Hears(ChatChannel.TelepathIncoming, "Bob");
 
             Assert.Equal(ours, timers.KilledAt("ogre king"));
-            Assert.False(window.CollectorForTests.OnePlayerAsked);
             BossTimerSyncRowViewModel row = Assert.Single(window.Rows);
             Assert.False(row.WasAutoMerged);
             Assert.False(row.WasSynced);
@@ -2152,10 +2153,9 @@ public sealed class BossTimerTests : IDisposable
             BoardShows(sentForHer);
             GameConfirms("Bella");
 
-            Hears(window, ChatChannel.TelepathIncoming, "Bella");
+            Hears(ChatChannel.TelepathIncoming, "Bella");
 
             Assert.Equal(ours, timers.KilledAt("ogre king"));
-            Assert.False(window.CollectorForTests.OnePlayerAsked);
             BossTimerSyncRowViewModel row = Assert.Single(window.Rows);
             Assert.False(row.WasAutoMerged);
             Assert.False(row.WasSynced);
@@ -2173,19 +2173,16 @@ public sealed class BossTimerTests : IDisposable
     [InlineData(false)]
     public void SyncWindow_AShortenedRequestWithAClientTelepathToTheSamePlayer_StillAsksThatPlayer(bool requestFirst)
     {
-        var (window, timers) = NewSyncWindow(askedOn: null);
+        var (window, timers) = NewSyncWindow(askedOn: RemoteChannel.Telepath, byUser: false);
         using (window)
         {
-            window.CollectorForTests.Begin(RemoteChannel.Telepath, byUser: false);   // open and listening, nobody asked
             if (requestFirst) UserTypes("/bo @timer sync");
             ClientSends("/Bob @health");
             if (!requestFirst) UserTypes("/bo @timer sync");
             GameConfirms("Bob");
-            Assert.False(window.CollectorForTests.OnePlayerAsked);   // the first is the client's own
             GameConfirms("Bob");
-            Assert.True(window.CollectorForTests.OnePlayerAsked);
 
-            Hears(window, ChatChannel.TelepathIncoming, "Bob");
+            Hears(ChatChannel.TelepathIncoming, "Bob");
 
             Assert.Equal(Killed, timers.KilledAt("ogre king"));
             Assert.Empty(_syncTimers);
@@ -2349,7 +2346,7 @@ public sealed class BossTimerTests : IDisposable
             Requests(window, 1, "Bob");
             Requests(window, 1, "Sue");
             GameConfirms("Bob");
-            Hears(window, ChatChannel.TelepathIncoming, "Bob");
+            Hears(ChatChannel.TelepathIncoming, "Bob");
 
             Assert.Equal(ours, timers.KilledAt("ogre king"));
             BossTimerSyncRowViewModel row = Assert.Single(window.Rows);
@@ -2357,7 +2354,7 @@ public sealed class BossTimerTests : IDisposable
             Assert.Contains("1 waiting for the game to show your other telepath request sent", window.Status);
 
             GameConfirms("Sue");
-            Hears(window, ChatChannel.TelepathIncoming, "Sue", hoursLater: agree ? 20.0 / 3600 : 3);
+            Hears(ChatChannel.TelepathIncoming, "Sue", hoursLater: agree ? 20.0 / 3600 : 3);
             Assert.Equal(ours, timers.KilledAt("ogre king"));
             QuietPasses();
 
@@ -2384,7 +2381,7 @@ public sealed class BossTimerTests : IDisposable
             Requests(window, 1, "Bob");
             Requests(window, 1, "Sue");
             GameConfirms("Bob");
-            Hears(window, ChatChannel.TelepathIncoming, "Bob");
+            Hears(ChatChannel.TelepathIncoming, "Bob");
             Assert.NotEqual(Killed, timers.KilledAt("ogre king"));
 
             for (int i = 0; i < TelepathPacer.MaxAttempts; i++) BoardShows("--- Telepath Not Sent ---");
@@ -2412,7 +2409,7 @@ public sealed class BossTimerTests : IDisposable
             Requests(window, 1, "Bob");
             Requests(window, 1, "Sue");
             GameConfirms("Bob");
-            Hears(window, ChatChannel.TelepathIncoming, "Bob");
+            Hears(ChatChannel.TelepathIncoming, "Bob");
 
             QuietPasses();
             Assert.Null(timers.KilledAt("ogre king"));
@@ -2439,7 +2436,7 @@ public sealed class BossTimerTests : IDisposable
         });
         using (window)
         {
-            Hears(window, ChatChannel.TelepathIncoming, "Bob");
+            Hears(ChatChannel.TelepathIncoming, "Bob");
 
             Assert.Null(timers.KilledAt("ogre king"));
             BossTimerSyncRowViewModel row = Assert.Single(window.Rows);
@@ -2518,10 +2515,10 @@ public sealed class BossTimerTests : IDisposable
         using (window)
         {
             UserTypes("bg @timer sync");
-            SeesUsAsk(window, ChatChannel.Gangpath);
+            SeesUsAsk(ChatChannel.Gangpath);
             Assert.StartsWith("Collecting responses to the @timer sync you typed", window.Status);
 
-            Hears(window, ChatChannel.Gangpath, "Ann");
+            Hears(ChatChannel.Gangpath, "Ann");
             QuietPasses();
 
             Assert.Equal(Killed, timers.KilledAt("ogre king"));
@@ -2548,7 +2545,7 @@ public sealed class BossTimerTests : IDisposable
                 timers.MarkKilled("ogre king", ownKill);
                 BoardShows("/bo @timer sync");
                 GameConfirms("Bob");
-                Hears(window, ChatChannel.TelepathIncoming, "Bob");
+                Hears(ChatChannel.TelepathIncoming, "Bob");
 
                 Assert.Equal(ownKill, timers.KilledAt("ogre king"));
             }
@@ -2557,9 +2554,9 @@ public sealed class BossTimerTests : IDisposable
                 timers.MarkKilled("ogre king", Held);
                 UserPressesEnter("bg @timer sync");
                 timers.Reset("ogre king");
-                SeesUsAsk(window, ChatChannel.Gangpath);
-                Hears(window, ChatChannel.Gangpath, "Ann");
-                Hears(window, ChatChannel.Gangpath, "Sue", hoursLater: 20.0 / 3600);
+                SeesUsAsk(ChatChannel.Gangpath);
+                Hears(ChatChannel.Gangpath, "Ann");
+                Hears(ChatChannel.Gangpath, "Sue", hoursLater: 20.0 / 3600);
                 QuietPasses();
 
                 Assert.Null(timers.KilledAt("ogre king"));
@@ -2590,7 +2587,7 @@ public sealed class BossTimerTests : IDisposable
             });
         using (window)
         {
-            Hears(window, ChatChannel.TelepathIncoming, "Bob");
+            Hears(ChatChannel.TelepathIncoming, "Bob");
 
             Assert.Equal(ownKill, timers.KilledAt("ogre king"));
             BossTimerSyncRowViewModel row = Assert.Single(window.Rows);
@@ -2611,7 +2608,7 @@ public sealed class BossTimerTests : IDisposable
         using (window)
         {
             UserTypes("br @timer sync");
-            SeesUsAsk(window, ChatChannel.Broadcast);
+            SeesUsAsk(ChatChannel.Broadcast);
 
             Assert.False(window.Requested);
             Assert.Equal("Pick a channel and request timers.", window.Status);
@@ -2664,7 +2661,7 @@ public sealed class BossTimerTests : IDisposable
             timers.MarkKilled("ogre king", Killed.AddHours(-30));   // ran out on its 24-hour respawn
             Requests(window, button, "Bob");
             if (button == 1) GameConfirms("Bob");
-            Hears(window, button == 1 ? ChatChannel.TelepathIncoming : ChatChannel.Gangpath, "Bob");
+            Hears(button == 1 ? ChatChannel.TelepathIncoming : ChatChannel.Gangpath, "Bob");
             BossTimerSyncRowViewModel row = Assert.Single(window.Rows);
             if (button == 0)
             {
@@ -2689,14 +2686,14 @@ public sealed class BossTimerTests : IDisposable
         var (engine, timers) = SetupHandler(RealmType.ParaMud, ("ogre king", 50, 24));
         timers.MarkKilled("ogre king");
 
-        engine.DispatchForTests(new ChatLogEntry(Now, ChatChannel.Broadcast, "Bob", "@timer", "raw"));
-        engine.DispatchForTests(new ChatLogEntry(Now, ChatChannel.Broadcast, "Bob", "@timer ogre", "raw"));
+        ChatLines.Hear(_routers[engine], new ChatLine(ChatChannel.Broadcast, "Bob", "@timer"));
+        ChatLines.Hear(_routers[engine], new ChatLine(ChatChannel.Broadcast, "Bob", "@timer ogre"));
 
-        Assert.StartsWith("br {ogre king - ", Encoding.Latin1.GetString(Assert.Single(engine.LastSentForTests)));
+        Assert.StartsWith("br {ogre king - ", Encoding.Latin1.GetString(Assert.Single(_replies)));
 
         _engineNow += BroadcastAnswerBudget.Window;
-        engine.DispatchForTests(new ChatLogEntry(Now, ChatChannel.Broadcast, "Bob", "@timer ogre", "raw"));
-        Assert.Equal(2, engine.LastSentForTests.Count);
+        ChatLines.Hear(_routers[engine], new ChatLine(ChatChannel.Broadcast, "Bob", "@timer ogre"));
+        Assert.Equal(2, _replies.Count);
     }
 
     // With the box ticked the report is not read there, like everything else.
@@ -2707,17 +2704,17 @@ public sealed class BossTimerTests : IDisposable
         timers.MarkKilled("ogre king");
         engine.DisableBroadcastChannel = true;
 
-        engine.DispatchForTests(new ChatLogEntry(Now, ChatChannel.Broadcast, "Bob", "@timer", "raw"));
+        ChatLines.Hear(_routers[engine], new ChatLine(ChatChannel.Broadcast, "Bob", "@timer"));
 
-        Assert.Empty(engine.LastSentForTests);
+        Assert.Empty(_replies);
     }
 
     [Fact]
     public void Timer_NoneActive_ReportsEmptySet()
     {
         var (engine, _) = SetupHandler(RealmType.ParaMud, ("ogre king", 50, 24));
-        engine.DispatchForTests(Telepath("@timer"));
-        Assert.Equal("no boss timers active", Reply(engine));
+        ChatLines.Hear(_routers[engine], Telepath("@timer"));
+        Assert.Equal("no boss timers active", Reply());
     }
 
     [Fact]
@@ -2725,9 +2722,9 @@ public sealed class BossTimerTests : IDisposable
     {
         var (engine, timers) = SetupHandler(RealmType.ParaMud, ("ogre king", 50, 24));
         timers.MarkKilled("ogre king");
-        engine.DispatchForTests(Telepath("@timer"));
+        ChatLines.Hear(_routers[engine], Telepath("@timer"));
 
-        string reply = Reply(engine);
+        string reply = Reply();
         Assert.Contains("ogre king", reply);
         Assert.Contains("full", reply);
         Assert.Contains("-20%", reply);   // freshly killed → earliest paradigm window
@@ -2740,8 +2737,8 @@ public sealed class BossTimerTests : IDisposable
         timers.MarkKilled("crimson mist");
         timers.MarkKilled("ogre king");
 
-        engine.DispatchForTests(Telepath("@timer crimson"));
-        string reply = Reply(engine);
+        ChatLines.Hear(_routers[engine], Telepath("@timer crimson"));
+        string reply = Reply();
         Assert.Contains("crimson mist", reply);
         Assert.DoesNotContain("ogre king", reply);
     }
@@ -2750,8 +2747,8 @@ public sealed class BossTimerTests : IDisposable
     public void Timer_QueryWeDoNotHold_ReportsExpired()
     {
         var (engine, _) = SetupHandler(RealmType.ParaMud, ("crimson mist", 10, 12));
-        engine.DispatchForTests(Telepath("@timer crimson"));
-        Assert.Equal("expired", Reply(engine));
+        ChatLines.Hear(_routers[engine], Telepath("@timer crimson"));
+        Assert.Equal("expired", Reply());
     }
 
     [Fact]
@@ -2763,9 +2760,9 @@ public sealed class BossTimerTests : IDisposable
         timers.MarkKilled("huge black dragon");
         timers.MarkKilled("ogre king");
 
-        engine.DispatchForTests(Telepath("@timer dragon"));
+        ChatLines.Hear(_routers[engine], Telepath("@timer dragon"));
 
-        List<string> replies = Replies(engine);
+        List<string> replies = Replies();
         Assert.Equal(2, replies.Count);   // two dragons, two lines — ogre king excluded
         Assert.Contains(replies, r => r.Contains("great green dragon"));
         Assert.Contains(replies, r => r.Contains("huge black dragon"));
@@ -2781,9 +2778,9 @@ public sealed class BossTimerTests : IDisposable
         foreach (string n in new[] { "red dragon", "blue dragon", "green dragon", "black dragon", "white dragon", "gold dragon" })
             timers.MarkKilled(n);
 
-        engine.DispatchForTests(Telepath("@timer dragon"));
+        ChatLines.Hear(_routers[engine], Telepath("@timer dragon"));
 
-        List<string> replies = Replies(engine);
+        List<string> replies = Replies();
         Assert.Equal(6, replies.Count);   // 5 timer lines + 1 overflow line
         Assert.Contains("1 more timers matching 'dragon'", replies.Last());
     }

@@ -4,15 +4,13 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Coverage for the persistable shape of <see cref="TalkSettings"/>. The
-/// Settings.Talk section VM itself does I/O through the global
-/// <see cref="Services.AppServices"/> singleton — exercising it cleanly
-/// from a unit test would require swapping the singleton, which is out
-/// of scope. The engine-knob push (<c>ApplyToServices</c>) is covered
-/// in <see cref="RemoteCommandManagerTests"/>; this file pins the DTO
-/// schema + defaults.
-/// </summary>
+// Coverage for the persistable shape of TalkSettings. The
+// Settings.Talk section VM itself does I/O through the global
+// Services.AppServices singleton — exercising it cleanly
+// from a unit test would require swapping the singleton, which is out
+// of scope. The engine-knob push (ApplyToServices) is covered
+// in RemoteCommandManagerTests; this file pins the DTO
+// schema + defaults.
 public sealed class TalkSectionViewModelTests
 {
     [Fact]

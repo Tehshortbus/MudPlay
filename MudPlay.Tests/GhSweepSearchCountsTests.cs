@@ -1,5 +1,3 @@
-using System.Collections;
-using System.Reflection;
 using System.Text;
 using MudPlay.Game.Cash;
 using MudPlay.Game.Inventory;
@@ -22,6 +20,19 @@ namespace MudPlay.Tests;
 // line extractor, echoes included, since the echo is how the two lists are told apart.
 public sealed class GhSweepSearchCountsTests : IDisposable
 {
+    // The sweep's settle, pacing and backoff timers, the clock its pacing reads,
+    // and the game's prompts as it reads them.
+    private readonly ManualTimers _sweepTimers = new();
+    private DateTimeOffset _sweepNow = new(2026, 10, 1, 12, 0, 0, TimeSpan.Zero);
+    private readonly WirePromptScanner _sweepPrompt = new();
+
+    // The pace between queued commands runs out.
+    private void PaceOut()
+    {
+        _sweepNow += GhSweepManager.MinCommandInterval;
+        _sweepTimers.RunDue(GhSweepManager.PromptWaitTimeout);
+    }
+
     private const string Prompt = "[HP=611/MA=720]:";
     private const string Display = "You notice 34 rope and grapple, 10 pulsating heart, scorpion tail here.";
 
@@ -73,8 +84,8 @@ public sealed class GhSweepSearchCountsTests : IDisposable
         ItemNameStore names = new(cache);
         names.OnActiveSetChanged("alpha");
 
-        ProfileService profile = new();
-        profile.LoadBlank();
+        ProfileService profile = TestProfiles.Service();
+        profile.LoadDefaultProfile();
         GhRoomLabelStore labels = new(profile);
         labels.OnRealmChanged(AppPaths.BbsFolder(_scratchBbs));
         labels.SetLabel(Weapons, new[] { GhCategoryRule.ForItemType(1) }, isCatchAll: false);
@@ -111,7 +122,7 @@ public sealed class GhSweepSearchCountsTests : IDisposable
             postToUi: action => action());
         _sweep = sweep = new GhSweepManager(labels, runner, _tracker, bfs, ground, names,
             router, coordinator, isOtherEngineBusy: () => false, log: _log,
-            isParadigm: () => true, itemLocations: _locations);
+            isParadigm: () => true, itemLocations: _locations, promptScanner: _sweepPrompt, now: () => _sweepNow, schedule: _sweepTimers.Arm);
         _sweep.SetWireSender(bytes => _sent.Add(Encoding.Latin1.GetString(bytes).TrimEnd('\r')));
         runner.SetWireSender(bytes => _sent.Add(Encoding.Latin1.GetString(bytes).TrimEnd('\r')));
 
@@ -151,9 +162,7 @@ public sealed class GhSweepSearchCountsTests : IDisposable
         _tracker.NoteRoomObserved(new RoomObservation(roomName, new HashSet<Direction>(exits)),
             DateTimeOffset.UtcNow.AddSeconds(++_clock));
 
-    private void SearchSettles() =>
-        typeof(GhSweepManager).GetMethod("OnReconSearchSettleElapsed",
-            BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(_sweep, null);
+    private void SearchSettles() => _sweepTimers.RunDue(GhSweepManager.ReconSearchSettle);
 
     // Walk in on the display, then three searches, with the room redisplayed
     // between two of them as it was in the capture.
@@ -190,20 +199,8 @@ public sealed class GhSweepSearchCountsTests : IDisposable
 
     private List<(string Item, int Count, RoomKey To, bool Hidden)> Queue()
     {
-        object pending = typeof(GhSweepManager)
-            .GetField("_pending", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(_sweep)!;
-        var queue = new List<(string, int, RoomKey, bool)>();
-        foreach (object move in (IEnumerable)pending)
-        {
-            Type t = move.GetType();
-            Assert.Equal(Store, (RoomKey)t.GetProperty("From")!.GetValue(move)!);
-            queue.Add((
-                (string)t.GetProperty("ItemName")!.GetValue(move)!,
-                (int)t.GetProperty("Count")!.GetValue(move)!,
-                (RoomKey)t.GetProperty("To")!.GetValue(move)!,
-                (bool)t.GetProperty("RequiresSearch")!.GetValue(move)!));
-        }
-        return queue;
+        Assert.All(_sweep.PendingMoves, m => Assert.Equal(Store, m.From));
+        return _sweep.PendingMoves.Select(m => (m.ItemName, m.Count, m.To, m.Hidden)).ToList();
     }
 
     [Fact]
@@ -313,14 +310,13 @@ public sealed class GhSweepSearchCountsTests : IDisposable
         {
             Assert.Equal(command, _sent[^1]);
             Wire(answer);
-            _sweep.FirePromptWaitTimeoutForTests();
+            PaceOut();
         }
 
         // The second search for the refused two, once the rest of the room is done.
         Assert.Equal("sea", _sent[^1]);
         Wire(Prompt + "sea", "Your search revealed nothing.");
-        typeof(GhSweepManager).GetMethod("OnDispatchSettleElapsed",
-            BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(_sweep, null);
+        _sweepTimers.RunDue(GhSweepManager.DispatchSettleTimeout);
 
         Assert.Equal(7, _sweep.CarriedPendingCount);
         Assert.Equal(7, _sweep.PendingMoveCount);

@@ -21,13 +21,8 @@ public static class MegaMudHash
         Direction.U, Direction.D,
     };
 
-    // Per-exit weight added when the exit is present.
-    // Doors count double — MegaMUD multiplies by 2 for door/gate/key
-    // exits — but our graph has no door-vs-normal distinction at the
-    // exit level, so we always use the "normal" weight. Door-only
-    // mismatches mean we'll occasionally produce a different exits
-    // code than rooms.md; downstream callers should treat the
-    // per-step hash check as soft for that reason.
+    // Per-exit weight added when the exit is present. Doors count double, as
+    // MegaMUD multiplies by 2 for door/gate/key exits (EncodeExitsInternal).
     private static readonly int[] ExitVal      = { 1, 4, 1, 4, 1, 4, 1, 4, 1, 4 };
 
     // 1-indexed hex digit (counting from the right of the 5-char code)
@@ -55,16 +50,6 @@ public static class MegaMudHash
         return hash.ToUpperInvariant();
     }
 
-    // Encode an exit set into the 5-char MegaMUD exits code without door / hidden
-    // awareness. Use the EncodeExits(Room) overload when computing against an
-    // actual graph room — that one weights doors ×2 (matching MegaMUD) and
-    // excludes hidden exits.
-    public static string EncodeExits(IReadOnlySet<Direction> exits)
-    {
-        ArgumentNullException.ThrowIfNull(exits);
-        return EncodeExitsInternal(exits, doors: null);
-    }
-
     // Encode room's exits into the 5-char MegaMUD exits code, replicating
     // MegaMUD's rules: door / key-locked / toll-gate exits weight ×2; hidden (incl.
     // SearchableHidden and MultiActionHidden) exits are excluded entirely;
@@ -84,12 +69,6 @@ public static class MegaMudHash
         return EncodeExitsInternal(visible, doors);
     }
 
-    // Compute the full 8-char hashExits token from a room name and its exit set.
-    // Door-naive — use the ComputeHashExits(Room) overload against a graph room so
-    // doors / hidden exits get their MegaMUD-correct weighting.
-    public static string ComputeHashExits(string? roomName, IReadOnlySet<Direction> exits)
-        => ComputeNameHash(roomName) + EncodeExits(exits);
-
     // Compute the 8-char hashExits token for room using its name and
     // door-/hidden-aware exit encoding.
     public static string ComputeHashExits(Room room)
@@ -98,7 +77,7 @@ public static class MegaMudHash
         return ComputeNameHash(room.Name) + EncodeExits(room);
     }
 
-    private static string EncodeExitsInternal(IReadOnlySet<Direction> exits, IReadOnlySet<Direction>? doors)
+    private static string EncodeExitsInternal(IReadOnlySet<Direction> exits, IReadOnlySet<Direction> doors)
     {
         Span<int> buckets = stackalloc int[6];
         for (int i = 0; i < OrderedDirs.Length; i++)
@@ -108,7 +87,7 @@ public static class MegaMudHash
             int pos = ExitPosition[i];
             int weight = ExitVal[i];
             // MegaMUD doubles the weight for door/gate/key-locked exits.
-            if (doors is not null && doors.Contains(dir)) weight *= 2;
+            if (doors.Contains(dir)) weight *= 2;
             buckets[pos] += weight;
         }
         Span<char> code = stackalloc char[5];
@@ -142,60 +121,6 @@ public static class MegaMudHash
         return (h[..3].ToUpperInvariant(), h[3..].ToUpperInvariant());
     }
 
-    // Decode a 5-char exits code into the set of Direction values that produces it.
-    // When an exits digit could be satisfied by multiple combinations of
-    // doors/normals (which doesn't distinguish here because we ignore the door
-    // bit), the smallest "any-on" interpretation wins. Returns null when the code
-    // is malformed.
-    //
-    // Decoding the digit means inferring which of the 1-or-2 exits contributing to
-    // that digit are present. Per the ExitPosition table digits 1–5 each receive
-    // contributions from a single pair of exits:
-    //   - digit 1 (rightmost) ← U, D
-    //   - digit 2 ← SE, SW
-    //   - digit 3 ← NE, NW
-    //   - digit 4 ← E, W
-    //   - digit 5 ← N, S
-    // Each pair has weights 1 + 4 (see ExitVal), so the digit's value identifies
-    // which combination of the two is on: 0=neither, 1=first, 4=second, 5=both.
-    // Doors double those weights (2 / 8 / A) but we collapse those back to "exit
-    // present" since the door bit isn't carried in our graph.
-    public static IReadOnlySet<Direction>? DecodeExits(string? exitsCode)
-    {
-        if (string.IsNullOrWhiteSpace(exitsCode)) return null;
-        string code = exitsCode.Trim();
-        if (code.Length != 5) return null;
-
-        // Per-digit pair: [low-weight exit, high-weight exit].
-        Direction[][] digitPairs =
-        {
-            new[] { Direction.U,  Direction.D  },  // digit 1
-            new[] { Direction.SE, Direction.SW },  // digit 2
-            new[] { Direction.NE, Direction.NW },  // digit 3
-            new[] { Direction.E,  Direction.W  },  // digit 4
-            new[] { Direction.N,  Direction.S  },  // digit 5
-        };
-
-        var set = new HashSet<Direction>();
-        // Encoder writes buckets[1] → code[0] (i.e. MegaMUD's "digit 1"
-        // = U/D pair, the leftmost char) and buckets[5] → code[4]
-        // (digit 5 = N/S, rightmost char). So strIdx maps directly:
-        // code[0] ↔ digit 1 ↔ digitPairs[0], code[4] ↔ digit 5 ↔ digitPairs[4].
-        for (int strIdx = 0; strIdx < 5; strIdx++)
-        {
-            int digit = HexValue(code[strIdx]);
-            if (digit < 0) return null;
-            Direction[] pair = digitPairs[strIdx];
-
-            // Low-weight bit (value 1) — including the door variant
-            // value 2. Either means the low-weight exit is present.
-            if ((digit & 0x3) != 0) set.Add(pair[0]);
-            // High-weight bit (value 4) — including door variant 8.
-            if ((digit & 0xC) != 0) set.Add(pair[1]);
-        }
-        return set;
-    }
-
     // ----- helpers ---------------------------------------------------
 
     private static char HexDigit(int v)
@@ -208,12 +133,4 @@ public static class MegaMudHash
         => (c >= '0' && c <= '9')
         || (c >= 'A' && c <= 'F')
         || (c >= 'a' && c <= 'f');
-
-    private static int HexValue(char c)
-    {
-        if (c >= '0' && c <= '9') return c - '0';
-        if (c >= 'A' && c <= 'F') return 10 + (c - 'A');
-        if (c >= 'a' && c <= 'f') return 10 + (c - 'a');
-        return -1;
-    }
 }

@@ -3,11 +3,9 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Decision-matrix coverage for <see cref="DoorPolicy"/> — what verb
-/// the walker tries first, and whether the door is viable at all
-/// given live player stats.
-/// </summary>
+// Decision-matrix coverage for DoorPolicy — what verb
+// the walker tries first, and whether the door is viable at all
+// given live player stats.
 public sealed class DoorPolicyTests
 {
     // ----- IsAchievable -----------------------------------------------

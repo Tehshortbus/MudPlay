@@ -123,8 +123,7 @@ public sealed class CastingDirector : IDisposable
     // would land in the room we're entering) or auto-combat won't clear the current
     // room and an NPC is present. Casting breaks sneak (GAME_MECHANICS) and you can't
     // re-sneak with an NPC in the room, so a stealth runner defers the cast until
-    // a room it can cast in and re-sneak. Null / unwired → never defer (tests +
-    // non-stealth play behave exactly as before). Emergency survival casts are
+    // a room it can cast in and re-sneak. Null / unwired → never defer. Emergency survival casts are
     // never in this set.
     private Func<bool>? _deferMaintenanceWhileStealthed;
     private Func<(string Spell, string? Target)?>? _combatDebuffSource;
@@ -139,7 +138,7 @@ public sealed class CastingDirector : IDisposable
     // this is mana-specific and combat-durable, matching what that flag means. Left
     // unwired, the pre-rest slot falls back to never-eligible (fails closed).
     private Func<bool>? _isManaRestActive;
-    // True while the telnet link is up. Null (unwired, tests) = treat as connected.
+    // True while the telnet link is up. Null (unwired) = treat as connected.
     // Gates the whole between-round loop: while disconnected the wire-send is a no-op
     // but TryCast still returns true and arms the recast timer, so an ungated loop
     // (now heartbeat-driven every 1s) would "cast" phantom buffs into a dead socket.
@@ -161,7 +160,7 @@ public sealed class CastingDirector : IDisposable
     // server combat line (TickEngine.RecordCombatTick) rather than the 5 s timer
     // fallback. A damage-line-driven tick fires DURING the round's line burst, before
     // the round's prompt has refreshed HP — so _state.Hp still holds the previous
-    // round's value. Null (unwired, tests) = treat every tick as fresh.
+    // round's value. Null (unwired) = treat every tick as fresh.
     private Func<bool>? _combatTickDamageDriven;
     private Func<string, long?>? _itemCastDuration;
     private Func<string, bool>? _executeItemCast;
@@ -270,8 +269,7 @@ public sealed class CastingDirector : IDisposable
     private DateTime _projectedTickAt = DateTime.MinValue;
     private static readonly TimeSpan ProjectedTickMargin = TimeSpan.FromMilliseconds(200);
     private Func<bool>? _combatTickPlaced;
-    // Runs the settled pass after a delay (a one-shot dispatcher timer in the app, a
-    // captured callback in tests). Unset = the guard is off, so a hold can never be
+    // Runs the settled pass after a delay (a one-shot dispatcher timer in the app). Unset = the guard is off, so a hold can never be
     // stranded without a scheduled re-evaluation.
     private Action<TimeSpan, Action>? _scheduleSettledPass;
     private bool _settledPassPending;
@@ -328,7 +326,7 @@ public sealed class CastingDirector : IDisposable
     // clear a hidden-target back-off when the member reappears. Party membership already
     // guarantees same-room (if 'par' lists them they're here), so this is NOT a
     // pre-emptive cast gate — a present-but-not-listed member is just hiding. Null ⇒
-    // no room list (tests / before wiring), so a hidden member stays backed off until
+    // no room list (before wiring), so a hidden member stays backed off until
     // we move.
     private Func<string, bool>? _isMemberInRoom;
 
@@ -363,7 +361,7 @@ public sealed class CastingDirector : IDisposable
     // removes so the at-cast strip doesn't knock them off. Empty off stock.
     private Func<IReadOnlyDictionary<string, string>>? _collisionOrder;
     private Action<string>? _selfBuffCastSink;
-    private Func<DateTime> _now = () => DateTime.UtcNow;
+    private readonly Func<DateTime> _now;
     private LineExtractor? _lines;
 
     // Last self-heal we sent — spell code, the HP + MA it was sent at, and when.
@@ -390,13 +388,14 @@ public sealed class CastingDirector : IDisposable
         Func<SpellsSettings> readSpells,
         Func<HealthSettings> readHealth,
         Func<bool> isEnabled,
-        LogService? log = null)
+        LogService? log = null,
+        Func<DateTime>? now = null)
         : this(state, cast, conditions: null, party: null,
                readSpells, readHealth, readPartySettings: null,
-               isEnabled, log) { }
+               isEnabled, log, now: now) { }
 
     // Constructor with optional ConditionTracker (for ailment cures) and PartyState
-    // + PartySettings reader (for party-cast). Pass null for tests / engines that
+    // + PartySettings reader (for party-cast). Pass null for engines that
     // don't need the dependencies; the matching Pick* methods short-circuit.
     public CastingDirector(
         PlayerState state,
@@ -407,8 +406,10 @@ public sealed class CastingDirector : IDisposable
         Func<HealthSettings> readHealth,
         Func<PartySettings>? readPartySettings,
         Func<bool> isEnabled,
-        LogService? log = null)
+        LogService? log = null,
+        Func<DateTime>? now = null)
     {
+        _now = now ?? (() => DateTime.UtcNow);
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(cast);
         ArgumentNullException.ThrowIfNull(readSpells);
@@ -446,8 +447,7 @@ public sealed class CastingDirector : IDisposable
         }
     }
 
-    // Party-less overload, for a director with no PartyState (tests that don't
-    // exercise party casting).
+    // Party-less overload, for a director with no PartyState.
     public CastingDirector(
         PlayerState state,
         CastCoordinator cast,
@@ -455,10 +455,11 @@ public sealed class CastingDirector : IDisposable
         Func<SpellsSettings> readSpells,
         Func<HealthSettings> readHealth,
         Func<bool> isEnabled,
-        LogService? log = null)
+        LogService? log = null,
+        Func<DateTime>? now = null)
         : this(state, cast, conditions, party: null,
                readSpells, readHealth, readPartySettings: null,
-               isEnabled, log) { }
+               isEnabled, log, now: now) { }
 
     // Wire the "is this combat tick damage-line-driven?" probe (TickEngine). A true
     // read marks a round burst as landing (see _hpBurstAt). Optional — unset means
@@ -1061,14 +1062,6 @@ public sealed class CastingDirector : IDisposable
     // A member negated one of our buffs and is now marked on its slot (cast code, the
     // member's lower-cased given name). Raised on the UI thread with the line.
     public event Action<string, string>? BuffNegated;
-
-    // Override the clock used for buff-expiry math. Test seam — production uses
-    // DateTime.UtcNow.
-    public void SetClock(Func<DateTime> now)
-    {
-        ArgumentNullException.ThrowIfNull(now);
-        _now = now;
-    }
 
     // Subscribe to server lines so OUR party-buff casts can be confirmed against the
     // buff's CasterMessage template (capturing the target name) before the duration
@@ -2138,7 +2131,7 @@ public sealed class CastingDirector : IDisposable
     }
 
     // Run one decision pass: walk the priority list and fire the first ready
-    // candidate. Returns the spell that was cast (for diagnostics / tests), or null
+    // candidate. Returns the spell that was cast (for diagnostics), or null
     // if nothing matched.
     public string? Evaluate()
     {
@@ -2275,7 +2268,7 @@ public sealed class CastingDirector : IDisposable
     }
 
     // Walk the priority list and fire the first ready candidate. Returns the spell
-    // that was cast (for diagnostics / tests), or null if nothing matched.
+    // that was cast (for diagnostics), or null if nothing matched.
     private string? RunDecisionPass(bool healEnabled, bool blessEnabled, (string What, bool MustGoNow)? ownUse)
     {
         SpellsSettings spells = _readSpells();
@@ -3277,7 +3270,7 @@ public sealed class CastingDirector : IDisposable
             // then stops. The lock is mana-specific and combat-durable: a mob walking in
             // mid-rest doesn't drop it, so the buff stays up through that combat until mana
             // recovers. Unchecked, the slot is maintained always-up via the normal self
-            // gate. (Left unwired — tests — the lock reads false, so the slot never fires.)
+            // gate. (Left unwired, the lock reads false, so the slot never fires.)
             bool timingAllowed = BuffTimingAllowed(slot);
             bool partyAllowed = inParty && timingAllowed;
             bool selfEligible = slot.CastBeforeRestingForMana

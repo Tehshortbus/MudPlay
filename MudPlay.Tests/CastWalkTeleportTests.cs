@@ -1039,7 +1039,7 @@ public sealed class CastWalkTeleportTests : IDisposable
         DefaultPatterns.Seed(router);
         PartyState partyState = new();
         using PartyManager party = new(router, partyState);
-        using AutoPartyManager autoParty = new(router, new PlayerDatabase(), partyState);
+        using AutoPartyManager autoParty = new(router, new PlayerDatabase(new ProfileService(), () => null), partyState);
         List<string> partySent = new();
         autoParty.SetWireSender(b => partySent.Add(Encoding.Latin1.GetString(b)));
         autoParty.SetMovementGate(h.Coordinator, isLooping: () => false);

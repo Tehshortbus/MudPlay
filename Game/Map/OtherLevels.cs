@@ -231,7 +231,6 @@ public static class OtherLevels
             Origin: current.Origin,
             Positions: positions,
             VerticalHints: hints,
-            OffGrid: Array.Empty<RoomKey>(),
             CoordToRoom: coordToRoom,
             EdgesFromCoord: edges,
             TrapEdgesFromCoord: traps,

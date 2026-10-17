@@ -1,4 +1,3 @@
-using System.Reflection;
 using System.Text;
 using MudPlay.Game;
 using MudPlay.Game.Cash;
@@ -12,19 +11,23 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Pins the read-only <see cref="InventoryQueryHandler"/> replies
-/// (<c>@wealth</c> / <c>@enc</c> / <c>@have</c> / <c>@what</c>): the
-/// wealth / carry / have trio read the immutable
-/// <see cref="InventoryManager.Snapshot"/> and gate on "parse inventory
-/// first" until the first full <c>i</c> dump lands; <c>@what</c> reads the
-/// <see cref="GroundItemTracker"/>'s last "You notice" survey.
-/// </summary>
+// Pins the read-only InventoryQueryHandler replies
+// (@wealth / @enc / @have / @what): the
+// wealth / carry / have trio read the immutable
+// InventoryManager.Snapshot and gate on "parse inventory
+// first" until the first full i dump lands; @what reads the
+// GroundItemTracker's last "You notice" survey.
 public sealed class InventoryQueryHandlerTests
 {
+    // The router each engine reads, which a test's chat lines go through.
+    private readonly Dictionary<RemoteCommandManager, MessageRouter> _routers = new();
+
+    // What the remote-command engine put on the wire, through the sender the client binds.
+    private readonly List<byte[]> _replies = new();
+
     private static readonly DateTime Now = new(2026, 6, 21, 0, 0, 0, DateTimeKind.Utc);
 
-    private static (RemoteCommandManager engine, InventoryManager inv, LineExtractor lines,
+    private (RemoteCommandManager engine, InventoryManager inv, ServerFeed feed,
         PlayerDatabase players, MessageRouter router, GroundItemTracker ground)
         Setup()
     {
@@ -32,26 +35,16 @@ public sealed class InventoryQueryHandlerTests
         DefaultPatterns.Seed(router);
         ChatRouter chat = new(router);
         PartyState party = new();
-        PlayerDatabase players = new();
+        PlayerDatabase players = new(new ProfileService(), () => null);
         RemoteCommandManager engine = new(chat, party, players);
+        _routers[engine] = router;
+        engine.SetWireSender(_replies.Add);
         InventoryManager inv = new(log: null, itemWeightResolver: null, slotResolver: null);
-        LineExtractor lines = new(new TerminalEmulator(80, 24));
-        inv.AttachLineExtractor(lines);
+        ServerFeed feed = new();
+        inv.AttachLineExtractor(feed.Lines);
         GroundItemTracker ground = new(router, new CurrencyNaming());
         _ = new InventoryQueryHandler(engine, inv, ground);
-        return (engine, inv, lines, players, router, ground);
-    }
-
-    private static void Feed(LineExtractor lines, string text)
-    {
-        FieldInfo? field = typeof(LineExtractor).GetField(
-            "LineEmitted", BindingFlags.Instance | BindingFlags.NonPublic);
-        if (field?.GetValue(lines) is Action<LineExtractor.EmittedLine> handler)
-        {
-            handler(new LineExtractor.EmittedLine(
-                text, Array.Empty<CellAttributes>(),
-                DateTimeOffset.UtcNow, IsPromptLine: false));
-        }
+        return (engine, inv, feed, players, router, ground);
     }
 
     // Push a single-line "You notice ... here." through the router so the
@@ -62,17 +55,17 @@ public sealed class InventoryQueryHandlerTests
             text, Array.Empty<CellAttributes>(),
             DateTimeOffset.UtcNow, IsPromptLine: false));
 
-    private static void FeedCurrencyDump(LineExtractor lines)
+    private static void FeedCurrencyDump(ServerFeed feed)
     {
-        Feed(lines, "You are carrying 2 runic coins, 6 platinum pieces, 94 gold crowns, "
+        feed.Line("You are carrying 2 runic coins, 6 platinum pieces, 94 gold crowns, "
                   + "2 silver nobles, 5 copper farthings.");
-        Feed(lines, "You have no keys.");
-        Feed(lines, "Wealth:    2069425 copper farthings");
-        Feed(lines, "Encumbrance:    36/2880  -  Light  [1%]");
+        feed.Line("You have no keys.");
+        feed.Line("Wealth:    2069425 copper farthings");
+        feed.Line("Encumbrance:    36/2880  -  Light  [1%]");
     }
 
-    private static ChatLogEntry Telepath(string sender, string msg) =>
-        new(Now, ChatChannel.TelepathIncoming, sender, msg, $"{sender} telepaths: {msg}");
+    private static ChatLine Telepath(string sender, string msg) =>
+        new(ChatChannel.TelepathIncoming, sender, msg);
 
     private static void SeedPlayer(PlayerDatabase db, string name, PlayerRemoteControls controls)
     {
@@ -80,8 +73,8 @@ public sealed class InventoryQueryHandlerTests
         db.EditCustomization(name, new PlayerCustomization(RemoteControls: controls));
     }
 
-    private static List<string> Replies(RemoteCommandManager engine) =>
-        engine.LastSentForTests
+    private List<string> Replies() =>
+        _replies
             .Select(b => Encoding.Latin1.GetString(b))
             .Select(StripWire)
             .ToList();
@@ -102,21 +95,21 @@ public sealed class InventoryQueryHandlerTests
         var (engine, _, _, players, _, _) = Setup();
         SeedPlayer(players, "Bob", PlayerRemoteControls.QueryInventory);
 
-        engine.DispatchForTests(Telepath("Bob", "@wealth"));
+        ChatLines.Hear(_routers[engine], Telepath("Bob", "@wealth"));
 
-        Assert.Contains("parse inventory first", Assert.Single(Replies(engine)));
+        Assert.Contains("parse inventory first", Assert.Single(Replies()));
     }
 
     [Fact]
     public void Wealth_ReportsCoinsHighToLow_WithCopperTotal()
     {
-        var (engine, _, lines, players, _, _) = Setup();
+        var (engine, _, feed, players, _, _) = Setup();
         SeedPlayer(players, "Bob", PlayerRemoteControls.QueryInventory);
-        FeedCurrencyDump(lines);
+        FeedCurrencyDump(feed);
 
-        engine.DispatchForTests(Telepath("Bob", "@wealth"));
+        ChatLines.Hear(_routers[engine], Telepath("Bob", "@wealth"));
 
-        string reply = Assert.Single(Replies(engine));
+        string reply = Assert.Single(Replies());
         Assert.Equal(
             "2 runic, 6 platinum, 94 gold, 2 silver, 5 copper (= 2,069,425 copper)",
             reply);
@@ -130,21 +123,21 @@ public sealed class InventoryQueryHandlerTests
         var (engine, _, _, players, _, _) = Setup();
         SeedPlayer(players, "Bob", PlayerRemoteControls.QueryInventory);
 
-        engine.DispatchForTests(Telepath("Bob", "@enc"));
+        ChatLines.Hear(_routers[engine], Telepath("Bob", "@enc"));
 
-        Assert.Contains("parse inventory first", Assert.Single(Replies(engine)));
+        Assert.Contains("parse inventory first", Assert.Single(Replies()));
     }
 
     [Fact]
     public void Enc_ReportsCurMaxPctBracket()
     {
-        var (engine, _, lines, players, _, _) = Setup();
+        var (engine, _, feed, players, _, _) = Setup();
         SeedPlayer(players, "Bob", PlayerRemoteControls.QueryInventory);
-        FeedCurrencyDump(lines);
+        FeedCurrencyDump(feed);
 
-        engine.DispatchForTests(Telepath("Bob", "@enc"));
+        ChatLines.Hear(_routers[engine], Telepath("Bob", "@enc"));
 
-        Assert.Equal("Encumbrance 36/2880 (1%) - Light", Assert.Single(Replies(engine)));
+        Assert.Equal("Encumbrance 36/2880 (1%) - Light", Assert.Single(Replies()));
     }
 
     // ----- @have -------------------------------------------------------
@@ -152,13 +145,13 @@ public sealed class InventoryQueryHandlerTests
     [Fact]
     public void Have_WithoutArgs_ShowsUsage()
     {
-        var (engine, _, lines, players, _, _) = Setup();
+        var (engine, _, feed, players, _, _) = Setup();
         SeedPlayer(players, "Bob", PlayerRemoteControls.QueryInventory);
-        FeedCurrencyDump(lines);
+        FeedCurrencyDump(feed);
 
-        engine.DispatchForTests(Telepath("Bob", "@have"));
+        ChatLines.Hear(_routers[engine], Telepath("Bob", "@have"));
 
-        Assert.Equal("usage: @have <item name>", Assert.Single(Replies(engine)));
+        Assert.Equal("usage: @have <item name>", Assert.Single(Replies()));
     }
 
     [Fact]
@@ -167,23 +160,23 @@ public sealed class InventoryQueryHandlerTests
         var (engine, _, _, players, _, _) = Setup();
         SeedPlayer(players, "Bob", PlayerRemoteControls.QueryInventory);
 
-        engine.DispatchForTests(Telepath("Bob", "@have dagger"));
+        ChatLines.Hear(_routers[engine], Telepath("Bob", "@have dagger"));
 
-        Assert.Contains("inventory not parsed yet", Assert.Single(Replies(engine)));
+        Assert.Contains("inventory not parsed yet", Assert.Single(Replies()));
     }
 
     [Fact]
     public void Have_MatchesCarriedAndEquipped_CaseInsensitiveSubstring()
     {
-        var (engine, _, lines, players, _, _) = Setup();
+        var (engine, _, feed, players, _, _) = Setup();
         SeedPlayer(players, "Bob", PlayerRemoteControls.QueryInventory);
-        Feed(lines, "You are carrying a rusty dagger, a healing potion, "
+        feed.Line("You are carrying a rusty dagger, a healing potion, "
                   + "padded vest (Torso), a jagged dagger.");
-        Feed(lines, "Encumbrance:    36/2880  -  Light  [1%]");
+        feed.Line("Encumbrance:    36/2880  -  Light  [1%]");
 
-        engine.DispatchForTests(Telepath("Bob", "@have DAGGER"));
+        ChatLines.Hear(_routers[engine], Telepath("Bob", "@have DAGGER"));
 
-        Assert.Equal("yes - 2x 'DAGGER'", Assert.Single(Replies(engine)));
+        Assert.Equal("yes - 2x 'DAGGER'", Assert.Single(Replies()));
     }
 
     [Fact]
@@ -192,27 +185,27 @@ public sealed class InventoryQueryHandlerTests
         // Report: another user @have'd an item the sender held 25 of (a stack prints
         // as one "25 black diamonds" line) and got "1x". The reply must report the
         // real quantity, echoing the queried name: "yes - 25x 'black diamond'".
-        var (engine, _, lines, players, _, _) = Setup();
+        var (engine, _, feed, players, _, _) = Setup();
         SeedPlayer(players, "Bob", PlayerRemoteControls.QueryInventory);
-        Feed(lines, "You are carrying a rusty dagger, 25 black diamonds, a healing potion.");
-        Feed(lines, "Encumbrance:    36/2880  -  Light  [1%]");
+        feed.Line("You are carrying a rusty dagger, 25 black diamonds, a healing potion.");
+        feed.Line("Encumbrance:    36/2880  -  Light  [1%]");
 
-        engine.DispatchForTests(Telepath("Bob", "@have black diamond"));
+        ChatLines.Hear(_routers[engine], Telepath("Bob", "@have black diamond"));
 
-        Assert.Equal("yes - 25x 'black diamond'", Assert.Single(Replies(engine)));
+        Assert.Equal("yes - 25x 'black diamond'", Assert.Single(Replies()));
     }
 
     [Fact]
     public void Have_NoMatch_ReportsNo()
     {
-        var (engine, _, lines, players, _, _) = Setup();
+        var (engine, _, feed, players, _, _) = Setup();
         SeedPlayer(players, "Bob", PlayerRemoteControls.QueryInventory);
-        Feed(lines, "You are carrying a rusty dagger, a healing potion.");
-        Feed(lines, "Encumbrance:    36/2880  -  Light  [1%]");
+        feed.Line("You are carrying a rusty dagger, a healing potion.");
+        feed.Line("Encumbrance:    36/2880  -  Light  [1%]");
 
-        engine.DispatchForTests(Telepath("Bob", "@have longsword"));
+        ChatLines.Hear(_routers[engine], Telepath("Bob", "@have longsword"));
 
-        Assert.Equal("no - nothing matching 'longsword'", Assert.Single(Replies(engine)));
+        Assert.Equal("no - nothing matching 'longsword'", Assert.Single(Replies()));
     }
 
     [Fact]
@@ -221,15 +214,15 @@ public sealed class InventoryQueryHandlerTests
         // Report: "@have black star key" replied "no" while the key sat on the ring.
         // Keys live on the dump's separate "You have the following keys:" list, not in
         // CarriedItems — @have has to search the ring too.
-        var (engine, _, lines, players, _, _) = Setup();
+        var (engine, _, feed, players, _, _) = Setup();
         SeedPlayer(players, "Bob", PlayerRemoteControls.QueryInventory);
-        Feed(lines, "You are carrying a brass lantern.");
-        Feed(lines, "You have the following keys:  black star key, brass key.");
-        Feed(lines, "Encumbrance:    36/2880  -  Light  [1%]");
+        feed.Line("You are carrying a brass lantern.");
+        feed.Line("You have the following keys:  black star key, brass key.");
+        feed.Line("Encumbrance:    36/2880  -  Light  [1%]");
 
-        engine.DispatchForTests(Telepath("Bob", "@have black star key"));
+        ChatLines.Hear(_routers[engine], Telepath("Bob", "@have black star key"));
 
-        Assert.Equal("yes - 1x 'black star key'", Assert.Single(Replies(engine)));
+        Assert.Equal("yes - 1x 'black star key'", Assert.Single(Replies()));
     }
 
     [Fact]
@@ -237,15 +230,15 @@ public sealed class InventoryQueryHandlerTests
     {
         // A duplicated key stacks behind a leading count ("3 iron key") — the reply
         // must tally the stack, not report 1.
-        var (engine, _, lines, players, _, _) = Setup();
+        var (engine, _, feed, players, _, _) = Setup();
         SeedPlayer(players, "Bob", PlayerRemoteControls.QueryInventory);
-        Feed(lines, "You are carrying a brass lantern.");
-        Feed(lines, "You have the following keys:  3 large iron key, brass key.");
-        Feed(lines, "Encumbrance:    36/2880  -  Light  [1%]");
+        feed.Line("You are carrying a brass lantern.");
+        feed.Line("You have the following keys:  3 large iron key, brass key.");
+        feed.Line("Encumbrance:    36/2880  -  Light  [1%]");
 
-        engine.DispatchForTests(Telepath("Bob", "@have iron key"));
+        ChatLines.Hear(_routers[engine], Telepath("Bob", "@have iron key"));
 
-        Assert.Equal("yes - 3x 'iron key'", Assert.Single(Replies(engine)));
+        Assert.Equal("yes - 3x 'iron key'", Assert.Single(Replies()));
     }
 
     // ----- @inv --------------------------------------------------------
@@ -256,71 +249,71 @@ public sealed class InventoryQueryHandlerTests
         var (engine, _, _, players, _, _) = Setup();
         SeedPlayer(players, "Bob", PlayerRemoteControls.QueryInventory);
 
-        engine.DispatchForTests(Telepath("Bob", "@inv"));
+        ChatLines.Hear(_routers[engine], Telepath("Bob", "@inv"));
 
-        Assert.Contains("inventory not parsed yet", Assert.Single(Replies(engine)));
+        Assert.Contains("inventory not parsed yet", Assert.Single(Replies()));
     }
 
     [Fact]
     public void Inv_ReportsCarriedPack_ExcludingWornAndCurrency()
     {
-        var (engine, _, lines, players, _, _) = Setup();
+        var (engine, _, feed, players, _, _) = Setup();
         SeedPlayer(players, "Bob", PlayerRemoteControls.QueryInventory);
         // Worn piece (Torso) and a readied light are excluded; coins never
         // land in CarriedItems. Only the two unworn pack items report.
-        Feed(lines, "You are carrying a rusty dagger, a healing potion, "
+        feed.Line("You are carrying a rusty dagger, a healing potion, "
                   + "padded vest (Torso), lantern (Readied/240), 5 copper farthings.");
-        Feed(lines, "You have no keys.");
-        Feed(lines, "Encumbrance:    36/2880  -  Light  [1%]");
+        feed.Line("You have no keys.");
+        feed.Line("Encumbrance:    36/2880  -  Light  [1%]");
 
-        engine.DispatchForTests(Telepath("Bob", "@inv"));
+        ChatLines.Hear(_routers[engine], Telepath("Bob", "@inv"));
 
-        Assert.Equal("carrying: a rusty dagger, a healing potion", Assert.Single(Replies(engine)));
+        Assert.Equal("carrying: a rusty dagger, a healing potion", Assert.Single(Replies()));
     }
 
     [Fact]
     public void Inv_AppendsKeyRing_WhenKeysHeld()
     {
-        var (engine, _, lines, players, _, _) = Setup();
+        var (engine, _, feed, players, _, _) = Setup();
         SeedPlayer(players, "Bob", PlayerRemoteControls.QueryInventory);
-        Feed(lines, "You are carrying a brass lantern.");
-        Feed(lines, "You have the following keys:  black star key, brass key.");
-        Feed(lines, "Encumbrance:    36/2880  -  Light  [1%]");
+        feed.Line("You are carrying a brass lantern.");
+        feed.Line("You have the following keys:  black star key, brass key.");
+        feed.Line("Encumbrance:    36/2880  -  Light  [1%]");
 
-        engine.DispatchForTests(Telepath("Bob", "@inv"));
+        ChatLines.Hear(_routers[engine], Telepath("Bob", "@inv"));
 
         Assert.Equal("carrying: a brass lantern; keys: black star key, brass key",
-            Assert.Single(Replies(engine)));
+            Assert.Single(Replies()));
     }
 
     [Fact]
     public void Inv_EmptyPackNoKeys_ReportsCarryingNothing()
     {
-        var (engine, _, lines, players, _, _) = Setup();
+        var (engine, _, feed, players, _, _) = Setup();
         SeedPlayer(players, "Bob", PlayerRemoteControls.QueryInventory);
-        Feed(lines, "You are carrying nothing.");
-        Feed(lines, "You have no keys.");
-        Feed(lines, "Encumbrance:    0/2880  -  Light  [0%]");
+        feed.Line("You are carrying nothing.");
+        feed.Line("You have no keys.");
+        feed.Line("Encumbrance:    0/2880  -  Light  [0%]");
 
-        engine.DispatchForTests(Telepath("Bob", "@inv"));
+        ChatLines.Hear(_routers[engine], Telepath("Bob", "@inv"));
 
-        Assert.Equal("carrying nothing", Assert.Single(Replies(engine)));
+        Assert.Equal("carrying nothing", Assert.Single(Replies()));
     }
 
     [Fact]
     public void Inv_LongPack_SplitsAcrossReplies_ReportsEveryItem_NoTruncation()
     {
-        var (engine, _, lines, players, _, _) = Setup();
+        var (engine, _, feed, players, _, _) = Setup();
         SeedPlayer(players, "Bob", PlayerRemoteControls.QueryInventory);
         // 40 padded item names blow past a single say's budget; the WHOLE pack must
         // go out across multiple chunked replies rather than a "+N more" summary.
         var items = Enumerable.Range(1, 40).Select(i => $"a padded widget number {i}").ToList();
-        Feed(lines, $"You are carrying {string.Join(", ", items)}.");
-        Feed(lines, "Encumbrance:    36/2880  -  Light  [1%]");
+        feed.Line($"You are carrying {string.Join(", ", items)}.");
+        feed.Line("Encumbrance:    36/2880  -  Light  [1%]");
 
-        engine.DispatchForTests(Telepath("Bob", "@inv"));
+        ChatLines.Hear(_routers[engine], Telepath("Bob", "@inv"));
 
-        List<string> replies = Replies(engine);
+        List<string> replies = Replies();
         Assert.True(replies.Count > 1, "a long pack should split across multiple replies");
         // No truncation summary anywhere.
         Assert.DoesNotContain(replies, r => r.Contains("more, type i)"));
@@ -342,9 +335,9 @@ public sealed class InventoryQueryHandlerTests
         var (engine, _, _, players, _, _) = Setup();
         SeedPlayer(players, "Bob", PlayerRemoteControls.QueryInventory);
 
-        engine.DispatchForTests(Telepath("Bob", "@what"));
+        ChatLines.Hear(_routers[engine], Telepath("Bob", "@what"));
 
-        Assert.Equal("nothing on the ground here", Assert.Single(Replies(engine)));
+        Assert.Equal("nothing on the ground here", Assert.Single(Replies()));
     }
 
     [Fact]
@@ -355,10 +348,10 @@ public sealed class InventoryQueryHandlerTests
         // Survey mixes loot and coin — coin is filtered, items keep wording.
         FeedRoom(router, "You notice a rusty dagger, 5 gold crowns and a healing potion here.");
 
-        engine.DispatchForTests(Telepath("Bob", "@what"));
+        ChatLines.Hear(_routers[engine], Telepath("Bob", "@what"));
 
         Assert.Equal("on the ground: a rusty dagger, a healing potion",
-            Assert.Single(Replies(engine)));
+            Assert.Single(Replies()));
     }
 
     // ----- gating ------------------------------------------------------
@@ -366,14 +359,14 @@ public sealed class InventoryQueryHandlerTests
     [Fact]
     public void Wealth_FromUnauthorisedSender_IsDenied()
     {
-        var (engine, _, lines, players, _, _) = Setup();
+        var (engine, _, feed, players, _, _) = Setup();
         engine.WarnOnDenial = false;
         SeedPlayer(players, "Stranger",
             PlayerRemoteControls.All & ~PlayerRemoteControls.QueryInventory);
-        FeedCurrencyDump(lines);
+        FeedCurrencyDump(feed);
 
-        engine.DispatchForTests(Telepath("Stranger", "@wealth"));
+        ChatLines.Hear(_routers[engine], Telepath("Stranger", "@wealth"));
 
-        Assert.Empty(Replies(engine));
+        Assert.Empty(Replies());
     }
 }

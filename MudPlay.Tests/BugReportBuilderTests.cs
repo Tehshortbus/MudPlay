@@ -4,12 +4,10 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Pins the pure <see cref="BugReportBuilder"/> surface — file naming and
-/// Markdown composition. The live <c>Capture</c> path reads the whole
-/// AppServices graph and is smoke-tested via <c>dotnet run</c>; these tests
-/// exercise the deterministic render half by constructing a capture directly.
-/// </summary>
+// Pins the pure BugReportBuilder surface — file naming and
+// Markdown composition. The live Capture path reads the whole
+// AppServices graph and is smoke-tested via dotnet run; these tests
+// exercise the deterministic render half by constructing a capture directly.
 public sealed class BugReportBuilderTests
 {
     private static BugReportBuilder.BugReportCapture MakeCapture(RealmType realm) => new(

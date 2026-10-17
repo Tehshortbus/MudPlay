@@ -105,15 +105,6 @@ public sealed partial class LoopBuilderSessionViewModel : ObservableObject
         Reexpand();
     }
 
-    public void RemoveLastClick()
-    {
-        if (_clicks.Count == 0) return;
-        _clicks.RemoveAt(_clicks.Count - 1);
-        Clicks.RemoveAt(Clicks.Count - 1);
-        OnPropertyChanged(nameof(HasClicks));
-        Reexpand();
-    }
-
     // Remove the click at index (CURRENT NAV row click → remove). No-op when
     // index is out of range.
     public void RemoveClickAt(int index)

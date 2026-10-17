@@ -3,14 +3,12 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Covers the adjacent / gap-bridge / stub decision in
-/// <see cref="MapControl.ClassifyConnection"/>. Gap-bridges replace the
-/// old "stub into empty space" for exits whose two rooms are connected
-/// but couldn't be placed on grid-adjacent cells (non-tiling diagonals in
-/// hand-built forest + sewer maps, e.g. map-1 sewers 603↔604 and
-/// Darkwood Forest 3178↔3179).
-/// </summary>
+// Covers the adjacent / gap-bridge / stub decision in
+// MapControl.ClassifyConnection. Gap-bridges replace the
+// old "stub into empty space" for exits whose two rooms are connected
+// but couldn't be placed on grid-adjacent cells (non-tiling diagonals in
+// hand-built forest + sewer maps, e.g. map-1 sewers 603↔604 and
+// Darkwood Forest 3178↔3179).
 public sealed class MapControlConnectionTests
 {
     private const int Cap = 4;

@@ -13,7 +13,7 @@ public sealed class BugReportAutomationSectionsTests
         [new(BugReportScrub.LoginNameLabel, "loginzed"), new(BugReportScrub.LoginPasswordLabel, "Pa55w0rd!x")], []);
 
     private static readonly BugReportChatCensor Censor =
-        new BugReportChatCensor(Array.Empty<ulong>()).WithWords("flibber");
+        StandInCensor.Of("flibber");
 
     [Fact]
     public void UserAutomation_ListsEveryDefinition_AndOmitsOneThatHoldsAnAccountDetail()

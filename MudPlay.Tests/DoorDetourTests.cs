@@ -66,8 +66,8 @@ public sealed class DoorDetourTests
             cache.SwitchSet("alpha");
             RoomGraphManager graph = new(cache);
             graph.OnActiveSetChanged("alpha");
-            ProfileService profile = new();
-            profile.LoadBlank();
+            ProfileService profile = TestProfiles.Service();
+            profile.LoadDefaultProfile();
             body(new BfsMapper(graph), graph, new MovementFilter(profile));
         }
         finally

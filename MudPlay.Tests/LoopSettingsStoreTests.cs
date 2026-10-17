@@ -439,14 +439,13 @@ public sealed class LoopSettingsStoreTests : IDisposable
         List<string> notices = new();
         using LoopShareReceiver inbox = new(new ChatRouter(router), receiver.Loops, notices.Add, receiver.Log);
         // The sender's offer first, with its code, as a sender on this version makes it.
-        inbox.Ingest(Telepath("{" + LoopShareHandler.OfferLine(sent.Name, LoopSignature.ShortOf(sent)) + "}"));
+        ChatLines.Hear(router, Telepath("{" + LoopShareHandler.OfferLine(sent.Name, LoopSignature.ShortOf(sent)) + "}"));
         inbox.NoteSendConfirmed("Sender");
-        foreach (string line in DataLines(sent)) inbox.Ingest(Telepath(line));
+        foreach (string line in DataLines(sent)) ChatLines.Hear(router, Telepath(line));
         return notices;
     }
 
-    private static ChatLogEntry Telepath(string line) =>
-        new(DateTimeOffset.UnixEpoch, ChatChannel.TelepathIncoming, "Sender", line, $"Sender telepaths: {line}");
+    private static ChatLine Telepath(string line) => new(ChatChannel.TelepathIncoming, "Sender", line);
 
     [Fact]
     public void LoopSend_CarriesTheSendersOwnSettings_AndTheReceiverTakesThemAsItsOwn()

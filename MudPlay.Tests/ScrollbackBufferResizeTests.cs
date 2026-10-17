@@ -11,9 +11,9 @@ public sealed class ScrollbackBufferResizeTests
     public void SetCapacity_Grow_KeepsAllRowsRoomForMore()
     {
         ScrollbackBuffer buf = new(capacity: 4);
-        buf.Append(Row('A'));
-        buf.Append(Row('B'));
-        buf.Append(Row('C'));
+        buf.Append(Row('A'), DateTimeOffset.Now);
+        buf.Append(Row('B'), DateTimeOffset.Now);
+        buf.Append(Row('C'), DateTimeOffset.Now);
 
         buf.SetCapacity(10);
 
@@ -23,7 +23,7 @@ public sealed class ScrollbackBufferResizeTests
         Assert.Equal('B', buf[1].Cells[0].Char);
         Assert.Equal('C', buf[2].Cells[0].Char);
 
-        buf.Append(Row('D'));
+        buf.Append(Row('D'), DateTimeOffset.Now);
         Assert.Equal(4, buf.Count);
         Assert.Equal('D', buf[3].Cells[0].Char);
     }
@@ -32,11 +32,11 @@ public sealed class ScrollbackBufferResizeTests
     public void SetCapacity_Shrink_DropsOldestRowsFirst()
     {
         ScrollbackBuffer buf = new(capacity: 5);
-        buf.Append(Row('A'));   // oldest
-        buf.Append(Row('B'));
-        buf.Append(Row('C'));
-        buf.Append(Row('D'));
-        buf.Append(Row('E'));   // newest
+        buf.Append(Row('A'), DateTimeOffset.Now);   // oldest
+        buf.Append(Row('B'), DateTimeOffset.Now);
+        buf.Append(Row('C'), DateTimeOffset.Now);
+        buf.Append(Row('D'), DateTimeOffset.Now);
+        buf.Append(Row('E'), DateTimeOffset.Now);   // newest
 
         buf.SetCapacity(3);
 
@@ -52,7 +52,7 @@ public sealed class ScrollbackBufferResizeTests
     public void SetCapacity_Shrink_BelowCount_ClampsToNewCapacity()
     {
         ScrollbackBuffer buf = new(capacity: 8);
-        for (int i = 0; i < 8; i++) buf.Append(Row((char)('A' + i)));   // A..H
+        for (int i = 0; i < 8; i++) buf.Append(Row((char)('A' + i)), DateTimeOffset.Now);   // A..H
 
         buf.SetCapacity(3);
 
@@ -67,12 +67,12 @@ public sealed class ScrollbackBufferResizeTests
     {
         // Fill past capacity so the ring head has wrapped.
         ScrollbackBuffer buf = new(capacity: 3);
-        buf.Append(Row('A'));   // drops on wrap
-        buf.Append(Row('B'));   // drops on wrap
-        buf.Append(Row('C'));   // drops on wrap
-        buf.Append(Row('D'));
-        buf.Append(Row('E'));
-        buf.Append(Row('F'));
+        buf.Append(Row('A'), DateTimeOffset.Now);   // drops on wrap
+        buf.Append(Row('B'), DateTimeOffset.Now);   // drops on wrap
+        buf.Append(Row('C'), DateTimeOffset.Now);   // drops on wrap
+        buf.Append(Row('D'), DateTimeOffset.Now);
+        buf.Append(Row('E'), DateTimeOffset.Now);
+        buf.Append(Row('F'), DateTimeOffset.Now);
         // Live rows are now D, E, F in oldest→newest order.
 
         buf.SetCapacity(5);
@@ -88,13 +88,13 @@ public sealed class ScrollbackBufferResizeTests
     public void SetCapacity_AfterResize_AppendsStillWork()
     {
         ScrollbackBuffer buf = new(capacity: 4);
-        buf.Append(Row('A'));
-        buf.Append(Row('B'));
+        buf.Append(Row('A'), DateTimeOffset.Now);
+        buf.Append(Row('B'), DateTimeOffset.Now);
 
         buf.SetCapacity(2);   // shrink — A drops, B remains.
 
-        buf.Append(Row('C'));
-        buf.Append(Row('D'));   // B drops on wrap.
+        buf.Append(Row('C'), DateTimeOffset.Now);
+        buf.Append(Row('D'), DateTimeOffset.Now);   // B drops on wrap.
 
         Assert.Equal(2, buf.Count);
         Assert.Equal('C', buf[0].Cells[0].Char);
@@ -105,7 +105,7 @@ public sealed class ScrollbackBufferResizeTests
     public void SetCapacity_SameValue_NoOp()
     {
         ScrollbackBuffer buf = new(capacity: 4);
-        buf.Append(Row('A'));
+        buf.Append(Row('A'), DateTimeOffset.Now);
 
         buf.SetCapacity(4);
 

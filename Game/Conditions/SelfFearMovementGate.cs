@@ -38,7 +38,7 @@ public sealed class SelfFearMovementGate : IDisposable
             Evaluate();
     }
 
-    // Assert on fear's onset, clear on its wear-off. Public so tests can drive it.
+    // Assert on fear's onset, clear on its wear-off.
     public void Evaluate()
     {
         bool feared = _conditions.IsFeared;

@@ -115,7 +115,7 @@ public sealed class CurrentRouteDetailsTests : IDisposable
             k.Equals(monsterRoom) ? new[] { link } : Array.Empty<RoomDetailLink>();
 
         IReadOnlyList<RouteDetailRow> rows =
-            CurrentRouteDetails.Build(graph, null, null, route, _ => null, MonsterLinks, _ => { }, _ => null, ItemLink);
+            CurrentRouteDetails.Build(graph, null, null, route, MonsterLinks, _ => { }, _ => null, ItemLink);
 
         // Two hops → two move rows in the route-picker "N> map/room < command" format,
         // PLUS a final arrival row for the destination (1/3) the route ends in.
@@ -166,7 +166,7 @@ public sealed class CurrentRouteDetailsTests : IDisposable
         RouteStepWarning? Hazards(RoomKey k) => k.Equals(hazardRoom) ? hazard : null;
 
         IReadOnlyList<RouteDetailRow> rows = CurrentRouteDetails.Build(
-            graph, null, null, route, _ => null,
+            graph, null, null, route,
             _ => Array.Empty<RoomDetailLink>(), _ => { }, Hazards, ItemLink);
 
         Assert.False(rows[0].HasWarning);
@@ -188,7 +188,7 @@ public sealed class CurrentRouteDetailsTests : IDisposable
             Array.Empty<RoomDetailLink>(), noProtection: true);
 
         IReadOnlyList<RouteDetailRow> rows = CurrentRouteDetails.Build(
-            graph, null, null, route, _ => null,
+            graph, null, null, route,
             _ => Array.Empty<RoomDetailLink>(), _ => { },
             k => k.Equals(new RoomKey(1, 2)) ? sea : null, ItemLink);
 
@@ -206,7 +206,7 @@ public sealed class CurrentRouteDetailsTests : IDisposable
         var route = new[] { new RoomKey(1, 1), new RoomKey(1, 2), new RoomKey(1, 3) };
 
         IReadOnlyList<RouteDetailRow> rows = CurrentRouteDetails.Build(
-            graph, null, null, route, _ => null,
+            graph, null, null, route,
             _ => Array.Empty<RoomDetailLink>(), _ => { }, _ => null, ItemLink);
 
         // The 1/2 → 1/3 hop is (Item: 474): the row for 1/2 warns, naming the gate
@@ -226,7 +226,7 @@ public sealed class CurrentRouteDetailsTests : IDisposable
         var route = new[] { new RoomKey(1, 1), new RoomKey(1, 2), new RoomKey(1, 3) };
 
         IReadOnlyList<RouteDetailRow> rows = CurrentRouteDetails.Build(
-            graph, null, null, route, _ => null,
+            graph, null, null, route,
             _ => Array.Empty<RoomDetailLink>(), _ => { }, _ => null, ItemLink, maxHp: 300);
 
         // 1/1 → 1/2 is a plain N (no trap); the 1/2 → 1/3 hop crosses the trap, so the row
@@ -246,7 +246,7 @@ public sealed class CurrentRouteDetailsTests : IDisposable
         var route = new[] { new RoomKey(1, 1), new RoomKey(1, 2), new RoomKey(1, 3) };
 
         IReadOnlyList<RouteDetailRow> rows = CurrentRouteDetails.Build(
-            graph, null, null, route, _ => null,
+            graph, null, null, route,
             _ => Array.Empty<RoomDetailLink>(), _ => { }, _ => null, ItemLink, maxHp: 300,
             disarmOdds: TrapDisarmOdds.For(71));
 
@@ -260,7 +260,7 @@ public sealed class CurrentRouteDetailsTests : IDisposable
         var route = new[] { new RoomKey(1, 1), new RoomKey(1, 2), new RoomKey(1, 3) };
 
         IReadOnlyList<RouteDetailRow> rows = CurrentRouteDetails.Build(
-            graph, null, null, route, _ => null,
+            graph, null, null, route,
             _ => Array.Empty<RoomDetailLink>(), _ => { }, _ => null, ItemLink);   // maxHp defaults to 0
 
         Assert.Equal("trap: 36 dmg", rows[1].TrapText);
@@ -272,7 +272,7 @@ public sealed class CurrentRouteDetailsTests : IDisposable
         RoomGraphManager graph = NewGraph();
         IReadOnlyList<RoomDetailLink> NoMonsters(RoomKey _) => Array.Empty<RoomDetailLink>();
 
-        Assert.Empty(CurrentRouteDetails.Build(graph, null, null, Array.Empty<RoomKey>(), _ => null, NoMonsters, _ => { }, _ => null, ItemLink));
-        Assert.Empty(CurrentRouteDetails.Build(graph, null, null, new[] { new RoomKey(1, 1) }, _ => null, NoMonsters, _ => { }, _ => null, ItemLink));
+        Assert.Empty(CurrentRouteDetails.Build(graph, null, null, Array.Empty<RoomKey>(), NoMonsters, _ => { }, _ => null, ItemLink));
+        Assert.Empty(CurrentRouteDetails.Build(graph, null, null, new[] { new RoomKey(1, 1) }, NoMonsters, _ => { }, _ => null, ItemLink));
     }
 }

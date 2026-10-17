@@ -63,7 +63,7 @@ public sealed class RoombaSyncReceiver : IDisposable
         _chat.EntryClassified -= Ingest;
     }
 
-    internal void Ingest(ChatLogEntry e)
+    private void Ingest(ChatLogEntry e)
     {
         // By telepath or gangpath only (TransferChannels): the gang house's log is
         // not said aloud in a room.

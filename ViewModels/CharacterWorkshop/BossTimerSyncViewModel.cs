@@ -247,9 +247,6 @@ public sealed partial class BossTimerSyncViewModel : ObservableObject, IDialogVi
             : "Requested — " + WhatArrivingTimersDo();
     }
 
-    // Test seam: the chat lines the window reads, fed without a chat router.
-    internal BossTimerSyncCollector CollectorForTests => _collector;
-
     private void OnResponse(BossTimerSyncResponse response)
     {
         _onUiThread(() => Fold(response));

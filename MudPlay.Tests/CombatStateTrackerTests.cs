@@ -10,10 +10,8 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// PR 9.0b sub-C — <see cref="CombatStateTracker"/> Combat-gate
-/// room-clear semantics + <see cref="PlayerState.InCombat"/> drive.
-/// </summary>
+// CombatStateTracker Combat-gate
+// room-clear semantics + PlayerState.InCombat drive.
 public sealed class CombatStateTrackerTests
 {
     private sealed class Harness : IDisposable
@@ -21,7 +19,7 @@ public sealed class CombatStateTrackerTests
         public MessageRouter Router { get; }
         public MovementCoordinator Coordinator { get; }
         public MonsterMessageStore Monsters { get; } = new();
-        public PlayerDatabase Players { get; } = new();
+        public PlayerDatabase Players { get; } = new(new ProfileService(), () => null);
         public PlayerState State { get; } = new();
         public LogService Log { get; } = new();
         public RoomEntityClassifier Classifier { get; }
@@ -35,7 +33,7 @@ public sealed class CombatStateTrackerTests
         // loop's in-flight step). Default false → the watchdog resyncs as before.
         public bool Dark { get; set; }
 
-        // ----- seehidden clear override (PR 4.c-b) -------------------
+        // ----- seehidden clear override ------------------------------
         public bool ClearWhenSeenHidden { get; set; }
         public bool AutoSneakEnabled { get; set; }
         public HashSet<int> SeeHidden { get; } = new();
@@ -124,15 +122,8 @@ public sealed class CombatStateTrackerTests
             };
         }
 
-        public void AddMonster(int number, string name, bool killable,
-                               bool allowNoPrefix = true,
-                               params string[] flavorPrefixes)
+        public void AddMonster(int number, string name)
         {
-            // killable = DeathLine populated. Shopkeepers / quest-givers
-            // pass killable=false to test the engageability gate.
-            string[] deathLines = killable
-                ? new[] { $"The {name} dies." }
-                : Array.Empty<string>();
             Monsters.Messages.Add(new MonsterMessageRecord(
                 Id: $"M{number}",
                 Name: name,
@@ -170,7 +161,7 @@ public sealed class CombatStateTrackerTests
     public void OneKillableMonster_AssertsGate()
     {
         using Harness h = new();
-        h.AddMonster(1, "giant rat", killable: true);
+        h.AddMonster(1, "giant rat");
 
         h.Feed("Also here: giant rat.");
 
@@ -185,7 +176,7 @@ public sealed class CombatStateTrackerTests
         // collect re-run from that event sees no engageable hostiles and flushes
         // instead of stranding the Acquisition gate (report paradigm-20260814-131551).
         using Harness h = new();
-        h.AddMonster(1, "giant rat", killable: true);
+        h.AddMonster(1, "giant rat");
         h.Feed("Also here: giant rat.");
         Assert.True(h.Tracker.HasEngageableHostiles);
 
@@ -208,7 +199,7 @@ public sealed class CombatStateTrackerTests
     public void ShopkeeperFlaggedFriend_DoesNotAssertGate()
     {
         using Harness h = new();
-        h.AddMonster(7, "shopkeeper", killable: true);
+        h.AddMonster(7, "shopkeeper");
         h.SetOverlay(7, relationship: MonsterRelationship.Friend);
 
         h.Feed("Also here: shopkeeper.");
@@ -217,25 +208,11 @@ public sealed class CombatStateTrackerTests
     }
 
     [Fact]
-    public void UnknownToDataMonster_EmptyDeathLine_AssertsGate()
-    {
-        // Acid-slime regression: empty DeathLine in monster messages
-        // doesn't mean unkillable; the engageable predicate now
-        // ignores it.
-        using Harness h = new();
-        h.AddMonster(99, "acid slime", killable: false);
-
-        h.Feed("Also here: acid slime.");
-
-        Assert.True(h.CombatGateHeld);
-    }
-
-    [Fact]
     public void MixedHostileAndFriendly_AssertsOnHostile()
     {
         using Harness h = new();
-        h.AddMonster(1, "giant rat",  killable: true);
-        h.AddMonster(7, "shopkeeper", killable: true);
+        h.AddMonster(1, "giant rat");
+        h.AddMonster(7, "shopkeeper");
         h.SetOverlay(7, relationship: MonsterRelationship.Friend);
 
         h.Feed("Also here: giant rat, shopkeeper.");
@@ -250,7 +227,7 @@ public sealed class CombatStateTrackerTests
     public void UserEngagedPassiveNeutral_HoldsGate()
     {
         using Harness h = new();
-        h.AddMonster(1, "townsperson", killable: true);
+        h.AddMonster(1, "townsperson");
         h.SetOverlay(1, relationship: MonsterRelationship.Neutral);   // passive — no KillOnSight
 
         HashSet<string> engaged = new(StringComparer.OrdinalIgnoreCase);
@@ -275,7 +252,7 @@ public sealed class CombatStateTrackerTests
         // player never asserts it — but the room is still dangerous. The
         // emergency-hangup signal must report the hostile regardless.
         using Harness h = new() { AutoAttackEnabled = false };
-        h.AddMonster(1, "giant rat", killable: true);
+        h.AddMonster(1, "giant rat");
 
         h.Feed("Also here: giant rat.");
 
@@ -296,7 +273,7 @@ public sealed class CombatStateTrackerTests
     public void HasHostileMonster_FalseWithOnlyFriendly()
     {
         using Harness h = new();
-        h.AddMonster(7, "shopkeeper", killable: true);
+        h.AddMonster(7, "shopkeeper");
         h.SetOverlay(7, relationship: MonsterRelationship.Friend);
 
         h.Feed("Also here: shopkeeper.");
@@ -312,7 +289,7 @@ public sealed class CombatStateTrackerTests
         // the health rest-block keys on. That's what lets us rest between neutral
         // kills: the un-engaged ones don't block resting.
         using Harness h = new();
-        h.AddMonster(9, "storm giant", killable: true);
+        h.AddMonster(9, "storm giant");
         h.SetOverlay(9, relationship: MonsterRelationship.Neutral, killOnSight: true);
 
         h.Feed("Also here: storm giant.");
@@ -325,7 +302,7 @@ public sealed class CombatStateTrackerTests
     public void PassiveNeutral_NeitherEngageableNorHostile()
     {
         using Harness h = new();
-        h.AddMonster(9, "storm giant", killable: true);
+        h.AddMonster(9, "storm giant");
         h.SetOverlay(9, relationship: MonsterRelationship.Neutral);   // no kill-on-sight
 
         h.Feed("Also here: storm giant.");
@@ -355,7 +332,7 @@ public sealed class CombatStateTrackerTests
     public void HasHostileMonster_ClearsWhenRoomCleared()
     {
         using Harness h = new();
-        h.AddMonster(1, "giant rat", killable: true);
+        h.AddMonster(1, "giant rat");
         h.Feed("Also here: giant rat.");
         Assert.True(h.Tracker.HasHostileMonster);
 
@@ -367,7 +344,7 @@ public sealed class CombatStateTrackerTests
     public void RoomClearedAfterPreviouslyKillable_ClearsGate()
     {
         using Harness h = new();
-        h.AddMonster(1, "giant rat", killable: true);
+        h.AddMonster(1, "giant rat");
 
         h.Feed("Also here: giant rat.");
         Assert.True(h.CombatGateHeld);
@@ -385,7 +362,7 @@ public sealed class CombatStateTrackerTests
         // Gate must stay asserted across the re-display, NOT clear
         // and re-assert (that would burn two history entries).
         using Harness h = new();
-        h.AddMonster(1, "giant rat", killable: true);
+        h.AddMonster(1, "giant rat");
 
         h.Feed("Also here: giant rat.");
         Assert.True(h.CombatGateHeld);
@@ -407,7 +384,7 @@ public sealed class CombatStateTrackerTests
         // the gate for the new room (holding would deadlock — an empty room
         // emits no further observation to release it).
         using Harness h = new();
-        h.AddMonster(1, "giant rat", killable: true);
+        h.AddMonster(1, "giant rat");
 
         h.Feed("Also here: giant rat.");
         Assert.True(h.CombatGateHeld);
@@ -428,7 +405,7 @@ public sealed class CombatStateTrackerTests
         // where we stand, on the same wipe a move raises. Nobody left the room
         // (report paradigm-20261010-145330).
         using Harness h = new();
-        h.AddMonster(1, "giant rat", killable: true);
+        h.AddMonster(1, "giant rat");
         RoomKey? room = new RoomKey(14, 8647);
         h.Tracker.SetCurrentRoomProbe(() => room);
 
@@ -450,7 +427,7 @@ public sealed class CombatStateTrackerTests
         // The real case: a move already sent lands us in another room with the
         // hostile left alive behind us.
         using Harness h = new();
-        h.AddMonster(1, "giant rat", killable: true);
+        h.AddMonster(1, "giant rat");
         RoomKey? room = new RoomKey(14, 8647);
         h.Tracker.SetCurrentRoomProbe(() => room);
 
@@ -473,7 +450,7 @@ public sealed class CombatStateTrackerTests
         // A new room's "Also here:" holds the gate while the tracker still names the
         // room we left; the roster re-emitted on the confirm is what places the fight.
         using Harness h = new();
-        h.AddMonster(1, "giant rat", killable: true);
+        h.AddMonster(1, "giant rat");
         RoomKey? room = new RoomKey(14, 8638);
         h.Tracker.SetCurrentRoomProbe(() => room);
 
@@ -496,7 +473,7 @@ public sealed class CombatStateTrackerTests
         // A pursuer kept across our move raises no observation in the new room; its
         // next swing at us is what says the fight is here.
         using Harness h = new();
-        h.AddMonster(1, "giant rat", killable: true);
+        h.AddMonster(1, "giant rat");
         RoomKey? room = new RoomKey(14, 8638);
         h.Tracker.SetCurrentRoomProbe(() => room);
 
@@ -518,7 +495,7 @@ public sealed class CombatStateTrackerTests
         // Our own death takes the tracker's room away before the roster is wiped:
         // with nowhere to compare, the wipe reads as leaving the fight, as it did.
         using Harness h = new();
-        h.AddMonster(1, "giant rat", killable: true);
+        h.AddMonster(1, "giant rat");
         RoomKey? room = new RoomKey(14, 8647);
         h.Tracker.SetCurrentRoomProbe(() => room);
 
@@ -540,7 +517,7 @@ public sealed class CombatStateTrackerTests
         // that's a room we cleared by winning, NOT an abandoned fight. The
         // abandonment signal must stay silent so the walker keeps its route.
         using Harness h = new();
-        h.AddMonster(1, "giant rat", killable: true);
+        h.AddMonster(1, "giant rat");
 
         h.Feed("Also here: giant rat.");
         Assert.True(h.CombatGateHeld);
@@ -571,7 +548,7 @@ public sealed class CombatStateTrackerTests
         Assert.False(fired);
     }
 
-    // ----- HasRoomNpc (PR 4.b decision #1) ---------------------------
+    // ----- HasRoomNpc ------------------------------------------------
 
     [Fact]
     public void HasRoomNpc_NoMonsters_False()
@@ -588,7 +565,7 @@ public sealed class CombatStateTrackerTests
         // sneak — HasRoomNpc must be true even though HasEngageableHostiles
         // is false.
         using Harness h = new();
-        h.AddMonster(7, "shopkeeper", killable: true);
+        h.AddMonster(7, "shopkeeper");
         h.SetOverlay(7, relationship: MonsterRelationship.Friend);
 
         h.Feed("Also here: shopkeeper.");
@@ -601,7 +578,7 @@ public sealed class CombatStateTrackerTests
     public void HasRoomNpc_Hostile_True()
     {
         using Harness h = new();
-        h.AddMonster(1, "giant rat", killable: true);
+        h.AddMonster(1, "giant rat");
 
         h.Feed("Also here: giant rat.");
 
@@ -614,7 +591,7 @@ public sealed class CombatStateTrackerTests
         // The auto-attack gate early-returns, but NPC-presence tracking
         // runs first so the sneak-block signal stays live.
         using Harness h = new() { AutoAttackEnabled = false };
-        h.AddMonster(1, "giant rat", killable: true);
+        h.AddMonster(1, "giant rat");
 
         h.Feed("Also here: giant rat.");
 
@@ -626,7 +603,7 @@ public sealed class CombatStateTrackerTests
     public void HasRoomNpc_ClearsWhenRoomEmpties()
     {
         using Harness h = new();
-        h.AddMonster(1, "giant rat", killable: true);
+        h.AddMonster(1, "giant rat");
 
         h.Feed("Also here: giant rat.");
         Assert.True(h.Tracker.HasRoomNpc);
@@ -641,7 +618,7 @@ public sealed class CombatStateTrackerTests
     public void AutoAttackDisabled_GateNeverAsserts()
     {
         using Harness h = new() { AutoAttackEnabled = false };
-        h.AddMonster(1, "giant rat", killable: true);
+        h.AddMonster(1, "giant rat");
 
         h.Feed("Also here: giant rat.");
 
@@ -654,7 +631,7 @@ public sealed class CombatStateTrackerTests
         // Gate asserted, user flips master toggle off, next classifier
         // observation clears the gate defensively.
         using Harness h = new();
-        h.AddMonster(1, "giant rat", killable: true);
+        h.AddMonster(1, "giant rat");
 
         h.Feed("Also here: giant rat.");
         Assert.True(h.CombatGateHeld);
@@ -675,7 +652,7 @@ public sealed class CombatStateTrackerTests
         // roster with the suppression now lifted (CurrentRoom points at the real lair),
         // and THAT re-observation must assert the gate so the loop holds to fight.
         using Harness h = new() { AutoAttackEnabled = false };
-        h.AddMonster(1, "giant rat", killable: true);
+        h.AddMonster(1, "giant rat");
 
         h.Feed("Also here: giant rat.");
         Assert.False(h.CombatGateHeld);   // suppressed at first observe → no hold
@@ -692,7 +669,7 @@ public sealed class CombatStateTrackerTests
         // until the next room re-display. OnAutoAttackChanged re-evaluates the
         // last observation at once so the gate drops immediately.
         using Harness h = new();
-        h.AddMonster(1, "giant rat", killable: true);
+        h.AddMonster(1, "giant rat");
 
         h.Feed("Also here: giant rat.");
         Assert.True(h.CombatGateHeld);
@@ -711,7 +688,7 @@ public sealed class CombatStateTrackerTests
     public void GateHeldWhenTheRoomTurnsSuppressed_ReleasesOnTheNextTick()
     {
         using Harness h = new();
-        h.AddMonster(1, "giant rat", killable: true);
+        h.AddMonster(1, "giant rat");
         h.Feed("Also here: giant rat.");
         Assert.True(h.CombatGateHeld);
 
@@ -742,7 +719,7 @@ public sealed class CombatStateTrackerTests
         using Harness h = new();
         h.WireBreakBeforeRun();
         h.BreakBeforeRunning = true;
-        h.AddMonster(1, "giant rat", killable: true);
+        h.AddMonster(1, "giant rat");
 
         h.Feed("Also here: giant rat.");    // gate asserted on the hostile
         h.Feed("*Combat Engaged*");         // InCombat true
@@ -762,7 +739,7 @@ public sealed class CombatStateTrackerTests
         using Harness h = new();
         h.WireBreakBeforeRun();
         h.BreakBeforeRunning = false;
-        h.AddMonster(1, "giant rat", killable: true);
+        h.AddMonster(1, "giant rat");
 
         h.Feed("Also here: giant rat.");
         h.Feed("*Combat Engaged*");
@@ -785,7 +762,7 @@ public sealed class CombatStateTrackerTests
         using Harness h = new();
         h.WireBreakBeforeRun();
         h.BreakBeforeRunning = true;
-        h.AddMonster(1, "giant rat", killable: true);
+        h.AddMonster(1, "giant rat");
 
         h.Feed("Also here: giant rat.");    // gate asserted on the hostile
         Assert.True(h.CombatGateHeld);
@@ -809,7 +786,7 @@ public sealed class CombatStateTrackerTests
         using Harness h = new();
         h.WireBreakBeforeRun();
         h.BreakBeforeRunning = true;
-        h.AddMonster(1, "giant rat", killable: true);
+        h.AddMonster(1, "giant rat");
 
         h.Feed("Also here: giant rat.");
         Assert.True(h.CombatGateHeld);
@@ -866,7 +843,7 @@ public sealed class CombatStateTrackerTests
         // Without SetWireSender / SetBreakBeforeRunGate the toggle-off path is
         // a no-op — no break, no throw.
         using Harness h = new();
-        h.AddMonster(1, "giant rat", killable: true);
+        h.AddMonster(1, "giant rat");
 
         h.Feed("Also here: giant rat.");
         h.Feed("*Combat Engaged*");
@@ -878,7 +855,7 @@ public sealed class CombatStateTrackerTests
         Assert.False(h.CombatGateHeld);
     }
 
-    // ----- seehidden clear override (PR 4.c-b) -----------------------
+    // ----- seehidden clear override ----------------------------------
 
     [Fact]
     public void SeeHiddenOverride_CombatOff_AssertsGateAndLatches()
@@ -891,7 +868,7 @@ public sealed class CombatStateTrackerTests
         h.ClearWhenSeenHidden = true;
         h.AutoSneakEnabled = true;
         h.SeeHidden.Add(1);
-        h.AddMonster(1, "crystal golem", killable: true);
+        h.AddMonster(1, "crystal golem");
 
         h.Feed("Also here: crystal golem.");
 
@@ -910,8 +887,8 @@ public sealed class CombatStateTrackerTests
         h.ClearWhenSeenHidden = true;
         h.AutoSneakEnabled = true;
         h.SeeHidden.Add(1);
-        h.AddMonster(1, "crystal golem", killable: true);
-        h.AddMonster(2, "giant rat", killable: true);
+        h.AddMonster(1, "crystal golem");
+        h.AddMonster(2, "giant rat");
 
         h.Feed("Also here: crystal golem, giant rat.");
         Assert.True(h.CombatGateHeld);
@@ -943,7 +920,7 @@ public sealed class CombatStateTrackerTests
         h.ClearWhenSeenHidden = true;
         h.AutoSneakEnabled = true;
         h.SeeHidden.Add(1);
-        h.AddMonster(1, "crystal golem", killable: true);
+        h.AddMonster(1, "crystal golem");
 
         int stealthSpent = 0;
         h.Tracker.CombatSpentStealth += _ => stealthSpent++;
@@ -980,7 +957,7 @@ public sealed class CombatStateTrackerTests
         h.ClearWhenSeenHidden = false;        // user opted out
         h.AutoSneakEnabled = true;
         h.SeeHidden.Add(1);
-        h.AddMonster(1, "crystal golem", killable: true);
+        h.AddMonster(1, "crystal golem");
 
         h.Feed("Also here: crystal golem.");
 
@@ -998,7 +975,7 @@ public sealed class CombatStateTrackerTests
         h.ClearWhenSeenHidden = true;
         h.AutoSneakEnabled = false;
         h.SeeHidden.Add(1);
-        h.AddMonster(1, "crystal golem", killable: true);
+        h.AddMonster(1, "crystal golem");
 
         h.Feed("Also here: crystal golem.");
 
@@ -1016,7 +993,7 @@ public sealed class CombatStateTrackerTests
         h.ClearWhenSeenHidden = true;
         h.AutoSneakEnabled = true;
         // SeeHidden set empty.
-        h.AddMonster(1, "giant rat", killable: true);
+        h.AddMonster(1, "giant rat");
 
         h.Feed("Also here: giant rat.");
 
@@ -1036,7 +1013,7 @@ public sealed class CombatStateTrackerTests
         h.ClearWhenSeenHidden = true;
         h.AutoSneakEnabled = true;
         h.SeeHidden.Add(1);
-        h.AddMonster(1, "crystal golem", killable: true);
+        h.AddMonster(1, "crystal golem");
 
         h.Feed("Also here: crystal golem.");
         Assert.True(h.Tracker.SeeHiddenClearActive);
@@ -1058,7 +1035,7 @@ public sealed class CombatStateTrackerTests
         h.ClearWhenSeenHidden = true;
         h.AutoSneakEnabled = true;
         h.SeeHidden.Add(1);
-        h.AddMonster(1, "crystal golem", killable: true);
+        h.AddMonster(1, "crystal golem");
 
         h.Feed("Also here: crystal golem.");
 
@@ -1079,7 +1056,7 @@ public sealed class CombatStateTrackerTests
         h.ClearWhenSeenHidden = true;
         h.AutoSneakEnabled = true;
         h.SeeHidden.Add(1);
-        h.AddMonster(1, "gorgon", killable: true);
+        h.AddMonster(1, "gorgon");
         h.Feed("The gorgon lunges at you with its horns, but misses!");   // the last fight
         h.FakeNow = h.FakeNow.AddSeconds(78);
 
@@ -1109,8 +1086,8 @@ public sealed class CombatStateTrackerTests
         h.ClearWhenSeenHidden = true;
         h.AutoSneakEnabled = true;
         h.SeeHidden.Add(1);
-        h.AddMonster(1, "gorgon", killable: true);
-        h.AddMonster(2, "brigand", killable: true);
+        h.AddMonster(1, "gorgon");
+        h.AddMonster(2, "brigand");
 
         h.Feed("Also here: gorgon.");
         Assert.True(h.Tracker.SneakBrokenBySeeHidden);
@@ -1173,9 +1150,9 @@ public sealed class CombatStateTrackerTests
         h.ClearWhenSeenHidden = true;
         h.AutoSneakEnabled = true;
         h.SeeHidden.Add(1);
-        h.AddMonster(1, "gorgon", killable: true);
-        h.AddMonster(2, "brigand", killable: true);
-        h.AddMonster(3, "harpy", killable: true);
+        h.AddMonster(1, "gorgon");
+        h.AddMonster(2, "brigand");
+        h.AddMonster(3, "harpy");
 
         h.Feed("Also here: gorgon, brigand, harpy.");    // three, over the max of two
         Assert.False(h.CombatGateHeld);
@@ -1201,9 +1178,9 @@ public sealed class CombatStateTrackerTests
         h.ClearWhenSeenHidden = true;
         h.AutoSneakEnabled = true;
         h.SeeHidden.Add(1);
-        h.AddMonster(1, "gorgon", killable: true);
-        h.AddMonster(2, "brigand", killable: true);
-        h.AddMonster(3, "harpy", killable: true);
+        h.AddMonster(1, "gorgon");
+        h.AddMonster(2, "brigand");
+        h.AddMonster(3, "harpy");
 
         h.Feed("Also here: gorgon, brigand.");
         Assert.True(h.CombatGateHeld);
@@ -1232,7 +1209,7 @@ public sealed class CombatStateTrackerTests
     {
         // Without SetSeeHiddenClearGate, combat-off never holds the gate.
         using Harness h = new() { AutoAttackEnabled = false };
-        h.AddMonster(1, "crystal golem", killable: true);
+        h.AddMonster(1, "crystal golem");
 
         h.Feed("Also here: crystal golem.");
 
@@ -1250,8 +1227,8 @@ public sealed class CombatStateTrackerTests
         h.AutoSneakEnabled = true;
         h.WireMonsterCountWindow();
         h.WireMovementActiveGate();
-        h.AddMonster(1, "orc", killable: true);
-        h.AddMonster(2, "goblin", killable: true);
+        h.AddMonster(1, "orc");
+        h.AddMonster(2, "goblin");
         return h;
     }
 
@@ -1326,7 +1303,7 @@ public sealed class CombatStateTrackerTests
     public void GateHistoryRecordsAsserterAndReason()
     {
         using Harness h = new();
-        h.AddMonster(1, "giant rat", killable: true);
+        h.AddMonster(1, "giant rat");
 
         h.Feed("Also here: giant rat.");
 
@@ -1346,7 +1323,7 @@ public sealed class CombatStateTrackerTests
     {
         using Harness h = new();
         h.WireActionabilityGate();
-        h.AddMonster(1, "stone golem", killable: true);
+        h.AddMonster(1, "stone golem");
         h.Unactionable.Add(1);              // can't hit, no eligible spell
 
         h.Feed("Also here: stone golem.");
@@ -1360,8 +1337,8 @@ public sealed class CombatStateTrackerTests
     {
         using Harness h = new();
         h.WireActionabilityGate();
-        h.AddMonster(1, "stone golem", killable: true);
-        h.AddMonster(2, "giant rat", killable: true);
+        h.AddMonster(1, "stone golem");
+        h.AddMonster(2, "giant rat");
         h.Unactionable.Add(1);              // golem un-actionable; rat is fine
 
         h.Feed("Also here: stone golem, giant rat.");
@@ -1376,7 +1353,7 @@ public sealed class CombatStateTrackerTests
         using Harness h = new();
         // No WireActionabilityGate — fail-open: every engageable hostile
         // counts as actionable, exactly the pre-PR-iii behavior.
-        h.AddMonster(1, "stone golem", killable: true);
+        h.AddMonster(1, "stone golem");
 
         h.Feed("Also here: stone golem.");
 
@@ -1401,9 +1378,9 @@ public sealed class CombatStateTrackerTests
         h.WireMovementActiveGate();
         h.MovementActive = true;
         h.Settings.MaxMonstersInRoom = 2;
-        h.AddMonster(1, "zombie", killable: true);
-        h.AddMonster(2, "fierce zombie", killable: true);
-        h.AddMonster(3, "small skeleton", killable: true);
+        h.AddMonster(1, "zombie");
+        h.AddMonster(2, "fierce zombie");
+        h.AddMonster(3, "small skeleton");
 
         h.Feed("Also here: zombie, fierce zombie, small skeleton.");
 
@@ -1427,9 +1404,9 @@ public sealed class CombatStateTrackerTests
         h.WireMovementActiveGate();
         h.MovementActive = false;   // no walker/loop attached — idle
         h.Settings.MaxMonstersInRoom = 2;
-        h.AddMonster(1, "zombie", killable: true);
-        h.AddMonster(2, "fierce zombie", killable: true);
-        h.AddMonster(3, "small skeleton", killable: true);
+        h.AddMonster(1, "zombie");
+        h.AddMonster(2, "fierce zombie");
+        h.AddMonster(3, "small skeleton");
 
         h.Feed("Also here: zombie, fierce zombie, small skeleton.");
 
@@ -1444,7 +1421,7 @@ public sealed class CombatStateTrackerTests
         h.WireMovementActiveGate();
         h.MovementActive = true;
         h.Settings.MaxMonstersInRoom = 2;
-        h.AddMonster(1, "giant rat", killable: true);
+        h.AddMonster(1, "giant rat");
 
         h.Feed("Also here: giant rat.");
 
@@ -1457,9 +1434,9 @@ public sealed class CombatStateTrackerTests
         using Harness h = new();
         // No WireMonsterCountWindow — fail-open: room population never gates,
         // exactly the pre-fix behavior.
-        h.AddMonster(1, "zombie", killable: true);
-        h.AddMonster(2, "fierce zombie", killable: true);
-        h.AddMonster(3, "small skeleton", killable: true);
+        h.AddMonster(1, "zombie");
+        h.AddMonster(2, "fierce zombie");
+        h.AddMonster(3, "small skeleton");
 
         h.Feed("Also here: zombie, fierce zombie, small skeleton.");
 
@@ -1467,13 +1444,6 @@ public sealed class CombatStateTrackerTests
     }
 
     // ----- PlayerState.InCombat drive --------------------------------
-
-    [Fact]
-    public void InCombat_StartsFalse()
-    {
-        using Harness h = new();
-        Assert.False(h.State.InCombat);
-    }
 
     [Fact]
     public void CombatStatus_EngagedFlipsInCombatTrue()
@@ -1508,7 +1478,7 @@ public sealed class CombatStateTrackerTests
         // false. CombatStateTracker.OnEntitiesObserved's "room
         // cleared" branch owns this transition.
         using Harness h = new();
-        h.AddMonster(1, "giant rat", killable: true);
+        h.AddMonster(1, "giant rat");
 
         h.Feed("Also here: giant rat.");          // assert gate + InCombat reflects fight
         h.Feed("*Combat Engaged*");
@@ -1525,7 +1495,7 @@ public sealed class CombatStateTrackerTests
         // engageable hostiles is still the authoritative out-of-combat signal.
         // Without this, InCombat stays stuck true and HealthManager never rests.
         using Harness h = new();
-        h.AddMonster(1, "giant rat", killable: true);
+        h.AddMonster(1, "giant rat");
 
         h.Feed("Also here: giant rat.");
         h.Feed("*Combat Engaged*");
@@ -1547,7 +1517,7 @@ public sealed class CombatStateTrackerTests
         // after the room clears. On room clear the gate must already read cleared
         // the moment InCombat flips false.
         using Harness h = new();
-        h.AddMonster(1, "giant rat", killable: true);
+        h.AddMonster(1, "giant rat");
         h.Feed("Also here: giant rat.");
         h.Feed("*Combat Engaged*");
         Assert.True(h.State.InCombat);
@@ -1575,7 +1545,7 @@ public sealed class CombatStateTrackerTests
         // Turning auto-attack off next to a live mob must NOT declare us out of
         // combat — HealthManager would otherwise rest right next to the hostile.
         using Harness h = new();
-        h.AddMonster(1, "giant rat", killable: true);
+        h.AddMonster(1, "giant rat");
 
         h.Feed("Also here: giant rat.");
         h.Feed("*Combat Engaged*");
@@ -1656,7 +1626,7 @@ public sealed class CombatStateTrackerTests
         // stuck asserted and InCombat true. Clearing conditions alone didn't touch
         // the gate, so the Fighting chip stayed lit over an empty room.
         using Harness h = new();
-        h.AddMonster(1, "roc hatchling", killable: true);
+        h.AddMonster(1, "roc hatchling");
 
         h.Feed("Also here: roc hatchling.");        // asserts gate
         h.Feed("*Combat Engaged*");                 // flips InCombat true
@@ -1682,7 +1652,7 @@ public sealed class CombatStateTrackerTests
         // force-clears the gate in the same tick.
         using Harness h = new();
         h.WireSender();
-        h.AddMonster(1, "giant rat", killable: true);
+        h.AddMonster(1, "giant rat");
 
         h.Feed("Also here: giant rat.");           // stamps activity + asserts gate
         Assert.True(h.CombatGateHeld);
@@ -1710,7 +1680,7 @@ public sealed class CombatStateTrackerTests
         using Harness h = new();
         h.WireSender();
         h.Tracker.SetCombatHeldOnPurposeProbe(() => true);
-        h.AddMonster(1, "giant rat", killable: true);
+        h.AddMonster(1, "giant rat");
         h.Feed("Also here: giant rat.");
 
         h.FakeNow = h.FakeNow.AddSeconds(7);
@@ -1730,7 +1700,7 @@ public sealed class CombatStateTrackerTests
         using Harness h = new();
         h.WireSender();
         h.Dark = true;
-        h.AddMonster(1, "giant rat", killable: true);
+        h.AddMonster(1, "giant rat");
 
         h.Feed("Also here: giant rat.");
         Assert.True(h.CombatGateHeld);
@@ -1750,7 +1720,7 @@ public sealed class CombatStateTrackerTests
         // activity stamp, so a genuinely ongoing fight is left alone.
         using Harness h = new();
         h.WireSender();
-        h.AddMonster(1, "giant rat", killable: true);
+        h.AddMonster(1, "giant rat");
 
         h.Feed("Also here: giant rat.");
         Assert.True(h.CombatGateHeld);
@@ -1774,7 +1744,7 @@ public sealed class CombatStateTrackerTests
         // live hostile. The mob's swing must now register as combat activity.
         using Harness h = new();
         h.WireSender();
-        h.AddMonster(1, "dark cultist", killable: true);
+        h.AddMonster(1, "dark cultist");
 
         h.Feed("Also here: dark cultist.");
         Assert.True(h.CombatGateHeld);
@@ -1875,7 +1845,7 @@ public sealed class CombatStateTrackerTests
         // (gate released, InCombat dropped) — no second escalation tick needed.
         using Harness h = new();
         h.WireSender();
-        h.AddMonster(1, "roc hatchling", killable: true);
+        h.AddMonster(1, "roc hatchling");
 
         h.Feed("Also here: roc hatchling.");        // asserts gate, stamps activity
         h.Feed("*Combat Engaged*");                 // InCombat true
@@ -1900,7 +1870,7 @@ public sealed class CombatStateTrackerTests
         // self-heals rather than stranding a live fight.
         using Harness h = new();
         h.WireSender();
-        h.AddMonster(1, "roc hatchling", killable: true);
+        h.AddMonster(1, "roc hatchling");
 
         h.Feed("Also here: roc hatchling.");
         Assert.True(h.CombatGateHeld);

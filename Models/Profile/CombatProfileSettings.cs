@@ -24,8 +24,6 @@ public sealed class CombatProfileSettings
     // Null / empty = every group is per profile.
     public List<CombatProfileGroup>? SharedGroups { get; set; }
 
-    public bool IsShared(CombatProfileGroup group) => SharedGroups?.Contains(group) == true;
-
     // Schema version, so a one-time back-fill can run when the shape of a profile
     // grows. Profiles from before combat profiles became a full loadout carry only
     // the spell config; their Health / weapon / Spells-subset fields default to

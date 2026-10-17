@@ -274,7 +274,7 @@ public sealed partial class EventsSectionViewModel : SettingsSectionViewModel
     private void OnCountdownTick(object? sender, EventArgs e) => RefreshNextCall();
 
     // Pull each row's next-fire due-time from the scheduler and reformat its
-    // countdown text. Null scheduler (tests / no engine) leaves every row at "—".
+    // countdown text. Null scheduler (no engine) leaves every row at "—".
     private void RefreshNextCall()
     {
         foreach (EventRowViewModel row in Rows)

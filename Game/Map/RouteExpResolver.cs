@@ -361,10 +361,9 @@ public sealed class RouteExpResolver : IDisposable
     }
 
     // Parse the raw MDB lair cell "(Max N): id,id,...,[group-maxregen]" → the
-    // per-room max simultaneous spawn count and the listed monster ids. This is the
-    // on-disk shape for these sets; LairTagParser targets a different (transformed)
-    // format the data doesn't use, which is why the ids are read straight from the
-    // cell here. Boss-vs-regular split + averaging happens in ResolveTargets.
+    // per-room max simultaneous spawn count and the listed monster ids, the on-disk
+    // shape for these sets. Boss-vs-regular split + averaging happens in
+    // ResolveTargets.
     private static (int Mobs, List<int> Ids)? ParseLair(string? raw)
     {
         if (string.IsNullOrWhiteSpace(raw)) return null;

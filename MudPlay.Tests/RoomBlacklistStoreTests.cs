@@ -7,34 +7,24 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// PR 7.x — RoomBlacklistStore: in-memory Add/Remove/ReplaceAll semantics,
-/// Changed-event firing rules, and a single round-trip through disk via
-/// OnRealmChanged to exercise the load/persist path.
-/// </summary>
+// RoomBlacklistStore: in-memory Add/Remove/ReplaceAll semantics,
+// Changed-event firing rules, and a single round-trip through disk via
+// OnRealmChanged to exercise the load/persist path.
 public sealed class RoomBlacklistStoreTests : IDisposable
 {
-    private readonly string _scratchBbs;
-
-    public RoomBlacklistStoreTests()
-    {
-        // Unique per-test BBS name keeps Persist/Load isolated under
-        // the shared AppPaths.DataRoot without colliding with real
-        // user data.
-        _scratchBbs = "rbl-test-" + Path.GetRandomFileName();
-    }
+    // The realm folder the store is pointed at: a per-test scratch folder.
+    private readonly string _realm = Path.Combine(Path.GetTempPath(), "rbl-test-" + Path.GetRandomFileName());
 
     public void Dispose()
     {
         try
         {
-            string folder = AppPaths.BbsFolder(_scratchBbs);
-            if (Directory.Exists(folder)) Directory.Delete(folder, recursive: true);
+            if (Directory.Exists(_realm)) Directory.Delete(_realm, recursive: true);
         }
         catch { /* best-effort */ }
     }
 
-    // ----- in-memory behaviour (no BBS pin, no disk I/O) -------------
+    // ----- in-memory behaviour (no realm, no disk I/O) ---------------
 
     [Fact]
     public void IsBlacklisted_FalseForUnknownKey()
@@ -89,23 +79,6 @@ public sealed class RoomBlacklistStoreTests : IDisposable
     }
 
     [Fact]
-    public void Remove_FiresChanged_OnlyForRealRemoval()
-    {
-        RoomBlacklistStore store = new();
-        store.Add(new RoomKey(15, 200), "Ganghouse");
-        int fires = 0;
-        store.Changed += () => fires++;
-
-        Assert.True(store.Remove(new RoomKey(15, 200)));
-        Assert.Equal(1, fires);
-        Assert.False(store.IsBlacklisted(new RoomKey(15, 200)));
-
-        // Removing an absent key is a no-op.
-        Assert.False(store.Remove(new RoomKey(15, 200)));
-        Assert.Equal(1, fires);
-    }
-
-    [Fact]
     public void ReplaceAll_SwapsContents_AndFiresChangedOnce()
     {
         RoomBlacklistStore store = new();
@@ -128,18 +101,18 @@ public sealed class RoomBlacklistStoreTests : IDisposable
     }
 
     [Fact]
-    public void Persist_NoOps_WhenNoBbsPinned()
+    public void Persist_NoOps_WhenNoRealm()
     {
-        // Without OnRealmChanged, _realmFolder is null → Persist is a
-        // no-op. Adding still mutates in-memory state and fires Changed
-        // but writes nothing to disk.
+        // Without OnRealmChanged there is no realm folder, so an Add changes
+        // memory only: a store later pointed at a realm reads nothing of it.
         RoomBlacklistStore store = new();
         store.Add(new RoomKey(15, 200), "Ganghouse");
 
-        // Sanity: the scratch BBS folder is untouched (the test ctor
-        // hasn't created one and we never pinned it).
-        string folder = AppPaths.BbsFolder(_scratchBbs);
-        Assert.False(File.Exists(Path.Combine(folder, "room_blacklist.json")));
+        RoomBlacklistStore later = new();
+        later.OnRealmChanged(_realm);
+
+        Assert.False(later.IsBlacklisted(new RoomKey(15, 200)));
+        Assert.False(File.Exists(AppPaths.RealmRoomBlacklistFile(_realm)));
     }
 
     // ----- round trip through disk -----------------------------------
@@ -147,8 +120,8 @@ public sealed class RoomBlacklistStoreTests : IDisposable
     [Fact]
     public void OnRealmChanged_LoadsExistingFile()
     {
-        // Pre-seed the BBS folder so the load path has something to read.
-        string folder = AppPaths.BbsFolder(_scratchBbs);
+        // Pre-seed the realm folder so the load path has something to read.
+        string folder = _realm;
         Directory.CreateDirectory(folder);
         File.WriteAllText(
             Path.Combine(folder, "room_blacklist.json"),
@@ -159,20 +132,20 @@ public sealed class RoomBlacklistStoreTests : IDisposable
             }));
 
         RoomBlacklistStore store = new();
-        store.OnRealmChanged(AppPaths.BbsFolder(_scratchBbs));
+        store.OnRealmChanged(_realm);
 
         Assert.True(store.IsBlacklisted(new RoomKey(15, 200)));
         Assert.True(store.IsBlacklisted(new RoomKey(15, 201)));
     }
 
     [Fact]
-    public void Add_AfterPin_PersistsToBbsFolder()
+    public void Add_AfterRealmChange_PersistsToTheRealmFolder()
     {
         RoomBlacklistStore store = new();
-        store.OnRealmChanged(AppPaths.BbsFolder(_scratchBbs));
+        store.OnRealmChanged(_realm);
         store.Add(new RoomKey(15, 200), "Ganghouse");
 
-        string path = AppPaths.RealmRoomBlacklistFile(AppPaths.BbsFolder(_scratchBbs));
+        string path = AppPaths.RealmRoomBlacklistFile(_realm);
         Assert.True(File.Exists(path));
         string raw = File.ReadAllText(path);
         var list = JsonSerializer.Deserialize<List<BlacklistedRoom>>(raw);
@@ -186,11 +159,11 @@ public sealed class RoomBlacklistStoreTests : IDisposable
     public void OnRealmChanged_ClearsStore_WhenRealmFolderBlank()
     {
         RoomBlacklistStore store = new();
-        store.OnRealmChanged(AppPaths.BbsFolder(_scratchBbs));
+        store.OnRealmChanged(_realm);
         store.Add(new RoomKey(15, 1), "x");
         Assert.True(store.IsBlacklisted(new RoomKey(15, 1)));
 
-        // Unpinning clears in-memory state — the new profile is fresh.
+        // Leaving the realm clears in-memory state.
         int fires = 0;
         store.Changed += () => fires++;
         store.OnRealmChanged(null);
@@ -202,14 +175,14 @@ public sealed class RoomBlacklistStoreTests : IDisposable
     [Fact]
     public void OnRealmChanged_MalformedJson_LeavesStoreEmpty()
     {
-        string folder = AppPaths.BbsFolder(_scratchBbs);
+        string folder = _realm;
         Directory.CreateDirectory(folder);
         File.WriteAllText(
             Path.Combine(folder, "room_blacklist.json"),
             "{ not valid json ]");
 
         RoomBlacklistStore store = new();
-        store.OnRealmChanged(AppPaths.BbsFolder(_scratchBbs));
+        store.OnRealmChanged(_realm);
 
         Assert.Empty(store.Blacklisted);
     }
@@ -242,7 +215,7 @@ public sealed class RoomBlacklistStoreTests : IDisposable
     public void CannotBeReached_SurvivesDiskRoundTrip()
     {
         RoomBlacklistStore store = new();
-        store.OnRealmChanged(AppPaths.BbsFolder(_scratchBbs));
+        store.OnRealmChanged(_realm);
         store.ReplaceAll(new[]
         {
             new BlacklistedRoom(7, 1, "orphan dev room", cannotBeReached: true),
@@ -251,7 +224,7 @@ public sealed class RoomBlacklistStoreTests : IDisposable
 
         // Reload from disk into a fresh store — the flag must persist.
         RoomBlacklistStore reloaded = new();
-        reloaded.OnRealmChanged(AppPaths.BbsFolder(_scratchBbs));
+        reloaded.OnRealmChanged(_realm);
 
         Assert.True(reloaded.IsUnreachable(new RoomKey(7, 1)));
         Assert.False(reloaded.IsUnreachable(new RoomKey(7, 2)));

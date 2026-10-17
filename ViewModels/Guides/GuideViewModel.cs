@@ -20,7 +20,7 @@ public sealed record GuideLineView(string Text, bool IsDone, bool IsCurrent, boo
 // Outcome is reached — is done, which moves the guide on by itself. Steps of
 // explanation lines only move on with Next. Pure presentation state: the guides,
 // the progress store and its persistence are injected, so this stays free of
-// AppServices and unit-testable.
+// AppServices.
 public sealed partial class GuideViewModel : ObservableObject
 {
     private readonly IReadOnlyList<GuideDefinition> _guides;
@@ -172,7 +172,6 @@ public sealed partial class GuideViewModel : ObservableObject
     public bool CanPrev => CurrentIndex > 0;
     public bool IsLastStep => CurrentIndex >= _steps.Count - 1;
     public string NextButtonText => IsLastStep ? "Finish" : "Next";
-    public bool AllDone => _steps.Count > 0 && _steps.All(StepComplete);
     public string CloseButtonText => IsSetup ? "Skip — don't show this again" : "Close — your place is kept";
 
     // The action the current (next-to-do) line wants the user to take, or null when
@@ -291,7 +290,6 @@ public sealed partial class GuideViewModel : ObservableObject
         OnPropertyChanged(nameof(CanPrev));
         OnPropertyChanged(nameof(IsLastStep));
         OnPropertyChanged(nameof(NextButtonText));
-        OnPropertyChanged(nameof(AllDone));
         OnPropertyChanged(nameof(CloseButtonText));
     }
 }

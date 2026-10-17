@@ -14,6 +14,8 @@ public sealed class BbsRealmTests : IDisposable
     private readonly string _bbs = "realm-test-" + Path.GetRandomFileName();
     private readonly string _set = "realm-test-set-" + Path.GetRandomFileName();
 
+    public BbsRealmTests() => ScratchRoot.Require();
+
     public void Dispose()
     {
         foreach (string folder in new[] { AppPaths.BbsFolder(_bbs), AppPaths.GameDataSetDir(_set) })

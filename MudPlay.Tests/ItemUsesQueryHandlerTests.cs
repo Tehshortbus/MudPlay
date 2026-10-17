@@ -20,6 +20,12 @@ namespace MudPlay.Tests;
 // named back. Runs on a Paradigm set (look-derived counts).
 public sealed class ItemUsesQueryHandlerTests : IDisposable
 {
+    // The router each engine reads, which a test's chat lines go through.
+    private readonly Dictionary<RemoteCommandManager, MessageRouter> _routers = new();
+
+    // What the remote-command engine put on the wire, through the sender the client binds.
+    private readonly List<byte[]> _replies = new();
+
     private const string ItemsJson = """
         [
           { "Number": 10, "Name": "gnarled wand",  "UseCount": 10, "Retain After Uses": 0 },
@@ -48,8 +54,8 @@ public sealed class ItemUsesQueryHandlerTests : IDisposable
         File.WriteAllText(Path.Combine(_root, "para", "Info.json"), InfoParadigm);
         _cache = new GameDataCache(_root);
         _cache.SwitchSet("para");
-        _profile = new ProfileService();
-        _profile.LoadBlank();
+        _profile = TestProfiles.Service();
+        _profile.LoadDefaultProfile();
 
         _para = new ItemChargeTracker(
             gameData: _cache, profile: _profile, heldItems: () => _carried, itemNumberOf: Number,
@@ -92,8 +98,10 @@ public sealed class ItemUsesQueryHandlerTests : IDisposable
         DefaultPatterns.Seed(router);
         ChatRouter chat = new(router);
         PartyState party = new();
-        PlayerDatabase players = new();
+        PlayerDatabase players = new(new ProfileService(), () => null);
         RemoteCommandManager engine = new(chat, party, players);
+        _routers[engine] = router;
+        engine.SetWireSender(_replies.Add);
         _ = new ItemUsesQueryHandler(engine, _readout);
         return (engine, players);
     }
@@ -104,8 +112,8 @@ public sealed class ItemUsesQueryHandlerTests : IDisposable
         db.EditCustomization(name, new PlayerCustomization(RemoteControls: PlayerRemoteControls.QueryInventory));
     }
 
-    private static string Reply(RemoteCommandManager engine)
-        => StripWire(Encoding.Latin1.GetString(Assert.Single(engine.LastSentForTests)));
+    private string Reply()
+        => StripWire(Encoding.Latin1.GetString(Assert.Single(_replies)));
 
     private static string StripWire(string wire)
     {
@@ -114,8 +122,8 @@ public sealed class ItemUsesQueryHandlerTests : IDisposable
         return open >= 0 && close > open ? s[(open + 1)..close] : s;
     }
 
-    private static ChatLogEntry Telepath(string sender, string msg)
-        => new(Now, ChatChannel.TelepathIncoming, sender, msg, $"{sender} telepaths: {msg}");
+    private static ChatLine Telepath(string sender, string msg) =>
+        new(ChatChannel.TelepathIncoming, sender, msg);
 
     // ----- @uses <item> ---------------------------------------------------
 
@@ -127,9 +135,9 @@ public sealed class ItemUsesQueryHandlerTests : IDisposable
         var (engine, players) = Engine();
         Seed(players, "Bob");
 
-        engine.DispatchForTests(Telepath("Bob", "@uses gnarl"));   // shorthand best-match
+        ChatLines.Hear(_routers[engine], Telepath("Bob", "@uses gnarl"));   // shorthand best-match
 
-        Assert.Equal("gnarled wand: 6 use(s) remaining", Reply(engine));
+        Assert.Equal("gnarled wand: 6 use(s) remaining", Reply());
     }
 
     [Fact]
@@ -139,9 +147,9 @@ public sealed class ItemUsesQueryHandlerTests : IDisposable
         var (engine, players) = Engine();
         Seed(players, "Bob");
 
-        engine.DispatchForTests(Telepath("Bob", "@uses cloak"));
+        ChatLines.Hear(_routers[engine], Telepath("Bob", "@uses cloak"));
 
-        Assert.Equal("peasant cloak: charges not read yet", Reply(engine));
+        Assert.Equal("peasant cloak: charges not read yet", Reply());
     }
 
     [Fact]
@@ -151,9 +159,9 @@ public sealed class ItemUsesQueryHandlerTests : IDisposable
         var (engine, players) = Engine();
         Seed(players, "Bob");
 
-        engine.DispatchForTests(Telepath("Bob", "@uses nexus"));
+        ChatLines.Hear(_routers[engine], Telepath("Bob", "@uses nexus"));
 
-        Assert.Equal("nexus spear isn't a limited-use item", Reply(engine));
+        Assert.Equal("nexus spear isn't a limited-use item", Reply());
     }
 
     [Fact]
@@ -170,8 +178,8 @@ public sealed class ItemUsesQueryHandlerTests : IDisposable
 
         var (engine, players) = Engine();
         Seed(players, "Bob");
-        engine.DispatchForTests(Telepath("Bob", "@uses nexus"));
-        Assert.Equal("nexus spear isn't a limited-use item", Reply(engine));
+        ChatLines.Hear(_routers[engine], Telepath("Bob", "@uses nexus"));
+        Assert.Equal("nexus spear isn't a limited-use item", Reply());
     }
 
     [Fact]
@@ -181,9 +189,9 @@ public sealed class ItemUsesQueryHandlerTests : IDisposable
         var (engine, players) = Engine();
         Seed(players, "Bob");
 
-        engine.DispatchForTests(Telepath("Bob", "@uses potion"));
+        ChatLines.Hear(_routers[engine], Telepath("Bob", "@uses potion"));
 
-        Assert.Equal("healing potion isn't a limited-use item", Reply(engine));
+        Assert.Equal("healing potion isn't a limited-use item", Reply());
     }
 
     [Fact]
@@ -193,9 +201,9 @@ public sealed class ItemUsesQueryHandlerTests : IDisposable
         var (engine, players) = Engine();
         Seed(players, "Bob");
 
-        engine.DispatchForTests(Telepath("Bob", "@uses longsword"));
+        ChatLines.Hear(_routers[engine], Telepath("Bob", "@uses longsword"));
 
-        Assert.Equal("no carried item matches 'longsword'", Reply(engine));
+        Assert.Equal("no carried item matches 'longsword'", Reply());
     }
 
     // ----- bare @uses -----------------------------------------------------
@@ -211,9 +219,9 @@ public sealed class ItemUsesQueryHandlerTests : IDisposable
         var (engine, players) = Engine();
         Seed(players, "Bob");
 
-        engine.DispatchForTests(Telepath("Bob", "@uses"));
+        ChatLines.Hear(_routers[engine], Telepath("Bob", "@uses"));
 
-        Assert.Equal("item uses - gnarled wand: 6, peasant cloak: ?", Reply(engine));
+        Assert.Equal("item uses - gnarled wand: 6, peasant cloak: ?", Reply());
     }
 
     [Fact]
@@ -224,9 +232,9 @@ public sealed class ItemUsesQueryHandlerTests : IDisposable
         var (engine, players) = Engine();
         Seed(players, "Bob");
 
-        engine.DispatchForTests(Telepath("Bob", "@uses"));
+        ChatLines.Hear(_routers[engine], Telepath("Bob", "@uses"));
 
-        Assert.Equal("no limited-use items carried", Reply(engine));
+        Assert.Equal("no limited-use items carried", Reply());
     }
 
     // Holding none is a result, not a failure: it is answered with denials
@@ -238,9 +246,9 @@ public sealed class ItemUsesQueryHandlerTests : IDisposable
         Seed(players, "Bob");
         engine.WarnOnDenial = false;
 
-        engine.DispatchForTests(Telepath("Bob", "@uses"));
+        ChatLines.Hear(_routers[engine], Telepath("Bob", "@uses"));
 
-        Assert.Equal("no limited-use items carried", Reply(engine));
+        Assert.Equal("no limited-use items carried", Reply());
     }
 
     // ----- readout best-match ---------------------------------------------
@@ -265,8 +273,8 @@ public sealed class ItemUsesQueryHandlerTests : IDisposable
         players.EditCustomization("Stranger",
             new PlayerCustomization(RemoteControls: PlayerRemoteControls.All & ~PlayerRemoteControls.QueryInventory));
 
-        engine.DispatchForTests(Telepath("Stranger", "@uses"));
+        ChatLines.Hear(_routers[engine], Telepath("Stranger", "@uses"));
 
-        Assert.Empty(engine.LastSentForTests);
+        Assert.Empty(_replies);
     }
 }

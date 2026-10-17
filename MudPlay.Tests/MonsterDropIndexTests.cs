@@ -56,8 +56,8 @@ public sealed class MonsterDropIndexTests : IDisposable
     public void Load_IndexesDistinctDroppedItems()
     {
         MonsterDropIndex s = NewIndex();
-        // 175, 176, 64 — three distinct dropped ids (0 slots skipped).
-        Assert.Equal(3, s.ItemCount);
+        // 175, 176, 64 — the dropped ids (0 slots skipped).
+        Assert.All(new[] { 175, 176, 64 }, id => Assert.NotEmpty(s.DroppersOf(id)));
     }
 
     [Fact]
@@ -90,14 +90,6 @@ public sealed class MonsterDropIndexTests : IDisposable
     {
         MonsterDropIndex s = NewIndex();
         Assert.Empty(s.DroppersOf(9999));
-        Assert.False(s.AnyMonsterDrops(9999));
-    }
-
-    [Fact]
-    public void AnyMonsterDrops_DroppedItem_True()
-    {
-        MonsterDropIndex s = NewIndex();
-        Assert.True(s.AnyMonsterDrops(175));
     }
 
     [Fact]
@@ -105,7 +97,7 @@ public sealed class MonsterDropIndexTests : IDisposable
     {
         MonsterDropIndex s = NewIndex();
         // The 0 sentinel must never become a dropped "item 0".
-        Assert.False(s.AnyMonsterDrops(0));
+        Assert.Empty(s.DroppersOf(0));
     }
 
     [Fact]
@@ -135,12 +127,11 @@ public sealed class MonsterDropIndexTests : IDisposable
     public void ActiveSetChanged_ToNull_ClearsIndex()
     {
         MonsterDropIndex s = NewIndex();
-        Assert.True(s.ItemCount > 0);
+        Assert.NotEmpty(s.DroppersOf(175));
 
         s.OnActiveSetChanged(null);
 
-        Assert.Equal(0, s.ItemCount);
-        Assert.False(s.AnyMonsterDrops(175));
+        Assert.Empty(s.DroppersOf(175));
         Assert.Empty(s.SpawnRoomsOf(10));
     }
 }

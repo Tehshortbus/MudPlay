@@ -74,8 +74,7 @@ public sealed class SessionStatsLayoutStore
     // Pure resolution of a saved layout against DefaultOrder: saved ids first
     // (in their saved order, unknown ones discarded), then any known panel the
     // save predates appended in default order. Each panel is visible unless its
-    // id is in the saved hidden set. Static + side-effect free so the ordering
-    // invariants can be unit-tested without a profile.
+    // id is in the saved hidden set. Static + side-effect free.
     public static IReadOnlyList<(string Id, bool Visible)> Resolve(SessionStatsLayout? saved)
     {
         HashSet<string> known = new(DefaultOrder, StringComparer.Ordinal);

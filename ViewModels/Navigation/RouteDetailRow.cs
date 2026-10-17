@@ -32,19 +32,14 @@ public sealed class RouteDetailRow
     public bool HasMonsters => Monsters.Count > 0;
     public bool HasWarning => Warning is not null;
     public bool CrossesTrap => TrapText is not null;
-    public bool IsAcquire => Step.IsAcquire;
     public bool IsArrival => Step.IsArrival;
 
     // The line split so the room can be its own link: "1>" / "1/224 Town Square" /
-    // "< e". An acquire row (never produced by the current-route view) keeps its
-    // whole ◆ line in Location so nothing is lost if one ever appears. The final
-    // arrival row shows the destination room with a muted "(arrive)" and no command.
+    // "< e". The final arrival row shows the destination room with a muted
+    // "(arrive)" and no command.
     public string NumberLabel => $"{Step.Number}>";
-    public string Location => IsAcquire ? Step.Line : Step.Location;
-    public string CommandSuffix =>
-        IsArrival ? "(arrive)"
-        : IsAcquire ? string.Empty
-        : $"< {Step.Command}";
+    public string Location => Step.Location;
+    public string CommandSuffix => IsArrival ? "(arrive)" : $"< {Step.Command}";
 
     public RouteDetailRow(
         RouteStepRow step, IReadOnlyList<RoomDetailLink> monsters, ICommand openRoom,

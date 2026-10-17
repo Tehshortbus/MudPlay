@@ -33,27 +33,6 @@ public sealed class KeybindingStoreTests
     }
 
     [Fact]
-    public void IsConflict_FlagsCollidingChord_ReportsCollidingAction()
-    {
-        KeybindingStore store = new();
-        // F2 is bound to OpenSpellBook by default; rebinding OpenParty
-        // to F2 must flag a conflict.
-        bool collision = store.IsConflict(new KeyChord(Key.F2), excluding: BuiltInAction.OpenParty,
-                                           out BuiltInAction? culprit);
-        Assert.True(collision);
-        Assert.Equal(BuiltInAction.OpenSpellBook, culprit);
-    }
-
-    [Fact]
-    public void IsConflict_ExcludesSpecifiedAction_DuringSelfEdit()
-    {
-        KeybindingStore store = new();
-        // F2 → OpenSpellBook by default. The OpenSpellBook editor
-        // should NOT flag its own current chord as a collision.
-        Assert.False(store.IsConflict(new KeyChord(Key.F2), excluding: BuiltInAction.OpenSpellBook, out _));
-    }
-
-    [Fact]
     public void FindAction_ReturnsBoundAction_ForKnownChord()
     {
         KeybindingStore store = new();
@@ -65,27 +44,6 @@ public sealed class KeybindingStoreTests
     public void Empty_ChordNeverConflicts()
     {
         KeybindingStore store = new();
-        Assert.False(store.IsConflict(KeyChord.Empty, excluding: null, out _));
         Assert.Null(store.FindAction(KeyChord.Empty));
-    }
-
-    // The steal-on-conflict sequence the Toolbar + Shortcuts tab runs: unbind the
-    // chord's previous owner, then bind it to the new action — leaving a single
-    // owner and the previous action unbound.
-    [Fact]
-    public void StealSequence_MovesChord_AndUnbindsPreviousOwner()
-    {
-        KeybindingStore store = new();
-        KeyChord f1 = new(Key.F1);   // OpenWorkshop by default
-
-        BuiltInAction? victim = store.FindAction(f1);
-        Assert.Equal(BuiltInAction.OpenWorkshop, victim);
-
-        store.Rebind(victim!.Value, KeyChord.Empty);
-        store.Rebind(BuiltInAction.OpenParty, f1);
-
-        Assert.Equal(KeyChord.Empty, store.Get(BuiltInAction.OpenWorkshop));
-        Assert.Equal(f1, store.Get(BuiltInAction.OpenParty));
-        Assert.Equal(BuiltInAction.OpenParty, store.FindAction(f1));   // exactly one owner
     }
 }

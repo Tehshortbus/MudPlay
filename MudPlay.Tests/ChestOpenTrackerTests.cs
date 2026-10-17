@@ -1,11 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using System.Text;
 using MudPlay.Game.Inventory;
 using MudPlay.Services;
-using MudPlay.Terminal;
 using Xunit;
 
 namespace MudPlay.Tests;
@@ -13,8 +11,9 @@ namespace MudPlay.Tests;
 public sealed class ChestOpenTrackerTests : IDisposable
 {
     private readonly InventoryManager _inv = new(log: null, itemWeightResolver: null, slotResolver: null);
-    private readonly LineExtractor _lines = new(new TerminalEmulator(80, 24));
-    private readonly ProfileService _profile = new();
+    // The game's output, fed the way the client receives it.
+    private readonly ServerFeed _feed = new();
+    private readonly ProfileService _profile = TestProfiles.Service();
     private readonly OutboundOpenObserver _typed = new();
     private readonly List<string> _sent = new();
     private readonly List<Action> _scheduled = new();
@@ -22,8 +21,8 @@ public sealed class ChestOpenTrackerTests : IDisposable
 
     public ChestOpenTrackerTests()
     {
-        _inv.AttachLineExtractor(_lines);
-        _profile.LoadBlank();
+        _inv.AttachLineExtractor(_feed.Lines);
+        _profile.LoadDefaultProfile();
         _tracker = NewTracker();
         _tracker.SayLootToRoom = true;   // most tests read the room line; off is the default
     }
@@ -50,14 +49,7 @@ public sealed class ChestOpenTrackerTests : IDisposable
         _typed.ObserveOutbound(Encoding.Latin1.GetBytes(command + "\r"));
     }
 
-    private void Feed(string text)
-    {
-        FieldInfo? field = typeof(LineExtractor).GetField(
-            "LineEmitted", BindingFlags.Instance | BindingFlags.NonPublic);
-        if (field?.GetValue(_lines) is Action<LineExtractor.EmittedLine> handler)
-            handler(new LineExtractor.EmittedLine(
-                text, Array.Empty<CellAttributes>(), DateTimeOffset.UtcNow, IsPromptLine: false));
-    }
+    private void Feed(string text) => _feed.Line(text);
 
     private void Inventory(string carrying, int gold)
     {
@@ -100,7 +92,7 @@ public sealed class ChestOpenTrackerTests : IDisposable
     [Fact]
     public void SayingLootToTheRoom_IsOffUntilTicked()
     {
-        _profile.LoadBlank();
+        _profile.LoadDefaultProfile();
         Assert.False(_tracker.SayLootToRoom);
 
         OpenOakChest();

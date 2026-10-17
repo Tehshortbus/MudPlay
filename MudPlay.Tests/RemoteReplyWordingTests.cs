@@ -1,4 +1,3 @@
-using System.Reflection;
 using System.Text;
 using MudPlay.Game;
 using MudPlay.Game.Cash;
@@ -9,7 +8,6 @@ using MudPlay.Models.GameData;
 using MudPlay.Models.Profile;
 using MudPlay.Services;
 using MudPlay.Services.Patterns;
-using MudPlay.Terminal;
 using Xunit;
 
 namespace MudPlay.Tests;
@@ -18,37 +16,34 @@ namespace MudPlay.Tests;
 // and a full party.
 public sealed class RemoteReplyWordingTests
 {
+    // The router each engine reads, which a test's chat lines go through.
+    private readonly Dictionary<RemoteCommandManager, MessageRouter> _routers = new();
+
     private static readonly DateTime Now = new(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc);
 
-    private static ChatLogEntry Telepath(string msg) =>
-        new(Now, ChatChannel.TelepathIncoming, "Friend", msg, $"Friend telepaths: {msg}");
+    private static ChatLine Telepath(string msg) =>
+        new(ChatChannel.TelepathIncoming, "Friend", msg);
 
-    private static (RemoteCommandManager engine, MessageRouter router, PartyState party) Engine()
+    // Each engine's own wire, captured through the sender the client binds.
+    private readonly Dictionary<RemoteCommandManager, List<byte[]>> _wire = new();
+
+    private (RemoteCommandManager engine, MessageRouter router, PartyState party) Engine()
     {
         MessageRouter router = new();
         DefaultPatterns.Seed(router);
         PartyState party = new();
-        PlayerDatabase players = new();
+        PlayerDatabase players = new(new ProfileService(), () => null);
         players.RecordObservation("Friend", @class: null, race: null, alignment: null,
             title: null, gang: null, role: null, nowUtc: Now);
         players.EditCustomization("Friend", new PlayerCustomization(RemoteControls: PlayerRemoteControls.All));
-        return (new RemoteCommandManager(new ChatRouter(router), party, players), router, party);
+        RemoteCommandManager engine = new(new ChatRouter(router), party, players);
+        _routers[engine] = router;
+        engine.SetWireSender((_wire[engine] = new()).Add);
+        return (engine, router, party);
     }
 
-    private static string Only(RemoteCommandManager engine) =>
-        Encoding.Latin1.GetString(Assert.Single(engine.LastSentForTests));
-
-    // The extractor's line event, raised the way a line from the game raises it.
-    private static void Feed(LineExtractor lines, string text)
-    {
-        FieldInfo? field = typeof(LineExtractor).GetField(
-            "LineEmitted", BindingFlags.Instance | BindingFlags.NonPublic);
-        if (field?.GetValue(lines) is Action<LineExtractor.EmittedLine> handler)
-        {
-            handler(new LineExtractor.EmittedLine(
-                text, Array.Empty<CellAttributes>(), DateTimeOffset.UtcNow, IsPromptLine: false));
-        }
-    }
+    private string Only(RemoteCommandManager engine) =>
+        Encoding.Latin1.GetString(Assert.Single(_wire[engine]));
 
     [Theory]
     [InlineData("@drop-all", "can't be dropped: cursed ring)")]
@@ -57,17 +52,17 @@ public sealed class RemoteReplyWordingTests
     {
         var (engine, router, party) = Engine();
         InventoryManager inventory = new(log: null, itemWeightResolver: null, slotResolver: null);
-        LineExtractor lines = new(new TerminalEmulator(80, 24));
-        inventory.AttachLineExtractor(lines);
+        ServerFeed feed = new();
+        inventory.AttachLineExtractor(feed.Lines);
         CashSettings cash = new();
         _ = new InventoryActionHandler(engine, inventory, new GroundItemTracker(router, new CurrencyNaming()),
             party, () => cash, new CurrencyNaming(), cannotDrop: (name, _) => name == "cursed ring");
-        Feed(lines, "You are carrying a rusty dagger, cursed ring.");
-        Feed(lines, "You have no keys.");
-        Feed(lines, "Wealth:    0 copper farthings");
-        Feed(lines, "Encumbrance:    36/2880  -  Light  [1%]");
+        feed.Line("You are carrying a rusty dagger, cursed ring.");
+        feed.Line("You have no keys.");
+        feed.Line("Wealth:    0 copper farthings");
+        feed.Line("Encumbrance:    36/2880  -  Light  [1%]");
 
-        engine.DispatchForTests(Telepath(command));
+        ChatLines.Hear(_routers[engine], Telepath(command));
 
         Assert.EndsWith(tail + "}\r", Only(engine));
     }
@@ -80,7 +75,7 @@ public sealed class RemoteReplyWordingTests
         var (engine, _, _) = Engine();
         _ = new ProfileSwapHandler(engine, TwoProfiles());
 
-        engine.DispatchForTests(Telepath("@profile"));
+        ChatLines.Hear(_routers[engine], Telepath("@profile"));
 
         Assert.Equal("/Friend {Current: 1)Fire, On Standby: 2)Cold}\r", Only(engine));
     }
@@ -93,7 +88,7 @@ public sealed class RemoteReplyWordingTests
         var (engine, _, _) = Engine();
         _ = new ProfileSwapHandler(engine, TwoProfiles());
 
-        engine.DispatchForTests(Telepath("@profile 2"));
+        ChatLines.Hear(_routers[engine], Telepath("@profile 2"));
 
         Assert.Equal("/Friend {Combat profile 2 (Cold) - normal: lbol, drain: drai}\r", Only(engine));
     }
@@ -134,7 +129,7 @@ public sealed class RemoteReplyWordingTests
         party.Members.Add(new PartyMember { Name = "Tank" });
         for (int i = 0; i < 5; i++) party.Members.Add(new PartyMember { Name = string.Empty });
 
-        engine.DispatchForTests(Telepath("@invite"));
+        ChatLines.Hear(_routers[engine], Telepath("@invite"));
 
         Assert.Equal("/Friend {My party is full: Tank is following me.}\r", Only(engine));
     }

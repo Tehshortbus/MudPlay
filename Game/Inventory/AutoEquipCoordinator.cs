@@ -34,8 +34,8 @@ namespace MudPlay.Game.Inventory;
 // The Backstab set isn't fired here: the combat engine applies its armor on the
 // pre-move hook before the sneak (CombatManager.PrepBackstabForMove →
 // EquipmentManager.ApplyBackstabArmor). The decision halves (ClassifyRest,
-// ResolveTarget) are pure and unit-tested; the subscription plumbing is
-// smoke-tested live.
+// ResolveTarget) are pure; the subscription plumbing wires them to the
+// live events.
 //
 // A fired moment is held until the worn loadout is known (InventoryManager
 // has parsed at least one full 'i' dump). The apply engine diffs the desired
@@ -54,7 +54,7 @@ public sealed class AutoEquipCoordinator : IDisposable
     private readonly Func<bool> _wornLoadoutKnown;
     private readonly Func<bool> _isAutoEnabled;
     // Room predicates + a live "is the nav engine moving?" probe for the movement /
-    // bossing sets. Null (unwired / tests) means "never" — the new sets stay inert.
+    // bossing sets. Null (unwired) means "never" — the new sets stay inert.
     private readonly Func<Game.Map.RoomKey, bool>? _isBossRoom;
     private readonly Func<Game.Map.RoomKey, bool>? _isLair;
     private readonly Func<bool>? _isMoving;
@@ -118,8 +118,8 @@ public sealed class AutoEquipCoordinator : IDisposable
     // gear thrash of report paradigm-20260914-154019 (astral slippers on/off).
     // When a scheduler is supplied the swap is deferred by a short settle; a
     // *Combat Off* within it cancels the swap (it was a flicker), a sustained
-    // fight lets it fire. Null scheduler → swap immediately (unit tests + any
-    // caller that doesn't wire a settle), so the debounce is opt-in via wiring.
+    // fight lets it fire. Null scheduler → swap immediately (a caller that
+    // doesn't wire a settle), so the debounce is opt-in via wiring.
     private readonly Func<Action, IDisposable>? _scheduleCombatGearSwap;
     private IDisposable? _pendingMovingCombatSwap;
 
@@ -127,7 +127,7 @@ public sealed class AutoEquipCoordinator : IDisposable
     // engine is running at all — the only time a move counts as typed by hand (an
     // engine's own steps pass the same outbound observer). A typed move has no
     // arrival, so the set comes off after the user-set idle delay with no further
-    // typed move; _scheduleAfter arms that revert (null = never reverts, tests aside).
+    // typed move; _scheduleAfter arms that revert (null = never reverts).
     private readonly Func<bool>? _navIdle;
     private readonly Func<TimeSpan, Action, IDisposable>? _scheduleAfter;
     // Whether a rest the health engine sent just finished (see OnPositionChanged).
@@ -136,7 +136,7 @@ public sealed class AutoEquipCoordinator : IDisposable
     private IDisposable? _manualIdleRevert;
 
     // Whether the trip we're on leads to another boss room (EquipmentSettings
-    // .KeepBossingBetweenBosses). Null (unwired / tests) means "no".
+    // .KeepBossingBetweenBosses). Null (unwired) means "no".
     // The argument is the boss room just left (it doesn't count as "another").
     private readonly Func<Game.Map.RoomKey?, BossTravel>? _bossTravel;
     private Game.Map.RoomKey? _keptBossingFrom;
@@ -222,7 +222,7 @@ public sealed class AutoEquipCoordinator : IDisposable
     // double-restoring the slot.
     public void NoteItemCastSwap() => _lastItemCastSwapAt = _now();
 
-    // ----- pure decision logic (unit-tested) ------------------------------
+    // ----- pure decision logic ---------------------------------------------
 
     // The pre-rest trigger a transition into `to` implies, or null when the new
     // posture isn't a rest / meditate. A held HP gate marks an HP rest;

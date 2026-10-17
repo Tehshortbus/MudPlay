@@ -88,8 +88,6 @@ public static class LoopShareCodec
         return chunks;
     }
 
-    public static Loop Decode(IEnumerable<string> chunks) => Decode(chunks, out _);
-
     // lairWaitUnknown: the loop named a way of waiting this client does not know (a
     // later version's) and was given none. It then is not the loop the sender
     // offered, in that one setting, and cannot be checked against the sender's code.

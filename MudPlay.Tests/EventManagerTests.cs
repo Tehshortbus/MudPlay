@@ -5,19 +5,15 @@ using System.Text.Json;
 using MudPlay.Game.Events;
 using MudPlay.Models.GameData;
 using MudPlay.Models.Profile;
+using MudPlay.Services;
 using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Unit coverage for <see cref="EventManager"/> + its
-/// <see cref="ScheduledEvent"/> DTO. Focused on the surfaces PR 8.1
-/// ships end-to-end: DTO round-trip, command-splitter contract, CRUD
-/// on the in-memory list, and the Command-action wire path (the only
-/// action dispatchable without a real movement-engine stack).
-/// Loop / AutoLair / reconciliation tests land in PR 8.2 alongside the
-/// trigger-source wiring + a richer test fixture.
-/// </summary>
+// Unit coverage for EventManager + its
+// ScheduledEvent DTO: DTO round-trip, command-splitter contract, CRUD
+// on the in-memory list, and the Command-action wire path (the only
+// action dispatchable without a real movement-engine stack).
 public sealed class EventManagerTests
 {
     // ----- DTO round-trip ------------------------------------------
@@ -35,8 +31,8 @@ public sealed class EventManagerTests
             CommandText = "stat",
             Disabled = true,
         };
-        string json = JsonSerializer.Serialize(original);
-        ScheduledEvent? round = JsonSerializer.Deserialize<ScheduledEvent>(json);
+        string json = JsonSerializer.Serialize(original, JsonStore.Options);
+        ScheduledEvent? round = JsonSerializer.Deserialize<ScheduledEvent>(json, JsonStore.Options);
 
         Assert.NotNull(round);
         Assert.Equal("stat refresh", round!.Name);
@@ -114,7 +110,7 @@ public sealed class EventManagerTests
     [Fact]
     public void Add_AppendsToObservableList()
     {
-        EventManager mgr = new();
+        EventManager mgr = EventEngineHarness.ManagerWithoutGameData();
         ScheduledEvent e = new() { Name = "a" };
         mgr.Add(e);
         Assert.Single(mgr.Events);
@@ -124,7 +120,7 @@ public sealed class EventManagerTests
     [Fact]
     public void Remove_ByReference_TakesEventOut()
     {
-        EventManager mgr = new();
+        EventManager mgr = EventEngineHarness.ManagerWithoutGameData();
         ScheduledEvent a = new() { Name = "a" };
         ScheduledEvent b = new() { Name = "b" };
         mgr.Add(a);
@@ -137,14 +133,14 @@ public sealed class EventManagerTests
     [Fact]
     public void Remove_UnknownEvent_ReturnsFalse()
     {
-        EventManager mgr = new();
+        EventManager mgr = EventEngineHarness.ManagerWithoutGameData();
         Assert.False(mgr.Remove(new ScheduledEvent { Name = "ghost" }));
     }
 
     [Fact]
     public void Replace_ByReference_SwapsInPlace()
     {
-        EventManager mgr = new();
+        EventManager mgr = EventEngineHarness.ManagerWithoutGameData();
         ScheduledEvent a = new() { Name = "a" };
         ScheduledEvent b = new() { Name = "b" };
         ScheduledEvent updated = new() { Name = "a-updated" };
@@ -159,7 +155,7 @@ public sealed class EventManagerTests
     [Fact]
     public void Replace_UnknownOriginal_ReturnsFalse()
     {
-        EventManager mgr = new();
+        EventManager mgr = EventEngineHarness.ManagerWithoutGameData();
         Assert.False(mgr.Replace(new ScheduledEvent(), new ScheduledEvent()));
     }
 
@@ -168,7 +164,7 @@ public sealed class EventManagerTests
     [Fact]
     public void Fire_CommandAction_SendsExpectedBytes()
     {
-        EventManager mgr = new();
+        EventManager mgr = EventEngineHarness.ManagerWithoutGameData();
         List<byte[]> sent = new();
         mgr.SetWireSender(sent.Add);
 
@@ -187,7 +183,7 @@ public sealed class EventManagerTests
     [Fact]
     public void Fire_CommandAction_MultiFire_SendsEachChunk()
     {
-        EventManager mgr = new();
+        EventManager mgr = EventEngineHarness.ManagerWithoutGameData();
         List<byte[]> sent = new();
         mgr.SetWireSender(sent.Add);
 
@@ -211,7 +207,7 @@ public sealed class EventManagerTests
     [InlineData(false, 1)]
     public void Fire_FollowsTheMasterSwitch(bool switchOff, int expectedSends)
     {
-        EventManager mgr = new();
+        EventManager mgr = EventEngineHarness.ManagerWithoutGameData();
         List<byte[]> sent = new();
         mgr.SetWireSender(sent.Add);
         List<string> skipped = new();
@@ -229,7 +225,7 @@ public sealed class EventManagerTests
     [Fact]
     public void Fire_DisabledEvent_DoesNothing()
     {
-        EventManager mgr = new();
+        EventManager mgr = EventEngineHarness.ManagerWithoutGameData();
         List<byte[]> sent = new();
         mgr.SetWireSender(sent.Add);
 
@@ -247,7 +243,7 @@ public sealed class EventManagerTests
     [Fact]
     public void Fire_EmptyCommandText_SendsBareCarriageReturn()
     {
-        EventManager mgr = new();
+        EventManager mgr = EventEngineHarness.ManagerWithoutGameData();
         List<byte[]> sent = new();
         mgr.SetWireSender(sent.Add);
 
@@ -276,8 +272,8 @@ public sealed class EventManagerTests
                         ActionType = EventActionType.Command, CommandText = "who" },
             },
         };
-        string json = JsonSerializer.Serialize(original);
-        CharacterProfile? round = JsonSerializer.Deserialize<CharacterProfile>(json);
+        string json = JsonSerializer.Serialize(original, JsonStore.Options);
+        CharacterProfile? round = JsonSerializer.Deserialize<CharacterProfile>(json, JsonStore.Options);
 
         Assert.NotNull(round);
         Assert.NotNull(round!.Events);

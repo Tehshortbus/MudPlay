@@ -2,7 +2,7 @@ namespace MudPlay.Models.Profile;
 
 // JSON-friendly entry for one marked lair room inside a LairSetup. Carries the
 // Game.Map.RoomKey wire pair plus an optional override respawn timer that beats
-// the game-data default (Lairs[GroupIndex].AvgDelay for stock realms).
+// the game-data default (the room's Delay).
 //
 // Plain mutable POCO so System.Text.Json round-trips it without a converter.
 // Order in the parent LairSetup is irrelevant — the scheduler picks targets

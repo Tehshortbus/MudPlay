@@ -131,43 +131,6 @@ public sealed class SettingsResolver
         Log?.Info("Settings", $"write: '{tabName}' → {tier} tier");
     }
 
-    // Remove the override for tabName at the specified tier so the next-lower
-    // tier shows through on the next Resolve call. No-op if no override exists.
-    public void ClearAt(SettingsTier tier, string tabName)
-    {
-        switch (tier)
-        {
-            case SettingsTier.Defaults:
-                throw new InvalidOperationException("Defaults tier is read-only.");
-
-            case SettingsTier.Global:
-                if (_settings.Current.Settings?.Remove(tabName) == true)
-                {
-                    _settings.Save();
-                    Log?.Info("Settings", $"clear: '{tabName}' override at Global tier");
-                }
-                break;
-
-            case SettingsTier.Bbs:
-                BbsProfile? bbs = _activeBbs;
-                if (bbs?.Settings?.Remove(tabName) == true)
-                {
-                    _bbsStore.Save(bbs);
-                    Log?.Info("Settings", $"clear: '{tabName}' override at Bbs tier");
-                }
-                break;
-
-            case SettingsTier.Character:
-                CharacterProfile? chr = _profile.Current;
-                if (chr?.Settings?.Remove(tabName) == true)
-                {
-                    _profile.Save();
-                    Log?.Info("Settings", $"clear: '{tabName}' override at Character tier");
-                }
-                break;
-        }
-    }
-
     // ----- Game-data record overrides (per-set side-files) ---------------
 
     // Fired after a successful WriteGameDataAt or a ClearGameDataAt that

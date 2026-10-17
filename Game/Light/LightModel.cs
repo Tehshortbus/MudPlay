@@ -24,11 +24,6 @@ public static class LightModel
         return LightVisibility.Normal;
     }
 
-    // True when the room renders (V >= SeeThreshold). Pitch-black and very-dark
-    // rooms return false.
-    public static bool CanSee(int charIllu, int roomLight)
-        => charIllu + roomLight >= SeeThreshold;
-
     // Extra illumination that must be added to just reach visibility (V == -150),
     // or 0 when the room is already seeable. Also the minimum light-source Strength
     // needed to see a room at a given worn illumination — pass charIllu = wornIllu

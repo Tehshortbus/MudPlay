@@ -1,4 +1,3 @@
-using Avalonia.Threading;
 using MudPlay.Game.Combat;
 using MudPlay.Game.Map;
 using MudPlay.Services;
@@ -101,11 +100,16 @@ public sealed class PartyComebackManager : IDisposable
     private readonly AutoLairManager _autoLair;
     private readonly BfsMapper _bfs;
     private readonly LogService? _log;
-    private readonly DispatcherTimer _followTimer;
+    // The wait for a re-invited member to follow: a tick every _followInterval
+    // until the recovery resumes.
+    private IDisposable? _followTimer;
+    private TimeSpan _followInterval;
+    // Arms one tick after the delay; disposing what it returns cancels it.
+    private readonly Func<TimeSpan, Action, IDisposable> _schedule;
     // Fires the @where fallback if a returned member hasn't rejoined after the CR
     // re-observe window. _crPendingName is the member we're giving the CR path a
     // chance to recover (null when none pending).
-    private readonly DispatcherTimer _crFallbackTimer;
+    private IDisposable? _crFallbackTimer;
     private string? _crPendingName;
     private readonly WireSender _wire = new();
     private readonly List<IDisposable> _subs = new();
@@ -143,7 +147,7 @@ public sealed class PartyComebackManager : IDisposable
 
     // For the bug report: whom we gave up on and what we'd resume for them.
     public string? ParkedResumeSummary => _parkedResume is { } p
-        ? $"{p.Given} → {p.Resume.Kind}, {(NowProvider() - p.At).TotalSeconds:F0}s ago" : null;
+        ? $"{p.Given} → {p.Resume.Kind}, {(_now() - p.At).TotalSeconds:F0}s ago" : null;
     // "If leading, accept @comeback for (min)" (Settings → Party).
     public TimeSpan ComebackWindow { get; set; } = TimeSpan.FromMinutes(2);
 
@@ -178,8 +182,7 @@ public sealed class PartyComebackManager : IDisposable
     // rooms along our own path (which RoomTracker keeps 50 rooms of).
     public int ReturnDistanceRooms { get; set; } = 30;
 
-    // Clock seam for probe-expiry bookkeeping; overridable in tests.
-    public Func<DateTimeOffset> NowProvider { get; set; } = () => DateTimeOffset.UtcNow;
+    private readonly Func<DateTimeOffset> _now;
 
     // Given name of the member we're actively walking to recover, or null when
     // idle. Surfaced in the bug report's Party section so a "leader never came
@@ -213,17 +216,14 @@ public sealed class PartyComebackManager : IDisposable
     // Invoked with a leader's given name when a @forget teardown involves someone
     // we were following, so the follower-side rejoin memory
     // (PartyRejoinCoordinator.ForgetRememberedLeader) clears too. AppServices wires
-    // it; null in tests.
+    // it.
     public Action<string>? ForgetLeaderCallback { get; set; }
 
     // Invoked with a member's given name and why, once we commit to walking to them
     // or decline them: whatever still holds our movement for that member (their
     // reconnect hold, a pending @wait) would park the pickup walk, and the member
-    // is waiting on that walk. AppServices wires it; null in tests.
+    // is waiting on that walk. AppServices wires it.
     public Action<string, string>? ReleaseHolds { get; set; }
-
-    // Test seam — every outbound wire buffer, in order.
-    internal List<byte[]> LastSentForTests => _wire.LastSentForTests;
 
     // True on a Stock realm. Stock ends the follow of a member whose follow move
     // an exit refused and leaves them on our member list: nothing is printed to
@@ -250,8 +250,12 @@ public sealed class PartyComebackManager : IDisposable
         AutoLairManager autoLair,
         MessageRouter router,
         BfsMapper bfs,
-        LogService? log = null)
+        LogService? log = null,
+        Func<DateTimeOffset>? now = null,
+        Func<TimeSpan, Action, IDisposable>? schedule = null)
     {
+        _now = now ?? (() => DateTimeOffset.UtcNow);
+        _schedule = schedule ?? DispatcherTicks.Once;
         ArgumentNullException.ThrowIfNull(engine);
         ArgumentNullException.ThrowIfNull(party);
         ArgumentNullException.ThrowIfNull(tracker);
@@ -270,13 +274,6 @@ public sealed class PartyComebackManager : IDisposable
         _autoLair = autoLair;
         _bfs = bfs;
         _log = log;
-
-        _followTimer = new DispatcherTimer();
-        _followTimer.Tick += OnFollowTimeout;
-        _crFallbackTimer = new DispatcherTimer { Interval = CrRecoverFallback };
-        _crFallbackTimer.Tick += (_, _) => FireCrFallback();
-        _joinFallbackTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
-        _joinFallbackTimer.Tick += (_, _) => OnJoinFallbackTick();
 
         _walker.Event += OnWalkEvent;
         _party.MemberFollowConfirmed += OnMemberFollowConfirmed;
@@ -339,10 +336,9 @@ public sealed class PartyComebackManager : IDisposable
         _classifier.EntitiesObserved -= OnEntitiesObserved;
         foreach (IDisposable sub in _subs) sub.Dispose();
         _subs.Clear();
-        _followTimer.Stop();
-        _followTimer.Tick -= OnFollowTimeout;
-        _crFallbackTimer.Stop();
-        _joinFallbackTimer.Stop();
+        StopFollowTimer();
+        StopCrFallback();
+        StopJoinFallback();
     }
 
     // ----- @comeback (path A) ----------------------------------------
@@ -498,7 +494,7 @@ public sealed class PartyComebackManager : IDisposable
 
     private bool TakeAwaitedAfterTrip(string given)
     {
-        DateTimeOffset now = NowProvider();
+        DateTimeOffset now = _now();
         bool awaited = _awaitedAfterTrip.Remove(given, out DateTimeOffset since) && now - since <= ComebackWindow;
         bool onTheRoll = _lastTripRoll is { } roll && roll.Names.Remove(given) && now - roll.At <= ComebackWindow;
         return awaited || onTheRoll;
@@ -530,7 +526,7 @@ public sealed class PartyComebackManager : IDisposable
             .Where(n => n.Length > 0 && !left.Exists(l => SameName(l.Given, n)))
             .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         _lastTripRoll = byItself && roll.Count > 0
-            ? (new HashSet<string>(roll, StringComparer.OrdinalIgnoreCase), NowProvider())
+            ? (new HashSet<string>(roll, StringComparer.OrdinalIgnoreCase), _now())
             : null;
         // Set out, not following by our list, and not one the game told us it
         // dropped. Someone standing with us is only waiting for the re-invite a
@@ -551,7 +547,7 @@ public sealed class PartyComebackManager : IDisposable
             return;
         }
 
-        DateTimeOffset now = NowProvider();
+        DateTimeOffset now = _now();
         foreach (string given in unplaced)
         {
             _awaitedAfterTrip[given] = now;
@@ -587,7 +583,7 @@ public sealed class PartyComebackManager : IDisposable
     {
         _log?.Info(LogCategory,
             $"{_senderGiven} isn't in the room the trip left them in — waiting for their @comeback to name a room.");
-        _awaitedAfterTrip[_senderGiven] = NowProvider();
+        _awaitedAfterTrip[_senderGiven] = _now();
         _party.ExpectComebackFrom(_senderGiven);
         _reply($"{DidNotFindYou} where the trip left you - @comeback with your room and I'll come");
         Resume();
@@ -732,7 +728,7 @@ public sealed class PartyComebackManager : IDisposable
             if (!exit.AdmitsOnlySome || (exit.Target != now.Key && exit.Landing != now.Key)) continue;
             bool onCircuit = _loopRunner.State is not LoopState.Idle
                 && _loopRunner.CircuitExits().Any(c => c.From == before.Key && c.Exit.Target == exit.Target);
-            GateStep step = new(before.Key, direction, exit, NowProvider(), onCircuit);
+            GateStep step = new(before.Key, direction, exit, _now(), onCircuit);
             _lastStepGate = step;
             _gateCrossed[before.Key] = step;
             return;
@@ -741,7 +737,7 @@ public sealed class PartyComebackManager : IDisposable
 
     private void OnParReplyRead()
     {
-        DateTimeOffset now = NowProvider();
+        DateTimeOffset now = _now();
         foreach (PartyMember m in _party.State.Members)
         {
             if (m.IsSelf || m.IsInvited) continue;
@@ -802,8 +798,8 @@ public sealed class PartyComebackManager : IDisposable
         if (verdict == GateVerdict.GoBack)
         {
             // We go back for them from this exit: a second drop at it settles it.
-            if (before is null) _gateFetches.Add(new GateFetch(given, gate, engine, NowProvider()));
-            else before.At = NowProvider();
+            if (before is null) _gateFetches.Add(new GateFetch(given, gate, engine, _now()));
+            else before.At = _now();
         }
         else if (before is { Proven: false })
         {
@@ -830,7 +826,7 @@ public sealed class PartyComebackManager : IDisposable
         if (_queued.Exists(q => SameName(q.Given, given))) return goBack;
         if (engine == ResumeKind.Loop && _gatedOnLoop.TryGetValue(given, out var noted)
             && (target is null || target == noted.From)
-            && (NowProvider() - noted.At <= ComebackWindow
+            && (_now() - noted.At <= ComebackWindow
                 || _gateFetches.Exists(f => f.Proven && SameName(f.Given, given) && f.From == noted.From)))
             return (GateVerdict.LoopRefuses, noted.From, null);
         if (engine == ResumeKind.Lair && _inviteOnSight.Contains(given))
@@ -881,7 +877,7 @@ public sealed class PartyComebackManager : IDisposable
     {
         if (_inviteOnSight.Count == 0 || _busy || MasterOff) return;
         if (!_autoLair.IsActive || _tracker.IsPeekSuppressed()) return;
-        DateTimeOffset now = NowProvider();
+        DateTimeOffset now = _now();
         foreach (RoomEntity entity in observation.Entities)
         {
             if (entity.Kind != EntityKind.Player) continue;
@@ -932,8 +928,8 @@ public sealed class PartyComebackManager : IDisposable
         {
             _crPendingName = given;
             _wire.Send("");   // bare CR — re-display the current room
-            _crFallbackTimer.Stop();
-            _crFallbackTimer.Start();
+            StopCrFallback();
+            _crFallbackTimer = _schedule(CrRecoverFallback, FireCrFallback);
             _log?.Info(LogCategory,
                 $"{given} re-entered the realm — CR to re-observe our room before probing @where.");
             return;
@@ -946,7 +942,7 @@ public sealed class PartyComebackManager : IDisposable
     // fall back to the @where probe.
     private void FireCrFallback()
     {
-        _crFallbackTimer.Stop();
+        _crFallbackTimer = null;
         string? given = _crPendingName;
         _crPendingName = null;
         if (given is null) return;
@@ -959,14 +955,16 @@ public sealed class PartyComebackManager : IDisposable
         ProbeWhere(given);
     }
 
-    // Test seam — fire the CR-recover fallback deterministically (the DispatcherTimer
-    // doesn't tick under headless xUnit).
-    internal void FireCrFallbackForTests() => FireCrFallback();
+    private void StopCrFallback()
+    {
+        _crFallbackTimer?.Dispose();
+        _crFallbackTimer = null;
+    }
 
     private void ProbeWhere(string given)
     {
         PruneProbes();
-        _pendingProbes[given] = NowProvider();
+        _pendingProbes[given] = _now();
         _wire.Send($"/{given} @where");
         _log?.Info(LogCategory, $"{given} not recovered by CR — probing @where for recovery.");
     }
@@ -990,7 +988,7 @@ public sealed class PartyComebackManager : IDisposable
 
     private void PruneProbes()
     {
-        DateTimeOffset now = NowProvider();
+        DateTimeOffset now = _now();
         List<string>? stale = null;
         foreach (KeyValuePair<string, DateTimeOffset> kv in _pendingProbes)
             if (now - kv.Value > ProbeTimeout) (stale ??= new()).Add(kv.Key);
@@ -1011,7 +1009,7 @@ public sealed class PartyComebackManager : IDisposable
     // short while afterwards a "no longer following you" isn't a left-behind member
     // to go back for; the re-invite on landing regroups the party. A route-card token sends the party across first; a hand-used one leaves
     // the regroup to the player.
-    public void NoteOwnTeleport() => _ownTeleportAt = NowProvider();
+    public void NoteOwnTeleport() => _ownTeleportAt = _now();
     private DateTimeOffset? _ownTeleportAt;
     private static readonly TimeSpan OwnTeleportWindow = TimeSpan.FromSeconds(15);
     // How long after a move of ours a "no longer following you" still counts as
@@ -1037,7 +1035,7 @@ public sealed class PartyComebackManager : IDisposable
     private void DecideForLeftBehind(string given, bool signalledHold)
     {
         if (MasterOff) return;
-        if (_ownTeleportAt is { } at && NowProvider() - at <= OwnTeleportWindow)
+        if (_ownTeleportAt is { } at && _now() - at <= OwnTeleportWindow)
         {
             _log?.Info(LogCategory, $"{given} was dropped by our own teleport — not going back for them.");
             return;
@@ -1048,7 +1046,7 @@ public sealed class PartyComebackManager : IDisposable
         // member dropped right behind a move of ours was left behind (report
         // paradigm-20261007-183903: a follower sent through a gate with `@do se`
         // while the leader rested was gone back for).
-        if (_tracker.LastMoveSentAt is not { } moved || NowProvider() - moved > OwnMoveWindow)
+        if (_tracker.LastMoveSentAt is not { } moved || _now() - moved > OwnMoveWindow)
         {
             _log?.Info(LogCategory, $"{given} stopped following, but not behind a move of ours — not going back for them.");
             return;
@@ -1076,7 +1074,7 @@ public sealed class PartyComebackManager : IDisposable
             switch (JudgeGateDrop(given, gate, engine, signalledHold))
             {
                 case GateVerdict.LoopRefuses:
-                    _gatedOnLoop[given] = (gate.From, NowProvider());
+                    _gatedOnLoop[given] = (gate.From, _now());
                     _log?.Info(LogCategory,
                         $"{given} was turned away at the exit our loop took out of {gate.From.Map}/{gate.From.Room} — not going back; the loop would leave them there again.");
                     return;
@@ -1458,7 +1456,7 @@ public sealed class PartyComebackManager : IDisposable
         if (StartNextQueued(r)) return;
         if (r.Kind != ResumeKind.None && !string.IsNullOrEmpty(gaveUpOn))
         {
-            _parkedResume = (gaveUpOn, r, NowProvider());
+            _parkedResume = (gaveUpOn, r, _now());
             _log?.Info(LogCategory,
                 $"gave up on {gaveUpOn}; keeping {r.Kind} to resume if they @comeback within {ComebackWindow.TotalMinutes:0} min");
         }
@@ -1468,7 +1466,7 @@ public sealed class PartyComebackManager : IDisposable
     {
         if (_parkedResume is not { } p) return null;
         if (!string.Equals(p.Given, given, StringComparison.OrdinalIgnoreCase)) return null;
-        if (NowProvider() - p.At > ComebackWindow) { _parkedResume = null; return null; }
+        if (_now() - p.At > ComebackWindow) { _parkedResume = null; return null; }
         _log?.Info(LogCategory, $"{given} came back after we gave up — recovering, then resuming {p.Resume.Kind}");
         return p.Resume;
     }
@@ -1480,7 +1478,7 @@ public sealed class PartyComebackManager : IDisposable
         bool had = _busy || _parkedResume is not null || _crPendingName is not null || _pendingProbes.Count > 0;
         _parkedResume = null;
         _crPendingName = null;
-        _crFallbackTimer.Stop();
+        StopCrFallback();
         _pendingProbes.Clear();
         _queued.Clear();
         _leftOnTrip.Clear();
@@ -1497,7 +1495,7 @@ public sealed class PartyComebackManager : IDisposable
         _invitedOnSightAt.Clear();
         _lairAnswered.Clear();
         _askedToJoin.Clear();
-        _joinFallbackTimer.Stop();
+        StopJoinFallback();
         GoIdle();
         if (had) _log?.Info(LogCategory, $"recovery state cleared ({reason})");
     }
@@ -1516,7 +1514,7 @@ public sealed class PartyComebackManager : IDisposable
         _tripFetch = false;
         _roomUnconfirmed = false;
         _phase = ComebackPhase.Idle;
-        _followTimer.Stop();
+        StopFollowTimer();
         _backtrack.Clear();
         _backtrackIndex = 0;
         _rejoinedWhileOff = null;
@@ -1665,13 +1663,13 @@ public sealed class PartyComebackManager : IDisposable
         _phase = ComebackPhase.AwaitingFollow;
         _reply($"{FoundYou} - re-inviting {_senderGiven}");
         AskBack(_senderGiven, removedByAHold: _heldWhenAsked, inviteAfter: InviteDelayWithin(FollowWaitWindow));
-        _followTimer.Stop();
+        StopFollowTimer();
         // "If leading, wait only" at 0 means no limit, which suits a wait on a
         // member who is with us. One who never answers the re-invite is not (on
         // Stock a member still on our list is told nothing by it), and the walk or
         // loop this recovery stopped must not wait on them for good.
-        _followTimer.Interval = FollowWaitWindow > TimeSpan.Zero ? FollowWaitWindow : UnlimitedFollowWait;
-        _followTimer.Start();
+        _followInterval = FollowWaitWindow > TimeSpan.Zero ? FollowWaitWindow : UnlimitedFollowWait;
+        _followTimer = _schedule(_followInterval, OnFollowTick);
     }
 
     // What stands in for "no limit" on the wait for a re-invited member to follow.
@@ -1704,7 +1702,7 @@ public sealed class PartyComebackManager : IDisposable
     // still in the room with us).
     private readonly Dictionary<string, (DateTimeOffset InviteAt, bool OnSight)> _askedToJoin =
         new(StringComparer.OrdinalIgnoreCase);
-    private readonly DispatcherTimer _joinFallbackTimer;
+    private IDisposable? _joinFallbackTimer;
 
     // The member a recovery is for had a @wait out with us when they asked.
     private bool _heldWhenAsked;
@@ -1754,7 +1752,7 @@ public sealed class PartyComebackManager : IDisposable
             _party.Invite(given);
             return;
         }
-        _askedToJoin[given] = (NowProvider() + inviteAfter, onSight);
+        _askedToJoin[given] = (_now() + inviteAfter, onSight);
         _log?.Info(LogCategory,
             $"{given} is still on our list (Stock): told to join by @join, no invite sent. If they aren't following in {inviteAfter.TotalSeconds:0.#}s they are invited, as a member off our list would be.");
         ArmJoinFallback();
@@ -1763,36 +1761,38 @@ public sealed class PartyComebackManager : IDisposable
     // One shot for the earliest invite owed.
     private void ArmJoinFallback()
     {
-        _joinFallbackTimer.Stop();
+        StopJoinFallback();
         if (_askedToJoin.Count == 0) return;
-        TimeSpan until = _askedToJoin.Values.Min(asked => asked.InviteAt) - NowProvider();
-        _joinFallbackTimer.Interval = until > ShortestTick ? until : ShortestTick;
-        _joinFallbackTimer.Start();
+        TimeSpan until = _askedToJoin.Values.Min(asked => asked.InviteAt) - _now();
+        _joinFallbackTimer = _schedule(until > ShortestTick ? until : ShortestTick, OnJoinFallbackTick);
+    }
+
+    private void StopJoinFallback()
+    {
+        _joinFallbackTimer?.Dispose();
+        _joinFallbackTimer = null;
     }
 
     private static readonly TimeSpan ShortestTick = TimeSpan.FromMilliseconds(50);
+    internal static readonly TimeSpan MasterOffJoinRecheck = TimeSpan.FromSeconds(1);
 
     private void ForgetJoinAsked(string given)
     {
         if (_askedToJoin.Remove(given)) ArmJoinFallback();
     }
 
-    // Test seam — the DispatcherTimer doesn't tick under headless xUnit.
-    internal void FireJoinFallbackForTests() => OnJoinFallbackTick();
-
     // Whoever was asked to join and has not followed in time is invited, as before.
     private void OnJoinFallbackTick()
     {
-        _joinFallbackTimer.Stop();
+        _joinFallbackTimer = null;
         if (_askedToJoin.Count == 0) return;
         // Held with everything else: looked at again shortly, until the switch is back.
         if (MasterOff)
         {
-            _joinFallbackTimer.Interval = TimeSpan.FromSeconds(1);
-            _joinFallbackTimer.Start();
+            _joinFallbackTimer = _schedule(MasterOffJoinRecheck, OnJoinFallbackTick);
             return;
         }
-        DateTimeOffset now = NowProvider();
+        DateTimeOffset now = _now();
         foreach (string given in _askedToJoin.Keys.ToArray())
         {
             (DateTimeOffset inviteAt, bool onSight) = _askedToJoin[given];
@@ -1829,7 +1829,7 @@ public sealed class PartyComebackManager : IDisposable
         ForgetTripMember(GivenName(name));
         ForgetOnSight(GivenName(name));
         ForgetJoinAsked(GivenName(name));
-        _seenFollowingAt[GivenName(name)] = NowProvider();
+        _seenFollowingAt[GivenName(name)] = _now();
 
         if (!_busy || _phase == ComebackPhase.Idle) return;
         if (!string.Equals(GivenName(name), _senderGiven, StringComparison.OrdinalIgnoreCase)) return;
@@ -1883,10 +1883,6 @@ public sealed class PartyComebackManager : IDisposable
         Resume();
     }
 
-    // Test seams — the DispatcherTimer doesn't tick under headless xUnit.
-    internal bool FollowTimerRunning => _followTimer.IsEnabled;
-    internal void FireFollowTimeoutForTests() => OnFollowTimeout(null, EventArgs.Empty);
-
     // The member a recovery was for, seen following again while the master switch
     // was off.
     private string? _rejoinedWhileOff;
@@ -1909,7 +1905,7 @@ public sealed class PartyComebackManager : IDisposable
         if (_owedTripFetch is not { } owed) return;
         _owedTripFetch = null;
         if (owed.Left.Count == 0) return;
-        TimeSpan age = NowProvider() - owed.At;
+        TimeSpan age = _now() - owed.At;
         if (age > ComebackWindow)
         {
             _log?.Info(LogCategory,
@@ -1919,7 +1915,19 @@ public sealed class PartyComebackManager : IDisposable
         FetchLeftOnTrip(owed.Left);
     }
 
-    private void OnFollowTimeout(object? sender, EventArgs e)
+    private void StopFollowTimer()
+    {
+        _followTimer?.Dispose();
+        _followTimer = null;
+    }
+
+    private void OnFollowTick()
+    {
+        _followTimer = _schedule(_followInterval, OnFollowTick);
+        OnFollowTimeout();
+    }
+
+    private void OnFollowTimeout()
     {
         if (!_busy || _phase != ComebackPhase.AwaitingFollow) return;
         // The timer keeps ticking, so the wait runs out at its first tick after

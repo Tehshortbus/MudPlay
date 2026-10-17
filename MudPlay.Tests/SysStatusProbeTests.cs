@@ -11,6 +11,8 @@ public sealed class SysStatusProbeTests
     private sealed class Harness
     {
         public SysRoomStatusParser Parser { get; } = new();
+        // The game's output, fed the way the client receives it.
+        public ServerFeed Feed { get; } = new();
         public SysStatusProbe Probe { get; }
         public List<string> Sent { get; } = new();
         public bool CapabilityEnabled { get; set; } = true;
@@ -25,16 +27,14 @@ public sealed class SysStatusProbeTests
 
         public Harness()
         {
-            Probe = new SysStatusProbe(Parser, () => CapabilityEnabled, () => Now)
+            Parser.AttachLineExtractor(Feed.Lines);
+            // The "timeout" completes only when a test fires it explicitly,
+            // so a slow machine can never flake these.
+            Probe = new SysStatusProbe(Parser, () => CapabilityEnabled, () => Now, delay: _ =>
             {
-                // The "timeout" completes only when a test fires it explicitly,
-                // so a slow machine can never flake these.
-                DelayProvider = _ =>
-                {
-                    _currentDelay = new TaskCompletionSource();
-                    return _currentDelay.Task;
-                },
-            };
+                _currentDelay = new TaskCompletionSource();
+                return _currentDelay.Task;
+            });
             Probe.SetWireSender(bytes =>
             {
                 Sent.Add(Encoding.Latin1.GetString(bytes));
@@ -47,9 +47,9 @@ public sealed class SysStatusProbeTests
 
         public void ReplyWithRoom(int map, int room)
         {
-            Parser.FeedTestLine($"Room {room}  Map: {map}");
-            Parser.FeedTestLine("Monsters: None");
-            Parser.FeedTestLine("[HP=100]:", isPromptLine: true);
+            Feed.Line($"Room {room}  Map: {map}");
+            Feed.Line("Monsters: None");
+            Feed.Line("[HP=100]:");
         }
     }
 

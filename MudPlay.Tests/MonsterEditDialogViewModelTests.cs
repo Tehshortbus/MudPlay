@@ -367,20 +367,6 @@ public sealed class MonsterEditDialogViewModelTests
         Assert.True(Save(vm).EqualsInstalledDefaults);
     }
 
-    [Fact]
-    public void Location_Suggestions_DefaultEmpty_AndPassThrough()
-    {
-        Assert.Empty(MakeVm(null, null).LocationSuggestions.Regions);
-
-        MonsterLocationSuggestions s = new(["Mainland"], ["Volcano"], ["Lava Pit"]);
-        MonsterEditDialogViewModel vm = new(
-            wccNoStr: "1", mdbName: "rat", existing: null,
-            currentTier: SettingsTier.Character, mdbInfo: Array.Empty<MdbInfoRow>(),
-            writableTiers: [SettingsTier.Character],
-            locationSuggestions: s);
-        Assert.Same(s, vm.LocationSuggestions);
-    }
-
     // ----- override spell slots ------------------------------------------
 
     // Shaped like the class spells in the game data: mmis and dfir (#288) cost energy

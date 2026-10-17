@@ -58,7 +58,7 @@ public sealed class MonsterSummonWatcherTests
         public Harness()
         {
             DefaultPatterns.Seed(Router);
-            Classifier = new RoomEntityClassifier(Router, Monsters, new PlayerDatabase(), new LogService());
+            Classifier = new RoomEntityClassifier(Router, Monsters, new PlayerDatabase(new ProfileService(), () => null), new LogService());
             Monsters.Messages.Add(new MonsterMessageRecord(
                 Id: "M479", Name: "half-orc sentry", Links: new[] { new GameDataLink("Monsters", 479) }));
             Watcher = new MonsterSummonWatcher(Router, Classifier, ShoutsForAid,

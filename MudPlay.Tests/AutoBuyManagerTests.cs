@@ -24,7 +24,9 @@ public sealed class AutoBuyManagerTests
         public MessageRouter Router { get; } = new();
         public LogService Log { get; } = new();
         public AutoBuyManager Buy { get; }
-        public LineExtractor Lines { get; } = new(new TerminalEmulator(80, 24));
+        // The game's output, fed the way the client receives it.
+        public ServerFeed Server { get; } = new();
+        public LineExtractor Lines => Server.Lines;
         public List<byte[]> Sent { get; } = new();
         public bool Enabled { get; set; } = true;
         public bool Paradigm { get; set; }
@@ -46,8 +48,8 @@ public sealed class AutoBuyManagerTests
                 countCarried: n => CarriedCount.GetValueOrDefault(n),
                 isEnabled: () => Enabled,
                 log: Log,
-                isParadigm: () => Paradigm);
-            Buy.NowProvider = () => Clock;
+                isParadigm: () => Paradigm,
+                now: () => Clock);
             Buy.AttachLineExtractor(Lines);
             Buy.SetWireSender(b => Sent.Add(b));
         }
@@ -64,18 +66,8 @@ public sealed class AutoBuyManagerTests
         public void Feed(string line) => Router.Dispatch(new LineExtractor.EmittedLine(
             line, Array.Empty<CellAttributes>(), DateTimeOffset.UtcNow, IsPromptLine: false));
 
-        // Shop-list capture rides the LineExtractor stream, so it must fire the
-        // extractor's LineEmitted event (reflection — the backing field is private).
-        public void Emit(string line, bool prompt = false)
-        {
-            System.Reflection.FieldInfo? field = typeof(LineExtractor)
-                .GetField("LineEmitted",
-                    System.Reflection.BindingFlags.Instance |
-                    System.Reflection.BindingFlags.NonPublic);
-            if (field?.GetValue(Lines) is Action<LineExtractor.EmittedLine> handler)
-                handler(new LineExtractor.EmittedLine(
-                    line, Array.Empty<CellAttributes>(), DateTimeOffset.UtcNow, IsPromptLine: prompt));
-        }
+        // Shop-list capture rides the LineExtractor stream.
+        public void Emit(string line) => Server.Line(line);
 
         // Feed a whole shop readout: header, column header, separator, each stock
         // row, then a trailing blank that closes the capture and starts the pump.
@@ -118,7 +110,7 @@ public sealed class AutoBuyManagerTests
         Assert.Equal("torch", Assert.Single(Assert.Single(listed)).Name);
 
         // The prompt's line arriving later is not a second readout.
-        h.Emit("[HP=100/MA=10]:buy torch", prompt: true);
+        h.Emit("[HP=100/MA=10]:buy torch");
         Assert.Single(listed);
     }
 

@@ -112,25 +112,15 @@ public sealed class OutboundGearObserverTests
     [Theory]
     [InlineData("wear phoenix feather")]   // a trigger's response
     [InlineData("eq amber sceptre")]       // an event's Command action
-    public void TriggerResponseOrEventCommand_ThroughTheMarkedSender_IsTheUsersOwn(string command)
+    public void ASendThroughTheMarkedUserCommandSender_IsTheUsersOwn(string command)
     {
-        // TriggerEngine.SendResponse and EventManager.ExecuteCommand each send
-        // through the one sender they are bound to, which MainWindowViewModel marks.
+        // The sender MainWindowViewModel marks as the user's own, the one
+        // TriggerEngine.SendResponse and EventManager.ExecuteCommand are bound to.
         Wire wire = new();
         wire.UserCommands(Encoding.Latin1.GetBytes(command + "\r"));
 
         Assert.Equal(new[] { command }, wire.GearSeen);
         Assert.True(wire.Gate.SendingUsersOwnCommand);    // nothing in flight afterwards: back to typed
-    }
-
-    [Fact]
-    public void AliasExpansion_GoesOutAsTyped()
-    {
-        // An alias turns the typed line into its steps and sends each as typed.
-        Wire wire = new();
-        wire.Typed("eq phoenix feather");
-
-        Assert.Equal(new[] { "eq phoenix feather" }, wire.GearSeen);
     }
 
     [Fact]

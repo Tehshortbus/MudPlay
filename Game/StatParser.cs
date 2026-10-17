@@ -44,8 +44,7 @@ public sealed partial class StatParser : IDisposable
     // never through the generic field scan.
     public TimeSpan ExpectingHealthWindow { get; set; } = TimeSpan.FromSeconds(5);
 
-    // Test seam.
-    public Func<DateTime> NowProvider { get; set; } = () => DateTime.UtcNow;
+    private readonly Func<DateTime> _now;
 
     private DateTime? _windowOpenedAt;
     private DateTime? _healthWindowOpenedAt;
@@ -53,7 +52,7 @@ public sealed partial class StatParser : IDisposable
     // A `stat` / `exp` went out and its screen hasn't been captured yet, so anything
     // wanting a fresh stat screen can wait for this one instead of sending another.
     public bool ScreenExpected =>
-        _windowOpenedAt is { } opened && NowProvider() - opened <= ExpectingScreenWindow;
+        _windowOpenedAt is { } opened && _now() - opened <= ExpectingScreenWindow;
     // Per-arm flag — flipped true the first time a field commits within the
     // current scan window, reset when the gate closes. Lets us close the gate
     // as soon as the in-game prompt returns AFTER capture, instead of waiting
@@ -110,8 +109,9 @@ public sealed partial class StatParser : IDisposable
     // settle timer, re-armed off the last captured field, closes the gate on its own so
     // ScreenParsed lands promptly. Reactive closes still win when a line does arrive.
     private static readonly TimeSpan SettleAfterCapture = TimeSpan.FromMilliseconds(750);
-    private SynchronizationContext? _home;   // captured at arm — marshals the settle-close back onto the line-pipeline thread
-    private int _settleSession;              // bumped on arm / restart / close so a stale settle timer no-ops
+    private IDisposable? _settleTimer;
+    // Arms one tick after the delay; disposing what it returns cancels it.
+    private readonly Func<TimeSpan, Action, IDisposable> _schedule;
 
     // True once any stat-screen line has been parsed this session.
     public bool HasParsed { get; private set; }
@@ -146,8 +146,11 @@ public sealed partial class StatParser : IDisposable
     // ceilings with far less scroll than the full stat screen.
     public event Action<int, int>? HealthReanchored;
 
-    public StatParser(PlayerStats stats, LogService? log = null)
+    public StatParser(PlayerStats stats, LogService? log = null, Func<DateTime>? now = null,
+        Func<TimeSpan, Action, IDisposable>? schedule = null)
     {
+        _now = now ?? (() => DateTime.UtcNow);
+        _schedule = schedule ?? DispatcherTicks.Once;
         ArgumentNullException.ThrowIfNull(stats);
         _log   = log;
         Stats  = stats;
@@ -353,7 +356,7 @@ public sealed partial class StatParser : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
-        _settleSession++;   // strand any in-flight settle timer
+        CancelSettleClose();
         if (_lines is not null) _lines.LineEmitted -= OnLine;
     }
 
@@ -391,18 +394,17 @@ public sealed partial class StatParser : IDisposable
                       && "health".StartsWith(cmd, StringComparison.Ordinal);
         if (isHealth)
         {
-            _healthWindowOpenedAt = NowProvider();
+            _healthWindowOpenedAt = _now();
             _log?.Log(LogSeverity.Info, "StatParser",
                 $"Observed outbound `{cmd}` — armed {ExpectingHealthWindow.TotalSeconds:0}s health re-anchor window.");
         }
         if (!isStat && !isExp) return;
-        _windowOpenedAt = NowProvider();
+        _windowOpenedAt = _now();
         _capturedThisArm = false;
         _fieldsCapturedThisArm = 0;
         _hitsReadThisArm = _poolReadThisArm = _stealthReadThisArm = _livesReadThisArm = false;
         ResetArmMarks();
-        _home = SynchronizationContext.Current;   // (re)capture the pipeline thread for the settle-close
-        _settleSession++;                          // invalidate any prior window's pending settle timer
+        CancelSettleClose();   // a prior window's pending settle-close must not close this one
         _log?.Log(LogSeverity.Info, "StatParser",
             $"Observed outbound `{cmd}` — armed {ExpectingScreenWindow.TotalSeconds:0}s scan window.");
     }
@@ -421,52 +423,15 @@ public sealed partial class StatParser : IDisposable
     {
         if (_windowOpenedAt is not null) return;
         if (string.IsNullOrEmpty(text) || !StatHeaderRx().IsMatch(text)) return;
-        _windowOpenedAt = NowProvider();
+        _windowOpenedAt = _now();
         _capturedThisArm = false;
         _fieldsCapturedThisArm = 0;
         _hitsReadThisArm = _poolReadThisArm = _stealthReadThisArm = _livesReadThisArm = false;
         ResetArmMarks();
-        _home = SynchronizationContext.Current;
-        _settleSession++;
+        CancelSettleClose();
         _log?.Log(LogSeverity.Info, "StatParser",
             "Stat-screen header seen — self-armed scan (outbound `stat` gate missed the "
             + "command, e.g. typed in a full-screen form).");
-    }
-
-    // ----- Test seam -----------------------------------------------------
-    // Test seam — arm the scanner without going through the wire-observation
-    // path.
-    internal void TestArm() => _windowOpenedAt = NowProvider();
-
-    // Test seam — arm the health-command gate without the wire path.
-    internal void TestArmHealth() => _healthWindowOpenedAt = NowProvider();
-
-    // Test seam — pump a line through the full handler path without a real
-    // LineExtractor. Mirrors OnLine so tests exercise the always-on lives
-    // handler + the gated scan together. isPromptLine defaults to false; set
-    // true for tests that want to exercise the close-on-prompt-after-capture
-    // path.
-    internal void FeedTestLine(string text, bool isPromptLine = false, CellAttributes[]? attributes = null)
-    {
-        OnLivesRemainingLine(text);
-        OnExperienceGainLine(text);
-        OnTrainSuccessLine(text);
-        OnCpGainLine(text);
-        TryHealthWindow(text);
-        MaybeSelfArmOnHeader(text);
-        if (_windowOpenedAt is null) return;
-        if (isPromptLine && _capturedThisArm)
-        {
-            CloseGate("prompt after capture");
-            return;
-        }
-        if (NowProvider() - _windowOpenedAt.Value > ExpectingScreenWindow)
-        {
-            CloseGate("window expired");
-            return;
-        }
-        ScanLine(text, attributes);
-        if (_fieldsCapturedThisArm > 0) _capturedThisArm = true;
     }
 
     private void OnLine(LineExtractor.EmittedLine line)
@@ -505,7 +470,7 @@ public sealed partial class StatParser : IDisposable
             return;
         }
 
-        if (NowProvider() - _windowOpenedAt.Value > ExpectingScreenWindow)
+        if (_now() - _windowOpenedAt.Value > ExpectingScreenWindow)
         {
             CloseGate("window expired");
             return;
@@ -519,33 +484,25 @@ public sealed partial class StatParser : IDisposable
         if (_fieldsCapturedThisArm > capturedBefore) RestartSettleClose();
     }
 
-    // (Re)start the idle settle-close from the most recent captured field. Only the
-    // latest session survives — earlier timers find a bumped _settleSession and no-op.
-    // No-ops when no SynchronizationContext was captured at arm (unit tests have none;
-    // they drive the close synchronously via SettleNowForTests / the reactive paths).
+    // (Re)start the idle settle-close from the most recent captured field.
     private void RestartSettleClose()
     {
-        if (_home is null) return;
-        int session = ++_settleSession;
-        _ = SettleCloseAsync(session);
+        if (_disposed) return;
+        _settleTimer?.Dispose();
+        _settleTimer = _schedule(SettleAfterCapture, OnSettleElapsed);
     }
 
-    private async Task SettleCloseAsync(int session)
+    private void OnSettleElapsed()
     {
-        try { await Task.Delay(SettleAfterCapture).ConfigureAwait(false); }
-        catch { return; }
-        _home?.Post(_ =>
-        {
-            // Lost the race to a reactive close (prompt / expiry) or a newer window? no-op.
-            if (session == _settleSession && _windowOpenedAt is not null)
-                CloseGate("settled — stat screen idle, no trailing prompt");
-        }, null);
+        _settleTimer = null;
+        if (_windowOpenedAt is not null)
+            CloseGate("settled — stat screen idle, no trailing prompt");
     }
 
-    // Test seam — fire the idle settle-close immediately (no real delay).
-    internal void SettleNowForTests()
+    private void CancelSettleClose()
     {
-        if (_windowOpenedAt is not null) CloseGate("settled (test)");
+        _settleTimer?.Dispose();
+        _settleTimer = null;
     }
 
     // Single-line scan — apply every field regex and update the corresponding
@@ -810,7 +767,7 @@ public sealed partial class StatParser : IDisposable
     private void TryHealthWindow(string text)
     {
         if (_healthWindowOpenedAt is not { } opened) return;
-        if (NowProvider() - opened > ExpectingHealthWindow) { _healthWindowOpenedAt = null; return; }
+        if (_now() - opened > ExpectingHealthWindow) { _healthWindowOpenedAt = null; return; }
         if (string.IsNullOrWhiteSpace(text)) return;
         // A chat echo embedding the readout can never commit the re-anchor.
         if (ChatLineRx().IsMatch(text)) return;
@@ -945,7 +902,7 @@ public sealed partial class StatParser : IDisposable
         LastCaptureReadLives = _livesReadThisArm;
         _hitsReadThisArm = _poolReadThisArm = _stealthReadThisArm = _livesReadThisArm = false;
         PublishScreenMarks();
-        _settleSession++;   // cancel any settle timer still pending for this window
+        CancelSettleClose();
         // Fire ScreenParsed only when something actually changed —
         // there's no value in churning the profile snapshot for an
         // empty window.

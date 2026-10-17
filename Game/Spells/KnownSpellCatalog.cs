@@ -168,7 +168,7 @@ public sealed class KnownSpellCatalog
         foreach (GameRow row in doc.Rows)
         {
             KnownSpell spell = ToKnownSpell(row);
-            if (RegenSpellClassifier.Has(spell.Formula, RegenSpellTraits.ManaRegenRoll))
+            if (RegenSpellClassifier.IsManaRegenRoll(spell.Formula))
                 results.Add(spell);
         }
 
@@ -178,52 +178,6 @@ public sealed class KnownSpellCatalog
             return byMagery != 0 ? byMagery : string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase);
         });
         return results;
-    }
-
-    // Look up a single learnable spell by its Short cast-code for the given
-    // class. Returns null when no usable spell matches. level 0 ignores the
-    // level gate.
-    public KnownSpell? GetByShort(string shortCode, int classNumber, int level = 0, int charAlign = 0)
-    {
-        if (string.IsNullOrWhiteSpace(shortCode)) return null;
-        GameTable? doc = _cache.GetTable("Spells");
-        if (doc is null) return null;
-
-        string target = shortCode.Trim();
-        int classMagery = ResolveClassMagery(classNumber, out int classMageryLvl);
-        foreach (GameRow row in doc.Rows)
-        {
-            string? s = ReadString(row, "Short");
-            if (s is null || !string.Equals(s.Trim(), target, StringComparison.OrdinalIgnoreCase)) continue;
-            if (!IsUsable(row, classNumber, classMagery, classMageryLvl, level, charAlign, andLearnable: true))
-                continue;
-            return ToKnownSpell(row);
-        }
-        return null;
-    }
-
-    // Look up a single learnable spell by its full Name for the given class.
-    // The spells / pow list rows and the learn-scroll line ("…learn the spell
-    // harm.") both report the spell's Name rather than its Short code, so the
-    // obtained-signal path resolves through here. Returns null when no usable
-    // spell matches. level 0 ignores the level gate.
-    public KnownSpell? GetByName(string name, int classNumber, int level = 0, int charAlign = 0)
-    {
-        if (string.IsNullOrWhiteSpace(name)) return null;
-        GameTable? doc = _cache.GetTable("Spells");
-        if (doc is null) return null;
-
-        string target = name.Trim();
-        int classMagery = ResolveClassMagery(classNumber, out int classMageryLvl);
-        foreach (GameRow row in doc.Rows)
-        {
-            string? n = ReadString(row, "Name");
-            if (n is null || !string.Equals(n.Trim(), target, StringComparison.OrdinalIgnoreCase)) continue;
-            if (!IsUsable(row, classNumber, classMagery, classMageryLvl, level, charAlign, andLearnable: true))
-                continue;
-            return ToKnownSpell(row);
-        }
-        return null;
     }
 
     // Resolve a Spells.Number to its full Name across the entire Spells table

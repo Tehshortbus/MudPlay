@@ -8,35 +8,37 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Pins the @hangup handler's wire behaviour: only fires for a sender
-/// with the HangupDisconnect permission, sends the configured
-/// GameCommands.ExitCommand verbatim + CR. The default exit command
-/// is "=x" (MajorMUD main-menu logoff). Full cleanup-warning + first-
-/// session-login automation flows ship separately.
-/// </summary>
+// Pins the @hangup handler's wire behaviour: only fires for a sender
+// with the HangupDisconnect permission, sends the configured
+// GameCommands.ExitCommand verbatim + CR. The default exit command
+// is "=x" (MajorMUD main-menu logoff). Full cleanup-warning + first-
+// session-login automation flows ship separately.
 public sealed class HangupHandlerTests
 {
+    // The router each engine reads, which a test's chat lines go through.
+    private readonly Dictionary<RemoteCommandManager, MessageRouter> _routers = new();
+
     private static readonly DateTime Now = new(2026, 6, 2, 0, 0, 0, DateTimeKind.Utc);
 
-    private static (RemoteCommandManager engine, HangupHandler handler, PlayerDatabase players, List<byte[]> wire, GameCommands commands, HangupSignal signal) Setup()
+    private (RemoteCommandManager engine, HangupHandler handler, PlayerDatabase players, List<byte[]> wire, GameCommands commands, HangupSignal signal) Setup(bool bindWire = true)
     {
         MessageRouter router = new();
         DefaultPatterns.Seed(router);
         ChatRouter chat = new(router);
         PartyState party = new();
-        PlayerDatabase players = new();
+        PlayerDatabase players = new(new ProfileService(), () => null);
         GameCommands commands = new();   // defaults: "E" / "=x"
         HangupSignal signal = new();
         RemoteCommandManager engine = new(chat, party, players);
+        _routers[engine] = router;
         HangupHandler handler = new(engine, commands, signal);
         List<byte[]> wire = new();
-        handler.SetWireSender(wire.Add);
+        if (bindWire) handler.SetWireSender(wire.Add);
         return (engine, handler, players, wire, commands, signal);
     }
 
-    private static ChatLogEntry Telepath(string sender, string msg) =>
-        new(Now, ChatChannel.TelepathIncoming, sender, msg, $"{sender} telepaths: {msg}");
+    private static ChatLine Telepath(string sender, string msg) =>
+        new(ChatChannel.TelepathIncoming, sender, msg);
 
     private static void SeedPlayer(PlayerDatabase db, string name, PlayerRemoteControls controls)
     {
@@ -50,7 +52,7 @@ public sealed class HangupHandlerTests
         var (engine, _, players, wire, _, _) = Setup();
         SeedPlayer(players, "Trusted", PlayerRemoteControls.HangupDisconnect);
 
-        engine.DispatchForTests(Telepath("Trusted", "@hangup"));
+        ChatLines.Hear(_routers[engine], Telepath("Trusted", "@hangup"));
 
         byte[] sent = Assert.Single(wire);
         Assert.Equal("=x\r", Encoding.Latin1.GetString(sent));
@@ -63,7 +65,7 @@ public sealed class HangupHandlerTests
         SeedPlayer(players, "Trusted", PlayerRemoteControls.HangupDisconnect);
         commands.ExitCommand = "bye";
 
-        engine.DispatchForTests(Telepath("Trusted", "@hangup"));
+        ChatLines.Hear(_routers[engine], Telepath("Trusted", "@hangup"));
 
         Assert.Equal("bye\r", Encoding.Latin1.GetString(Assert.Single(wire)));
     }
@@ -77,7 +79,7 @@ public sealed class HangupHandlerTests
         SeedPlayer(players, "Stranger",
             PlayerRemoteControls.All & ~PlayerRemoteControls.HangupDisconnect);
 
-        engine.DispatchForTests(Telepath("Stranger", "@hangup"));
+        ChatLines.Hear(_routers[engine], Telepath("Stranger", "@hangup"));
 
         Assert.Empty(wire);
     }
@@ -87,7 +89,7 @@ public sealed class HangupHandlerTests
     {
         // No customization at all → default deny.
         var (engine, _, _, wire, _, _) = Setup();
-        engine.DispatchForTests(Telepath("Drive-by", "@hangup"));
+        ChatLines.Hear(_routers[engine], Telepath("Drive-by", "@hangup"));
         Assert.Empty(wire);
     }
 
@@ -100,7 +102,7 @@ public sealed class HangupHandlerTests
         SeedPlayer(players, "Trusted", PlayerRemoteControls.HangupDisconnect);
         commands.ExitCommand = string.Empty;
 
-        engine.DispatchForTests(Telepath("Trusted", "@hangup"));
+        ChatLines.Hear(_routers[engine], Telepath("Trusted", "@hangup"));
 
         Assert.Empty(wire);
     }
@@ -115,11 +117,11 @@ public sealed class HangupHandlerTests
         int asked = 0;
         handler.SetHangupPenaltyLog(() => { Assert.Single(wire); asked++; });
 
-        engine.DispatchForTests(Telepath("Trusted", "@hangup"));
+        ChatLines.Hear(_routers[engine], Telepath("Trusted", "@hangup"));
         Assert.Equal(1, asked);
 
         commands.ExitCommand = "";
-        engine.DispatchForTests(Telepath("Trusted", "@hangup"));
+        ChatLines.Hear(_routers[engine], Telepath("Trusted", "@hangup"));
         Assert.Equal(1, asked);
         Assert.Single(wire);
     }
@@ -131,7 +133,7 @@ public sealed class HangupHandlerTests
         SeedPlayer(players, "Trusted", PlayerRemoteControls.HangupDisconnect);
 
         handler.Dispose();
-        engine.DispatchForTests(Telepath("Trusted", "@hangup"));
+        ChatLines.Hear(_routers[engine], Telepath("Trusted", "@hangup"));
 
         Assert.Empty(wire);
     }
@@ -149,9 +151,11 @@ public sealed class HangupHandlerTests
         var (engine, _, players, _, _, signal) = Setup();
         SeedPlayer(players, "Trusted", PlayerRemoteControls.HangupDisconnect);
 
-        engine.DispatchForTests(Telepath("Trusted", "@hangup"));
+        ChatLines.Hear(_routers[engine], Telepath("Trusted", "@hangup"));
 
-        var (disc, supp) = signal.PeekForTests();
+        bool disc = signal.ConsumeDisconnectIntent();
+
+        bool supp = signal.ConsumeSuppressEntry();
         Assert.True(disc);
         Assert.True(supp);
     }
@@ -164,9 +168,11 @@ public sealed class HangupHandlerTests
         // poison the suppress-entry flag for the next legitimate
         // login.
         var (engine, _, _, _, _, signal) = Setup();
-        engine.DispatchForTests(Telepath("Stranger", "@hangup"));
+        ChatLines.Hear(_routers[engine], Telepath("Stranger", "@hangup"));
 
-        var (disc, supp) = signal.PeekForTests();
+        bool disc = signal.ConsumeDisconnectIntent();
+
+        bool supp = signal.ConsumeSuppressEntry();
         Assert.False(disc);
         Assert.False(supp);
     }
@@ -174,14 +180,14 @@ public sealed class HangupHandlerTests
     [Fact]
     public void Hangup_SignalRaisedEvenWithoutWireSender()
     {
-        // Pre-binding (or in tests where the wire-sender intentionally
-        // isn't bound), the intent should still be recorded so a
-        // racing Disconnected event still classifies correctly.
-        var (engine, handler, players, _, _, signal) = Setup();
-        handler.SetWireSender(_ => { });   // bind once...
+        // Before the wire-sender binds, the intent is still recorded so a
+        // racing Disconnected event classifies the drop correctly.
+        var (engine, _, players, wire, _, signal) = Setup(bindWire: false);
         SeedPlayer(players, "Trusted", PlayerRemoteControls.HangupDisconnect);
-        engine.DispatchForTests(Telepath("Trusted", "@hangup"));
-        var (disc, supp) = signal.PeekForTests();
+        ChatLines.Hear(_routers[engine], Telepath("Trusted", "@hangup"));
+        bool disc = signal.ConsumeDisconnectIntent();
+        bool supp = signal.ConsumeSuppressEntry();
+        Assert.Empty(wire);
         Assert.True(disc);
         Assert.True(supp);
     }

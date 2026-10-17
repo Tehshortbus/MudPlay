@@ -63,6 +63,9 @@ public sealed class GameDataSwitchStopsMovementTests : IDisposable
         public required MovementController Controller { get; init; }
         public required AvoidFilter Filter { get; init; }
         public required LogService Log { get; init; }
+        // The timers the engines keep, and the game's prompts as they read them.
+        public required ManualTimers Ticks { get; init; }
+        public required WirePromptScanner Prompt { get; init; }
         // Every command an engine or the recovery gate put on the wire, in order.
         public List<string> Sent { get; } = new();
 
@@ -123,17 +126,9 @@ public sealed class GameDataSwitchStopsMovementTests : IDisposable
                 Gate.NoteAuthoritativePosition(at);
                 Tracker.NoteMoveBlocked();
                 Gate.OnCombatTick();
-                Runner.FirePromptForTests();
-                Runner.FirePromptObservedForTests();
-                Runner.FireStallWatchdogForTests();
-                Runner.FireDelayForTests();
-                Runner.FireReconnectHoldElapsedForTests();
                 Runner.ResumeAfterMasterSwitch();
-                Walker.FirePromptForTests();
-                Walker.FireStallWatchdogForTests();
-                Lairs.FireRetryForTests();
-                Lairs.FireEntryTimerForTests();
-                Lairs.FireEngageTimerForTests();
+                Prompt.Append(Encoding.Latin1.GetBytes("[HP=100]: "));
+                Ticks.RunAll();
                 Controller.Resume();
                 Controller.NoteErrandStateChanged();
             }
@@ -162,10 +157,14 @@ public sealed class GameDataSwitchStopsMovementTests : IDisposable
         LogService log = new();
         EngineRecoveryGate gate = new(graph, tracker);
         AvoidFilter filter = new();
-        AutoWalkManager walker = new(graph, bfs, tracker, coord, log: log, recovery: gate);
-        LoopRunner runner = new(tracker, coord, log: log, graph: graph, recovery: gate, bfs: bfs, filter: filter, postToUi: a => a());
+        WirePromptScanner prompt = new();
+        AutoWalkManager walker = new(graph, bfs, tracker, coord, log: log, promptScanner: prompt, recovery: gate);
+        ManualTimers ticks = new();
+        walker.SetVoyageScheduler(ticks.Arm);
+        LoopRunner runner = new(tracker, coord, promptScanner: prompt, log: log, graph: graph, recovery: gate, bfs: bfs,
+            filter: filter, postToUi: a => a(), schedule: ticks.Arm);
         LairTimerStore timers = new(cache, graph, tracker);
-        AutoLairManager lairs = new(walker, tracker, graph, bfs, timers, log, coord);
+        AutoLairManager lairs = new(walker, tracker, graph, bfs, timers, log, coord, schedule: ticks.Arm);
         MovementController controller = new(walker, runner, lairs, coord, log);
         _dispose.Add(controller);
         _dispose.Add(lairs);
@@ -173,7 +172,7 @@ public sealed class GameDataSwitchStopsMovementTests : IDisposable
         Harness h = new()
         {
             Cache = cache, Graph = graph, Tracker = tracker, Bfs = bfs, Gate = gate, Walker = walker,
-            Runner = runner, Lairs = lairs, Controller = controller, Filter = filter, Log = log,
+            Runner = runner, Lairs = lairs, Controller = controller, Filter = filter, Log = log, Ticks = ticks, Prompt = prompt,
         };
         void Send(byte[] b) => h.Sent.Add(Encoding.Latin1.GetString(b).TrimEnd('\r'));
         walker.SetWireSender(Send);
@@ -391,7 +390,7 @@ public sealed class GameDataSwitchStopsMovementTests : IDisposable
         Assert.Null(h.Runner.PendingReconnectResumeName);
 
         h.Tracker.SetLocated(new RoomKey(1, 1));
-        h.Runner.FirePromptForTests();
+        h.Prompt.Append(Encoding.Latin1.GetBytes("[HP=100]: "));
         h.LetTimePass();
 
         Assert.Equal(sent, h.Sent);
@@ -451,7 +450,7 @@ public sealed class GameDataSwitchStopsMovementTests : IDisposable
             && e.Message == $"Loop 'ab', held for a reconnect, dropped: {Reason}");
 
         h.Tracker.SetLocated(new RoomKey(1, 1));
-        h.Runner.FirePromptForTests();
+        h.Prompt.Append(Encoding.Latin1.GetBytes("[HP=100]: "));
         h.LetTimePass();
 
         Assert.Equal(sent, h.Sent);
@@ -468,7 +467,7 @@ public sealed class GameDataSwitchStopsMovementTests : IDisposable
         h.Runner.NotifyDisconnected();
         bool off = true;
         h.Runner.MasterSwitchOff = () => off;
-        h.Runner.FirePromptForTests();
+        h.Prompt.Append(Encoding.Latin1.GetBytes("[HP=100]: "));
         Assert.True(h.Runner.ReconnectResumeHeldForMasterSwitch);
         string[] sent = h.Sent.ToArray();
 
@@ -903,7 +902,7 @@ public sealed class GameDataSwitchStopsMovementTests : IDisposable
 
         // The next character's first prompt in the game starts nothing of the last one's.
         h.Tracker.SetLocated(new RoomKey(1, 1));
-        h.Runner.FirePromptForTests();
+        h.Prompt.Append(Encoding.Latin1.GetBytes("[HP=100]: "));
         h.LetTimePass();
 
         Assert.Equal(sent, h.Sent);
@@ -1069,7 +1068,7 @@ public sealed class GameDataSwitchStopsMovementTests : IDisposable
         Assert.Equal(new[] { "[Loop 'ab', held for a reconnect, dropped: another character was loaded]" }, swap.Notices);
         Assert.Contains(h.Log.Snapshot(), e => e.Severity == LogSeverity.Info && e.Source == "Movement"
             && e.Message == "Loop 'ab', held for a reconnect, dropped: another character was loaded");
-        h.Runner.FirePromptObservedForTests();
+        h.Prompt.Append(Encoding.Latin1.GetBytes("[HP=100]: "));
         h.LetTimePass();
         Assert.Equal(sent, h.Sent);
         Assert.True(h.Idle);
@@ -1086,7 +1085,7 @@ public sealed class GameDataSwitchStopsMovementTests : IDisposable
         h.Runner.NotifyDisconnected();
 
         swap.Load("bbs/Alice");
-        h.Runner.FirePromptObservedForTests();
+        h.Prompt.Append(Encoding.Latin1.GetBytes("[HP=100]: "));
 
         Assert.Empty(swap.Notices);
         Assert.Equal(LoopState.Running, h.Runner.State);
@@ -1105,7 +1104,7 @@ public sealed class GameDataSwitchStopsMovementTests : IDisposable
 
         swap.Rename("bbs/Alicia");
         swap.Load("bbs/Alicia");
-        h.Runner.FirePromptObservedForTests();
+        h.Prompt.Append(Encoding.Latin1.GetBytes("[HP=100]: "));
 
         Assert.Empty(swap.Notices);
         Assert.Equal(LoopState.Running, h.Runner.State);

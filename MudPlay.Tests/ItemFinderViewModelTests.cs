@@ -1,12 +1,10 @@
 using System;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using MudPlay.Game;
 using MudPlay.Game.Inventory;
 using MudPlay.Models.Profile;
 using MudPlay.Services;
-using MudPlay.Terminal;
 using MudPlay.ViewModels.CharacterWorkshop;
 using Xunit;
 
@@ -110,12 +108,9 @@ public sealed class ItemFinderViewModelTests : IDisposable
     // Read an inventory dump into the manager the way the terminal would.
     private static void FeedInventory(InventoryManager inventory, params string[] dump)
     {
-        var lines = new LineExtractor(new TerminalEmulator(80, 24));
-        inventory.AttachLineExtractor(lines);
-        var emit = (Action<LineExtractor.EmittedLine>)typeof(LineExtractor)
-            .GetField("LineEmitted", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(lines)!;
-        foreach (string text in dump)
-            emit(new LineExtractor.EmittedLine(text, Array.Empty<CellAttributes>(), DateTimeOffset.UtcNow, IsPromptLine: false));
+        ServerFeed feed = new();
+        inventory.AttachLineExtractor(feed.Lines);
+        feed.Rows(dump);
     }
 
     private static TrialWornCheck Check(ItemFinderViewModel finder, EquipmentSlot slot) =>

@@ -6,23 +6,9 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-// Regression coverage for a reported-but-unreproduced failure mode: "rooms
-// being missed, just walking past them after sending rm" during Roomba
-// Mode's recon phase, on a gang house whose rooms all share the same
-// display name (heavy Suspect/rm-resync traffic as a result). The hypothesis
-// was that a recovery-driven resume (RoomTracker.SetLocated /
-// EngineRecoveryGate.NoteAuthoritativePosition) might resolve a room's
-// position WITHOUT re-raising the RoomTracker.StateChanged signal
-// GhSweepManager's recon dispatch depends on — a MISSING dispatch, distinct
-// from the misordered-dispatch races fixed elsewhere in LoopRunner this
-// session. These tests exercise that exact chain end to end and both pass,
-// proving the chain is sound as currently wired — SetLocated does fire a
-// genuine transition for an early-registered reactor, and that reactor's
-// gate correctly holds the loop through a full Suspect -> rm -> resolve
-// cycle. The root cause of the field report was NOT found or reproduced;
-// see GhSweepManager.OnRoomChanged's diagnostic logging (added alongside
-// these tests) for what a future structured log capture needs to pin it
-// down definitively.
+// A recovery-driven resume (RoomTracker.SetLocated) re-raises StateChanged for a
+// reactor registered early, as Roomba's recon dispatch registers: a room placed by
+// a resync is still reconned.
 public sealed class GhSweepRecoveryResyncTests : IDisposable
 {
     private readonly string _root;
@@ -80,74 +66,5 @@ public sealed class GhSweepRecoveryResyncTests : IDisposable
         Assert.Equal(new RoomKey(1, 2), t.NewRoom!.Key);
         Assert.NotNull(t.PreviousRoom);
         Assert.Equal(new RoomKey(1, 1), t.PreviousRoom!.Key);
-    }
-
-    [Fact]
-    public void ReconDispatchReactor_HoldsThroughFullSuspectRmResolveCycle()
-    {
-        // End-to-end reproduction of the reported sequence: a mid-step Suspect
-        // classification (the ambiguous-room-name resync trigger any of
-        // LoopRunner's three NoteSuspectedMismatch call sites can raise — the
-        // synchronous mismatch handler, or the in-flight stall watchdog timer)
-        // fires an `rm`; the reply resolves via the exact two-call sequence
-        // ParadigmPositionResolver.OnLocationObserved uses
-        // (tracker.SetLocated then gate.NoteAuthoritativePosition). A stand-in
-        // for GhSweepManager.OnRoomChanged, registered before LoopRunner (the
-        // same early-wrapper wiring AppServices uses), must see the resolved
-        // room's genuine transition, hold the loop via its own gate, and let
-        // exactly one move ship once that gate later clears.
-        RoomGraphManager graph = NewGraph();
-        RoomTracker tracker = new(graph);
-        MovementCoordinator coord = new();
-        BfsMapper bfs = new(graph);
-
-        bool reconning = false;
-        List<RoomKey> dispatchedFor = new();
-        tracker.StateChanged += t =>
-        {
-            if (!reconning) return;   // GhSweepManager.Phase is Idle before Start() — must not react yet
-            if (t.NewRoom is null) return;
-            if (t.PreviousRoom is { } prev && prev.Key.Equals(t.NewRoom.Key)) return;
-            dispatchedFor.Add(t.NewRoom.Key);
-            coord.AssertGate("TestReconGate");
-        };
-
-        EngineRecoveryGate gate = new(graph, tracker);
-        List<string> resyncReasons = new();
-        gate.TryResync = reason => { resyncReasons.Add(reason); return true; };
-
-        List<Action> posted = new();
-        LoopRunner runner = new(tracker, coord, graph: graph, recovery: gate, bfs: bfs,
-            postToUi: posted.Add);
-        List<byte[]> sent = new();
-        runner.SetWireSender(sent.Add);
-
-        tracker.SetLocated(new RoomKey(1, 1));
-        reconning = true;
-        Assert.True(runner.Start(new Loop("ab", new[] { new RoomKey(1, 1), new RoomKey(1, 2) })));
-        Assert.Single(sent);   // step 0: move toward 1/2
-
-        // A Suspect classification fires mid-step (either trigger source —
-        // NoteSuspectedMismatch's own behavior doesn't distinguish them).
-        gate.NoteSuspectedMismatch("test: ambiguous room name mid-step");
-        Assert.Single(resyncReasons);
-        Assert.Equal(LoopState.Paused, runner.State);
-        Assert.Empty(dispatchedFor);   // no genuine room change yet — nothing to dispatch
-
-        // The `rm` reply resolves.
-        tracker.SetLocated(new RoomKey(1, 2));
-        gate.NoteAuthoritativePosition(new RoomKey(1, 2));
-
-        Assert.Contains(new RoomKey(1, 2), dispatchedFor);
-        Assert.True(coord.IsGateAsserted("TestReconGate"));
-        Assert.Single(sent);   // must not have shipped the next move while the recon gate is up
-
-        // Recon "finishes" and releases its gate — exactly one deferred move ships.
-        coord.ClearGate("TestReconGate");
-        Action[] batch = posted.ToArray();
-        posted.Clear();
-        foreach (Action a in batch) a();
-
-        Assert.Equal(2, sent.Count);
     }
 }

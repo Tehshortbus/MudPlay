@@ -2143,6 +2143,14 @@ public static class BugReportBuilder
             $"{svc.GhSweep.MovedSoFar.Count} / {svc.GhSweep.LeftInPlace.Count} / "
             + $"{svc.GhSweep.PendingMoveCount} / {svc.GhSweep.CarriedPendingCount} / "
             + $"{svc.GhSweep.HiddenPendingCount}");
+        // The queue itself: which item a stuck sweep is still trying to move, and where.
+        IReadOnlyList<Game.Map.GhSweepPendingMove> pendingMoves = svc.GhSweep.PendingMoves;
+        Kv(sb, "Roomba pending moves", pendingMoves.Count == 0
+            ? "(none)"
+            : string.Join("; ", pendingMoves.Take(20).Select(m =>
+                $"{m.Count} {m.ItemName} {m.From.Map}/{m.From.Room}→{m.To.Map}/{m.To.Room}"
+                + (m.Hidden ? " hidden" : "") + (m.Carried ? " carried" : "")))
+              + (pendingMoves.Count > 20 ? $"; …{pendingMoves.Count - 20} more" : ""));
         // Resume state — the ONLY trace of an interrupted sweep after a restart, when
         // Phase is Idle and the in-memory pending counts read 0 but a per-character
         // manifest is still on disk. A "Resume greyed out" or "it dumped my load"

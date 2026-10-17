@@ -7,17 +7,20 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Pins the gear-set apply core: the pure <see cref="EquipmentManager.BuildWearCommands"/>
-/// / <see cref="EquipmentManager.ApplyVirtualSlots"/> diff logic and the
-/// non-timer <see cref="EquipmentManager.ApplyByKeyword"/> resolution paths.
-/// The paced wire-send (DispatcherTimer) is UI plumbing the headless test
-/// harness doesn't pump, so the tests deliberately exercise only the apply
-/// outcomes that resolve without enqueuing a physical wear sequence
-/// (NotFound / NoChange / virtual-only Applied).
-/// </summary>
+// Pins the gear-set apply core: the BuildWearCommands / ApplyVirtualSlots diff
+// logic, the ApplyByKeyword / ApplyBySetId resolution paths and the wear burst they
+// send, and the SwapWeapon combat fast path.
 public sealed class EquipmentManagerTests
 {
+    // What the managers built here put on the wire, through the sender the client binds.
+    private readonly List<byte[]> _sent = new();
+
+    private EquipmentManager Bound(EquipmentManager mgr)
+    {
+        mgr.SetWireSender(_sent.Add);
+        return mgr;
+    }
+
     // ----- builders -------------------------------------------------------
 
     private static EquipmentSlotEntry Entry(EquipmentSlot slot, string? item)
@@ -55,30 +58,30 @@ public sealed class EquipmentManagerTests
 
     // A manager wired for the immediate weapon fast path — snapshot + two-handed
     // predicate are the only inputs SwapWeapon reads.
-    private static EquipmentManager SwapManager(
+    private EquipmentManager SwapManager(
         InventorySnapshot snapshot, Func<string?, bool>? isTwoHanded = null)
-        => new(
+        => Bound(new(
             readEquipment: () => new EquipmentSettings(),
             getSnapshot:   () => snapshot,
             readCombat:    () => new CombatSettings(),
             writeCombat:   _ => { },
-            isTwoHanded:   isTwoHanded);
+            isTwoHanded:   isTwoHanded));
 
-    private static List<string> Wire(EquipmentManager mgr)
-        => mgr.LastSentForTests
+    private List<string> Wire()
+        => _sent
             .Select(b => System.Text.Encoding.Latin1.GetString(b).TrimEnd('\r'))
             .ToList();
 
-    private static EquipmentManager Manager(
+    private EquipmentManager Manager(
         EquipmentSettings settings,
         InventorySnapshot snapshot,
         CombatSettings combat,
         Action<CombatSettings>? onWrite = null)
-        => new(
+        => Bound(new(
             readEquipment: () => settings,
             getSnapshot:   () => snapshot,
             readCombat:    () => combat,
-            writeCombat:   c => onWrite?.Invoke(c));
+            writeCombat:   c => onWrite?.Invoke(c)));
 
     private static ISet<string> Worn(params string[] names)
         => new HashSet<string>(names, StringComparer.OrdinalIgnoreCase);
@@ -420,7 +423,7 @@ public sealed class EquipmentManagerTests
         // First apply sends the two wears.
         Assert.Equal(EquipResult.Applied, mgr.ApplyByTrigger(EquipTriggerType.Default));
         Assert.Equal(
-            new[] { "wear multicoloured sash", "wear adamantite chainmail boots" }, Wire(mgr));
+            new[] { "wear multicoloured sash", "wear adamantite chainmail boots" }, Wire());
 
         // Re-applied while those wears are still in flight → suppressed, no re-send.
         Assert.Equal(EquipResult.NoChange, mgr.ApplyByTrigger(EquipTriggerType.Default));
@@ -490,10 +493,8 @@ public sealed class EquipmentManagerTests
         Assert.Equal(2, fired);
     }
 
-    // A physical-slot apply now streams its wear burst synchronously (the paced
-    // DispatcherTimer is gone — report paradigm-20260827-082305 / equip-delay
-    // removal), so the whole delta lands on the wire in one call and the test can
-    // assert it directly (before, the unpumped timer meant nothing was sent).
+    // A physical-slot apply streams its wear burst synchronously (report
+    // paradigm-20260827-082305), so the whole delta lands on the wire in one call.
     [Fact]
     public void ApplyByKeyword_PhysicalSet_StreamsWearBurstSynchronously()
     {
@@ -510,7 +511,7 @@ public sealed class EquipmentManagerTests
             SnapshotHeld("iron helm", "plate mail"), new CombatSettings());
 
         Assert.Equal(EquipResult.Applied, mgr.ApplyByKeyword("armor"));
-        Assert.Equal(new[] { "wear iron helm", "wear plate mail" }, Wire(mgr));
+        Assert.Equal(new[] { "wear iron helm", "wear plate mail" }, Wire());
     }
 
     [Fact]
@@ -608,10 +609,7 @@ public sealed class EquipmentManagerTests
         // the weapon flap. With the combat-weapon-ownership probe returning true,
         // the auto-fire defers the held slots to combat: the set's only diff is the
         // weapon, so nothing is left to apply and ApplyBySetId reports NoChange
-        // instead of re-wearing over the swap. (The un-deferred path that DOES
-        // issue the weapon wear is pinned by BuildWearCommands_ArmorOnly / null-
-        // availability tests; it starts the paced DispatcherTimer the headless
-        // harness doesn't pump, so it isn't exercised end-to-end here.)
+        // instead of re-wearing over the swap.
         EquipmentSettings settings = new()
         {
             Sets = { SetWithId("set-1", "Default",
@@ -625,8 +623,6 @@ public sealed class EquipmentManagerTests
     }
 
     // ===== SwapWeapon (immediate combat fast path) =====
-    // Unlike the paced apply, this bypasses the DispatcherTimer and writes the
-    // wire synchronously, so the tests can assert directly on LastSentForTests.
 
     [Theory]
     [InlineData("")]
@@ -638,7 +634,7 @@ public sealed class EquipmentManagerTests
 
         mgr.SwapWeapon(weapon, "shield");
 
-        Assert.Empty(mgr.LastSentForTests);
+        Assert.Empty(_sent);
     }
 
     [Fact]
@@ -653,7 +649,7 @@ public sealed class EquipmentManagerTests
 
         mgr.SwapWeapon("longsword", null);
 
-        Assert.Empty(mgr.LastSentForTests);
+        Assert.Empty(_sent);
     }
 
     [Fact]
@@ -666,7 +662,7 @@ public sealed class EquipmentManagerTests
 
         mgr.SwapWeapon("quarterstaff", null);
 
-        Assert.Empty(mgr.LastSentForTests);
+        Assert.Empty(_sent);
     }
 
     [Fact]
@@ -676,7 +672,7 @@ public sealed class EquipmentManagerTests
 
         mgr.SwapWeapon("longsword", null);
 
-        Assert.Equal(new[] { "eq longsword" }, Wire(mgr));
+        Assert.Equal(new[] { "eq longsword" }, Wire());
     }
 
     [Fact]
@@ -686,7 +682,7 @@ public sealed class EquipmentManagerTests
 
         mgr.SwapWeapon("longsword", "shield");
 
-        Assert.Equal(new[] { "eq longsword" }, Wire(mgr));
+        Assert.Equal(new[] { "eq longsword" }, Wire());
     }
 
     [Fact]
@@ -696,7 +692,7 @@ public sealed class EquipmentManagerTests
 
         mgr.SwapWeapon("longsword", null);
 
-        Assert.Empty(mgr.LastSentForTests);
+        Assert.Empty(_sent);
     }
 
     [Fact]
@@ -706,7 +702,7 @@ public sealed class EquipmentManagerTests
 
         mgr.SwapWeapon("longsword", "shield");
 
-        Assert.Equal(new[] { "eq longsword", "eq shield" }, Wire(mgr));
+        Assert.Equal(new[] { "eq longsword", "eq shield" }, Wire());
     }
 
     [Fact]
@@ -717,7 +713,7 @@ public sealed class EquipmentManagerTests
 
         mgr.SwapWeapon("longsword", "shield");
 
-        Assert.Equal(new[] { "eq shield" }, Wire(mgr));
+        Assert.Equal(new[] { "eq shield" }, Wire());
     }
 
     [Fact]
@@ -728,7 +724,7 @@ public sealed class EquipmentManagerTests
 
         mgr.SwapWeapon("longsword", "shield");
 
-        Assert.Empty(mgr.LastSentForTests);
+        Assert.Empty(_sent);
     }
 
     [Fact]
@@ -742,7 +738,7 @@ public sealed class EquipmentManagerTests
 
         mgr.SwapWeapon("warhammer", null);
 
-        Assert.Equal(new[] { "rem shield", "eq warhammer" }, Wire(mgr));
+        Assert.Equal(new[] { "rem shield", "eq warhammer" }, Wire());
     }
 
     [Fact]
@@ -753,7 +749,7 @@ public sealed class EquipmentManagerTests
 
         mgr.SwapWeapon("warhammer", null);
 
-        Assert.Equal(new[] { "eq warhammer" }, Wire(mgr));
+        Assert.Equal(new[] { "eq warhammer" }, Wire());
     }
 
     [Fact]
@@ -765,7 +761,7 @@ public sealed class EquipmentManagerTests
 
         mgr.SwapWeapon("warhammer", "shield");
 
-        Assert.Equal(new[] { "eq warhammer" }, Wire(mgr));
+        Assert.Equal(new[] { "eq warhammer" }, Wire());
     }
 
     [Fact]
@@ -777,7 +773,7 @@ public sealed class EquipmentManagerTests
 
         mgr.SwapWeapon("warhammer", null);
 
-        Assert.Empty(mgr.LastSentForTests);
+        Assert.Empty(_sent);
     }
 
     // ===== ApplyBackstabArmor (pre-move backstab armor) =====
@@ -865,7 +861,7 @@ public sealed class EquipmentManagerTests
         EquipmentManager mgr = Manager(settings, SnapshotWithWorn("hood"), new CombatSettings());
 
         Assert.Equal(EquipResult.Applied, mgr.ApplyBackstabArmor());
-        Assert.Equal(new[] { "wear leather" }, Wire(mgr));
+        Assert.Equal(new[] { "wear leather" }, Wire());
     }
 
     [Fact]
@@ -1337,15 +1333,15 @@ public sealed class EquipmentManagerTests
     // A manager wired for the block machinery: the restriction predicate decides
     // which item names are "unwearable"; resolve/canEquip round out the inventory
     // path but the set-only apply used by these tests doesn't need them.
-    private static EquipmentManager BlockManager(
+    private EquipmentManager BlockManager(
         EquipmentSettings settings, InventorySnapshot snapshot, Func<string, bool> restrictsEquip)
-        => new(
+        => Bound(new(
             readEquipment: () => settings,
             getSnapshot:   () => snapshot,
             readCombat:    () => new CombatSettings(),
             writeCombat:   _ => { },
             canEquipItem:  static _ => true,
-            restrictsEquip: restrictsEquip);
+            restrictsEquip: restrictsEquip));
 
     [Fact]
     public void BuildWearCommands_SkipsBlockedNames()
@@ -1489,8 +1485,8 @@ public sealed class EquipmentManagerTests
 
         mgr.ApplyBySetId("s1");
 
-        Assert.Contains("wear iron helm", Wire(mgr));
-        Assert.DoesNotContain("wear evil cuirass", Wire(mgr));
+        Assert.Contains("wear iron helm", Wire());
+        Assert.DoesNotContain("wear evil cuirass", Wire());
         Assert.True(mgr.IsSlotBlocked("s1", EquipmentSlot.Torso));
     }
 
@@ -1505,7 +1501,7 @@ public sealed class EquipmentManagerTests
             restrictsEquip: _ => false);
 
         mgr.ApplyBySetId("s1");
-        Assert.Contains("wear evil cuirass", Wire(mgr));
+        Assert.Contains("wear evil cuirass", Wire());
 
         Assert.Equal("evil cuirass", mgr.NoteWearRefused());
 

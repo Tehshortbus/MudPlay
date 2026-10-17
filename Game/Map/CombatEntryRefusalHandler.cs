@@ -1,6 +1,5 @@
 using System.Text;
 using System.Text.RegularExpressions;
-using Avalonia.Threading;
 using MudPlay.Services;
 using MudPlay.Terminal;
 
@@ -31,7 +30,9 @@ public sealed partial class CombatEntryRefusalHandler : IDisposable
     private readonly RoomTracker _tracker;
     private readonly Func<bool> _isEngineActive;
     private readonly LogService? _log;
-    private readonly DispatcherTimer _settle;
+    private IDisposable? _settle;
+    // Arms one tick after the delay; disposing what it returns cancels it.
+    private readonly Func<TimeSpan, Action, IDisposable> _schedule;
 
     private Action<byte[]>? _wireSender;
     private bool _settling;
@@ -41,8 +42,10 @@ public sealed partial class CombatEntryRefusalHandler : IDisposable
         LineExtractor lines,
         RoomTracker tracker,
         Func<bool> isEngineActive,
-        LogService? log = null)
+        LogService? log = null,
+        Func<TimeSpan, Action, IDisposable>? schedule = null)
     {
+        _schedule = schedule ?? DispatcherTicks.Once;
         ArgumentNullException.ThrowIfNull(lines);
         ArgumentNullException.ThrowIfNull(tracker);
         ArgumentNullException.ThrowIfNull(isEngineActive);
@@ -50,8 +53,6 @@ public sealed partial class CombatEntryRefusalHandler : IDisposable
         _tracker = tracker;
         _isEngineActive = isEngineActive;
         _log = log;
-        _settle = new DispatcherTimer { Interval = BreakSettle };
-        _settle.Tick += OnSettleElapsed;
         _lines.LineEmitted += OnLineEmitted;
     }
 
@@ -62,14 +63,6 @@ public sealed partial class CombatEntryRefusalHandler : IDisposable
         ArgumentNullException.ThrowIfNull(sender);
         _wireSender = sender;
     }
-
-    internal void FeedTestLine(string text) => HandleLine(text);
-
-    // Test seam: run the post-break retry synchronously. The DispatcherTimer
-    // tick that drives it in-app isn't pumped in headless xUnit.
-    internal void CompleteRetryForTest() => CompleteRetry();
-
-    internal bool IsSettling => _settling;
 
     private void OnLineEmitted(LineExtractor.EmittedLine line)
     {
@@ -86,16 +79,15 @@ public sealed partial class CombatEntryRefusalHandler : IDisposable
 
         _settling = true;
         SendBreak();
-        _settle.Stop();
-        _settle.Start();
+        _settle?.Dispose();
+        _settle = _schedule(BreakSettle, CompleteRetry);
         _log?.Info(LogCategory, "combat-gated entry refused — sent break, retrying in 3s");
     }
 
-    private void OnSettleElapsed(object? sender, EventArgs e) => CompleteRetry();
-
     private void CompleteRetry()
     {
-        _settle.Stop();
+        _settle?.Dispose();
+        _settle = null;
         if (!_settling) return;
         _settling = false;
         // Revert the refused move so the driving engine's own one-shot retry
@@ -121,7 +113,7 @@ public sealed partial class CombatEntryRefusalHandler : IDisposable
         if (_disposed) return;
         _disposed = true;
         _lines.LineEmitted -= OnLineEmitted;
-        _settle.Stop();
-        _settle.Tick -= OnSettleElapsed;
+        _settle?.Dispose();
+        _settle = null;
     }
 }

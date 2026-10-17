@@ -17,9 +17,6 @@ public sealed partial class RegenCycle : ObservableObject
     // RealmRegenProfile).
     public TimeSpan Interval { get; private set; }
 
-    // Running-average per-tick amount (HP / MP delta). Refined via observation.
-    public RegenStat Stat { get; }
-
     // Wall-clock anchor for the most recently fired tick (real or
     // lazily-projected). null when the cycle isn't running.
     [ObservableProperty]
@@ -35,21 +32,18 @@ public sealed partial class RegenCycle : ObservableObject
         if (interval <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(interval));
         Name = name;
         Interval = interval;
-        Stat = new RegenStat(interval);
     }
 
     // Re-seed the cycle length for a new realm cadence. Keeps the current
     // Anchor (the countdown re-phases to the new interval from wherever it
-    // sits) and resets the amount estimate, which was learned under the old
-    // realm's cadence.
+    // sits).
     public void Reseed(TimeSpan interval)
     {
         if (interval <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(interval));
         Interval = interval;
-        Stat.Reseed(interval);
     }
 
-    // (Re)start the cycle, anchoring at at.
+    // (Re)start the cycle, anchoring at at: a tick seen, or where its count begins.
     public void Start(DateTimeOffset at) => Anchor = at;
 
     // Stop the cycle. GetTimeToNext returns null after.
@@ -80,14 +74,5 @@ public sealed partial class RegenCycle : ObservableObject
         else if (off < -stepMs / 2) off += stepMs;
         if (off != 0 && Math.Abs(off) <= tolerance.TotalMilliseconds)
             Anchor = a - TimeSpan.FromMilliseconds(off);
-    }
-
-    // Record an observed tick at at with the given amount. Anchors the cycle
-    // if not yet started, advances the EWMA for the per-tick amount.
-    public void RecordObservation(DateTimeOffset at, double amount)
-    {
-        TimeSpan interval = Anchor is { } prev ? at - prev : Interval;
-        Anchor = at;
-        Stat.AddSample(interval, amount);
     }
 }

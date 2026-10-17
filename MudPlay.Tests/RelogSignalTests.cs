@@ -3,11 +3,9 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Pins the single-flag one-shot semantics. ConsumeRelogIntent returns
-/// true exactly once per SignalRelog and resets to false, so the signal
-/// can be raised on subsequent relogs without leaking state.
-/// </summary>
+// Pins the single-flag one-shot semantics. ConsumeRelogIntent returns
+// true exactly once per SignalRelog and resets to false, so the signal
+// can be raised on subsequent relogs without leaking state.
 public sealed class RelogSignalTests
 {
     [Fact]
@@ -22,7 +20,7 @@ public sealed class RelogSignalTests
     {
         RelogSignal s = new();
         s.SignalRelog();
-        Assert.True(s.PeekForTests());
+        Assert.True(s.ConsumeRelogIntent());
     }
 
     [Fact]

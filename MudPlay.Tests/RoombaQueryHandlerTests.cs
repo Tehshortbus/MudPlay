@@ -18,6 +18,12 @@ namespace MudPlay.Tests;
 // item — gated solely on the per-player QueryItemLocation ("Query Roomba") grant.
 public sealed class RoombaQueryHandlerTests : IDisposable
 {
+    // The router each engine reads, which a test's chat lines go through.
+    private readonly Dictionary<RemoteCommandManager, MessageRouter> _routers = new();
+
+    // What the remote-command engine put on the wire, through the sender the client binds.
+    private readonly List<byte[]> _replies = new();
+
     private static readonly DateTime Now = new(2026, 6, 20, 0, 0, 0, DateTimeKind.Utc);
     private readonly string _scratchBbs = "roomba-query-test-" + Path.GetRandomFileName();
     private readonly string _gameDataRoot = Path.Combine(
@@ -42,11 +48,13 @@ public sealed class RoombaQueryHandlerTests : IDisposable
         DefaultPatterns.Seed(router);
         ChatRouter chat = new(router);
         PartyState party = new();
-        PlayerDatabase players = new();
+        PlayerDatabase players = new(new ProfileService(), () => null);
         RemoteCommandManager engine = new(chat, party, players);
+        _routers[engine] = router;
+        engine.SetWireSender(_replies.Add);
 
-        ProfileService profile = new();
-        profile.LoadBlank();
+        ProfileService profile = TestProfiles.Service();
+        profile.LoadDefaultProfile();
         GhRoomLabelStore labels = new(profile);
         labels.OnRealmChanged(AppPaths.BbsFolder(_scratchBbs));
 
@@ -59,8 +67,8 @@ public sealed class RoombaQueryHandlerTests : IDisposable
         return (engine, players, labels, locations);
     }
 
-    private static ChatLogEntry Gangpath(string sender, string msg) =>
-        new(Now, ChatChannel.Gangpath, sender, msg, $"{sender} gangpaths: {msg}");
+    private static ChatLine Gangpath(string sender, string msg) =>
+        new(ChatChannel.Gangpath, sender, msg);
 
     private static void SeedPlayer(PlayerDatabase db, string name, PlayerRemoteControls controls)
     {
@@ -68,14 +76,14 @@ public sealed class RoombaQueryHandlerTests : IDisposable
         db.EditCustomization(name, new PlayerCustomization(RemoteControls: controls));
     }
 
-    private static IReadOnlyList<string> Replies(RemoteCommandManager e) =>
-        e.LastSentForTests.Select(b => Encoding.Latin1.GetString(b)).ToList();
+    private IReadOnlyList<string> Replies() =>
+        _replies.Select(b => Encoding.Latin1.GetString(b)).ToList();
 
     // Decode every "bg {@roombadata <blob>}" gangpath reply line on its own and
     // flatten — mirrors RoombaSyncReceiver, which merges each self-contained line
     // as it arrives (no cross-line reassembly).
-    private static IReadOnlyList<GhItemSyncRecord> DecodeSyncReplies(RemoteCommandManager e)
-        => Replies(e)
+    private IReadOnlyList<GhItemSyncRecord> DecodeSyncReplies()
+        => Replies()
             .Where(r => r.Contains(RoombaQueryHandler.SyncResponseToken))
             .Select(r =>
             {
@@ -106,11 +114,13 @@ public sealed class RoombaQueryHandlerTests : IDisposable
         DefaultPatterns.Seed(router);
         ChatRouter chat = new(router);
         PartyState party = new();
-        PlayerDatabase players = new();
+        PlayerDatabase players = new(new ProfileService(), () => null);
         RemoteCommandManager engine = new(chat, party, players);
+        _routers[engine] = router;
+        engine.SetWireSender(_replies.Add);
 
-        ProfileService profile = new();
-        profile.LoadBlank();
+        ProfileService profile = TestProfiles.Service();
+        profile.LoadDefaultProfile();
         GhRoomLabelStore labels = new(profile);
         labels.OnRealmChanged(AppPaths.BbsFolder(_scratchBbs));
 
@@ -129,9 +139,9 @@ public sealed class RoombaQueryHandlerTests : IDisposable
         SeedPlayer(players, "Friend", PlayerRemoteControls.QueryItemLocation);
         locations.RecordRoom(new RoomKey(1, 100), new[] { "long sword" });
 
-        engine.DispatchForTests(Gangpath("Friend", "@roomba long sword"));
+        ChatLines.Hear(_routers[engine], Gangpath("Friend", "@roomba long sword"));
 
-        Assert.Contains(Replies(engine), r => r.Contains("long sword") && r.Contains("1/100"));
+        Assert.Contains(Replies(), r => r.Contains("long sword") && r.Contains("1/100"));
     }
 
     // A gang house can stock the same item in more than one room — the reply
@@ -145,9 +155,9 @@ public sealed class RoombaQueryHandlerTests : IDisposable
         locations.RecordRoom(new RoomKey(1, 100), new[] { "4 long sword" });
         locations.RecordRoom(new RoomKey(1, 200), new[] { "2 long sword" });
 
-        engine.DispatchForTests(Gangpath("Friend", "@roomba long sword"));
+        ChatLines.Hear(_routers[engine], Gangpath("Friend", "@roomba long sword"));
 
-        string reply = Assert.Single(Replies(engine));
+        string reply = Assert.Single(Replies());
         Assert.Contains("6x long sword", reply);   // 4 + 2 summed
         Assert.Contains("1/100", reply);
         Assert.Contains("1/200", reply);
@@ -166,9 +176,9 @@ public sealed class RoombaQueryHandlerTests : IDisposable
         locations.RecordRoom(new RoomKey(1, 100), new[] { "4 long sword" });
         locations.RecordRoom(new RoomKey(1, 200), new[] { "2 long sword" });
 
-        engine.DispatchForTests(Gangpath("Friend", "@roomba long sword"));
+        ChatLines.Hear(_routers[engine], Gangpath("Friend", "@roomba long sword"));
 
-        string reply = Assert.Single(Replies(engine));
+        string reply = Assert.Single(Replies());
         Assert.Contains("6x long sword", reply);
         Assert.Contains("1/100 (4)", reply);
         Assert.Contains("1/200 (2)", reply);
@@ -183,14 +193,15 @@ public sealed class RoombaQueryHandlerTests : IDisposable
     {
         var (engine, players, _, locations) = Setup();
         SeedPlayer(players, "Friend", PlayerRemoteControls.QueryItemLocation);
-        DateTimeOffset before = DateTimeOffset.Now;
         locations.RecordRoom(new RoomKey(1, 100), new[] { "long sword" });
+        // The stamp the sighting took, read back so a minute rolling over can't split it.
+        DateTimeOffset seen = Assert.Single(locations.FindSightings("long sword")).SeenAt;
 
-        engine.DispatchForTests(Gangpath("Friend", "@roomba long sword"));
+        ChatLines.Hear(_routers[engine], Gangpath("Friend", "@roomba long sword"));
 
-        string reply = Assert.Single(Replies(engine));
+        string reply = Assert.Single(Replies());
         Assert.Contains(
-            $"last scanned {before:yyyy-MM-dd HH:mm} {TimeZoneAbbreviation.For(before)}", reply);
+            $"last scanned {seen:yyyy-MM-dd HH:mm} {TimeZoneAbbreviation.For(seen)}", reply);
     }
 
     // Beyond MaxRoomsShown, the room list folds into a "+N more" tail instead
@@ -204,9 +215,9 @@ public sealed class RoombaQueryHandlerTests : IDisposable
         for (int room = 1; room <= 12; room++)
             locations.RecordRoom(new RoomKey(1, room), new[] { "long sword" });
 
-        engine.DispatchForTests(Gangpath("Friend", "@roomba long sword"));
+        ChatLines.Hear(_routers[engine], Gangpath("Friend", "@roomba long sword"));
 
-        string reply = Assert.Single(Replies(engine));
+        string reply = Assert.Single(Replies());
         Assert.Contains("12x long sword", reply);
         Assert.Contains("+2 more", reply);
     }
@@ -224,9 +235,9 @@ public sealed class RoombaQueryHandlerTests : IDisposable
         locations.RecordRoom(new RoomKey(1, 100), new[] { "severed head of goru-nezar" });
         locations.RecordRoom(new RoomKey(1, 200), new[] { "severed head of darksong" });
 
-        engine.DispatchForTests(Gangpath("Friend", "@roomba severed head"));
+        ChatLines.Hear(_routers[engine], Gangpath("Friend", "@roomba severed head"));
 
-        var replies = Replies(engine);
+        var replies = Replies();
         Assert.Equal(2, replies.Count);
         Assert.Contains(replies, r => r.Contains("severed head of goru-nezar") && r.Contains("1/100"));
         Assert.Contains(replies, r => r.Contains("severed head of darksong") && r.Contains("1/200"));
@@ -242,9 +253,9 @@ public sealed class RoombaQueryHandlerTests : IDisposable
         for (int i = 1; i <= 7; i++)
             locations.RecordRoom(new RoomKey(1, i), new[] { $"severed head of npc{i}" });
 
-        engine.DispatchForTests(Gangpath("Friend", "@roomba severed"));
+        ChatLines.Hear(_routers[engine], Gangpath("Friend", "@roomba severed"));
 
-        var replies = Replies(engine);
+        var replies = Replies();
         Assert.Equal(6, replies.Count);   // 5 item lines + one overflow line
         Assert.Contains(replies, r => r.Contains("2 more matching item"));
     }
@@ -255,9 +266,9 @@ public sealed class RoombaQueryHandlerTests : IDisposable
         var (engine, players, _, _) = Setup();
         SeedPlayer(players, "Friend", PlayerRemoteControls.QueryItemLocation);
 
-        engine.DispatchForTests(Gangpath("Friend", "@roomba nonexistent item"));
+        ChatLines.Hear(_routers[engine], Gangpath("Friend", "@roomba nonexistent item"));
 
-        Assert.Contains(Replies(engine), r => r.Contains("no record"));
+        Assert.Contains(Replies(), r => r.Contains("no record"));
     }
 
     [Fact]
@@ -267,9 +278,9 @@ public sealed class RoombaQueryHandlerTests : IDisposable
         SeedPlayer(players, "Stranger", PlayerRemoteControls.None);
         locations.RecordRoom(new RoomKey(1, 100), new[] { "long sword" });
 
-        engine.DispatchForTests(Gangpath("Stranger", "@roomba long sword"));
+        ChatLines.Hear(_routers[engine], Gangpath("Stranger", "@roomba long sword"));
 
-        Assert.DoesNotContain(Replies(engine), r => r.Contains("long sword"));
+        Assert.DoesNotContain(Replies(), r => r.Contains("long sword"));
     }
 
     [Fact]
@@ -279,9 +290,9 @@ public sealed class RoombaQueryHandlerTests : IDisposable
         SeedPlayer(players, "Friend", PlayerRemoteControls.QueryItemLocation);
         locations.RecordRoom(new RoomKey(1, 100), new[] { "3 torch" });
 
-        engine.DispatchForTests(Gangpath("Friend", "@roomba sync"));
+        ChatLines.Hear(_routers[engine], Gangpath("Friend", "@roomba sync"));
 
-        IReadOnlyList<GhItemSyncRecord> decoded = DecodeSyncReplies(engine);
+        IReadOnlyList<GhItemSyncRecord> decoded = DecodeSyncReplies();
         GhItemSyncRecord r = Assert.Single(decoded);
         Assert.Equal(1, r.Map);
         Assert.Equal(100, r.Room);
@@ -295,9 +306,9 @@ public sealed class RoombaQueryHandlerTests : IDisposable
         var (engine, players, _) = SetupWithItems();
         SeedPlayer(players, "Friend", PlayerRemoteControls.QueryItemLocation);
 
-        engine.DispatchForTests(Gangpath("Friend", "@roomba sync"));
+        ChatLines.Hear(_routers[engine], Gangpath("Friend", "@roomba sync"));
 
-        Assert.Empty(DecodeSyncReplies(engine));
+        Assert.Empty(DecodeSyncReplies());
     }
 
     [Fact]
@@ -307,16 +318,16 @@ public sealed class RoombaQueryHandlerTests : IDisposable
         SeedPlayer(players, "Friend", PlayerRemoteControls.QueryItemLocation);
         locations.RecordRoom(new RoomKey(1, 100), new[] { "torch" });
 
-        engine.DispatchForTests(Gangpath("Friend", "@roomba sync"));
+        ChatLines.Hear(_routers[engine], Gangpath("Friend", "@roomba sync"));
 
-        string last = Replies(engine).Last(r => r.Contains(RoombaQueryHandler.SyncResponseToken));
+        string last = Replies().Last(r => r.Contains(RoombaQueryHandler.SyncResponseToken));
         Assert.Contains(RoombaQueryHandler.SyncCompleteMarker, last);
     }
 
     // ----- the channels a sync may go by --------------------------------------
 
-    private static ChatLogEntry Heard(ChatChannel channel, string sender, string msg) =>
-        new(Now, channel, sender, msg, $"{sender}: {msg}");
+    private static ChatLine Heard(ChatChannel channel, string sender, string msg) =>
+        new(channel, sender, msg);
 
     // The gang house's log goes to one player or to the gang.
     [Theory]
@@ -328,10 +339,10 @@ public sealed class RoombaQueryHandlerTests : IDisposable
         SeedPlayer(players, "Friend", PlayerRemoteControls.QueryItemLocation);
         locations.RecordRoom(new RoomKey(1, 100), new[] { "3 torch" });
 
-        engine.DispatchForTests(Heard(channel, "Friend", "@roomba sync"));
+        ChatLines.Hear(_routers[engine], Heard(channel, "Friend", "@roomba sync"));
 
-        Assert.Single(DecodeSyncReplies(engine));
-        Assert.All(Replies(engine), r => Assert.StartsWith(opening + RoombaQueryHandler.SyncResponseToken, r));
+        Assert.Single(DecodeSyncReplies());
+        Assert.All(Replies(), r => Assert.StartsWith(opening + RoombaQueryHandler.SyncResponseToken, r));
     }
 
     // Said aloud or on the broadcast channel it is refused, with where it does work,
@@ -346,9 +357,9 @@ public sealed class RoombaQueryHandlerTests : IDisposable
         locations.RecordRoom(new RoomKey(1, 100), new[] { "3 torch" });
         engine.DisableBroadcastChannel = false;   // the broadcast channel opened on the Talk tab
 
-        engine.DispatchForTests(Heard(channel, "Friend", "@roomba sync"));
+        ChatLines.Hear(_routers[engine], Heard(channel, "Friend", "@roomba sync"));
 
-        Assert.Equal(expected, Replies(engine).Single());
+        Assert.Equal(expected, Replies().Single());
     }
 
     [Fact]
@@ -357,14 +368,14 @@ public sealed class RoombaQueryHandlerTests : IDisposable
         var (quiet, quietPlayers, _) = SetupWithItems();
         SeedPlayer(quietPlayers, "Friend", PlayerRemoteControls.QueryItemLocation);
         quiet.WarnOnDenial = false;
-        quiet.DispatchForTests(Heard(ChatChannel.Local, "Friend", "@roomba sync"));
-        Assert.Empty(Replies(quiet));
+        ChatLines.Hear(_routers[quiet], Heard(ChatChannel.Local, "Friend", "@roomba sync"));
+        Assert.Empty(Replies());
 
         var (sneaking, sneakingPlayers, _) = SetupWithItems();
         SeedPlayer(sneakingPlayers, "Friend", PlayerRemoteControls.QueryItemLocation);
         sneaking.StealthedProvider = () => true;
-        sneaking.DispatchForTests(Heard(ChatChannel.Local, "Friend", "@roomba sync"));
-        Assert.Equal("/Friend {@roomba sync works by telepath or gangpath only}\r", Replies(sneaking).Single());
+        ChatLines.Hear(_routers[sneaking], Heard(ChatChannel.Local, "Friend", "@roomba sync"));
+        Assert.Equal("/Friend {@roomba sync works by telepath or gangpath only}\r", Replies().Single());
     }
 
     // Only the sync is held to those channels: asking where an item is still works
@@ -376,9 +387,9 @@ public sealed class RoombaQueryHandlerTests : IDisposable
         SeedPlayer(players, "Friend", PlayerRemoteControls.QueryItemLocation);
         locations.RecordRoom(new RoomKey(1, 100), new[] { "3 torch" });
 
-        engine.DispatchForTests(Heard(ChatChannel.Local, "Friend", "@roomba torch"));
+        ChatLines.Hear(_routers[engine], Heard(ChatChannel.Local, "Friend", "@roomba torch"));
 
-        Assert.Contains("total: 3x torch", Replies(engine).Single());
+        Assert.Contains("total: 3x torch", Replies().Single());
     }
 
     // A channel switched off on the Talk tab stays off though the sync may use it.
@@ -390,9 +401,9 @@ public sealed class RoombaQueryHandlerTests : IDisposable
         locations.RecordRoom(new RoomKey(1, 100), new[] { "3 torch" });
         engine.DisableGangpathChannel = true;
 
-        engine.DispatchForTests(Gangpath("Friend", "@roomba sync"));
+        ChatLines.Hear(_routers[engine], Gangpath("Friend", "@roomba sync"));
 
-        Assert.Empty(Replies(engine));
+        Assert.Empty(Replies());
     }
 
     [Fact]
@@ -402,8 +413,8 @@ public sealed class RoombaQueryHandlerTests : IDisposable
         SeedPlayer(players, "Stranger", PlayerRemoteControls.None);
         locations.RecordRoom(new RoomKey(1, 100), new[] { "torch" });
 
-        engine.DispatchForTests(Gangpath("Stranger", "@roomba sync"));
+        ChatLines.Hear(_routers[engine], Gangpath("Stranger", "@roomba sync"));
 
-        Assert.DoesNotContain(Replies(engine), r => r.Contains(RoombaQueryHandler.SyncResponseToken));
+        Assert.DoesNotContain(Replies(), r => r.Contains(RoombaQueryHandler.SyncResponseToken));
     }
 }

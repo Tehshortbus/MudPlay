@@ -70,7 +70,7 @@ public sealed partial class PartyViewModel : ObservableObject, IDisposable
     {
     }
 
-    // Full-control constructor. Pass profile as null from tests to skip the
+    // Full-control constructor. A null profile skips the
     // ProfileService.ProfileLoaded / ProfileMutated subscriptions — LocalRank
     // then stays at its PartyRank.Mid default. Production code uses the
     // two-arg overload above; that path grabs the live AppServices.Profile.
@@ -139,7 +139,7 @@ public sealed partial class PartyViewModel : ObservableObject, IDisposable
     {
         // Only the fields that contribute to HeaderText warrant a
         // refresh — other PartyMember properties churn frequently
-        // (HpDisplay, status flags) and don't affect the header.
+        // (HpRichDisplay, status flags) and don't affect the header.
         if (e.PropertyName is nameof(PartyMember.HpPercent)
                           or nameof(PartyMember.IsSelf)
                           or nameof(PartyMember.Name))

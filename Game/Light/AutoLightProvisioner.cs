@@ -134,9 +134,6 @@ public sealed class AutoLightProvisioner
     // bound, a Buy verdict is logged and deferred to the reactive need-poster.
     public void SetProvisioner(Action<AutoLightBuyRequest> provision) => _provision = provision;
 
-    // Test seam — bytes the engine asked to write to the wire.
-    internal List<byte[]> LastSentForTests => _wire.LastSentForTests;
-
     // Route-planned handler bound to AutoWalkManager.SetRouteAnnouncer. Scans the
     // route, runs the planner, and readies a covering light when one is called
     // for. A no-op unless the AutoLight master toggle is on.

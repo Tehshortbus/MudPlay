@@ -257,7 +257,7 @@ public sealed class MasterSwitchGateTests
     {
         MessageRouter router = new();
         DefaultPatterns.Seed(router);
-        PlayerDatabase players = new();
+        PlayerDatabase players = new(new ProfileService(), () => null);
         LogService log = new();
         using RoomEntityClassifier classifier = new(router, new MonsterMessageStore(), players, log);
         List<string> sent = new();
@@ -290,7 +290,7 @@ public sealed class MasterSwitchGateTests
     {
         MessageRouter router = new();
         DefaultPatterns.Seed(router);
-        PlayerDatabase players = new();
+        PlayerDatabase players = new(new ProfileService(), () => null);
         LogService log = new();
         using RoomEntityClassifier classifier = new(router, new MonsterMessageStore(), players, log);
         using RoomEntryWatcher entry = new(router, classifier, log);
@@ -315,7 +315,7 @@ public sealed class MasterSwitchGateTests
         MessageRouter router = new();
         DefaultPatterns.Seed(router);
         ChatRouter chat = new(router);
-        PlayerDatabase players = new();
+        PlayerDatabase players = new(new ProfileService(), () => null);
         RemoteCommandManager engine = new(chat, new PartyState(), players);
         DivertHandler handler = new(engine, chat);
         List<byte[]> forwarded = new();
@@ -324,7 +324,6 @@ public sealed class MasterSwitchGateTests
         players.EditCustomization("Bob", new PlayerCustomization(RemoteControls: PlayerRemoteControls.DivertConversations));
         router.Dispatch(new LineExtractor.EmittedLine("Bob telepaths: @divert Raijin",
             new CellAttributes["Bob telepaths: @divert Raijin".Length], DateTimeOffset.UnixEpoch, IsPromptLine: false));
-        Assert.Equal("Raijin", handler.TargetForTests);
 
         handler.MasterSwitchOff = () => off;
         router.Dispatch(new LineExtractor.EmittedLine("Ann telepaths: hello there",

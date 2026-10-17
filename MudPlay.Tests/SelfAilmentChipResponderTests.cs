@@ -1,4 +1,3 @@
-using System.Reflection;
 using MudPlay.Game;
 using MudPlay.Game.Conditions;
 using MudPlay.Models.GameData;
@@ -9,12 +8,10 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// <see cref="SelfAilmentChipResponder"/> — our own poison / blindness / disease
-/// must light the SELF party-window chip. PartyAilmentTracker only mirrors OTHER
-/// members' announced ailments; our own state is owned by ConditionTracker, so
-/// without this responder the self row never showed poison (the reported bug).
-/// </summary>
+// SelfAilmentChipResponder — our own poison / blindness / disease
+// must light the SELF party-window chip. PartyAilmentTracker only mirrors OTHER
+// members' announced ailments; our own state is owned by ConditionTracker, so
+// without this responder the self row never showed poison (the reported bug).
 public sealed class SelfAilmentChipResponderTests
 {
     private static LineExtractor.EmittedLine Line(string text) =>
@@ -36,6 +33,8 @@ public sealed class SelfAilmentChipResponderTests
         public LogService Log { get; } = new();
         public MessageStore Messages { get; } = new();
         public ConditionTracker Conditions { get; }
+        // The game's output, fed the way the client receives it.
+        public ServerFeed Server { get; } = new();
         public MessageRouter Router { get; } = new();
         public PartyManager Party { get; }
         public SelfAilmentChipResponder Responder { get; }
@@ -43,6 +42,7 @@ public sealed class SelfAilmentChipResponderTests
         public Harness()
         {
             Conditions = new ConditionTracker(Messages, Log);
+            Conditions.AttachLineExtractor(Server.Lines);
             Messages.Messages.Add(Ail("poison",  MessageFlags.Poisoned, "You feel ill.",        "You feel better."));
             Messages.Messages.Add(Ail("blind",   MessageFlags.Blinded,  "You are blinded!",     "Your vision clears."));
             Messages.Messages.Add(Ail("disease", MessageFlags.Diseased, "You feel diseased.",   "The disease fades."));
@@ -64,13 +64,7 @@ public sealed class SelfAilmentChipResponderTests
             }
         }
 
-        public void Feed(string text)
-        {
-            var emitted = Line(text);
-            typeof(ConditionTracker)
-                .GetMethod("OnLine", BindingFlags.Instance | BindingFlags.NonPublic)!
-                .Invoke(Conditions, new object[] { emitted });
-        }
+        public void Feed(string text) => Server.Line(text);
 
         public void Dispose()
         {

@@ -39,8 +39,8 @@ public sealed class FavoritesStoreTests : IDisposable
 
     private static ProfileService NewBlankProfile()
     {
-        ProfileService profile = new();
-        profile.LoadBlank();
+        ProfileService profile = TestProfiles.Service();
+        profile.LoadDefaultProfile();
         return profile;
     }
 
@@ -73,7 +73,7 @@ public sealed class FavoritesStoreTests : IDisposable
 
     private (ProfileService Profile, FavoritesStore Store) LoadCharacter(string name)
     {
-        ProfileService profile = new();
+        ProfileService profile = TestProfiles.Service();
         FavoritesStore store = new(profile, new GameDataCache(), () => _setName, starterFile: _ => StarterFile);
         profile.Load(_bbs, name);
         return (profile, store);
@@ -115,7 +115,7 @@ public sealed class FavoritesStoreTests : IDisposable
     {
         WriteSharedList((99, 9999, "someone else's"));
         WriteStarters((1, 45, "Bank", "Silvermere"), (2, 10, "Trainer", null));
-        new ProfileService().CreateProfile(_bbs, "Fresh");
+        TestProfiles.Service().CreateProfile(_bbs, "Fresh");
 
         (ProfileService profile, FavoritesStore store) = LoadCharacter("Fresh");
 
@@ -131,10 +131,10 @@ public sealed class FavoritesStoreTests : IDisposable
     public void DefaultProfile_StartsWithTheBundledStarters()
     {
         WriteStarters((1, 45, "Bank", null));
-        ProfileService profile = new();
+        ProfileService profile = TestProfiles.Service();
         FavoritesStore store = new(profile, new GameDataCache(), () => _setName, starterFile: _ => StarterFile);
 
-        profile.LoadBlank();
+        profile.LoadDefaultProfile();
 
         Assert.True(store.IsFavorite(new RoomKey(1, 45)));
     }
@@ -146,7 +146,7 @@ public sealed class FavoritesStoreTests : IDisposable
     public void AddStarters_AddsOnlyTheRoomsTheCharacterLacks_AndLeavesItsOwnAlone()
     {
         WriteStarters((1, 45, "Bank", "Silvermere"), (2, 10, "Trainer", null), (3, 7, "Healer", null));
-        new ProfileService().CreateProfile(_bbs, "Pruner");
+        TestProfiles.Service().CreateProfile(_bbs, "Pruner");
         (_, FavoritesStore store) = LoadCharacter("Pruner");
         store.Remove(new RoomKey(2, 10));                        // a starter it deleted
         store.Rename(new RoomKey(3, 7), "my healer");            // a starter it relabelled
@@ -174,7 +174,7 @@ public sealed class FavoritesStoreTests : IDisposable
     {
         WriteStarters((1, 45, "Bank", null), (2, 10, "Trainer", null));
         Directory.CreateDirectory(AppPaths.ProfileFolder(_bbs, "Empty"));
-        new ProfileService().CreateProfile(_bbs, "Empty", p => p.Favorites = new());
+        TestProfiles.Service().CreateProfile(_bbs, "Empty", p => p.Favorites = new());
         (_, FavoritesStore store) = LoadCharacter("Empty");
         Assert.Empty(store.All);                                 // an empty list is a list: not seeded again
 
@@ -189,7 +189,7 @@ public sealed class FavoritesStoreTests : IDisposable
     {
         WriteSharedList((1, 45, "Bank"));
         WriteOlderCharacter("Early");
-        ProfileService profile = new();
+        ProfileService profile = TestProfiles.Service();
         GameDataCache cache = new();
         string? set = null;
         FavoritesStore store = new(profile, cache, () => set);

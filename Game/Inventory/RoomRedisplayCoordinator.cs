@@ -18,7 +18,7 @@ public sealed class RoomRedisplayCoordinator
     private readonly Func<DateTime> _now;
     private DateTime _lastAt = DateTime.MinValue;
 
-    // now defaults to UtcNow; tests inject a controllable clock.
+    // now defaults to UtcNow.
     public RoomRedisplayCoordinator(Func<DateTime>? now = null)
         => _now = now ?? (static () => DateTime.UtcNow);
 

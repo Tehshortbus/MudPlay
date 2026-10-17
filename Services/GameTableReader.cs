@@ -31,7 +31,6 @@ internal static class GameTableReader
 
     public static GameTable Read(Stream stream) => Read(stream, MaxTokenBytes);
 
-    // The limit is a parameter so a test can meet it without a file that size.
     internal static GameTable Read(Stream stream, int maxTokenBytes)
     {
         Builder builder = new();

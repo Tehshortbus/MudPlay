@@ -5,12 +5,10 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Coverage for <see cref="EventEditDialogViewModel"/> — the field
-/// hydration from an existing event, the WHEN / WHAT validation that
-/// gates Save, the materialised result on commit, and the
-/// CloseRequested contract for the modeless dialog protocol.
-/// </summary>
+// Coverage for EventEditDialogViewModel — the field
+// hydration from an existing event, the WHEN / WHAT validation that
+// gates Save, the materialised result on commit, and the
+// CloseRequested contract for the modeless dialog protocol.
 public sealed class EventEditDialogViewModelTests
 {
     // ----- Hydration --------------------------------------------------

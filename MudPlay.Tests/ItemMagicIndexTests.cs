@@ -5,14 +5,12 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// <see cref="ItemMagicIndex"/> reads a weapon's magic-hit level as the SUM of
-/// ability code 28 (Magical) + code 142 (HitMagic), matching the character
-/// sheet's "Hit Magic" total. The regression these tests pin: an inherently
-/// magical weapon carrying only code 28 (a "shimmering" longsword) must NOT
-/// misread as level 0 — reading code 142 alone stranded such a weapon.
-/// Uses an isolated temp root so fixtures never leak into real Data.
-/// </summary>
+// ItemMagicIndex reads a weapon's magic-hit level as the SUM of
+// ability code 28 (Magical) + code 142 (HitMagic), matching the character
+// sheet's "Hit Magic" total. The regression these tests pin: an inherently
+// magical weapon carrying only code 28 (a "shimmering" longsword) must NOT
+// misread as level 0 — reading code 142 alone stranded such a weapon.
+// Uses an isolated temp root so fixtures never leak into the app folder.
 public sealed class ItemMagicIndexTests : IDisposable
 {
     private readonly string _root;

@@ -213,7 +213,7 @@ public sealed partial class DeathRecoveryManagerTests
                     Room room = H.Graph.GetRoom(Here)!;
                     Survey(Here);
                     H.Tracker.NoteRoomObserved(new RoomObservation(room.Name, new HashSet<Direction>(room.Exits.Keys)));
-                    H.Recovery.FeedTestLine("Obvious exits: " + string.Join(", ",
+                    H.Feed.Line("Obvious exits: " + string.Join(", ",
                         room.Exits.Keys.Select(d => d.ToLongName())));
                 }
                 else if (cmd.StartsWith("look ", StringComparison.Ordinal)
@@ -224,7 +224,7 @@ public sealed partial class DeathRecoveryManagerTests
                 else if (cmd.StartsWith("get ", StringComparison.Ordinal))
                 {
                     if (_floor.TryGetValue(Here, out List<string>? floor) && floor.Remove(cmd[4..]))
-                        H.Recovery.FeedTestLine($"You took {cmd[4..]}.");
+                        H.Feed.Line($"You took {cmd[4..]}.");
                 }
                 else if (cmd == "sea" && _hidden.TryGetValue(Here, out (int Searches, List<string> Items) stash))
                 {
@@ -1016,7 +1016,7 @@ public sealed partial class DeathRecoveryManagerTests
         {
             case "reset": w.Recovery.CancelTrip(); break;
             case "disconnect": w.Recovery.NotifyDisconnected(); break;
-            case "profile": w.H.Profile.LoadBlank(); break;
+            case "profile": w.H.Profile.LoadDefaultProfile(); break;
             default:
                 w.H.Tracker.NoteDeath(1, "You have 1 lives left.");
                 w.H.Walker!.Stop("player died");   // as the app's death halt does
@@ -1669,8 +1669,8 @@ public sealed partial class DeathRecoveryManagerTests
         w.H.FeedSurvey("iron sword, rope");
         Assert.Contains("get iron sword", w.H.Sent);
         w.H.Heartbeat();                                   // ticks before the replies are in
-        w.Recovery.FeedTestLine("You took iron sword.");
-        w.Recovery.FeedTestLine("You took rope.");
+        w.H.Feed.Line("You took iron sword.");
+        w.H.Feed.Line("You took rope.");
         for (int i = 0; i < 3; i++) w.H.Heartbeat();
 
         Assert.Equal(DeathRecoveryStatus.Recovered, w.H.Latest.Status);

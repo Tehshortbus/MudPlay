@@ -8,12 +8,10 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// <see cref="KillHandler"/> — <c>@kill &lt;target&gt;</c> retargets our combat
-/// engine to a named monster. Pins the retarget call (single + multi-word
-/// names), silent-on-success, the WarnOnDenial-gated missing-target failure,
-/// and ExecuteCommands permission gating.
-/// </summary>
+// KillHandler — @kill <target> retargets our combat
+// engine to a named monster. Pins the retarget call (single + multi-word
+// names), silent-on-success, the WarnOnDenial-gated missing-target failure,
+// and ExecuteCommands permission gating.
 public sealed class KillHandlerTests
 {
     private static readonly DateTime Now = new(2026, 6, 12, 0, 0, 0, DateTimeKind.Utc);
@@ -21,6 +19,10 @@ public sealed class KillHandlerTests
     private sealed class Setup : IDisposable
     {
         public RemoteCommandManager Engine { get; }
+        // The router the engine's chat lines arrive through.
+        public MessageRouter Router { get; }
+        // What Engine put on the wire, through the sender the client binds.
+        public List<byte[]> Sent { get; } = new();
         public KillHandler Handler { get; }
         public PlayerDatabase Players { get; }
         public List<string> Retargets { get; } = new();
@@ -31,19 +33,21 @@ public sealed class KillHandlerTests
         public Setup()
         {
             MessageRouter router = new();
+            Router = router;
             DefaultPatterns.Seed(router);
             ChatRouter chat = new(router);
             PartyState party = new();
-            Players = new PlayerDatabase();
+            Players = new PlayerDatabase(new ProfileService(), () => null);
             Engine = new RemoteCommandManager(chat, party, Players);
+            Engine.SetWireSender(Sent.Add);
             Handler = new KillHandler(Engine, name => { Retargets.Add(name); return Refusal; });
         }
 
         public void Dispose() => Handler.Dispose();
     }
 
-    private static ChatLogEntry Telepath(string sender, string msg) =>
-        new(Now, ChatChannel.TelepathIncoming, sender, msg, $"{sender} telepaths: {msg}");
+    private static ChatLine Telepath(string sender, string msg) =>
+        new(ChatChannel.TelepathIncoming, sender, msg);
 
     private static void SeedPlayer(PlayerDatabase db, string name, PlayerRemoteControls controls)
     {
@@ -57,7 +61,7 @@ public sealed class KillHandlerTests
         using Setup s = new();
         SeedPlayer(s.Players, "Tank", PlayerRemoteControls.ExecuteCommands);
 
-        s.Engine.DispatchForTests(Telepath("Tank", "@kill kobold"));
+        ChatLines.Hear(s.Router, Telepath("Tank", "@kill kobold"));
 
         Assert.Equal(new[] { "kobold" }, s.Retargets);
     }
@@ -68,7 +72,7 @@ public sealed class KillHandlerTests
         using Setup s = new();
         SeedPlayer(s.Players, "Tank", PlayerRemoteControls.ExecuteCommands);
 
-        s.Engine.DispatchForTests(Telepath("Tank", "@kill giant rat"));
+        ChatLines.Hear(s.Router, Telepath("Tank", "@kill giant rat"));
 
         Assert.Equal(new[] { "giant rat" }, s.Retargets);
     }
@@ -79,9 +83,9 @@ public sealed class KillHandlerTests
         using Setup s = new();
         SeedPlayer(s.Players, "Tank", PlayerRemoteControls.ExecuteCommands);
 
-        s.Engine.DispatchForTests(Telepath("Tank", "@kill kobold"));
+        ChatLines.Hear(s.Router, Telepath("Tank", "@kill kobold"));
 
-        Assert.Empty(s.Engine.LastSentForTests);
+        Assert.Empty(s.Sent);
     }
 
     [Fact]
@@ -91,10 +95,10 @@ public sealed class KillHandlerTests
         SeedPlayer(s.Players, "Tank", PlayerRemoteControls.ExecuteCommands);
         s.Engine.WarnOnDenial = true;
 
-        s.Engine.DispatchForTests(Telepath("Tank", "@kill"));
+        ChatLines.Hear(s.Router, Telepath("Tank", "@kill"));
 
         Assert.Empty(s.Retargets);
-        string reply = Encoding.Latin1.GetString(s.Engine.LastSentForTests[^1]);
+        string reply = Encoding.Latin1.GetString(s.Sent[^1]);
         Assert.Contains(s.Engine.FailureMessage, reply);
     }
 
@@ -105,10 +109,10 @@ public sealed class KillHandlerTests
         SeedPlayer(s.Players, "Tank", PlayerRemoteControls.ExecuteCommands);
         s.Engine.WarnOnDenial = false;
 
-        s.Engine.DispatchForTests(Telepath("Tank", "@kill"));
+        ChatLines.Hear(s.Router, Telepath("Tank", "@kill"));
 
         Assert.Empty(s.Retargets);
-        Assert.Empty(s.Engine.LastSentForTests);
+        Assert.Empty(s.Sent);
     }
 
     // An order that wasn't taken (a player we won't fight) is refused with the
@@ -119,10 +123,10 @@ public sealed class KillHandlerTests
         using Setup s = new() { Refusal = "not attacking Bob: PvP is off" };
         SeedPlayer(s.Players, "Tank", PlayerRemoteControls.ExecuteCommands);
 
-        s.Engine.DispatchForTests(Telepath("Tank", "@kill Bob"));
+        ChatLines.Hear(s.Router, Telepath("Tank", "@kill Bob"));
 
         Assert.Equal("/Tank {not attacking Bob: PvP is off}\r",
-            Encoding.Latin1.GetString(Assert.Single(s.Engine.LastSentForTests)));
+            Encoding.Latin1.GetString(Assert.Single(s.Sent)));
     }
 
     [Fact]
@@ -132,9 +136,9 @@ public sealed class KillHandlerTests
         SeedPlayer(s.Players, "Tank", PlayerRemoteControls.ExecuteCommands);
         s.Engine.WarnOnDenial = false;
 
-        s.Engine.DispatchForTests(Telepath("Tank", "@kill Bob"));
+        ChatLines.Hear(s.Router, Telepath("Tank", "@kill Bob"));
 
-        Assert.Empty(s.Engine.LastSentForTests);
+        Assert.Empty(s.Sent);
     }
 
     [Fact]
@@ -143,7 +147,7 @@ public sealed class KillHandlerTests
         using Setup s = new();
         SeedPlayer(s.Players, "Rando", PlayerRemoteControls.QueryHealthStatus);
 
-        s.Engine.DispatchForTests(Telepath("Rando", "@kill kobold"));
+        ChatLines.Hear(s.Router, Telepath("Rando", "@kill kobold"));
 
         Assert.Empty(s.Retargets);
     }

@@ -4,11 +4,9 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// PR 10.8 — <see cref="TrainerCatalog.SelectNearest"/> picks the trainer the
-/// auto-train coordinator should walk to: serves the level (MMUD off-by-one
-/// gate), class-ok, allowed, reachable, nearest by the injected distance metric.
-/// </summary>
+// TrainerCatalog.SelectNearest picks the trainer the
+// auto-train coordinator should walk to: serves the level (MMUD off-by-one
+// gate), class-ok, allowed, reachable, nearest by the injected distance metric.
 public sealed class TrainerCatalogSelectTests
 {
     // Universal trainers; ranges chosen so coverage is 0–9 then 11–19, leaving

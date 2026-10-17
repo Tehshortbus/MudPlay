@@ -14,9 +14,15 @@ namespace MudPlay.Tests;
 // the real router lines so the whole PartyManager → gate wiring is exercised.
 public sealed class PartyDisconnectMovementGateTests
 {
+    // The clock the PartyDisconnectMovementGate reads: the real one unless a test sets its own.
+    private Func<DateTime> _gateNow = () => DateTime.UtcNow;
+
+    // The gate's 1 s expiry tick.
+    private readonly ManualTimers _gateTimers = new();
+
     private static readonly DateTime Now = new(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc);
 
-    private static (MessageRouter router, PartyManager mgr,
+    private (MessageRouter router, PartyManager mgr,
                     MovementCoordinator coord, PartyDisconnectMovementGate gate) Setup()
     {
         MessageRouter router = new();
@@ -24,7 +30,7 @@ public sealed class PartyDisconnectMovementGateTests
         PartyState state = new();
         PartyManager mgr = new(router, state);
         MovementCoordinator coord = new();
-        PartyDisconnectMovementGate gate = new(mgr, coord);
+        PartyDisconnectMovementGate gate = new(mgr, coord, now: () => _gateNow(), schedule: _gateTimers.Arm);
         return (router, mgr, coord, gate);
     }
 
@@ -104,7 +110,7 @@ public sealed class PartyDisconnectMovementGateTests
     {
         var (router, mgr, coord, gate) = Setup();
         DateTime t = Now;
-        gate.NowProvider = () => t;
+        _gateNow = () => t;
         gate.GraceWindow = TimeSpan.FromSeconds(90);
         router.Dispatch(Line("Helper started to follow you."));
 
@@ -113,12 +119,12 @@ public sealed class PartyDisconnectMovementGateTests
 
         // 89s — still holding.
         t = Now.AddSeconds(89);
-        gate.TickForTests();
+        _gateTimers.RunAll();
         Assert.Contains(MovementCoordinator.MemberDisconnectGate, coord.AssertedGates);
 
         // 91s — member never came back, give up and resume.
         t = Now.AddSeconds(91);
-        gate.TickForTests();
+        _gateTimers.RunAll();
         Assert.DoesNotContain(MovementCoordinator.MemberDisconnectGate, coord.AssertedGates);
         Assert.False(coord.IsPaused);
     }
@@ -129,13 +135,13 @@ public sealed class PartyDisconnectMovementGateTests
         // Timeout disabled — the hold persists until the member re-follows.
         var (router, mgr, coord, gate) = Setup();
         DateTime t = Now;
-        gate.NowProvider = () => t;
+        _gateNow = () => t;
         gate.GraceWindow = TimeSpan.Zero;
         router.Dispatch(Line("Helper started to follow you."));
         router.Dispatch(Line("Helper just disconnected!!!."));
 
         t = Now.AddHours(1);
-        gate.TickForTests();
+        _gateTimers.RunAll();
 
         Assert.Contains(MovementCoordinator.MemberDisconnectGate, coord.AssertedGates);
     }

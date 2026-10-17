@@ -105,9 +105,6 @@ public sealed class MessageRouter
         return ok;
     }
 
-    // Diagnostic: how many patterns are in the known-patterns catalog.
-    public int PatternCount => _catalog.Count;
-
     // Read-only probe: would ANY catalog pattern recognize line, without
     // actually dispatching it — so a caller can tell known line shapes (chat,
     // combat-round text, movement, etc.) from unrecognized ones. Deliberately
@@ -197,9 +194,6 @@ public sealed class MessageRouter
 
     private static bool IsConversationPattern(IMessagePattern pattern)
         => pattern.Id.StartsWith(Patterns.KnownPatterns.ConversationPrefix, StringComparison.Ordinal);
-
-    // Diagnostic: how many active subscriptions are registered.
-    public int SubscriptionCount => _subs.Count;
 
     private sealed class SubscriptionToken(MessageRouter owner, Subscription sub) : IDisposable
     {

@@ -1,4 +1,3 @@
-using System.Reflection;
 using MudPlay.Game.Cash;
 using MudPlay.Game.Inventory;
 using MudPlay.Services;
@@ -8,23 +7,21 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Pins <see cref="GroundItemTracker"/>: the "You notice &lt;list&gt; here."
-/// survey becomes a per-room, cash-filtered snapshot of floor loot. A fresh
-/// survey supersedes the prior list, a wrapped survey stitches across two
-/// rows, and a room change clears the snapshot.
-/// </summary>
+// Pins GroundItemTracker: the "You notice <list> here."
+// survey becomes a per-room, cash-filtered snapshot of floor loot. A fresh
+// survey supersedes the prior list, a wrapped survey stitches across two
+// rows, and a room change clears the snapshot.
 public sealed class GroundItemTrackerTests
 {
-    private static (GroundItemTracker ground, MessageRouter router, LineExtractor lines) Setup(
+    private static (GroundItemTracker ground, MessageRouter router, ServerFeed feed) Setup(
         Func<string, bool>? isKnownItem = null)
     {
         MessageRouter router = new();
         DefaultPatterns.Seed(router);
         GroundItemTracker ground = new(router, new CurrencyNaming(), isKnownItem);
-        LineExtractor lines = new(new TerminalEmulator(80, 24));
-        ground.AttachLineExtractor(lines);
-        return (ground, router, lines);
+        ServerFeed feed = new();
+        ground.AttachLineExtractor(feed.Lines);
+        return (ground, router, feed);
     }
 
     // Single-line survey path — through the router pattern subscription.
@@ -32,19 +29,6 @@ public sealed class GroundItemTrackerTests
         router.Dispatch(new LineExtractor.EmittedLine(
             text, Array.Empty<CellAttributes>(),
             DateTimeOffset.UtcNow, IsPromptLine: false));
-
-    // Multi-line stitch path — through the LineExtractor's emitted-line event.
-    private static void FeedLine(LineExtractor lines, string text)
-    {
-        FieldInfo? field = typeof(LineExtractor).GetField(
-            "LineEmitted", BindingFlags.Instance | BindingFlags.NonPublic);
-        if (field?.GetValue(lines) is Action<LineExtractor.EmittedLine> handler)
-        {
-            handler(new LineExtractor.EmittedLine(
-                text, Array.Empty<CellAttributes>(),
-                DateTimeOffset.UtcNow, IsPromptLine: false));
-        }
-    }
 
     [Fact]
     public void EmptyBeforeSurvey()
@@ -90,10 +74,10 @@ public sealed class GroundItemTrackerTests
     [Fact]
     public void MultiLineWrap_StitchesAcrossRows()
     {
-        var (ground, _, lines) = Setup();
+        var (ground, _, feed) = Setup();
 
-        FeedLine(lines, "You notice a rusty dagger, a torch and a");
-        FeedLine(lines, "healing potion here.");
+        feed.Line("You notice a rusty dagger, a torch and a");
+        feed.Line("healing potion here.");
 
         Assert.Equal(new[] { "a rusty dagger", "a torch", "a healing potion" }, ground.Items);
     }
@@ -106,12 +90,12 @@ public sealed class GroundItemTrackerTests
         // count-prefixed items split at the wrap ("…, 2" + "padded boots, …"). Every
         // item the deathpile sweep needs must survive the stitch — a single-line
         // parse missed it entirely, so the sweep peeked but never walked.
-        var (ground, _, lines) = Setup();
+        var (ground, _, feed) = Setup();
 
-        FeedLine(lines, "You notice bone key, amethyst ring, demonhide sandals, silver bracelet, 2");
-        FeedLine(lines, "padded boots, 2 padded pants, 2 silk robe, 2 silk cape, 2 bone charm, 2 padded");
-        FeedLine(lines, "gloves, 2 padded helm, waterskin, sandals, skullcap, cotton gloves, cloth");
-        FeedLine(lines, "pants, small sign here.");
+        feed.Line("You notice bone key, amethyst ring, demonhide sandals, silver bracelet, 2");
+        feed.Line("padded boots, 2 padded pants, 2 silk robe, 2 silk cape, 2 bone charm, 2 padded");
+        feed.Line("gloves, 2 padded helm, waterskin, sandals, skullcap, cotton gloves, cloth");
+        feed.Line("pants, small sign here.");
 
         Assert.Contains("bone key", ground.Items);
         Assert.Contains("2 padded boots", ground.Items);   // count survived the wrap-join
@@ -187,19 +171,6 @@ public sealed class GroundItemTrackerTests
         Assert.Equal(new[] { "a copper key" }, ground.Items);
     }
 
-    // Without an item table wired (no game data), the heuristic stands alone and
-    // the denomination-named stacked item is misread as cash — documents the
-    // fallback the injected predicate exists to fix.
-    [Fact]
-    public void DenominationNamedStackedItem_MisreadAsCash_WithoutItemTable()
-    {
-        var (ground, router, _) = Setup();
-
-        FeedRoom(router, "You notice 2 gold key here.");
-
-        Assert.Empty(ground.Items);
-    }
-
     // ----- compound item names containing " and " (report 20260825-172400) --
 
     // An item whose own canonical name contains "and" ("rope and grapple", MDB
@@ -251,20 +222,6 @@ public sealed class GroundItemTrackerTests
         FeedRoom(router, "You notice a torch and a dagger here.");
 
         Assert.Equal(new[] { "a torch", "a dagger" }, ground.Items);
-    }
-
-    // Without an item table wired (no game data), the merge heuristic has
-    // nothing to check against and the naive split stands alone — documents
-    // the fallback the injected predicate exists to fix, same pattern as the
-    // cash-tiebreaker fallback test above.
-    [Fact]
-    public void CompoundItemName_MisparsedIntoTwoEntries_WithoutItemTable()
-    {
-        var (ground, router, _) = Setup();
-
-        FeedRoom(router, "You notice a rope and grapple here.");
-
-        Assert.Equal(new[] { "a rope", "grapple" }, ground.Items);
     }
 
     // Test double for the item table: matches an entry to a known item name after

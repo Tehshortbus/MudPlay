@@ -15,7 +15,7 @@ public sealed class PvpStrangerLookupTests
     private sealed class Harness : IDisposable
     {
         public MessageRouter Router { get; } = new();
-        public PlayerDatabase Players { get; } = new();
+        public PlayerDatabase Players { get; } = new(new ProfileService(), () => null);
         public RoomEntityClassifier Classifier { get; }
         public PvpStrangerLookup Lookup { get; }
         public bool PvpEnabled { get; set; } = true;

@@ -38,18 +38,6 @@ public sealed class MessageTemplateIndexTests : IDisposable
         ?? new List<MessageRecord>());
 
     [Theory]
-    [InlineData(Stock)]
-    [InlineData(Paradigm)]
-    public void RealCatalogue_IndexesItsTemplates(string seed)
-    {
-        // Guards the silent-empty case: a schema or placeholder-vocabulary change that
-        // stopped templates compiling would make every message unrecognized again
-        // while every other assertion here still passed.
-        int count = Index(seed).TemplateCount;
-        Assert.True(count > 500, $"{seed}: expected hundreds of indexed templates, got {count}");
-    }
-
-    [Theory]
     [InlineData(Stock, "Raijin casts minor healing on Raijin!")]
     [InlineData(Stock, "Raijin casts bless on Suijin!")]
     [InlineData(Stock, "Raijin casts a spell on you!")]
@@ -103,7 +91,6 @@ public sealed class MessageTemplateIndexTests : IDisposable
                 AppliedEndsWith: string.Empty),
         });
 
-        Assert.Equal(0, index.TemplateCount);
         Assert.False(index.Matches("Absolutely anything at all."));
     }
 

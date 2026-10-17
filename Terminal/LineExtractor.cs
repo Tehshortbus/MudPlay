@@ -205,7 +205,7 @@ public sealed partial class LineExtractor
     [GeneratedRegex(@"^\[HP=[^\]]*\]:(?:\s\((?:Resting|Meditating)\))?", RegexOptions.CultureInvariant)]
     private static partial Regex PromptPrefix();
 
-    // Public for testability: converts a raw cell row into the EmittedLine the
+    // Converts a raw cell row into the EmittedLine the
     // event surfaces. Trims trailing blank cells (unless trimTrailingBlanks is
     // false — a soft-wrapped fragment is full to the margin and a trailing space
     // at the wrap point must survive the stitch); the attribute array is sliced

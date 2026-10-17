@@ -57,27 +57,27 @@ public sealed class ItemCastSequencer
     private readonly Func<InventorySnapshot> _inventory;
     // Given an inventory slot label, the item the equipment manager wants worn there
     // (its Default set), or null. Used as the restore fallback when the live slot
-    // can't say what belongs there — see RestoreTarget. Null when unwired (tests).
+    // can't say what belongs there — see RestoreTarget. Null when unwired.
     private readonly Func<string, string?>? _desiredSlotItem;
     // True when a display-name's game data marks it an off-hand item (Items.Worn ==
     // Off-Hand), regardless of which slot label the live snapshot filed it under.
     // Lets the two-handed branch recognize a Worn-bucketed off-hand blocker. Null
-    // when unwired (tests) — the Worn slot is then never scanned.
+    // when unwired — the Worn slot is then never scanned.
     private readonly Func<string, bool>? _isOffHandItem;
     // True when the named WIELDED weapon is two-handed in the active game data. A
     // two-hander fills both hands, so an off-hand cast item can't be equipped while
     // it's worn — the reverse of the two-handed-CAST-item case. Null when unwired
-    // (tests) — the reverse dance is then never taken.
+    // — the reverse dance is then never taken.
     private readonly Func<string, bool>? _isWornWeaponTwoHanded;
     // True once a full 'i' has been parsed THIS session (InventoryManager.IsLoaded).
     // The equip plan reads the worn loadout, so we defer until it's real — and unlike
     // the snapshot's LastUpdated, IsLoaded is reset (MarkStale) on death / disconnect,
     // so a reconnect's stale-but-timestamped snapshot still reads as unknown (report
-    // paradigm-20260826-150242). Null when unwired (tests) — the gate is then off.
+    // paradigm-20260826-150242). Null when unwired — the gate is then off.
     private readonly Func<bool>? _wornLoadoutKnown;
     // Invoked when a swap is about to hit the wire, so auto-equip can stand off the
     // borrowed slot while this sequence's own restore handles it (see
-    // AutoEquipCoordinator.NoteItemCastSwap). Null when unwired (tests).
+    // AutoEquipCoordinator.NoteItemCastSwap). Null when unwired.
     private readonly Action? _onSwap;
     private readonly WireSender _wire = new();
     private readonly LogService? _log;
@@ -111,9 +111,6 @@ public sealed class ItemCastSequencer
 
     // Bind the wire sink (the wrapped engine sender).
     public void SetWireSender(Action<byte[]> sender) => _wire.Bind(sender);
-
-    // Test seam — every buffer sent, in order.
-    internal List<byte[]> LastSentForTests => _wire.LastSentForTests;
 
     // Run the equip → use → restore sequence for the cast item named by the token.
     // Returns true only when the lines were sent: the wire must be bound, the token

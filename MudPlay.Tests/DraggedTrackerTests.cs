@@ -20,10 +20,8 @@ public sealed class DraggedTrackerTests
         return (router, player, tracker);
     }
 
-    /// <summary>
-    /// Drive the character mortally wounded — negative HP with real prompt
-    /// data behind it, matching what PlayerState.IsMortallyWounded gates on.
-    /// </summary>
+    // Drive the character mortally wounded — negative HP with real prompt
+    // data behind it, matching what PlayerState.IsMortallyWounded gates on.
     private static void Drop(PlayerState p, int hp = -4, int maxHp = 150)
     {
         p.MaxHp = maxHp;

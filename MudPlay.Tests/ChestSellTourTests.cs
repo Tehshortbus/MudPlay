@@ -1,10 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using MudPlay.Game.Inventory;
 using MudPlay.Game.Map;
-using MudPlay.Terminal;
 using Xunit;
 
 namespace MudPlay.Tests;
@@ -15,7 +13,8 @@ public sealed class ChestSellTourTests : IDisposable
     private static readonly RoomKey Weapons = new(1, 200);
 
     private readonly InventoryManager _inv = new(log: null, itemWeightResolver: null, slotResolver: null);
-    private readonly LineExtractor _lines = new(new TerminalEmulator(80, 24));
+    // The game's output, fed the way the client receives it.
+    private readonly ServerFeed _feed = new();
     private readonly Dictionary<string, int> _fromChests = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<string> _sent = new();
     private readonly List<RoomKey> _walks = new();
@@ -28,7 +27,7 @@ public sealed class ChestSellTourTests : IDisposable
 
     public ChestSellTourTests()
     {
-        _inv.AttachLineExtractor(_lines);
+        _inv.AttachLineExtractor(_feed.Lines);
         _tour = new ChestSellTour(
             currentShop: () => _shopHere,
             goWalk: room => { _walks.Add(room); return System.Threading.Tasks.Task.FromResult(_walksStart); },
@@ -46,14 +45,7 @@ public sealed class ChestSellTourTests : IDisposable
         _inv.Dispose();
     }
 
-    private void Feed(string text)
-    {
-        FieldInfo? field = typeof(LineExtractor).GetField(
-            "LineEmitted", BindingFlags.Instance | BindingFlags.NonPublic);
-        if (field?.GetValue(_lines) is Action<LineExtractor.EmittedLine> handler)
-            handler(new LineExtractor.EmittedLine(
-                text, Array.Empty<CellAttributes>(), DateTimeOffset.UtcNow, IsPromptLine: false));
-    }
+    private void Feed(string text) => _feed.Line(text);
 
     private void Arrive(RoomKey room, int shop)
     {

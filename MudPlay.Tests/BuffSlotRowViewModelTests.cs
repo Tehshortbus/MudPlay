@@ -12,7 +12,7 @@ namespace MudPlay.Tests;
 public sealed class BuffSlotRowViewModelTests
 {
     private static BuffSlotRowViewModel Row(BuffSlot dto, BuffSlotScope scope = BuffSlotScope.SingleTarget)
-        => new(dto, _ => scope, s => s ?? string.Empty, _ => (null, null), () => { });
+        => new(dto, _ => scope, s => s ?? string.Empty, _ => (null, null), () => { }, _ => { }, _ => true);
 
     private static IReadOnlyList<(string Display, string Given)> Party(params string[] given)
     {
@@ -49,18 +49,6 @@ public sealed class BuffSlotRowViewModelTests
     {
         var row = Row(new BuffSlot { Spell = "holy armour", RecastMarginSec = 10 });
         Assert.Equal("holy armour", row.BuffNameText);
-    }
-
-    [Fact]
-    public void MoveFlags_DefaultFalse_AndSettable()
-    {
-        var row = Row(new BuffSlot { Spell = "bless" });
-        Assert.False(row.CanMoveUp);
-        Assert.False(row.CanMoveDown);
-        row.CanMoveUp = true;
-        row.CanMoveDown = true;
-        Assert.True(row.CanMoveUp);
-        Assert.True(row.CanMoveDown);
     }
 
     [Fact]
@@ -138,7 +126,7 @@ public sealed class BuffSlotRowViewModelTests
         var dto = new BuffSlot { Spell = "chan", WholePartyOn = true, CastSolo = true };
         var row = new BuffSlotRowViewModel(
             dto, _ => BuffSlotScope.WholeParty, s => s ?? string.Empty,
-            _ => (null, null), () => persists++);
+            _ => (null, null), () => persists++, _ => { }, _ => true);
 
         Assert.True(row.CanCastSolo);
         row.WholePartyOn = false;
@@ -164,7 +152,7 @@ public sealed class BuffSlotRowViewModelTests
         var dto = new BuffSlot { Spell = "bless" };
         var row = new BuffSlotRowViewModel(
             dto, _ => BuffSlotScope.SingleTarget, s => s ?? string.Empty,
-            _ => ("chant", "poison"), () => { });
+            _ => ("chant", "poison"), () => { }, _ => { }, _ => true);
 
         Assert.True(row.HasOverwriteWarning);
         Assert.Equal("Removed by: chant\nRemoves: poison", row.OverwriteWarningTooltip);
@@ -180,7 +168,7 @@ public sealed class BuffSlotRowViewModelTests
         var dto = new BuffSlot { Spell = "grze" };
         var row = new BuffSlotRowViewModel(
             dto, _ => BuffSlotScope.SelfOnly, s => s ?? string.Empty,
-            _ => (null, null), () => { }, _ => fired++);
+            _ => (null, null), () => { }, _ => fired++, _ => true);
 
         row.CastOnSelf = true;
         Assert.Equal(1, fired);
@@ -193,29 +181,10 @@ public sealed class BuffSlotRowViewModelTests
         var dto = new BuffSlot { Spell = "grze", CastOnSelf = true };
         var row = new BuffSlotRowViewModel(
             dto, _ => BuffSlotScope.SelfOnly, s => s ?? string.Empty,
-            _ => (null, null), () => { }, _ => fired++);
+            _ => (null, null), () => { }, _ => fired++, _ => true);
 
         row.CastOnSelf = false;
         Assert.Equal(0, fired);
-    }
-
-    [Fact]
-    public void CastOnSelf_NullActivationCallback_DoesNotThrow()
-    {
-        // Every existing Row(...) helper call in this file omits the callback —
-        // it must default to a no-op, not a required parameter.
-        var row = Row(new BuffSlot { Spell = "bles" }, BuffSlotScope.SelfOnly);
-        row.CastOnSelf = true;   // would NRE if the default wasn't null-safe
-        Assert.True(row.CastOnSelf);
-    }
-
-    [Fact]
-    public void IsLearned_NoResolver_DefaultsTrue()
-    {
-        // Every Row(...) helper call in this file omits the resolver — a row must
-        // not spuriously show "unlearned" when nothing wired the concept up.
-        var row = Row(new BuffSlot { Spell = "bles" });
-        Assert.True(row.IsLearned);
     }
 
     [Fact]
@@ -224,7 +193,7 @@ public sealed class BuffSlotRowViewModelTests
         var dto = new BuffSlot { Spell = "grze" };
         var row = new BuffSlotRowViewModel(
             dto, _ => BuffSlotScope.SelfOnly, s => s ?? string.Empty,
-            _ => (null, null), () => { }, onSelfActivated: null,
+            _ => (null, null), () => { }, onSelfActivated: _ => { },
             resolveLearned: code => code != "grze");
 
         Assert.False(row.IsLearned);

@@ -389,8 +389,8 @@ public sealed class RouteChoicePlannerTests
             graph.OnActiveSetChanged("alpha");
             BfsMapper bfs = new(graph);
 
-            ProfileService profile = new();
-            profile.LoadBlank();
+            ProfileService profile = TestProfiles.Service();
+            profile.LoadDefaultProfile();
             MovementFilter filter = new(profile);
 
             if (wireHazards is not null)
@@ -501,8 +501,8 @@ public sealed class RouteChoicePlannerTests
 
     private static ProfileService BlankProfile()
     {
-        ProfileService profile = new();
-        profile.LoadBlank();
+        ProfileService profile = TestProfiles.Service();
+        profile.LoadDefaultProfile();
         return profile;
     }
 
@@ -576,7 +576,6 @@ public sealed class RouteChoicePlannerTests
             // The orb is genuinely required; the held gate key surfaces as carried.
             RouteRequirement orb = Assert.Single(choice.Requirements,
                 r => r.Kind == RouteRequirementKind.CarryItem && r.ItemIds.SequenceEqual(new[] { 807 }));
-            Assert.False(orb.Optional);
             Assert.False(orb.Carried);
             RouteRequirement key = Assert.Single(choice.Requirements,
                 r => r.Kind == RouteRequirementKind.DoorKey && r.ItemIds.SequenceEqual(new[] { 806 }));

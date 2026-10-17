@@ -6,13 +6,11 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Decoding a placed monster's greet chain into the <c>ask</c> commands that
-/// open a door on its own room. Fixture mirrors the grove shadow guard: greet
-/// 1433 lists ask-topics pointing at 1435 (empty → LinkTo 1436), whose
-/// <c>checkability 133 4:remoteaction 1423 66 0 3</c> opens the W exit of room
-/// 1423 for a Phoenix-quest character.
-/// </summary>
+// Decoding a placed monster's greet chain into the ask commands that
+// open a door on its own room. Fixture mirrors the grove shadow guard: greet
+// 1433 lists ask-topics pointing at 1435 (empty → LinkTo 1436), whose
+// checkability 133 4:remoteaction 1423 66 0 3 opens the W exit of room
+// 1423 for a Phoenix-quest character.
 public sealed class GuardDoorCommandResolverTests : IDisposable
 {
     private readonly string _root;
@@ -67,7 +65,7 @@ public sealed class GuardDoorCommandResolverTests : IDisposable
         Assert.All(cmds, c => Assert.Equal(Direction.W, c.Direction));
         Assert.All(cmds, c => Assert.Equal(133, c.AbilityGate));
 
-        // The `ask` noun is the last word of the monster name.
+        // Each command asks the guard, by its full name, about one topic.
         Assert.Contains(cmds, c => c.Command == "ask shadow guard morukai");
         Assert.Contains(cmds, c => c.Command == "ask shadow guard orfeo");
         Assert.Contains(cmds, c => c.Command == "ask shadow guard passage");

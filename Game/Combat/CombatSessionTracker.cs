@@ -111,7 +111,7 @@ public sealed class CombatSessionTracker : IDisposable
     // out. A cast that doesn't land therefore still reads as a missed swing there.
     public event Action? CastLineMissRetracted;
 
-    // "Is this name a party member, or ourselves?" Null = none known (tests), so nothing is skipped.
+    // "Is this name a party member, or ourselves?" Null = none known, so nothing is skipped.
     private readonly Func<string, bool>? _isPartyMember;
 
     public CombatSessionTracker(

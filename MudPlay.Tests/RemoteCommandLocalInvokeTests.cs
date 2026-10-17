@@ -19,7 +19,7 @@ public sealed class RemoteCommandLocalInvokeTests
         MessageRouter router = new();
         DefaultPatterns.Seed(router);
         ChatRouter chat = new(router);
-        return new RemoteCommandManager(chat, new PartyState(), new PlayerDatabase());
+        return new RemoteCommandManager(chat, new PartyState(), new PlayerDatabase(new ProfileService(), () => null));
     }
 
     [Fact]

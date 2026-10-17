@@ -8,13 +8,11 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Phase 11 — <see cref="CombatSessionTracker"/> classification + aggregation.
-/// Lines route through the real <see cref="DefaultPatterns"/> seed and a real
-/// <see cref="RoundDamageTracker"/> so the new <c>UserMisses</c> / <c>UserDodges</c>
-/// patterns, the "You"-only offensive filter, the dodge/mob-miss de-dupe, and
-/// the <c>RoundComplete</c> per-round path are all exercised end-to-end.
-/// </summary>
+// CombatSessionTracker classification + aggregation.
+// Lines route through the real DefaultPatterns seed and a real
+// RoundDamageTracker so the new UserMisses / UserDodges
+// patterns, the "You"-only offensive filter, the dodge/mob-miss de-dupe, and
+// the RoundComplete per-round path are all exercised end-to-end.
 public sealed class CombatSessionTrackerTests
 {
     private sealed class Harness : IDisposable
@@ -112,7 +110,7 @@ public sealed class CombatSessionTrackerTests
         Assert.Equal(0, s.Hits);
         Assert.Equal(1, s.Crits);
         Assert.Equal(100d, s.CritPercent);
-        // Crit damage lands in its own extent (Phase 11 panel shows it on the
+        // Crit damage lands in its own extent (the session panel shows it on the
         // Crit row), and still rolls into the physical max.
         Assert.Equal(24, s.CritMinDamage);
         Assert.Equal(24, s.CritMaxDamage);

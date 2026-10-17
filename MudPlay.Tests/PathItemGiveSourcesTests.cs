@@ -110,8 +110,8 @@ public sealed class PathItemGiveSourcesTests
             graph.OnActiveSetChanged("alpha");
             BfsMapper bfs = new(graph);
 
-            ProfileService profile = new();
-            profile.LoadBlank();
+            ProfileService profile = TestProfiles.Service();
+            profile.LoadDefaultProfile();
             MovementFilter filter = new(profile);
             // The report's character: the key isn't held and the door is far past
             // picking, so the tower is shut to the plan.

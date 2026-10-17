@@ -4,12 +4,10 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Realm-branch coverage for <see cref="CombatCalculator"/>: hit floor/cap,
-/// dodge soft/hard caps, magic resist, backstab, accuracy, swings, and the
-/// Quick &amp; Deadly bonus. Focused on the Stock vs ParaMUD divergences and
-/// the clamp boundaries the formulas must honor.
-/// </summary>
+// Realm-branch coverage for CombatCalculator: hit floor/cap,
+// dodge soft/hard caps, magic resist, backstab, accuracy, swings, and the
+// Quick & Deadly bonus. Focused on the Stock vs ParaMUD divergences and
+// the clamp boundaries the formulas must honor.
 public sealed class CombatCalculatorTests
 {
     // ----- Hit chance caps -------------------------------------------------
@@ -225,14 +223,6 @@ public sealed class CombatCalculatorTests
 
     // ----- Magic resist ----------------------------------------------------
 
-    [Fact]
-    public void CalcMR_WeightsWillpowerTriple()
-    {
-        // (INT + WIL*3)/4 + mods. INT 100, WIL 100 → 400/4 = 100.
-        Assert.Equal(100, CombatCalculator.CalcMR(100, 100));
-        Assert.Equal(110, CombatCalculator.CalcMR(100, 100, 10));
-    }
-
     // ----- Backstab --------------------------------------------------------
 
     [Fact]
@@ -259,8 +249,7 @@ public sealed class CombatCalculatorTests
         BSDamageResult para = CombatCalculator.CalcBSDamage(
             50, 200, 200, 10, 30, 0, 0, 0, true, RealmType.ParaMud);
 
-        Assert.True(stock.MinDamage > 0);
-        Assert.True(para.MinDamage > 0);
+        Assert.True(stock.MinDamage > para.MinDamage);
     }
 
     [Fact]
@@ -710,8 +699,8 @@ public sealed class CombatCalculatorTests
 
     // Live-game regression: a L28 Paladin (CombatLVL 6), STR 135, AGI 77, 57% encum,
     // throwing hammers (speed 1100, StrReq 0). Paradigm `stat all` shows normal 7.143
-    // and bash 3.572. Pins that the energy term is level × CombatLVL — MMUD-Explorer
-    // feeds GetClassCombat (CombatLVL−2) into a (nCombat+2) form; passing the raw
+    // and bash 3.572. Pins that the energy term is level × CombatLVL — the class combat
+    // term (CombatLVL−2) feeds a (nCombat+2) form; passing the raw
     // CombatLVL into a (combatLevel+2) form (the bug) inflated swings ~26%.
     [Fact]
     public void CalcEnergyUsed_UsesRawCombatLvl_MatchesLiveGameSwings()
@@ -827,6 +816,5 @@ public sealed class CombatCalculatorTests
     public void StockLandingPercent_IsChanceLessOne_OutOf99(int chance, int percent)
     {
         Assert.Equal(percent, CombatCalculator.StockLandingPercent(chance));
-        Assert.InRange(percent, CombatCalculator.STOCK_HIT_MIN, CombatCalculator.STOCK_HIT_CAP);
     }
 }

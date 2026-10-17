@@ -154,10 +154,4 @@ public sealed class MessageStore
         return result.Reverted;
     }
 
-    // Replace the catalogue with records and persist.
-    public void Replace(IEnumerable<MessageRecord> records)
-    {
-        Messages.ReplaceAll(records);
-        Save();
-    }
 }

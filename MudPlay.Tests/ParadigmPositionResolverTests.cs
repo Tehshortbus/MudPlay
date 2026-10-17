@@ -6,12 +6,10 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Covers <see cref="ParadigmPositionResolver"/>'s realm gating, the `rm`
-/// request/reply loop, throttling, and the timeout fallback. Uses an isolated
-/// temp game-data root per test and the no-timer test ctor so nothing depends
-/// on a real Avalonia dispatcher.
-/// </summary>
+// Covers ParadigmPositionResolver's realm gating, the `rm`
+// request/reply loop, throttling, and the timeout fallback. Uses an isolated
+// temp game-data root per test and the no-timer test ctor so nothing depends
+// on a real Avalonia dispatcher.
 public sealed class ParadigmPositionResolverTests : IDisposable
 {
     private readonly string _root;
@@ -37,11 +35,14 @@ public sealed class ParadigmPositionResolverTests : IDisposable
         ]
         """;
 
+    // Feed: the game's output through the router the resolver reads.
     private sealed record Harness(
         ParadigmPositionResolver Resolver,
         RoomTracker Tracker,
         EngineRecoveryGate Gate,
-        List<byte[]> Sent);
+        List<byte[]> Sent,
+        ServerFeed Feed,
+        ManualTimers Timeout);
 
     // Gaol -> Dungeon -> Vault in a line, southeast each time.
     private const string ThreeRoomGraphJson = """
@@ -79,10 +80,11 @@ public sealed class ParadigmPositionResolverTests : IDisposable
 
         MessageRouter router = new();
         MudPlay.Services.Patterns.DefaultPatterns.Seed(router);   // Subscribe needs the pattern in the catalog
-        ParadigmPositionResolver resolver = new(router, tracker, gate, cache, log: null, useTimer: false);
+        ManualTimers timeout = new();
+        ParadigmPositionResolver resolver = new(router, tracker, gate, cache, log: null, schedule: timeout.Arm);
         List<byte[]> sent = new();
         resolver.SetWireSender(sent.Add);
-        return new Harness(resolver, tracker, gate, sent);
+        return new Harness(resolver, tracker, gate, sent, new ServerFeed(router), timeout);
     }
 
     [Fact]
@@ -123,7 +125,7 @@ public sealed class ParadigmPositionResolverTests : IDisposable
         Harness h = Build(paradigm: true);
         h.Resolver.TryRequestResync("drift");
 
-        h.Resolver.FeedLocationForTests(1, 1);
+        h.Feed.Line("Location: 1,1");
 
         Assert.False(h.Resolver.RequestInFlight);
         Assert.Equal(new RoomKey(1, 1), h.Resolver.LastResolved);
@@ -139,7 +141,7 @@ public sealed class ParadigmPositionResolverTests : IDisposable
         // still re-anchor the tracker.
         Harness h = Build(paradigm: true);
 
-        h.Resolver.FeedLocationForTests(1, 1);
+        h.Feed.Line("Location: 1,1");
 
         Assert.False(h.Resolver.RequestInFlight);
         Assert.Equal(new RoomKey(1, 1), h.Resolver.LastResolved);
@@ -152,7 +154,7 @@ public sealed class ParadigmPositionResolverTests : IDisposable
     {
         Harness h = Build(paradigm: true);
         h.Resolver.TryRequestResync("first");
-        h.Resolver.FeedLocationForTests(1, 1);   // clears in-flight, but the throttle window is still open
+        h.Feed.Line("Location: 1,1");   // clears in-flight, but the throttle window is still open
 
         Assert.False(h.Resolver.TryRequestResync("second"));
         Assert.Single(h.Sent);
@@ -166,7 +168,7 @@ public sealed class ParadigmPositionResolverTests : IDisposable
         h.Resolver.ResyncFailed += () => failed = true;
         h.Resolver.TryRequestResync("drift");
 
-        h.Resolver.FireTimeoutForTests();
+        h.Timeout.RunAll();
 
         Assert.True(failed);
         Assert.False(h.Resolver.RequestInFlight);
@@ -182,7 +184,7 @@ public sealed class ParadigmPositionResolverTests : IDisposable
         Assert.True(h.Resolver.RequestResyncOnce("where", k => { resolved++; key = k; }, () => failed++));
         Assert.Equal("rm\r", Encoding.Latin1.GetString(Assert.Single(h.Sent)));
 
-        h.Resolver.FeedLocationForTests(1, 1);
+        h.Feed.Line("Location: 1,1");
 
         Assert.Equal(1, resolved);
         Assert.Equal(0, failed);
@@ -190,7 +192,7 @@ public sealed class ParadigmPositionResolverTests : IDisposable
 
         // One-shot: the callback detached itself, so a later `rm` reply doesn't
         // re-fire it.
-        h.Resolver.FeedLocationForTests(1, 1);
+        h.Feed.Line("Location: 1,1");
         Assert.Equal(1, resolved);
     }
 
@@ -201,7 +203,7 @@ public sealed class ParadigmPositionResolverTests : IDisposable
         int resolved = 0, failed = 0;
 
         Assert.True(h.Resolver.RequestResyncOnce("where", _ => resolved++, () => failed++));
-        h.Resolver.FireTimeoutForTests();
+        h.Timeout.RunAll();
 
         Assert.Equal(0, resolved);
         Assert.Equal(1, failed);
@@ -221,7 +223,7 @@ public sealed class ParadigmPositionResolverTests : IDisposable
         Assert.True(h.Resolver.RequestResyncOnce("desync", k => resolved = k, () => { }));
         h.Tracker.NoteMoveSent(Direction.SE);
 
-        h.Resolver.FeedLocationForTests(1, 1);
+        h.Feed.Line("Location: 1,1");
 
         Assert.Equal(new RoomKey(1, 1), resolved);
         Assert.False(h.Resolver.RequestInFlight);
@@ -244,7 +246,7 @@ public sealed class ParadigmPositionResolverTests : IDisposable
         h.Tracker.NoteMoveSent(Direction.SE, DateTimeOffset.UtcNow.AddSeconds(-10));
         h.Resolver.TryRequestResync("in-flight stall");
 
-        h.Resolver.FeedLocationForTests(1, 1);
+        h.Feed.Line("Location: 1,1");
 
         Assert.Equal(RoomConfidence.Confirmed, h.Tracker.State.Confidence);
         Assert.Equal(new RoomKey(1, 1), h.Tracker.State.CurrentRoom?.Key);
@@ -260,7 +262,7 @@ public sealed class ParadigmPositionResolverTests : IDisposable
         h.Resolver.TryRequestResync("desync");
         h.Tracker.NoteMoveSent(Direction.SE);
 
-        h.Resolver.FeedLocationForTests(1, 3);
+        h.Feed.Line("Location: 1,3");
 
         Assert.Equal(RoomConfidence.Confirmed, h.Tracker.State.Confidence);
         Assert.Equal(new RoomKey(1, 3), h.Tracker.State.CurrentRoom?.Key);

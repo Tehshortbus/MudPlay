@@ -70,6 +70,7 @@ public sealed class AutoLightProvisionerTests
         public Func<RoomKey, Room?> Graph = GraphOf(RoomAt(A, -300));
         public readonly List<AutoLightBuyRequest> BuyRequests = new();
         public readonly AutoLightProvisioner Engine;
+        private readonly List<byte[]> _wire = new();
 
         public Harness()
         {
@@ -83,7 +84,7 @@ public sealed class AutoLightProvisionerTests
                 roomLightSpellName: () => RoomLightSpellName,
                 castRoomLightSpell: CastSpells.Add,
                 settings:    () => Settings);
-            Engine.SetWireSender(_ => { });
+            Engine.SetWireSender(_wire.Add);
             Engine.SetProvisioner(BuyRequests.Add);
         }
 
@@ -99,7 +100,7 @@ public sealed class AutoLightProvisionerTests
 
         public void Enter(int roomLight) => Engine.OnRoomEntered(RoomAt(A, roomLight));
 
-        public IReadOnlyList<string> Sent => Engine.LastSentForTests
+        public IReadOnlyList<string> Sent => _wire
             .Select(b => Encoding.Latin1.GetString(b).TrimEnd('\r'))
             .ToList();
     }

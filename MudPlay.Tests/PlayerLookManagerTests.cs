@@ -9,25 +9,25 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// <see cref="PlayerLookManager"/> — reactive `look &lt;player&gt;` automation.
-/// Covers the end-to-end look-back pattern (validates the PlayerLooksAtYou
-/// regex + subscription), the arrival hook's Player/Monster gating, and the
-/// per-behaviour decision seams (enable gate, self/party skip, given-name
-/// targeting).
-/// </summary>
+// PlayerLookManager — reactive `look <player>` automation.
+// Covers the end-to-end look-back pattern (validates the PlayerLooksAtYou
+// regex + subscription), the arrival hook's Player/Monster gating, and the
+// per-behaviour decision seams (enable gate, self/party skip, given-name
+// targeting).
 public sealed class PlayerLookManagerTests
 {
     private sealed class Harness : IDisposable
     {
         public MessageRouter Router { get; }
         public MonsterMessageStore Monsters { get; } = new();
-        public PlayerDatabase Players { get; } = new();
+        public PlayerDatabase Players { get; } = new(new ProfileService(), () => null);
         public LogService Log { get; } = new();
         public RoomEntityClassifier Classifier { get; }
         public RoomEntryWatcher RoomEntry { get; }
         public PartyState Party { get; } = new();
         public PlayerLookManager Look { get; }
+        // The clock the Look reads: the real one unless a test sets its own.
+        public Func<DateTime> LookNow { get; set; } = () => DateTime.UtcNow;
         public List<string> Sent { get; } = new();
 
         public string? SelfName { get; set; }
@@ -38,7 +38,7 @@ public sealed class PlayerLookManagerTests
             DefaultPatterns.Seed(Router);
             Classifier = new RoomEntityClassifier(Router, Monsters, Players, Log);
             RoomEntry = new RoomEntryWatcher(Router, Classifier, Log);
-            Look = new PlayerLookManager(Router, RoomEntry, Players, Party, () => SelfName);
+            Look = new PlayerLookManager(Router, RoomEntry, Players, Party, () => SelfName, now: () => LookNow());
             Look.SetWireSender(bytes => Sent.Add(Encoding.Latin1.GetString(bytes)));
         }
 
@@ -159,10 +159,10 @@ public sealed class PlayerLookManagerTests
         h.AddPlayer("Bob");
         h.Look.LookBackWhenLookedAt = true;
         DateTime day1 = new(2026, 5, 30, 12, 0, 0, DateTimeKind.Utc);
-        h.Look.NowUtcProvider = () => day1;
+        h.LookNow = () => day1;
         h.Look.TryLookBack("Bob");
 
-        h.Look.NowUtcProvider = () => day1.AddDays(1);
+        h.LookNow = () => day1.AddDays(1);
         h.Look.TryLookBack("Bob");
 
         Assert.Equal(new[] { "look Bob\r", "look Bob\r" }, h.Sent);

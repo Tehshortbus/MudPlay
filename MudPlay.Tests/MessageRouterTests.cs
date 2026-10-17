@@ -7,6 +7,10 @@ namespace MudPlay.Tests;
 
 public sealed class MessageRouterTests
 {
+    // A pattern that matches a line starting with prefix, as the catalogue's do.
+    private static RegexPattern Prefix(string id, string prefix, int priority = 0) =>
+        new(id, "^" + System.Text.RegularExpressions.Regex.Escape(prefix), priority);
+
     private static LineExtractor.EmittedLine Line(string text) =>
         new(text, new CellAttributes[text.Length], DateTimeOffset.UnixEpoch, IsPromptLine: false);
 
@@ -31,30 +35,6 @@ public sealed class MessageRouterTests
         Assert.Equal(default, r);
     }
 
-    [Fact]
-    public void PrefixPattern_HitsOnLeadingMatch()
-    {
-        PrefixPattern p = new("test.gossip", "*GOSSIP* ");
-        Assert.True(p.TryMatch(Line("*GOSSIP* Forged: hello"), out MatchResult r));
-        Assert.Empty(r.Groups);
-    }
-
-    [Fact]
-    public void PrefixPattern_MissesWhenNotAtStart()
-    {
-        PrefixPattern p = new("test.gossip", "*GOSSIP* ");
-        Assert.False(p.TryMatch(Line(" *GOSSIP* foo"), out _));
-    }
-
-    [Fact]
-    public void ExactPattern_RequiresFullEquality()
-    {
-        ExactPattern p = new("test.welcome", "Welcome to MajorMUD!");
-        Assert.True (p.TryMatch(Line("Welcome to MajorMUD!"), out _));
-        Assert.False(p.TryMatch(Line("Welcome to MajorMUD! "), out _));
-        Assert.False(p.TryMatch(Line("welcome to majormud!"), out _));
-    }
-
     // ----- Router fan-out + priority + dispose ---------------------------
 
     [Fact]
@@ -63,9 +43,9 @@ public sealed class MessageRouterTests
         MessageRouter router = new();
         List<string> hits = new();
 
-        router.Register(new PrefixPattern("a", "Hello"),  r => hits.Add($"a:{r.Text}"));
+        router.Register(Prefix("a", "Hello"),  r => hits.Add($"a:{r.Text}"));
         router.Register(new RegexPattern("b",  @"\w+!$"), r => hits.Add($"b:{r.Text}"));
-        router.Register(new PrefixPattern("c", "Bye"),    r => hits.Add($"c:{r.Text}"));
+        router.Register(Prefix("c", "Bye"),    r => hits.Add($"c:{r.Text}"));
 
         router.Dispatch(Line("Hello world!"));
 
@@ -78,9 +58,9 @@ public sealed class MessageRouterTests
         MessageRouter router = new();
         List<string> order = new();
 
-        router.Register(new PrefixPattern("low",  "X", priority: 0),  _ => order.Add("low"));
-        router.Register(new PrefixPattern("high", "X", priority: 10), _ => order.Add("high"));
-        router.Register(new PrefixPattern("mid",  "X", priority: 5),  _ => order.Add("mid"));
+        router.Register(Prefix("low",  "X", priority: 0),  _ => order.Add("low"));
+        router.Register(Prefix("high", "X", priority: 10), _ => order.Add("high"));
+        router.Register(Prefix("mid",  "X", priority: 5),  _ => order.Add("mid"));
 
         router.Dispatch(Line("X marks the spot"));
 
@@ -93,14 +73,13 @@ public sealed class MessageRouterTests
         MessageRouter router = new();
         int hits = 0;
 
-        IDisposable token = router.Register(new PrefixPattern("p", "X"), _ => hits++);
+        IDisposable token = router.Register(Prefix("p", "X"), _ => hits++);
         router.Dispatch(Line("X1"));
         Assert.Equal(1, hits);
 
         token.Dispose();
         router.Dispatch(Line("X2"));
         Assert.Equal(1, hits);   // no new fire after dispose
-        Assert.Equal(0, router.SubscriptionCount);
     }
 
     [Fact]
@@ -112,9 +91,9 @@ public sealed class MessageRouterTests
         // First handler registers a second pattern mid-dispatch. Snapshot
         // semantics guarantee the freshly-added pattern doesn't fire for the
         // line we're already dispatching.
-        router.Register(new PrefixPattern("a", "X"), _ =>
+        router.Register(Prefix("a", "X"), _ =>
         {
-            router.Register(new PrefixPattern("late", "X"), _ => extraHits++);
+            router.Register(Prefix("late", "X"), _ => extraHits++);
         });
 
         router.Dispatch(Line("X1"));
@@ -130,7 +109,7 @@ public sealed class MessageRouterTests
     public void AnyPatternMatches_MatchesRegisteredCatalogPattern()
     {
         MessageRouter router = new();
-        router.RegisterPattern(new PrefixPattern("a", "Hello"));
+        router.RegisterPattern(Prefix("a", "Hello"));
 
         Assert.True(router.AnyPatternMatches(Line("Hello world!")));
     }
@@ -139,7 +118,7 @@ public sealed class MessageRouterTests
     public void AnyPatternMatches_NoMatch_ReturnsFalse()
     {
         MessageRouter router = new();
-        router.RegisterPattern(new PrefixPattern("a", "Hello"));
+        router.RegisterPattern(Prefix("a", "Hello"));
 
         Assert.False(router.AnyPatternMatches(Line("Goodbye world!")));
     }
@@ -154,8 +133,8 @@ public sealed class MessageRouterTests
         // subscription (what a genuine Dispatch would fire) — distinct ids so
         // a regression that made AnyPatternMatches call Dispatch internally
         // would show up as hits > 0 / lineDispatchedFired == true below.
-        router.RegisterPattern(new PrefixPattern("a", "Hello"));
-        router.Register(new PrefixPattern("a2", "Hello"), _ => hits++);
+        router.RegisterPattern(Prefix("a", "Hello"));
+        router.Register(Prefix("a2", "Hello"), _ => hits++);
         router.LineDispatched += _ => lineDispatchedFired = true;
 
         bool matched = router.AnyPatternMatches(Line("Hello world!"));

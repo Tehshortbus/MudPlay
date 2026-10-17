@@ -42,13 +42,6 @@ public sealed class ShopStockIndex
     // switches the set.
     public GameDataCache.Load LoadedFor { get; private set; }
 
-    // Number of distinct stocked item ids in the active set.
-    public int ItemCount => _shopsByItem.Count;
-
-    // Fires after every successful (re)load, including the transition to
-    // no-set-active.
-    public event Action? StoreReloaded;
-
     public ShopStockIndex(GameDataCache cache) : this(cache, log: null) { }
 
     public ShopStockIndex(GameDataCache cache, LogService? log)
@@ -82,7 +75,6 @@ public sealed class ShopStockIndex
         {
             LoadedFor = load;
             _log?.Info("ShopStockIndex", "No active set; cleared.");
-            StoreReloaded?.Invoke();
             return;
         }
 
@@ -91,7 +83,6 @@ public sealed class ShopStockIndex
         {
             LoadedFor = load;
             _log?.Info("ShopStockIndex", $"Active set '{setName}' has no Shops.json; empty.");
-            StoreReloaded?.Invoke();
             return;
         }
 
@@ -120,7 +111,6 @@ public sealed class ShopStockIndex
         _log?.Info("ShopStockIndex",
             $"Indexed {_shopsByItem.Count} stocked item(s) across {stockedShops} shop(s) from '{setName}'.");
 
-        StoreReloaded?.Invoke();
     }
 
     private static bool TryReadInt(GameRow row, string property, out int value)

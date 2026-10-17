@@ -69,8 +69,8 @@ public sealed class InGameCapture : IDisposable
     public event Action<bool>? AtBoardMenuChanged;
 
     // When the chunk now being drawn arrived (the screen's feed stamp), so a
-    // stretch can end where the chunk that carried the menu began. Unset in tests,
-    // which fall back to the clock.
+    // stretch can end where the chunk that carried the menu began. Unset, it falls
+    // back to the clock.
     public Func<DateTimeOffset>? FeedTime { get; set; }
 
     // How much of the wire had been read when the game was last entered; null

@@ -157,7 +157,6 @@ public sealed class AutoTrainManager : IDisposable
     }
 
     public void SetWireSender(Action<byte[]> sender) => _wire.Bind(sender);
-    internal List<byte[]> LastSentForTests => _wire.LastSentForTests;
 
     // Binds the read of the visible terminal screen, as newline-joined rows, that
     // the form is read from. The grid belongs to the terminal session, so the

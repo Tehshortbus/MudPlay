@@ -44,10 +44,8 @@ public sealed class QuestStore
 
     // Production ctor: seed from Global; the overlay tracks the profile's
     // game-data set, reloading on ProfileService.ProfileLoaded / BbsPinApplied /
-    // ProfileClosed. The providers are parameterized so tests can drive the store
-    // without a live ProfileService (pass none and call OnActiveSetChanged
-    // directly). seedPath defaults to AppPaths.DefaultQuestDefsSeedFile so a test
-    // can point at a scratch seed.
+    // ProfileClosed. Without a ProfileService the overlay moves only on
+    // OnActiveSetChanged. seedPath defaults to AppPaths.DefaultQuestDefsSeedFile.
     public QuestStore(ProfileService? profile = null, Func<string?>? activeSet = null,
                       Func<string?>? activeRealmFolder = null, LogService? log = null, string? seedPath = null)
     {
@@ -69,7 +67,7 @@ public sealed class QuestStore
 
     // Swap the loaded overlay to the set's quests.json (empty when the set has none
     // yet, or the name is blank), first taking in realmFolder's old per-realm file
-    // when the set hasn't had it. Public so tests can drive it directly.
+    // when the set hasn't had it.
     public void OnActiveSetChanged(string? setName, string? realmFolder = null)
     {
         _overlay.Clear();

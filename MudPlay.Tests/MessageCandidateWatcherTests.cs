@@ -17,6 +17,12 @@ public sealed class MessageCandidateWatcherTests
         public MessageStore Messages { get; } = new();
         public MessageCandidateStore Candidates { get; } = new();
         public MessageCandidateWatcher Watcher { get; }
+        // The game's output, fed the way the client receives it.
+        public ServerFeed Server { get; }
+
+        // A catalogued line that comes well after the line before it: it releases a
+        // line held back as possible death flavour, as the next line of the game does.
+        public const string LaterKnownLine = "The rain lets up for a moment.";
 
         // Mutable so a test can point the watcher at a known room before feeding.
         public RoomKey? Room { get; set; }
@@ -33,40 +39,32 @@ public sealed class MessageCandidateWatcherTests
             Func<string, bool>? isRoomExitCommand = null)
         {
             if (seedDefaultPatterns) DefaultPatterns.Seed(Router);
+            Messages.Messages.Add(MakeRecord(LaterKnownLine));
+            Server = new ServerFeed(Router);
             Watcher = new MessageCandidateWatcher(
                 Router, Messages, Candidates, currentRoom: () => Room, log: Log,
                 isKnownRoomName: RoomNames.Contains,
                 isRecognizedByDirectParser: PartyManager.IsRosterRow,
                 isRecognizedLine: isRecognizedLine,
                 isRoomExitCommand: isRoomExitCommand);
+            // Attached as a session starts, so before the first in-game prompt.
+            Watcher.AttachLineExtractor(Server.Lines);
             if (inGame) Watcher.NotifyInGame();
         }
 
-        // The watcher subscribes to LineExtractor in real life; tests reflect into
-        // the private OnLine directly instead of standing up a fake extractor —
-        // same pattern ConditionTrackerTests uses for the identical shape.
-        //
-        // flush drives the private CommitPending: real capture holds a vetted line
-        // back one line so an experience gain can retire it as monster death flavour,
-        // so a test asserting on a single fed line has to release it. Tests about the
-        // death rule itself pass flush:false and feed the following line themselves.
+        // Real capture holds a vetted line back one line so an experience gain can
+        // retire it as monster death flavour, so a test asserting on a single fed
+        // line lets the game go on (flush) to release it. Tests about the death rule
+        // itself pass flush:false and feed the following line themselves.
         public void Feed(string text, DateTimeOffset? when = null, bool flush = true)
         {
-            var emitted = new LineExtractor.EmittedLine(
-                text, Array.Empty<CellAttributes>(),
-                when ?? DateTimeOffset.UtcNow, IsPromptLine: false);
-            Invoke("OnLine", emitted);
-            if (flush) Invoke("CommitPending");
+            DateTimeOffset at = when ?? DateTimeOffset.UtcNow;
+            Server.Line(text, at);
+            if (flush) Server.Line(LaterKnownLine, at.AddMinutes(1));
         }
 
-        public void FeedLine(LineExtractor.EmittedLine line) => Invoke("OnLine", line);
-
-        private void Invoke(string method, params object[] args) =>
-            typeof(MessageCandidateWatcher)
-                .GetMethod(method,
-                    System.Reflection.BindingFlags.Instance |
-                    System.Reflection.BindingFlags.NonPublic)!
-                .Invoke(Watcher, args);
+        // The game goes on a while later, releasing whatever line was held.
+        public void GoOn() => Server.Line(LaterKnownLine, DateTimeOffset.UtcNow.AddMinutes(1));
     }
 
     private static MessageRecord MakeRecord(string casterMessage) => new(
@@ -120,7 +118,7 @@ public sealed class MessageCandidateWatcherTests
     public void RouterMatchedLine_DoesNotCreateCandidate()
     {
         Harness h = new();
-        h.Router.RegisterPattern(new PrefixPattern("test.gossip", "*GOSSIP* "));
+        h.Router.RegisterPattern(new RegexPattern("test.gossip", @"^\*GOSSIP\* "));
 
         h.Feed("*GOSSIP* Forged: hello");
 
@@ -226,7 +224,7 @@ public sealed class MessageCandidateWatcherTests
     {
         Harness h = new();
         h.Feed("The old man mutters \"never mind");
-        h.FeedLine(new LineExtractor.EmittedLine("[HP=10/MA=5]:", Array.Empty<CellAttributes>(), DateTimeOffset.UtcNow, IsPromptLine: true));
+        h.Server.Prompt("[HP=10/MA=5]:");
         h.Feed("Something unrelated happens here.");
 
         Assert.Contains(h.Candidates.Candidates, c => c.RawText == "Something unrelated happens here.");
@@ -745,9 +743,11 @@ public sealed class MessageCandidateWatcherTests
         // Header + member rows are all suppressed.
         Harness h = new();
 
-        h.Feed("The following users are on channel 34433:");
-        h.Feed("Fujin");
-        h.Feed("Raijin, Suijin");
+        h.Feed("The following users are on channel 34433:", flush: false);
+        h.Feed("Fujin", flush: false);
+        h.Feed("Raijin, Suijin", flush: false);
+
+        h.GoOn();
 
         Assert.Empty(h.Candidates.Candidates);
     }
@@ -771,10 +771,12 @@ public sealed class MessageCandidateWatcherTests
         // it (and is itself staged normally), so a later bare name isn't wrongly dropped.
         Harness h = new();
 
-        h.Feed("The following users are on channel 34433:");   // gate on
-        h.Feed("Fujin");                                        // member — suppressed
-        h.Feed("The gnarled tree groans ominously.");           // non-member → gate off, staged
-        h.Feed("Grimlock");                                     // bare name, gate cleared → staged
+        h.Feed("The following users are on channel 34433:", flush: false);   // gate on
+        h.Feed("Fujin", flush: false);                                        // member — suppressed
+        h.Feed("The gnarled tree groans ominously.", flush: false);           // non-member → gate off, staged
+        h.Feed("Grimlock", flush: false);                                     // bare name, gate cleared → staged
+
+        h.GoOn();
 
         Assert.Equal(2, h.Candidates.Candidates.Count);
     }
@@ -804,21 +806,20 @@ public sealed class MessageCandidateWatcherTests
 
     // ----- listings, wrapped room rows, own-action replies ------------------
 
-    private static LineExtractor.EmittedLine Prompt() => new(
-        "[HP=91/MA=42]:", Array.Empty<CellAttributes>(), DateTimeOffset.UtcNow, IsPromptLine: true);
-
     [Fact]
     public void ShopListing_SkippedFromHeaderToPrompt()
     {
         Harness h = new();
-        h.Feed("Item                          Quantity    Price");
-        h.Feed("------------------------------------------------------");
-        h.Feed("crystal club                  10        1375 gold crowns");
-        h.Feed("a row no shape could describe");
+        h.Feed("Item                          Quantity    Price", flush: false);
+        h.Feed("------------------------------------------------------", flush: false);
+        h.Feed("crystal club                  10        1375 gold crowns", flush: false);
+        h.Feed("a row no shape could describe", flush: false);
+        h.GoOn();
         Assert.Empty(h.Candidates.Candidates);
 
-        h.FeedLine(Prompt());
-        h.Feed("A shimmering rune flickers.");
+        h.Server.Prompt("[HP=91/MA=42]:");
+        h.Feed("A shimmering rune flickers.", flush: false);
+        h.GoOn();
         Assert.Single(h.Candidates.Candidates);
     }
 
@@ -827,12 +828,14 @@ public sealed class MessageCandidateWatcherTests
     {
         Harness h = new();
         h.RoomNames.Add("Crumbling Tunnel");
-        h.Feed("Crumbling Tunnel");
-        h.Feed("Mud and trodden grass form the packed surface of this winding path. It");
-        h.Feed("Obvious exits: northwest, southeast");
+        h.Feed("Crumbling Tunnel", flush: false);
+        h.Feed("Mud and trodden grass form the packed surface of this winding path. It", flush: false);
+        h.Feed("Obvious exits: northwest, southeast", flush: false);
+        h.GoOn();
         Assert.Empty(h.Candidates.Candidates);
 
-        h.Feed("A shimmering rune flickers.");
+        h.Feed("A shimmering rune flickers.", flush: false);
+        h.GoOn();
         Assert.Single(h.Candidates.Candidates);
     }
 
@@ -840,12 +843,14 @@ public sealed class MessageCandidateWatcherTests
     public void WrappedAlsoHere_ContinuationRowsSkipped()
     {
         Harness h = new();
-        h.Feed("Also here: fat half-orc sentry, thin half-orc");
-        h.Feed("warrior, large");
-        h.Feed("guardsman.");
+        h.Feed("Also here: fat half-orc sentry, thin half-orc", flush: false);
+        h.Feed("warrior, large", flush: false);
+        h.Feed("guardsman.", flush: false);
+        h.GoOn();
         Assert.Empty(h.Candidates.Candidates);
 
-        h.Feed("A shimmering rune flickers.");
+        h.Feed("A shimmering rune flickers.", flush: false);
+        h.GoOn();
         Assert.Single(h.Candidates.Candidates);
     }
 
@@ -854,9 +859,10 @@ public sealed class MessageCandidateWatcherTests
     {
         Harness h = new();
         DateTimeOffset t = DateTimeOffset.UtcNow;
-        h.Feed("Top Heroes of the Realm By Experience", t);
-        h.Feed("some row", t.AddMilliseconds(50));
-        h.Feed("A shimmering rune flickers.", t.AddSeconds(5));
+        h.Feed("Top Heroes of the Realm By Experience", t, flush: false);
+        h.Feed("some row", t.AddMilliseconds(50), flush: false);
+        h.Feed("A shimmering rune flickers.", t.AddSeconds(5), flush: false);
+        h.GoOn();
         Assert.Single(h.Candidates.Candidates);
     }
 
@@ -947,7 +953,7 @@ public sealed class MessageCandidateWatcherTests
     }
 
     [Fact]
-    public void PruneRecognized_DropsNowKnownLines_KeepsTheRest()
+    public void PruneIfRecognized_DropsNowKnownLines_KeepsTheRest()
     {
         Harness h = new(seedDefaultPatterns: true);
         DateTimeOffset now = DateTimeOffset.UtcNow;
@@ -955,7 +961,9 @@ public sealed class MessageCandidateWatcherTests
         h.Candidates.RecordSighting("A shade materializes in the room.", now, null, null);
         h.Candidates.RecordSighting("A shimmering rune flickers and fades.", now, null, null);
 
-        Assert.Equal(2, h.Watcher.PruneRecognized());
+        int pruned = h.Candidates.Candidates.ToList().Count(h.Watcher.PruneIfRecognized);
+
+        Assert.Equal(2, pruned);
         Assert.Equal("A shimmering rune flickers and fades.", Assert.Single(h.Candidates.Candidates).RawText);
     }
 }

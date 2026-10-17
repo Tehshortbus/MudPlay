@@ -1,5 +1,4 @@
 using System.Threading.Tasks;
-using Avalonia.Threading;
 using MudPlay.Services;
 
 namespace MudPlay.Game.Map;
@@ -48,7 +47,10 @@ public sealed class SysopPositionResolver : IDisposable
     private readonly Func<bool>? _suppressed;
     private readonly Action<Action> _post;
     private readonly LogService? _log;
-    private readonly DispatcherTimer? _deferral;
+    // One-shot, armed only while a locate is queued behind movement.
+    private IDisposable? _deferral;
+    // Arms one tick after the delay; disposing what it returns cancels it.
+    private readonly Func<TimeSpan, Action, IDisposable> _schedule;
 
     private bool _inFlight;
     private string? _deferredReason;
@@ -75,17 +77,8 @@ public sealed class SysopPositionResolver : IDisposable
         RoomTracker tracker,
         Func<bool>? suppressed = null,
         LogService? log = null,
-        Action<Action>? post = null)
-        : this(probe, graph, tracker, suppressed, log, post, useTimer: true) { }
-
-    internal SysopPositionResolver(
-        SysStatusProbe probe,
-        RoomGraphManager graph,
-        RoomTracker tracker,
-        Func<bool>? suppressed,
-        LogService? log,
-        Action<Action>? post,
-        bool useTimer)
+        Action<Action>? post = null,
+        Func<TimeSpan, Action, IDisposable>? schedule = null)
     {
         ArgumentNullException.ThrowIfNull(probe);
         ArgumentNullException.ThrowIfNull(graph);
@@ -98,15 +91,9 @@ public sealed class SysopPositionResolver : IDisposable
         _log = log;
         _post = post ?? (a => a());
         _tracker.StateChanged += OnTrackerStateChanged;
-
-        if (useTimer)
-        {
-            // One-shot, armed only while a locate is queued behind movement.
-            // DispatcherTimer fires on the UI thread, so the tracker mutations
-            // downstream stay single-threaded like every other engine send.
-            _deferral = new DispatcherTimer(DispatcherPriority.Background) { Interval = DeferralWindow };
-            _deferral.Tick += (_, _) => OnDeferralExpired();
-        }
+        // The default timer fires on the UI thread, so the tracker mutations
+        // downstream stay single-threaded like every other engine send.
+        _schedule = schedule ?? DispatcherTicks.Once;
     }
 
     // Ask the game where we actually are. Returns true when a probe is in
@@ -167,8 +154,8 @@ public sealed class SysopPositionResolver : IDisposable
         if (movementUnsettled)
         {
             _deferredReason = reason;
-            _deferral?.Stop();
-            _deferral?.Start();
+            _deferral?.Dispose();
+            _deferral = _schedule(DeferralWindow, OnDeferralExpired);
             _log?.Log(LogSeverity.Info, LogSource,
                 $"locate queued behind unconfirmed movement ({_tracker.State.Confidence}); reason: {reason}");
             return true;
@@ -286,7 +273,7 @@ public sealed class SysopPositionResolver : IDisposable
             && t.NewConfidence is not (RoomConfidence.Pending or RoomConfidence.PendingRespawn))
         {
             _deferredReason = null;
-            _deferral?.Stop();
+            CancelDeferral();
             SendProbe(deferred);
             return;
         }
@@ -301,7 +288,7 @@ public sealed class SysopPositionResolver : IDisposable
 
     private void OnDeferralExpired()
     {
-        _deferral?.Stop();
+        _deferral = null;
         if (_deferredReason is not { } reason) return;
         _deferredReason = null;
         LastOutcome = "movement never settled";
@@ -310,14 +297,17 @@ public sealed class SysopPositionResolver : IDisposable
         LocateFailed?.Invoke();
     }
 
-    // ----- test seams ------------------------------------------------
-    internal void FireDeferralExpiryForTests() => OnDeferralExpired();
+    private void CancelDeferral()
+    {
+        _deferral?.Dispose();
+        _deferral = null;
+    }
 
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
         _tracker.StateChanged -= OnTrackerStateChanged;
-        _deferral?.Stop();
+        CancelDeferral();
     }
 }

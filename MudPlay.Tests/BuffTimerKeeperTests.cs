@@ -67,8 +67,8 @@ public sealed class BuffTimerKeeperTests : IDisposable
             PlayerState state = new() { MaxHp = 200, Hp = 200, HasPromptData = true };
             Director = new CastingDirector(state, Cast,
                 readSpells: () => new SpellsSettings(), readHealth: () => new HealthSettings(),
-                isEnabled: () => true, log: new LogService());
-            Director.SetClock(() => Now);
+                isEnabled: () => true, log: new LogService(),
+                now: () => Now);
             Hazard = new AutoHazardCounterProvisioner(
                 resolveRoom: _ => null,
                 hazardForSpell: _ => null,

@@ -502,11 +502,6 @@ public sealed class RoomGraphManager
         = new Dictionary<int, (int, long, int)>();
     public IReadOnlyDictionary<int, (int Count, long SumMax, int MaxMax)> LairSizeByMonster => _lairSizeByMonster;
 
-    // Every room in the active set that carries at least one trapped exit (per
-    // the imported (Trap) hint). MapControl iterates this to overlay red
-    // half-connector glyphs without rescanning every room.
-    public IEnumerable<Room> TrappedRooms => _rooms.Values.Where(r => r.HasTrappedExits);
-
     // Sailings a sea-captain dock at `room` offers, empty when the room is not a
     // dock. The boat router reads this to decide whether a `secure passage`
     // hop can shortcut a cross-realm route from here.
@@ -519,16 +514,6 @@ public sealed class RoomGraphManager
     // order. The boat router enumerates this to find a passage whose dock/arrival
     // brackets a long land route.
     public IEnumerable<BoatPassage> AllBoatPassages => _boatPassages.Values.SelectMany(p => p);
-
-    // True when the active set contains exactly one room with this room's
-    // (Name, ExitMask) tuple. False for ambiguous tuples and for rooms not in
-    // the active graph.
-    public bool IsUnique(RoomKey key)
-    {
-        if (!_rooms.TryGetValue(key, out Room? room)) return false;
-        return _byNameAndExits.TryGetValue((room.Name, room.ExitMask), out List<RoomKey>? keys)
-               && keys.Count == 1;
-    }
 
     // Whether the map can take the room display of shown for other: the two bear
     // the same name, and every exit shown prints on its exits line is an exit of

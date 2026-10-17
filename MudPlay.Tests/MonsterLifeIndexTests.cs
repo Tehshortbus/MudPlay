@@ -89,16 +89,4 @@ public sealed class MonsterLifeIndexTests : IDisposable
         Assert.Equal(expected, sut.CanAffect(number, targetType));
     }
 
-    [Theory]
-    [InlineData(11, "nonliving+undead")]
-    [InlineData(5,  "nonliving")]
-    [InlineData(20, "undead")]
-    [InlineData(21, "undead")]
-    [InlineData(10, null)]
-    [InlineData(999, null)]
-    public void DrainBlockReason_NamesTheReason(int number, string? expected)
-    {
-        MonsterLifeIndex sut = NewIndex();
-        Assert.Equal(expected, sut.DrainBlockReason(number));
-    }
 }

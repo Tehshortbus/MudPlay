@@ -271,12 +271,6 @@ public static class CombatCalculator
 
     // ----- Magic resistance ------------------------------------------------
 
-    // Magic resistance: Floor((INT + WIL*3) / 4) + modifiers.
-    public static int CalcMR(int intellect, int willpower, int modifiers = 0)
-    {
-        return (intellect + (willpower * 3)) / 4 + modifiers;
-    }
-
     // ----- Strength onto weapon damage -------------------------------------
 
     // GAME_MECHANICS "Melee damage bonus": Stock doubles the min term and lets the

@@ -57,13 +57,6 @@ public sealed partial class DeathDetector : IDisposable
         _lines = null;
     }
 
-    // Test seam — feed a plain text line.
-    internal void FeedTestLine(string text, DateTimeOffset? when = null)
-    {
-        OnLine(new LineExtractor.EmittedLine(
-            text, [], when ?? DateTimeOffset.UtcNow, false));
-    }
-
     // The Stock engine's line for a death in a Colliseum room with arenas in normal
     // mode, printed in place of the miracle line and ahead of the lives readout:
     // that death took no life, item, coin or key (GAME_MECHANICS "Death threshold &

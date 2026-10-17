@@ -22,12 +22,14 @@ public sealed class SessionStatsLogTests
         public int Closed { get; private set; }
         public bool FailWrites { get; set; }
         public SessionStatsLog Log { get; }
+        // The log's interval timer.
+        public ManualTimers Timers { get; } = new();
 
         public Harness()
         {
             Log = new SessionStatsLog(Diagnostics, () => InGame,
                 (_, why) => { Reasons.Add(why); return "block: " + why; },
-                log: null, useTimer: false,
+                log: null, schedule: Timers.Arm,
                 open: () =>
                 {
                     Opened++;
@@ -44,7 +46,7 @@ public sealed class SessionStatsLogTests
     public void Off_WritesNothing_AndOpensNoFile()
     {
         Harness h = new();
-        h.Log.TickForTests();
+        h.Timers.RunAll();
         h.Log.NoteInGameChanged(false);
 
         Assert.Empty(h.Blocks);
@@ -57,8 +59,8 @@ public sealed class SessionStatsLogTests
     {
         Harness h = new();
         h.Diagnostics.LogSessionStatistics = true;
-        h.Log.TickForTests();
-        h.Log.TickForTests();
+        h.Timers.RunAll();
+        h.Timers.RunAll();
 
         // One when switched on mid-session, then one per interval.
         Assert.Equal(new[] { "logging switched on", "every 5 min", "every 5 min" }, h.Reasons);
@@ -73,7 +75,7 @@ public sealed class SessionStatsLogTests
     {
         Harness h = new() { InGame = false };
         h.Diagnostics.LogSessionStatistics = true;
-        h.Log.TickForTests();
+        h.Timers.RunAll();
 
         Assert.Empty(h.Blocks);
         Assert.Equal(0, h.Opened);                           // no empty file left behind
@@ -90,7 +92,7 @@ public sealed class SessionStatsLogTests
 
         Assert.Equal("left the game", h.Reasons[^1]);
         int written = h.Blocks.Count;
-        h.Log.TickForTests();
+        h.Timers.RunAll();
         Assert.Equal(written, h.Blocks.Count);
     }
 
@@ -100,7 +102,7 @@ public sealed class SessionStatsLogTests
         Harness h = new();
         h.Diagnostics.SessionStatisticsMinutes = 30;
         h.Diagnostics.LogSessionStatistics = true;
-        h.Log.TickForTests();
+        h.Timers.RunAll();
         Assert.Equal("every 30 min", h.Reasons[^1]);
 
         h.Diagnostics.SessionStatisticsMinutes = 0;
@@ -116,7 +118,7 @@ public sealed class SessionStatsLogTests
         h.Diagnostics.LogSessionStatistics = true;
         h.Diagnostics.LogSessionStatistics = false;
         Assert.Equal(1, h.Closed);
-        h.Log.TickForTests();
+        h.Timers.RunAll();
         Assert.Single(h.Blocks);
 
         h.Diagnostics.LogSessionStatistics = true;
@@ -130,7 +132,7 @@ public sealed class SessionStatsLogTests
         Harness h = new() { FailWrites = true };
         h.Diagnostics.LogSessionStatistics = true;
         h.FailWrites = false;
-        h.Log.TickForTests();
+        h.Timers.RunAll();
 
         Assert.Empty(h.Blocks);
         Assert.Contains("couldn't be written", h.Log.Summary);

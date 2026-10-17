@@ -5,11 +5,9 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-/// <summary>
-/// Pins the two PartyWindow-row converters: <see cref="RankChipConverter"/>
-/// (PartyRank → F/M/B chip label) and <see cref="GreaterThanZeroConverter"/>
-/// (numeric baseline → visibility of the MA bar row).
-/// </summary>
+// Pins the two PartyWindow-row converters: RankChipConverter
+// (PartyRank → F/M/B chip label) and GreaterThanZeroConverter
+// (numeric baseline → visibility of the MA bar row).
 public sealed class PartyWindowConverterTests
 {
     private static readonly CultureInfo Invariant = CultureInfo.InvariantCulture;

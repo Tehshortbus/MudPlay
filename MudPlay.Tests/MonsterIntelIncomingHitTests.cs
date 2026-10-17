@@ -65,8 +65,8 @@ public sealed class MonsterIntelIncomingHitTests : IDisposable
         var inventory = new InventoryManager(log: null, itemWeightResolver: null, slotResolver: null);
         spellbook = new SpellbookState(new KnownSpellCatalog(cache));
         spellbook.Refresh(12, 10);
-        var profile = new ProfileService();
-        profile.LoadBlank();
+        var profile = TestProfiles.Service();
+        profile.LoadDefaultProfile();
         var resolver = new SettingsResolver(new SettingsService(), new BbsProfileStore(), profile);
         var vm = new MonsterIntelViewModel(
             cache, new MonsterCatalog(cache), resolver, stats, inventory, spellbook, new ItemMagicIndex(cache),

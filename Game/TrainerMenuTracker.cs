@@ -46,8 +46,7 @@ public sealed class TrainerMenuTracker : IDisposable
     // confirms entry.
     public TimeSpan ExpectingMenuWindow { get; set; } = TimeSpan.FromSeconds(5);
 
-    // Test seam.
-    public Func<DateTime> NowProvider { get; set; } = () => DateTime.UtcNow;
+    private readonly Func<DateTime> _now;
 
     // Substring unique to the initial character-creation training screen — the
     // "MAJOR MUD Character Creation" box shares the menu's top terminal row
@@ -139,8 +138,9 @@ public sealed class TrainerMenuTracker : IDisposable
     // the screen has closed, so line-mode input should resume.
     public event Action? InputMenuExited;
 
-    public TrainerMenuTracker(MessageRouter router, PartyState party, LogService? log = null)
+    public TrainerMenuTracker(MessageRouter router, PartyState party, LogService? log = null, Func<DateTime>? now = null)
     {
+        _now = now ?? (() => DateTime.UtcNow);
         ArgumentNullException.ThrowIfNull(router);
         ArgumentNullException.ThrowIfNull(party);
         _party = party;
@@ -169,7 +169,7 @@ public sealed class TrainerMenuTracker : IDisposable
         string raw = Encoding.Latin1.GetString(bytes);
         string cmd = raw.TrimEnd('\r', '\n', '\0').Trim().ToLowerInvariant();
         if (cmd != "train stats" && cmd != "train") return;
-        _expectingMenuSince = NowProvider();
+        _expectingMenuSince = _now();
         _log?.Log(LogSeverity.Info, "TrainerMenu",
             $"Observed outbound `{cmd}` — armed menu-marker watch for {ExpectingMenuWindow.TotalSeconds:0} s.");
 
@@ -237,7 +237,7 @@ public sealed class TrainerMenuTracker : IDisposable
         bool gateArmed = false;
         if (_expectingMenuSince is { } armedAt)
         {
-            if (NowProvider() - armedAt <= ExpectingMenuWindow)
+            if (_now() - armedAt <= ExpectingMenuWindow)
                 gateArmed = true;
             else
                 _expectingMenuSince = null; // window lapsed — disarm

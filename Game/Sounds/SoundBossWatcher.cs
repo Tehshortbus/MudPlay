@@ -31,12 +31,13 @@ public sealed class SoundBossWatcher
     private readonly Dictionary<string, Moments> _moments = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<(string Boss, DateTimeOffset Killed, string Cue)> _fired = new();
 
-    // Clock seam for tests.
-    internal Func<DateTimeOffset> Now { get; set; } = () => DateTimeOffset.UtcNow;
+    private readonly Func<DateTimeOffset> _now;
 
     public SoundBossWatcher(
-        SoundCueEngine sounds, BossStore bosses, BossTimerStore timers, GameDataCache gameData, Func<bool> inGame)
+        SoundCueEngine sounds, BossStore bosses, BossTimerStore timers, GameDataCache gameData, Func<bool> inGame,
+        Func<DateTimeOffset>? now = null)
     {
+        _now = now ?? (() => DateTimeOffset.UtcNow);
         ArgumentNullException.ThrowIfNull(sounds);
         ArgumentNullException.ThrowIfNull(bosses);
         ArgumentNullException.ThrowIfNull(timers);
@@ -52,7 +53,7 @@ public sealed class SoundBossWatcher
     public void Evaluate()
     {
         if (!_inGame()) return;
-        DateTimeOffset now = Now();
+        DateTimeOffset now = _now();
         RealmType realm = _gameData.ActiveRealm;
         foreach (BossDef def in _bosses.ResolveForRealm(realm))
         {

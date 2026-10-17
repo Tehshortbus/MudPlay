@@ -78,7 +78,7 @@ public sealed class CombatProfileGroupTests
         Assert.Equal(fresh.Count, needed.Count);   // the fixture really changed every field
 
         var owner = new Dictionary<string, CombatProfileGroup>();
-        foreach (CombatProfileGroup g in CombatProfileGroupCopy.All)
+        foreach (CombatProfileGroup g in Enum.GetValues<CombatProfileGroup>())
         {
             var target = new CombatSpellProfile();
             CombatProfileGroupCopy.Copy(g, src, target);
@@ -173,8 +173,8 @@ public sealed class CombatProfileGroupTests
     [Fact]
     public void Staging_SharedFlagsSurviveASave()
     {
-        ProfileService profile = new();
-        profile.LoadBlank();
+        ProfileService profile = TestProfiles.Service();
+        profile.LoadDefaultProfile();
         var (store, mgr, _, _) = TwoProfiles();
         profile.Current!.CombatProfiles = store.CombatProfiles;
         CombatProfileManager bound = new(
@@ -188,15 +188,15 @@ public sealed class CombatProfileGroupTests
         session.SetShared(CombatProfileGroup.Backstab, shared: true);
         session.CommitIfDirty();
 
-        Assert.True(profile.Current.CombatProfiles!.IsShared(CombatProfileGroup.Backstab));
+        Assert.True(profile.Current.CombatProfiles!.SharedGroups?.Contains(CombatProfileGroup.Backstab) == true);
         Assert.All(profile.Current.CombatProfiles.Profiles, p => Assert.True(p.DoBackstab));
     }
 
     [Fact]
     public void Staging_ReIncluding_StartsEveryProfileFromTheSharedValue()
     {
-        ProfileService profile = new();
-        profile.LoadBlank();
+        ProfileService profile = TestProfiles.Service();
+        profile.LoadDefaultProfile();
         var (store, _, _, _) = TwoProfiles();
         profile.Current!.CombatProfiles = store.CombatProfiles;
         CombatProfileManager bound = new(
@@ -211,15 +211,15 @@ public sealed class CombatProfileGroupTests
         session.SetShared(CombatProfileGroup.Backstab, shared: false);
         session.CommitIfDirty();
 
-        Assert.False(profile.Current.CombatProfiles!.IsShared(CombatProfileGroup.Backstab));
+        Assert.False(profile.Current.CombatProfiles!.SharedGroups?.Contains(CombatProfileGroup.Backstab) == true);
         Assert.All(profile.Current.CombatProfiles.Profiles, p => Assert.True(p.DoBackstab));
     }
 
     [Fact]
     public void Staging_ChipSwitch_CarriesSharedGroups()
     {
-        ProfileService profile = new();
-        profile.LoadBlank();
+        ProfileService profile = TestProfiles.Service();
+        profile.LoadDefaultProfile();
         var (store, _, _, _) = TwoProfiles();
         profile.Current!.CombatProfiles = store.CombatProfiles;
         CombatProfileManager bound = new(
@@ -244,8 +244,8 @@ public sealed class CombatProfileGroupTests
         // The Party tab stages its party healing like the other tabs: an edit made
         // before a chip switch stays with that profile, the switch loads the other
         // profile's value into the tab, and the commit makes the active one live.
-        ProfileService profile = new();
-        profile.LoadBlank();
+        ProfileService profile = TestProfiles.Service();
+        profile.LoadDefaultProfile();
         var (store, _, _, _) = TwoProfiles();
         profile.Current!.CombatProfiles = store.CombatProfiles;
         PartySettings live = new() { AoeMinMembers = 2 };
@@ -275,8 +275,8 @@ public sealed class CombatProfileGroupTests
     {
         // A live Party-tab value the profile copy hasn't caught up with is what the
         // tab shows, so the working copy starts from it.
-        ProfileService profile = new();
-        profile.LoadBlank();
+        ProfileService profile = TestProfiles.Service();
+        profile.LoadDefaultProfile();
         var (store, _, _, _) = TwoProfiles();
         profile.Current!.CombatProfiles = store.CombatProfiles;
         PartySettings live = new() { AoeMinMembers = 5 };

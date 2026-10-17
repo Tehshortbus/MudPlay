@@ -233,8 +233,6 @@ public sealed class LairEntryDebuffHold : ILairEntryBuffHold
     public bool HasGivenUpOn(string buff) =>
         (_waiting || _deciding) && !FightingNow && _givenUpOn.Contains(buff);
 
-    public bool IsWaiting => _waiting;
-
     // A fight is on: the cast scheduler reads it so, or the combat gate is up.
     private bool FightingNow =>
         InAFightOfOurs || _coordinator.IsGateAsserted(MovementCoordinator.CombatGate);

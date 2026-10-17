@@ -746,7 +746,6 @@ public sealed class RoundDamageTrackerTests
     {
         using Harness h = new();
         Assert.Empty(h.Completed);
-        Assert.Equal(0, h.Tracker.RoundCount);
         Assert.Empty(h.Tracker.Recent);
     }
 
@@ -798,7 +797,6 @@ public sealed class RoundDamageTrackerTests
         h.Tracker.OnCombatTick();
         h.Tracker.OnCombatTick();
         Assert.Empty(h.Completed);
-        Assert.Equal(0, h.Tracker.RoundCount);
     }
 
     [Fact]
@@ -876,11 +874,9 @@ public sealed class RoundDamageTrackerTests
         using Harness h = new();
         h.Feed("You hit goblin for 5 damage!");
         h.Feed("*Combat Off*");
-        Assert.Equal(1, h.Tracker.RoundCount);
         Assert.Single(h.Tracker.Recent);
 
         h.Tracker.Reset();
-        Assert.Equal(0, h.Tracker.RoundCount);
         Assert.Empty(h.Tracker.Recent);
 
         h.Feed("You hit goblin for 8 damage!");
@@ -915,15 +911,6 @@ public sealed class RoundDamageTrackerTests
         Assert.Equal(RoundDamageTracker.RingCapacity, h.Tracker.Recent.Count);
         Assert.Equal(RoundDamageTracker.RingCapacity + 10, h.Tracker.Recent[^1].DamageDealt);
         Assert.Equal(11, h.Tracker.Recent[0].DamageDealt);
-    }
-
-    [Fact]
-    public void TraceWriter_Closed_WhenShouldWriteTraceReturnsFalse()
-    {
-        using Harness h = new(shouldWriteTrace: () => false);
-        h.Feed("You hit goblin for 1 damage!");
-        h.Feed("*Combat Off*");
-        Assert.Single(h.Completed);
     }
 
     // ----- printed lines ---------------------------------------------

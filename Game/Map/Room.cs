@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.Linq;
 
 namespace MudPlay.Game.Map;
@@ -15,9 +14,8 @@ namespace MudPlay.Game.Map;
 // reused across characters connected to the same realm.
 //
 // RawLairTag is preserved verbatim from the MDB cell (e.g.
-// "(Max 2): 1141,2175,2176,[5-6-8-2]"). The [group-index] token is parsed
-// elsewhere to look up the average-respawn delay in Lairs.json; HasLair is the
-// boolean "this room belongs to Auto-Lair-eligible real estate" classification.
+// "(Max 2): 1141,2175,2176,[5-6-8-2]"); HasLair is the boolean "this room
+// belongs to Auto-Lair-eligible real estate" classification.
 public sealed record Room
 {
     // (Map, Room) primary key.
@@ -65,9 +63,7 @@ public sealed record Room
     // Per-room respawn delay tick from the MDB. Encodes the lair's
     // time-to-repopulate, read by realm in LairTimerStore.RespawnSecondsForDelay
     // (Delay = 5 → Paradigm 4 m 30 s, Stock 5–6 min). 0 means "no
-    // per-room delay set" — LairTimerStore.DefaultRespawnSeconds falls through
-    // to the GroupIndex → Lairs.AvgDelay path or the pre-1.83 monster-list
-    // fallback when this is unset.
+    // per-room delay set": no default respawn timer.
     public int Delay { get; init; }
 
     // CMD field from the MDB — when non-zero, indexes a row in TBInfoStore whose
@@ -96,26 +92,10 @@ public sealed record Room
     // without allocating a HashSet per lookup.
     public uint ExitMask { get; init; }
 
-    // Empty-exits helper for tests and internal construction. Real rooms always
-    // come back from RoomGraphManager with a populated Exits map.
-    internal static readonly IReadOnlyDictionary<Direction, RoomExit> EmptyExits
-        = new ReadOnlyDictionary<Direction, RoomExit>(new Dictionary<Direction, RoomExit>());
-
     // Whether command, as a whole line, is one of the commands an exit of this room
     // answers to (`go path`, `jump pool`): typed here it is a move through that
     // exit, whatever its first word means anywhere else.
     public bool HasExitCommand(string command) =>
         Exits.Values.Any(exit => exit.TextCommands is { } commands
             && commands.Contains(command, StringComparer.OrdinalIgnoreCase));
-
-    // True when at least one outbound exit carries RoomExitHint.Trap. The map UI
-    // renders a red half-connector glyph on the trapped exit, and the walker
-    // routes through TrapDisarmManager before stepping in that direction.
-    public bool HasTrappedExits => Exits.Values.Any(e => e.Hint == RoomExitHint.Trap);
-
-    // Directions whose RoomExit.Hint is RoomExitHint.Trap. Empty when none.
-    public IReadOnlyList<Direction> TrappedDirections =>
-        Exits.Where(kvp => kvp.Value.Hint == RoomExitHint.Trap)
-             .Select(kvp => kvp.Key)
-             .ToArray();
 }

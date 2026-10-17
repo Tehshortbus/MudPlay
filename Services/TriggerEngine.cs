@@ -41,12 +41,13 @@ public sealed class TriggerEngine
     // SystemLog scope to avoid feedback loops.
     public const string LogSource = "Trigger";
 
-    private readonly ProfileService? _profile;
+    private readonly ProfileService _profile;
     private readonly ChatRouter? _chat;
+    private readonly Action<Action> _onUiThread = OnDispatcher;
     private readonly LogService? _log;
 
     // Plays a trigger's sound file. Bound by AppServices to the sound engine's
-    // trigger cue; unbound (tests), a trigger's sound is only logged.
+    // trigger cue; unbound, a trigger's sound is only logged.
     public Action<string>? PlaySound { get; set; }
     private LineExtractor? _lines;
     private Action<byte[]>? _sender;
@@ -93,19 +94,19 @@ public sealed class TriggerEngine
     }
 
     // Production ctor — wires the chat + log subscriptions at construction time.
-    public TriggerEngine(ProfileService profile, ChatRouter chat, LogService log, Func<string?>? profileSet = null)
+    // onUiThread runs a log entry's dispatch on the UI thread; by default the
+    // dispatcher's (OnDispatcher).
+    public TriggerEngine(ProfileService profile, ChatRouter chat, LogService log, Func<string?>? profileSet = null,
+        Action<Action>? onUiThread = null)
         : this(profile, profileSet, log)
     {
+        if (onUiThread is not null) _onUiThread = onUiThread;
         ArgumentNullException.ThrowIfNull(chat);
         ArgumentNullException.ThrowIfNull(log);
         _chat = chat;
         chat.EntryClassified += OnChatClassified;
         log.EntryAdded       += OnLogEntry;
     }
-
-    // Parameterless ctor for tests / in-memory scenarios — no profile
-    // persistence, no live subscriptions.
-    public TriggerEngine() { }
 
     // Wire up the LineExtractor source. Called from MainWindowViewModel after
     // the extractor is constructed — AppServices can't reach LineExtractor
@@ -132,7 +133,7 @@ public sealed class TriggerEngine
     {
         ArgumentNullException.ThrowIfNull(trigger);
         Triggers.Add(trigger);
-        _profile?.Save();
+        _profile.Save();
     }
 
     // Replace an existing trigger by reference. Returns false when the original
@@ -144,7 +145,7 @@ public sealed class TriggerEngine
         int index = Triggers.IndexOf(original);
         if (index < 0) return false;
         Triggers[index] = updated;
-        _profile?.Save();
+        _profile.Save();
         return true;
     }
 
@@ -153,7 +154,7 @@ public sealed class TriggerEngine
     {
         ArgumentNullException.ThrowIfNull(trigger);
         bool removed = Triggers.Remove(trigger);
-        if (removed) _profile?.Save();
+        if (removed) _profile.Save();
         return removed;
     }
 
@@ -204,16 +205,14 @@ public sealed class TriggerEngine
         // LogService fires on the producer's thread; marshal onto the UI
         // thread so the dispatch path stays single-threaded (same place
         // OnLineEmitted / OnChatClassified run from).
-        if (Dispatcher.UIThread.CheckAccess())
-            DispatchScope(TriggerScope.SystemLog, entry.Message);
-        else
-            Dispatcher.UIThread.Post(() => DispatchScope(TriggerScope.SystemLog, entry.Message));
+        _onUiThread(() => DispatchScope(TriggerScope.SystemLog, entry.Message));
     }
 
-    // Test hook — drives the full match → capture → interpolate → send path for a
-    // given scope against the live Triggers collection, exactly as the production
-    // subscriptions do. Lets a test verify the end-to-end wildcard flow.
-    internal void DispatchForTests(TriggerScope scope, string text) => DispatchScope(scope, text);
+    private static void OnDispatcher(Action act)
+    {
+        if (Dispatcher.UIThread.CheckAccess()) act();
+        else Dispatcher.UIThread.Post(act);
+    }
 
     private void DispatchScope(TriggerScope scope, string text)
     {
@@ -400,7 +399,7 @@ public sealed class TriggerEngine
     // into the equivalent .NET regex. Greedy spans so an end-of-pattern {name}
     // captures the rest of the line (non-greedy would settle for one character);
     // multi-capture patterns still resolve correctly because the regex engine
-    // backtracks against the intervening literals. Internal for test visibility.
+    // backtracks against the intervening literals.
     internal static string LiteralToRegex(string literal)
     {
         StringBuilder sb = new(literal.Length + 16);
@@ -486,7 +485,7 @@ public sealed class TriggerEngine
     // write theirs into this one. The next save carries it.
     private void TakeFirstList(CharacterProfile profile)
     {
-        bool shared = profile.PredatesOwnLists && _profile?.CurrentProfileName is not null;
+        bool shared = profile.PredatesOwnLists && _profile.CurrentProfileName is not null;
         string source = AppPaths.DefaultTriggersSeedFile;
         if (shared && _profileSet?.Invoke() is { Length: > 0 } set
             && System.IO.File.Exists(AppPaths.LegacySetTriggersFile(set)))
