@@ -31,7 +31,8 @@ namespace MudPlay.Game.Light;
 //
 // Scope: detours apply only to a plain walk-to. While a loop or auto-lair run is
 // driving movement (engineWalkActive) this router stands down; a reorder there goes
-// to the loop restock trip (AutoDepositManager.StartLightRestock) instead.
+// to the loop restock trip (AutoDepositManager.StartLightRestock) instead. It stands
+// down for an errand's walks too; the errand makes its own stop (ErrandLightStop).
 //
 // Resolution & failure: the first freshly-bought copy landing in inventory
 // (OnInventoryChanged) resumes the original walk — the dark route need is met by

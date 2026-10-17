@@ -937,6 +937,65 @@ public sealed class AutoDepositManagerTests : IDisposable
         Assert.Equal(LoopState.Running, h.Loop.State);   // engine resumed
     }
 
+    // The dark-route fixture with a second light shop in the bank's town, two rooms
+    // east of the bank (1/3 ─E─ 1/5 ─E─ 1/6). The shop by the origin (1/4) adds
+    // fewer steps to the way home, but it lies past the dark room.
+    private const string TownShopGraphJson = """
+        [
+          { "Map Number": 1, "Room Number": 1, "Name": "Origin",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "1/2", "S": "0", "E": "1/4", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 2, "Name": "Dark",
+            "Light": -200, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "1/3", "S": "1/1", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 3, "Name": "Bank",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "1/2", "E": "1/5", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 4, "Name": "Shop",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "0", "E": "0", "W": "1/1",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 5, "Name": "Street",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "0", "E": "1/6", "W": "1/3",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 6, "Name": "Town Shop",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "0", "E": "0", "W": "1/5",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+        ]
+        """;
+
+    // A bank trip buys its light in town before the walk back sets out (user,
+    // 2026-10-17): the shop nearest the bank, not the one by the origin that adds
+    // fewer steps but is reached only through the dark.
+    [Fact]
+    public void BankReturnLegRunsDark_BuysInTheBanksTownBeforeTheWalkBack()
+    {
+        using Harness h = NewHarness(TownShopGraphJson);
+        StartLoop(h);
+        ArmBankGate(h);
+        EnableLightDetour(h);
+        h.LightShopRooms.Add(new RoomKey(1, 6));
+
+        h.SetWealth(copper: 0, silver: 0, gold: 50, platinum: 0, runic: 0, totalCopperValue: 5000);
+        Arrive(h, new RoomKey(1, 2));
+        Arrive(h, new RoomKey(1, 3));
+        DeliverBankInventory(h);
+        Assert.Equal("dep 5000", h.DepositLines().Single());
+
+        Assert.Equal(new RoomKey(1, 6), h.Walker.Destination);
+        Arrive(h, new RoomKey(1, 5));
+        Arrive(h, new RoomKey(1, 6));
+        Assert.Equal("buy torch", h.BuyLines().Single());
+
+        GiveTorch(h);
+        Assert.Equal(new RoomKey(1, 1), h.Walker.Destination);
+    }
+
     [Fact]
     public void BankReturnLegRunsDark_AutoLightOff_NoDetour()
     {

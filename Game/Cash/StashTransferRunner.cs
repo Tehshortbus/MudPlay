@@ -79,6 +79,7 @@ public sealed class StashTransferRunner
     private readonly Func<IReadOnlyList<string>>? _partyMembers;
     private readonly Func<long>? _keepOnHandCopper;
     private readonly Func<(long Held, long Room)?>? _coinLoad;
+    private readonly Game.Light.ErrandLightStop? _lightStop;
     private readonly LogService? _log;
 
     // Reads behind Progress (the Navigation chip's tooltip). All optional: without
@@ -261,8 +262,12 @@ public sealed class StashTransferRunner
         Func<RoomKey, RoomKey, TimeSpan?>? walkTime = null,
         Func<RoomKey, long>? believedCopper = null,
         Func<DateTimeOffset>? now = null,
-        Action<IReadOnlyDictionary<CoinDenomination, long>, IReadOnlyDictionary<CoinDenomination, long>>? noteStashSeen = null)
+        Action<IReadOnlyDictionary<CoinDenomination, long>, IReadOnlyDictionary<CoinDenomination, long>>? noteStashSeen = null,
+        // Auto-Light's stop for a leg that runs dark (and the leg back after it):
+        // unwired, the legs walk as they are.
+        Game.Light.ErrandLightStop? lightStop = null)
     {
+        _lightStop = lightStop;
         _currentRoom = currentRoom ?? throw new ArgumentNullException(nameof(currentRoom));
         _onHandCopper = onHandCopper ?? throw new ArgumentNullException(nameof(onHandCopper));
         _walkTo = walkTo ?? throw new ArgumentNullException(nameof(walkTo));
@@ -308,6 +313,7 @@ public sealed class StashTransferRunner
         _legTime = null;
         _partyOnTrip = Array.Empty<string>();
         _session++;
+        _lightStop?.BeginRun();
 
         _log?.Info(LogCategory, $"transfer started: stash {stash} → {bankName} ({bank})");
         string? refused = LoadedAlready() ? BankWhatWeCarryFirst() : GoToStash();
@@ -328,7 +334,14 @@ public sealed class StashTransferRunner
         End($"stopped ({reason})", StashTransferOutcome.Stopped);
     }
 
-    // Wired to the walker's event stream by the owner.
+    // Wired to the walker's event stream by the owner. The light stop, while it has
+    // a leg's walk, takes the events of its own walk to the shop.
+    public void OnWalkEvent(WalkEvent e)
+    {
+        if (_lightStop?.OnWalkEvent(e) == true) return;
+        OnWalkEvent(e.Kind);
+    }
+
     public void OnWalkEvent(WalkEventKind kind)
     {
         if (Stage is not (Phase.WalkingToStash or Phase.WalkingToBank)) return;
@@ -389,11 +402,20 @@ public sealed class StashTransferRunner
         return null;
     }
 
+    // A leg's walk, by a light shop first when the leg or the leg back runs dark
+    // (ErrandLightStop): the trips go to and fro between the two rooms.
     private bool Walk(RoomKey target)
     {
+        RoomKey other = target.Equals(Stash) ? Bank : Stash;
         _drivingWalker = true;
-        try { return _walkTo(target); }
+        try { return _lightStop?.Walk(target, _walkTo, LightStopTakenOver, ahead: [other]) ?? _walkTo(target); }
         finally { _drivingWalker = false; }
+    }
+
+    private void LightStopTakenOver(string detail)
+    {
+        if (Stage is Phase.WalkingToStash or Phase.WalkingToBank)
+            End($"stopped ({detail})", StashTransferOutcome.Stopped);
     }
 
     private void BeginSurvey()
@@ -674,6 +696,7 @@ public sealed class StashTransferRunner
     private void End(string? why, StashTransferOutcome outcome = StashTransferOutcome.Failed)
     {
         if (why is null) outcome = StashTransferOutcome.Done;
+        _lightStop?.Cancel();
         Stage = Phase.Idle;
         _session++;
         _awaitingReply.Clear();

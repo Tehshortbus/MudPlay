@@ -74,6 +74,7 @@ public sealed class SellDetourManager : IDisposable
     private readonly Func<DateTimeOffset> _now;
     private readonly Func<RoomKey, Loop, RoomKey?> _nearestLoopRoom;
     private readonly Action<Action> _post;
+    private readonly Game.Light.ErrandLightStop? _lightStop;
 
     private Phase _phase = Phase.Idle;
     private DetourResume _resume;
@@ -112,8 +113,12 @@ public sealed class SellDetourManager : IDisposable
         Func<int> nearBankSteps,
         LogService? log = null,
         Func<DateTimeOffset>? clock = null,
-        Action<Action>? post = null)
+        Action<Action>? post = null,
+        // Auto-Light's stop for a leg that runs dark (and the walk on after it):
+        // unwired, the legs walk as they are.
+        Game.Light.ErrandLightStop? lightStop = null)
     {
+        _lightStop = lightStop;
         _coordinator = coordinator;
         _candidates = candidates;
         _distance = distance;
@@ -219,6 +224,7 @@ public sealed class SellDetourManager : IDisposable
         _resume = resume;
         _origin = cur;
         _visited.Clear();
+        _lightStop?.BeginRun();
         _log?.Info(LogCategory, $"detouring from {cur} to sell at {shop} (resume {resume.Kind}{(resume.WalkDestination is { } d ? $" to {d}" : "")})");
         _drivingWalker = true;
         try { resume.Stop(_walker, _loops, _lair, "sell detour"); }
@@ -277,6 +283,7 @@ public sealed class SellDetourManager : IDisposable
         _origin = cur;
         _bankRun = bank;
         _visited.Clear();
+        _lightStop?.BeginRun();
         _log?.Info(LogCategory, $"a bank run to {bank} is due — selling at {shop} on the way (from {cur}, resume {resume.Kind})");
         _drivingWalker = true;
         try { resume.Stop(_walker, _loops, _lair, "sell detour ahead of a bank run"); }
@@ -313,6 +320,7 @@ public sealed class SellDetourManager : IDisposable
     // Reset States: stand down without resuming.
     public void Cancel()
     {
+        _lightStop?.Cancel();
         ReleaseStop("cancelled");
         if (_phase != Phase.Idle) GoIdle("cancelled");
     }
@@ -359,15 +367,28 @@ public sealed class SellDetourManager : IDisposable
         }
     }
 
+    // A leg's walk, by a light shop first when the leg, or the walk on from a shop
+    // to the bank run or back, runs dark (ErrandLightStop).
     private bool DriveWalk(RoomKey to)
     {
+        IReadOnlyList<RoomKey> ahead = _phase == Phase.WalkingBack
+            ? Array.Empty<RoomKey>()
+            : [_bankRun ?? _resume.WalkDestination ?? _origin];
         _drivingWalker = true;
-        try { return _walker.WalkTo(to, planThroughAcquirableGates: true); }
+        try { return _lightStop?.Walk(to, WalkTo, LightStopTakenOver, ahead) ?? WalkTo(to); }
         finally { _drivingWalker = false; }
+    }
+
+    private bool WalkTo(RoomKey to) => _walker.WalkTo(to, planThroughAcquirableGates: true);
+
+    private void LightStopTakenOver(string detail)
+    {
+        if (_phase is Phase.WalkingToShop or Phase.WalkingBack) GoIdle($"movement stopped externally ({detail})");
     }
 
     private void OnWalkEvent(WalkEvent e)
     {
+        if (_lightStop?.OnWalkEvent(e) == true) return;
         if (_phase is Phase.Idle or Phase.Selling) return;
         if (e.Kind == WalkEventKind.Stopped)
         {
@@ -497,6 +518,7 @@ public sealed class SellDetourManager : IDisposable
     private void Resume()
     {
         DetourResume r = _resume;
+        _lightStop?.Cancel();
         _phase = Phase.Idle;
         DetouringChanged?.Invoke();
         _log?.Info(LogCategory, $"detour done — resuming {r.Kind}");
@@ -508,6 +530,7 @@ public sealed class SellDetourManager : IDisposable
     private void GoIdle(string why)
     {
         _log?.Info(LogCategory, $"detour abandoned — {why}");
+        _lightStop?.Cancel();
         _phase = Phase.Idle;
         DetouringChanged?.Invoke();
         DropBankRun("the detour ahead of it was abandoned");

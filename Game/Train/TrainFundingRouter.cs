@@ -104,6 +104,7 @@ public sealed class TrainFundingRouter
     private readonly Func<long, (long Copper, string Who)>? _partyTollFunding;
     private readonly Action<Action>? _readPartyPurses;
     private readonly Func<RoomKey, bool>? _stashIsTheBank;
+    private readonly Game.Light.ErrandLightStop? _lightStop;
     private readonly LogService? _log;
 
     private Phase _phase = Phase.Idle;
@@ -187,8 +188,12 @@ public sealed class TrainFundingRouter
         Action<Action>? readPartyPurses = null,
         // Whether a stash room is the one set as the bank in Settings: a stop
         // there takes the party's share as a bank stop draws it.
-        Func<RoomKey, bool>? stashIsTheBank = null)
+        Func<RoomKey, bool>? stashIsTheBank = null,
+        // Auto-Light's stop for a leg that runs dark (and the walk on to the
+        // trainer after it): unwired, the legs walk as they are.
+        Game.Light.ErrandLightStop? lightStop = null)
     {
+        _lightStop = lightStop;
         _partyTollFunding = partyTollFunding;
         _readPartyPurses = readPartyPurses;
         _stashIsTheBank = stashIsTheBank;
@@ -223,6 +228,7 @@ public sealed class TrainFundingRouter
         _legsRun = 0;
         _visited.Clear();
         _session++;
+        _lightStop?.BeginRun();
 
         // A run the running purse already says can't go is answered from it, with no
         // `i`: the armed trigger re-checks every time its back-off lapses, and
@@ -327,6 +333,7 @@ public sealed class TrainFundingRouter
         if (!IsBusy) return;
         _log?.Info(LogCategory, $"Funding errand cancelled — {reason}.");
         _phase = Phase.Idle;
+        _lightStop?.Cancel();
         RestoreAutoGetCash();
         _session++;
     }
@@ -411,7 +418,7 @@ public sealed class TrainFundingRouter
 
         _drivingWalker = true;
         bool started;
-        try { started = _walkTo(_leg.Room); }
+        try { started = WalkLeg(_leg.Room); }
         finally { _drivingWalker = false; }
 
         if (!started)
@@ -427,7 +434,24 @@ public sealed class TrainFundingRouter
         return TrainFundingStart.Collecting;
     }
 
-    // Wired to the walker's event stream by the owner.
+    // A leg's walk, by a light shop first when the leg or the walk on to the
+    // trainer runs dark (ErrandLightStop).
+    private bool WalkLeg(RoomKey room) =>
+        _lightStop?.Walk(room, _walkTo, LightStopTakenOver, ahead: [_trainerRoom]) ?? _walkTo(room);
+
+    private void LightStopTakenOver(string detail)
+    {
+        if (_phase == Phase.WalkingToLeg) Fail($"movement stopped externally ({detail})");
+    }
+
+    // Wired to the walker's event stream by the owner. The light stop, while it has
+    // the leg's walk, takes the events of its own walk to the shop.
+    public void OnWalkEvent(WalkEvent e)
+    {
+        if (_lightStop?.OnWalkEvent(e) == true) return;
+        OnWalkEvent(e.Kind);
+    }
+
     public void OnWalkEvent(WalkEventKind kind)
     {
         if (_phase != Phase.WalkingToLeg) return;
@@ -668,6 +692,7 @@ public sealed class TrainFundingRouter
     private void Fail(string detail)
     {
         _phase = Phase.Idle;
+        _lightStop?.Cancel();
         RestoreAutoGetCash();
         long spendable = Spendable(_onHandCopper());
         long shortfall = Math.Max(0, Needed(_currentRoom(), spendable) - spendable);

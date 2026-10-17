@@ -14,9 +14,10 @@ namespace MudPlay.Game.Light;
 //    it scans the path for its darkest room and asks the pure AutoLightPlanner what
 //    is needed. A Buy verdict (the route crosses a room nothing carried, worn or
 //    cast covers) becomes a shop detour handed to AutoLightShopRouter, which runs
-//    after any path-item detour and before the walk goes on. While a loop or
-//    Auto-Lair runs, a circuit or leg with such a room is a light trip off the
-//    engine instead (CheckEngineRoute, through SetLoopRestock), at the start and
+//    after any path-item detour and before the walk goes on. An errand that has
+//    the walker (a training, funding, spell-shop, stash or sell walk) makes the
+//    same stop itself through ErrandLightStop. While a loop or Auto-Lair runs, a
+//    circuit or leg with such a room is a light trip off the engine instead (CheckEngineRoute, through SetLoopRestock), at the start and
 //    whenever the shortfall appears. A readied light dwindling under Reorder-at is
 //    a Reorder: on a walk the same router; on a loop the same trip. A bank run or a
 //    training trip that passes near a shop selling the light stocks up to Carry
@@ -358,9 +359,10 @@ public sealed class AutoLightProvisioner
         }
     }
 
-    // Advisor for an orchestrated errand (the auto-deposit reroute owns the walk):
-    // given a route the character is about to traverse, decide whether it must buy a
-    // light to cover it and, if so, what to buy. Sends nothing. Null when no buy is
+    // Advisor for an orchestrated errand that owns its walk (the auto-deposit
+    // reroute's way back, an errand's light stop in ErrandLightStop): given a route
+    // the character is about to traverse, decide whether it must buy a light to
+    // cover it and, if so, what to buy. Sends nothing. Null when no buy is
     // warranted or the AutoLight master toggle is off.
     public AutoLightBuyRequest? PlanRouteBuy(IReadOnlyList<RoomKey> route)
     {

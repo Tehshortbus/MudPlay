@@ -51,8 +51,8 @@ namespace MudPlay.Game.Cash;
 // the client). To still cover a dark return leg, this manager runs the light
 // provisioning itself as an extra phase: after offloading at the bank it scans the
 // bank -> origin leg (AutoLightProvisioner.PlanRouteBuy), and if that leg runs dark
-// with no carried light to cover it, detours through the fewest-added-steps light
-// shop (AutoLightShopRouter.TrySelectShop) — bank -> shop -> buy -> origin — before
+// with no carried light to cover it, detours through the light shop nearest the
+// bank (AutoLightShopRouter.TrySelectShop) — bank -> shop -> buy -> origin — before
 // resuming the loop. When the leg is covered but the pack holds less than Carry
 // hours of light (AutoLightProvisioner.PlanStockUp), the same stop is made if a
 // shop selling the light adds at most AutoLightProvisioner.StockUpMaxAddedSteps
@@ -727,7 +727,10 @@ public sealed class AutoDepositManager : IDisposable
         if (_walker.TryComputeRouteKeys(_destination, back) is not { } route) return false;
         if (_provisioner.PlanRouteBuy(route) is not { } req)
             return TryPlanLightStockUp(back, route, out shop, out buy);
-        if (!_lightShop.TrySelectShop(_destination, back, req.ItemId, out shop))
+        // The light is bought in town before the walk back sets out (user,
+        // 2026-10-17): the shop nearest the bank, there and back, not the one adding
+        // the fewest steps, which can lie along the dark way home or at its end.
+        if (!_lightShop.TrySelectShop(_destination, _destination, req.ItemId, out shop))
         {
             _log?.Info(LogCategory,
                 $"return leg dark but no reachable shop stocks '{req.LightName}' — returning without light");

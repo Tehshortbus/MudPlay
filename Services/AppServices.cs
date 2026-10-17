@@ -9729,7 +9729,8 @@ public sealed class AppServices
             partyTollFunding: tolls => PartyToll.FundingNeededFor(tolls),
             readPartyPurses: then => PartyToll.AfterReadingPurses(then),
             // A stash room picked as the Bank in Settings → Cash + Items.
-            stashIsTheBank: room => Movement.IsStash(room) && PathItemBankRoom() == room);
+            stashIsTheBank: room => Movement.IsStash(room) && PathItemBankRoom() == room,
+            lightStop: NewErrandLightStop("the funding errand"));
         // The full parse that answers that `i`: an incremental pickup / drop patch is
         // exactly the drifting figure the refresh exists to replace. Harmless at any
         // other time, since the router only listens while it is holding for one.
@@ -9773,8 +9774,9 @@ public sealed class AppServices
             believedCopper: room => StashBalances.Believed(room),
             // Reported from the stash room, so the row is the one its hides built.
             noteStashSeen: (took, left) => TransactionHistory.NoteStashWithdrawal(
-                CoinWords(took), CoinWords(left), CurrentRoomLabel()));
-        Walker.Event += e => StashTransfer.OnWalkEvent(e.Kind);
+                CoinWords(took), CoinWords(left), CurrentRoomLabel()),
+            lightStop: NewErrandLightStop("the stash transfer"));
+        Walker.Event += e => StashTransfer.OnWalkEvent(e);
         // A member's {reply} to @get-stash / @deposit-all says that member is done.
         Chat.EntryClassified += e =>
         {
@@ -9789,7 +9791,8 @@ public sealed class AppServices
         // (CP tab) + the armed auto-train (live-exp threshold during a loop)
         // both route through it. Wire-sender bound in MainWindowViewModel.
         TrainerWalk = new Game.TrainerWalkManager(PlayerStats, Stats, GameData, Profile,
-            RoomTracker, Bfs, Walker, LoopRunner, AutoLair, AutoTrain, Router, Log);
+            RoomTracker, Bfs, Walker, LoopRunner, AutoLair, AutoTrain, Router, Log,
+            lightStop: NewErrandLightStop("the training walk"));
         TrainerWalk.SetFundingRouter(TrainFunding);
         TrainerWalk.RouteTolls = (a, b) => Movement.TollCopperOnRoute(Bfs, a, b);
         TrainerWalk.HasTollFreeRoute = (a, b) => Movement.HasTollFreeRoute(Bfs, a, b);
@@ -9797,7 +9800,7 @@ public sealed class AppServices
         // The errand drives the walker itself, so it needs the same event stream the
         // coordinator watches. TrainerWalkManager ignores walk events while its phase
         // is Funding, so the two never both act on one event.
-        Walker.Event += e => TrainFunding.OnWalkEvent(e.Kind);
+        Walker.Event += e => TrainFunding.OnWalkEvent(e);
         // Shortfall wording comes from the live session earn rate + lap time, which
         // live out here rather than in the train coordinator.
         TrainerWalk.DescribeShortfall = shortfall =>
@@ -9824,7 +9827,8 @@ public sealed class AppServices
             log: Log,
             // A toll on the way to a shop is taken only when the scrolls can still
             // be paid for after it.
-            reserve: copper => Movement.ReservedCopper = copper);
+            reserve: copper => Movement.ReservedCopper = copper,
+            lightStop: NewErrandLightStop("the spell-shop trip"));
         Walker.Event += e => ShopSpells.OnWalkEvent(e);
         AutoBuy.StockListed += stock => ShopSpells.OnShopListed(stock);
         Inventory.Changed += () => ShopSpells.OnInventoryChanged();
@@ -9840,19 +9844,6 @@ public sealed class AppServices
             if (ShopSpells.OnScrollAlreadyKnown() is { } spell) Spellbook.MarkObtainedByName(spell);
         });
         TrainerWalk.SetSpellErrand(ShopSpells);
-        // A walk to the trainer that runs dark stops at a light shop first, as the
-        // bank run's walk home does: the walk-to light router stands down while an
-        // errand has the walker, so the errand provisions its own walk.
-        Game.Light.LightShopBuy trainLightBuyer = new(CountItemCarried,
-            Game.Light.LightShopBuy.PostedTimer(action => Avalonia.Threading.Dispatcher.UIThread.Post(action)), log: Log);
-        TrainerWalk.SetLightShopBuy(trainLightBuyer);
-        Inventory.Changed += trainLightBuyer.OnInventoryChanged;
-        TrainerWalk.PlanLightStop = (from, trainer) =>
-            Walker.TryComputeRouteKeys(from, trainer) is { } route
-            && AutoLightProvisioner.PlanRouteBuy(route) is { } buy
-            && AutoLightShopRouter.TrySelectShop(from, trainer, buy.ItemId, out Game.Map.RoomKey shop)
-                ? (shop, buy)
-                : null;
         TrainerWalk.PlanShopSpells = (from, returnTo, level) =>
             PlanShopSpells(from, returnTo, level, budgetCopper: null);
 
@@ -10083,7 +10074,8 @@ public sealed class AppServices
                 || DeathRecovery.SpillSweepActive,
             nearestLoopRoom: NearestLoopRoom,
             nearBankSteps: () => ReadSection<Models.Profile.CashSettings>(Profile.Current, "Cash").SellOnBankRunWithinSteps,
-            log: Log);
+            log: Log,
+            lightStop: NewErrandLightStop("the sell detour"));
 
         // Stop holds a money or training errand instead of ending it, and the next
         // walk, loop or Auto-Lair the user starts asks whether to finish it first.
@@ -15473,6 +15465,31 @@ public sealed class AppServices
         _lightDetourJourney = Walker.State != Game.Map.WalkState.Idle ? Walker.Journey : null;
         return _lightDetourJourney?.Destination ?? Walker.Destination;
     }
+
+    // The light stop of one errand's own walks (ErrandLightStop): the walk-to light
+    // router stands down while an errand has the walker, so each errand provisions
+    // its walks itself. Each has its own buy, fed the inventory's changes, and is
+    // listed for the bug report.
+    private Game.Light.ErrandLightStop NewErrandLightStop(string errand)
+    {
+        Game.Light.LightShopBuy buyer = new(CountItemCarried,
+            Game.Light.LightShopBuy.PostedTimer(action => Avalonia.Threading.Dispatcher.UIThread.Post(action)), log: Log);
+        Game.Light.ErrandLightStop stop = new(errand,
+            route: (from, to) => Walker.TryComputeRouteKeys(from, to),
+            provisioner: AutoLightProvisioner, shops: AutoLightShopRouter,
+            currentRoom: () => RoomTracker.State.CurrentRoom?.Key,
+            buyer: buyer, send: cmd => SendGameCommand(cmd), log: Log);
+        Inventory.Changed += stop.OnInventoryChanged;
+        _errandLightStops.Add((errand, stop));
+        return stop;
+    }
+
+    private readonly List<(string Errand, Game.Light.ErrandLightStop Stop)> _errandLightStops = new();
+
+    // Each errand's light stop, for the bug report.
+    public string DescribeErrandLightStops() => _errandLightStops.Count == 0
+        ? "none"
+        : string.Join("; ", _errandLightStops.Select(s => $"{s.Errand}: {s.Stop.Describe()}"));
 
     // A training trip is over and the engine is back up: with the pack short of
     // Carry hours of light and a shop selling it close to the way back to the loop,

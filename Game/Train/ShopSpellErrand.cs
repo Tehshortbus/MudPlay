@@ -47,6 +47,7 @@ public sealed class ShopSpellErrand
     private readonly Action<string> _send;
     private readonly Action<TimeSpan, Action> _armTimer;
     private readonly Action<long>? _reserve;
+    private readonly Game.Light.ErrandLightStop? _lightStop;
     private readonly LogService? _log;
 
     private Phase _phase = Phase.Idle;
@@ -91,8 +92,12 @@ public sealed class ShopSpellErrand
         Action<TimeSpan, Action> armTimer,
         LogService? log = null,
         // Holds the scroll money back from the walker's toll decisions (0 releases it).
-        Action<long>? reserve = null)
+        Action<long>? reserve = null,
+        // Auto-Light's stop for a leg that runs dark (and the walk back after it):
+        // unwired, the legs walk as they are.
+        Game.Light.ErrandLightStop? lightStop = null)
     {
+        _lightStop = lightStop;
         _currentRoom = currentRoom ?? throw new ArgumentNullException(nameof(currentRoom));
         _plan = plan ?? throw new ArgumentNullException(nameof(plan));
         _carriedScrolls = carriedScrolls ?? throw new ArgumentNullException(nameof(carriedScrolls));
@@ -121,6 +126,7 @@ public sealed class ShopSpellErrand
 
         _level = level;
         _returnTo = returnTo;
+        _lightStop?.BeginRun();
         _learned.Clear();
         _queue.Clear();
         _stop = null;
@@ -173,7 +179,7 @@ public sealed class ShopSpellErrand
 
         _drivingWalker = true;
         bool started;
-        try { started = _walkTo(_stop.Room); }
+        try { started = _lightStop?.Walk(_stop.Room, _walkTo, LightStopTakenOver, ahead: [_returnTo]) ?? _walkTo(_stop.Room); }
         finally { _drivingWalker = false; }
         if (!started)
         {
@@ -188,9 +194,16 @@ public sealed class ShopSpellErrand
         _log?.Info(LogCategory, $"Walking to {Describe(_stop)} for {Names(_stop.Purchases)}.");
     }
 
-    // Wired to the walker's event stream by the owner.
+    private void LightStopTakenOver(string detail)
+    {
+        if (_phase == Phase.Walking) Finish($"walk stopped ({detail})", aborted: true);
+    }
+
+    // Wired to the walker's event stream by the owner. The light stop, while it has
+    // a leg's walk, takes the events of its own walk to the shop.
     public void OnWalkEvent(WalkEvent e)
     {
+        if (_lightStop?.OnWalkEvent(e) == true) return;
         if (_phase != Phase.Walking || _stop is not { } stop) return;
         bool ours = e.Destination is null || e.Destination == stop.Room;
 
@@ -368,6 +381,7 @@ public sealed class ShopSpellErrand
 
     private void Reset()
     {
+        _lightStop?.Cancel();
         _phase = Phase.Idle;
         _step++;
         _queue.Clear();

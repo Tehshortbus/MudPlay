@@ -1,15 +1,10 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.184.0**
-> - Auto-Light: the room-light spell is read by its cast code again, so the Add-buff dialog offers "Only when the room is dark" (re-tick it on a slot the old bug cleared) and the spell counts toward lighting a route
-> - Auto-Light: the room-light spell goes first, one room before a dark room; a light item covers only what a buff leaves short, and illuminate's light ball is lit instead of a carried light
-> - Auto-Light: a spell found not enough isn't recast for rooms as dark until the dark stretch ends
-> - Auto-Light: "Only use my room-light spell" lights only the spell (and a light ball it made) and buys nothing
-> - Auto-Light: walks, training walks and loops that cross dark rooms with no light first make a trip to buy the Preferred light
-> - Auto-Light: a loop's dwindling light is restocked on a light trip off the loop
-> - Auto-Light: bank and training trips stock up at a light shop within 25 steps of the way back
-> - Auto-Light: a light lying on the floor is picked up, up to the Carry-hours shortfall, unless its item rules say otherwise
+> **Version 3.184.1**
+> - Auto-Light: funding, stash-transfer, sell-detour and spell-shop walks buy the Preferred light first when they run dark, as training walks do
+> - Auto-Light: a trip's light stop checks the whole trip, is made once a trip, skips the buy when a light was picked up on the way, and buys on arrival when the destination sells the light
+> - Auto-Light: a bank run whose way back runs dark buys its light at the shop nearest the bank before setting off back
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->

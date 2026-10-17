@@ -2132,6 +2132,9 @@ public static class BugReportBuilder
         // "kept casting" / "bought too many" report reads these first.
         Kv(sb, "Auto-light", svc.AutoLightProvisioner.DescribeState());
         Kv(sb, "Auto-light shop detour", svc.AutoLightShopRouter.Describe());
+        // An errand's own light stop (the training, funding, stash, sell and
+        // spell-shop walks): "it walked off to a shop" / "it never bought" reads here.
+        Kv(sb, "Auto-light errand stops", svc.DescribeErrandLightStops());
         Kv(sb, "Sell detour", svc.SellDetour.Status);
         Kv(sb, "Default-gear pool baseline", svc.PoolBaseline.Current is { } pb
             ? $"HP {pb.MaxHp}, pool {pb.MaxMa} at level {pb.Level} (gear +{pb.DefaultGearHp}/+{pb.DefaultGearMa}, {pb.RecordedAt.ToLocalTime():yyyy-MM-dd HH:mm:ss})"
