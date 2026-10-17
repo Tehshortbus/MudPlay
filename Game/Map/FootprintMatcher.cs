@@ -2,24 +2,24 @@ using MudPlay.Services;
 
 namespace MudPlay.Game.Map;
 
-// Tier-2 SLAM-style localisation accumulator. Seeded with a candidate set
-// from the first ambiguous observation; each subsequent (move,
-// observation) pair filters the working set down by walking every
-// candidate one hop forward and dropping those whose target either has no
-// matching exit, is gated behind a trapped exit (we don't traverse traps),
-// or doesn't match the new observation.
+// SLAM-style localisation accumulator shared by three localisers: the recovery
+// gate's tier-2 forward localiser and tier-3 backtrack, and RoomTracker's passive
+// re-localiser. Seeded with a candidate set from an ambiguous observation; each
+// later (move, observation) pair walks every candidate one hop and keeps those
+// whose target matches the new observation. A candidate drops when its move has
+// no exit, is trap-gated (we don't traverse traps), or lands somewhere the
+// observation doesn't fit.
 //
-// Lifecycle: Reset on seed, Step on each (move, observation) pair, Clear
-// when the host (RoomTracker) lands a fresh Confirmed transition or the
-// active graph reloads.
+// The set never grows: every operation maps a candidate to at most one survivor,
+// so a step costs no more than the seed did. Nothing here bounds how many steps a
+// host takes; each host owns that (the gate caps its tier-3 walk-back, and a
+// passive episode ends on convergence, exhaustion or the tracker settling).
 //
-// Single-threaded: every entry point is invoked from RoomTracker which
-// itself is only called from the UI thread (Dispatcher-marshalled
-// upstream).
+// Single-threaded: every entry point is invoked from RoomTracker or the gate,
+// which only run on the UI thread (Dispatcher-marshalled upstream).
 //
-// All trap filtering and graph traversal lives in the injected _probeHop
-// delegate — the matcher itself is pure data, graph-agnostic, fully
-// testable in isolation.
+// All trap filtering and graph traversal lives in the injected hop delegates; the
+// matcher itself is pure data and graph-agnostic.
 public sealed class FootprintMatcher
 {
     private const string LogSource = "RoomTracker";
@@ -27,7 +27,6 @@ public sealed class FootprintMatcher
     private readonly Func<RoomKey, Direction, HopOutcome> _probeHop;
     private readonly Func<RoomKey, RoomObservation, bool> _matchesObservation;
     private readonly LogService? _log;
-    private readonly int _depthCeiling;
 
     private readonly HashSet<RoomKey> _candidates = new();
 
@@ -37,11 +36,6 @@ public sealed class FootprintMatcher
 
     // Number of Step calls since the last Reset.
     public int Depth { get; private set; }
-
-    // True while the matcher is still narrowing — has > 1 candidate AND
-    // hasn't hit the depth ceiling. False on seed-with-0, converged-to-1,
-    // exhausted-to-0, or ceiling reached.
-    public bool IsActive => _candidates.Count > 1 && Depth < _depthCeiling;
 
     // Exactly one candidate remains — the host should auto-land Confirmed there.
     public bool IsConverged => _candidates.Count == 1;
@@ -54,17 +48,13 @@ public sealed class FootprintMatcher
     public FootprintMatcher(
         Func<RoomKey, Direction, HopOutcome> probeHop,
         Func<RoomKey, RoomObservation, bool> matchesObservation,
-        LogService? log = null,
-        int depthCeiling = 50)
+        LogService? log = null)
     {
         ArgumentNullException.ThrowIfNull(probeHop);
         ArgumentNullException.ThrowIfNull(matchesObservation);
-        if (depthCeiling < 1)
-            throw new ArgumentOutOfRangeException(nameof(depthCeiling), "Depth ceiling must be at least 1.");
         _probeHop = probeHop;
         _matchesObservation = matchesObservation;
         _log = log;
-        _depthCeiling = depthCeiling;
     }
 
     // Seed the working set with the host's initial candidates (typically
@@ -92,7 +82,14 @@ public sealed class FootprintMatcher
     // target matches observation. Records the step depth regardless of
     // outcome.
     public void Step(Direction move, RoomObservation observation)
+        => Step(move.ToString(), candidate => _probeHop(candidate, move), observation);
+
+    // The same step for a move each candidate resolves on its own: a text exit
+    // (`go path`) sits in whichever exit slot each room keeps it in, so there is
+    // no one direction to hop every candidate through. moveLabel is for the log.
+    public void Step(string moveLabel, Func<RoomKey, HopOutcome> hopFrom, RoomObservation observation)
     {
+        ArgumentNullException.ThrowIfNull(hopFrom);
         int prevCount = _candidates.Count;
         if (prevCount == 0) return;
 
@@ -101,16 +98,16 @@ public sealed class FootprintMatcher
 
         foreach (RoomKey candidate in _candidates)
         {
-            HopOutcome hop = _probeHop(candidate, move);
+            HopOutcome hop = hopFrom(candidate);
             switch (hop.Kind)
             {
                 case HopOutcomeKind.NoExit:
                     _log?.Log(LogSeverity.Debug, LogSource,
-                        $"Tier2.drop {candidate}: no_exit (dir={move})");
+                        $"Tier2.drop {candidate}: no_exit (dir={moveLabel})");
                     continue;
                 case HopOutcomeKind.TrappedExit:
                     _log?.Log(LogSeverity.Debug, LogSource,
-                        $"Tier2.drop {candidate}: trapped_exit (dir={move})");
+                        $"Tier2.drop {candidate}: trapped_exit (dir={moveLabel})");
                     continue;
                 case HopOutcomeKind.Reached:
                     if (!_matchesObservation(hop.Target, observation))
@@ -129,7 +126,7 @@ public sealed class FootprintMatcher
         IsExhausted = _candidates.Count == 0;
 
         _log?.Log(LogSeverity.Debug, LogSource,
-            $"Tier2.step move={move} obs='{observation.Name}' depth={Depth}: {prevCount}→{_candidates.Count}");
+            $"Tier2.step move={moveLabel} obs='{observation.Name}' depth={Depth}: {prevCount}→{_candidates.Count}");
     }
 
     // Spatial narrowing from a live look-sweep, WITHOUT moving the player.
@@ -185,7 +182,12 @@ public sealed class FootprintMatcher
     // structurally impossible from it (no exit, or trap-gated). Advances
     // Depth like Step, since the player did move.
     public void StepBlind(Direction move)
+        => StepBlind(move.ToString(), candidate => _probeHop(candidate, move));
+
+    // StepBlind for a move each candidate resolves on its own (a text exit).
+    public void StepBlind(string moveLabel, Func<RoomKey, HopOutcome> hopFrom)
     {
+        ArgumentNullException.ThrowIfNull(hopFrom);
         int prevCount = _candidates.Count;
         if (prevCount == 0) return;
 
@@ -193,7 +195,7 @@ public sealed class FootprintMatcher
         var survivors = new List<RoomKey>(prevCount);
         foreach (RoomKey candidate in _candidates)
         {
-            HopOutcome hop = _probeHop(candidate, move);
+            HopOutcome hop = hopFrom(candidate);
             if (hop.Kind == HopOutcomeKind.Reached) survivors.Add(hop.Target);
         }
 
@@ -202,7 +204,7 @@ public sealed class FootprintMatcher
         IsExhausted = _candidates.Count == 0;
 
         _log?.Log(LogSeverity.Debug, LogSource,
-            $"Tier2.blind-step move={move} depth={Depth}: {prevCount}→{_candidates.Count}");
+            $"Tier2.blind-step move={moveLabel} depth={Depth}: {prevCount}→{_candidates.Count}");
     }
 }
 

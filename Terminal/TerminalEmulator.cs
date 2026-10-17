@@ -67,10 +67,16 @@ public sealed class TerminalEmulator
     // True when the current sequence began with "CSI ?" (DEC private mode).
     private bool _privateMode;
 
-    public TerminalEmulator(int cols, int rows)
+    // The clock rows are stamped with: the time a line reaches every parser that
+    // reads one, so a parser timing moves against lines can be run on a clock of
+    // its own.
+    private readonly Func<DateTimeOffset> _now;
+
+    public TerminalEmulator(int cols, int rows, Func<DateTimeOffset>? now = null)
     {
         Screen = new TerminalScreen(cols, rows);
         _scrollBottom = rows - 1;
+        _now = now ?? (static () => DateTimeOffset.Now);
     }
 
     // Resize the underlying screen and reset the scroll region.
@@ -95,7 +101,7 @@ public sealed class TerminalEmulator
         // Stamp every row this batch writes with one shared instant, so the
         // transcript snapshot can timestamp on-screen rows without a per-cell
         // clock read. One server read = one wall-clock time for its rows.
-        Screen.FeedTimestamp = DateTimeOffset.Now;
+        Screen.FeedTimestamp = _now();
         foreach (byte b in bytes) FeedByte(b);
         Screen.Bump();
         ScreenUpdated?.Invoke();
@@ -209,7 +215,7 @@ public sealed class TerminalEmulator
         // ScrollUp; one still on screen reaches the Backscroll window in the
         // snapshot it takes when it opens.
         ReadOnlySpan<Cell> cells = Screen.Row(Screen.CursorY);
-        LineCompleted?.Invoke(new ScrollbackBuffer.Row(DateTimeOffset.Now, cells.ToArray(), softWrap));
+        LineCompleted?.Invoke(new ScrollbackBuffer.Row(_now(), cells.ToArray(), softWrap));
         _rowWritten = false;
         // The row keeps how it was left, into the scrollback: a reader of the
         // transcript can then tell the row below is this line carrying on.
@@ -244,7 +250,7 @@ public sealed class TerminalEmulator
         foreach (Cell cell in cells)
             if (cell.Char != ' ') { blank = false; break; }
         if (blank) return;
-        LineCompleted?.Invoke(new ScrollbackBuffer.Row(DateTimeOffset.Now, cells.ToArray(), false));
+        LineCompleted?.Invoke(new ScrollbackBuffer.Row(_now(), cells.ToArray(), false));
     }
 
     private void BeginEsc()

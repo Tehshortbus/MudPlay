@@ -17,17 +17,19 @@ namespace MudPlay.Game.Map;
 //     the tracker lands at a true 1-of-1 graph match.
 //   Tier 2 — observation came in that didn't match the engine's expected
 //     next room (or was a re-display); engine keeps executing the planned
-//     path while the gate watches for a 1-of-1 recovery in ≤
-//     Tier2StepBudget further moves. Escalates to tier 3 either at the step
-//     ceiling OR when the engine's PeekNextPlannedDirection isn't available
-//     on the current observed room.
+//     path while the gate watches for a 1-of-1 anchor refresh, and the
+//     forward localiser folds each landing into a footprint that can re-anchor
+//     on its own. Escalates to tier 3 when a mismatch is reported with
+//     Tier2StepBudget or more steps executed since the anchor, OR when the
+//     engine's PeekNextPlannedDirection isn't available on the current room.
 //   Tier 3 — gate takes over: pauses the engine, sends reverse-of-executed
 //     moves one at a time, accumulates a (direction, observation)
 //     footprint, and uses FootprintMatcher to narrow seeds from the
 //     current observation's FindCandidates. Converges to 1 → engine
-//     resumes from the recovered anchor; exhausted to 0 OR all executed
-//     steps reversed without convergence → engine aborted and
-//     RecoveryFailed fires (caller pops the "Lost — use the map to set
+//     resumes from the recovered anchor; exhausted to 0, all executed
+//     steps reversed, OR Tier3DepthCeiling reverse moves sent without
+//     convergence → the give-up ladder (FailTier3), ending in an aborted
+//     engine and RecoveryFailed (caller pops the "Lost — use the map to set
 //     location" info dialog).
 public sealed class EngineRecoveryGate
 {
@@ -36,10 +38,11 @@ public sealed class EngineRecoveryGate
     // Tier-2 step ceiling: 15 moves from the anchor.
     public const int Tier2StepBudget = 15;
 
-    // FootprintMatcher depth ceiling for tier-3 backtrack. We never
-    // backtrack further than the executed-steps history, but this keeps the
-    // matcher honest if a future change ever pumped extra steps in.
-    private const int Tier3DepthCeiling = 64;
+    // Most reverse moves one tier-3 walk-back sends (Client policy, user
+    // 2026-10-17). The executed history it reverses has no cap of its own (a long
+    // walk through same-named rooms never refreshes the anchor), so without this
+    // a recovery could walk the character back across most of a map.
+    public const int Tier3DepthCeiling = 64;
 
     private readonly RoomGraphManager _graph;
     private readonly RoomTracker _tracker;
@@ -64,6 +67,17 @@ public sealed class EngineRecoveryGate
     // forward move is stepped exactly once when its landing observation arrives.
     private int _tier2ForwardFed;
 
+    // The room display parsed last (OnRoomObserved runs ahead of the tracker's
+    // reconcile of it), taken by the transition that display decides. A step's
+    // landing folds with what the room showed, so one the tracker couldn't place
+    // (Suspect) still folds.
+    private RoomObservation? _shownForLanding;
+
+    // The latest displayed landing and how many executed steps had landed by it:
+    // where the forward localiser seeds from when the tracker, unsure, still holds
+    // the room the mismatching step left. Cleared with the executed history.
+    private (RoomObservation Shown, int Landed)? _lastLanding;
+
     // Tier-3 orchestration is a per-room phase machine. Idle when not
     // recovering. AwaitingLanding: a reverse move is in flight; the next lit
     // render (via OnRoomObserved) or dark-advance (via the tracker) is its
@@ -77,6 +91,9 @@ public sealed class EngineRecoveryGate
     // Reverse direction of the most recent backtrack move — the temporal
     // constraint fed to FootprintMatcher.Step / StepBlind on its landing.
     private Direction _lastBacktrackReverse;
+
+    // Reverse moves the current tier-3 walk-back has sent, against Tier3DepthCeiling.
+    private int _tier3ReverseSteps;
 
     // What to run once the room clears (WaitingCombatClear resume).
     private Action? _combatClearResume;
@@ -182,6 +199,19 @@ public sealed class EngineRecoveryGate
     // True while the engine is paused waiting on a Paradigm `rm` reply.
     public bool AwaitingAuthoritativeResync => _awaitingAuthoritative;
 
+    // Diagnostics for the bug report: how far each footprint has narrowed. The
+    // forward localiser's steps folded; the walk-back's reverse moves sent against
+    // the cap. "idle" when the footprint isn't running.
+    public string Tier2ForwardStatus => _tier2ForwardActive
+        ? $"active — {_tier2Forward.Candidates.Count} candidates, depth {_tier2Forward.Depth}, "
+          + $"{_tier2ForwardFed}/{_executedSinceAnchor.Count} executed step(s) folded"
+        : "idle";
+
+    public string Tier3Status => Tier3Active
+        ? $"{_tier3Phase} — {_tier3.Candidates.Count} candidates, depth {_tier3.Depth}, "
+          + $"{_tier3ReverseSteps}/{Tier3DepthCeiling} reverse moves sent"
+        : "idle";
+
     // Fires whenever CurrentTier changes. Payload carries previous/new + a reason.
     public event Action<RecoveryTierChangedEvent>? TierChanged;
 
@@ -203,16 +233,15 @@ public sealed class EngineRecoveryGate
         _tier3 = new FootprintMatcher(
             probeHop: ProbeHop,
             matchesObservation: KeyMatchesObservation,
-            log: log,
-            depthCeiling: Tier3DepthCeiling);
+            log: log);
 
-        // Forward localiser reuses the same hop/match probes; its depth is bounded
-        // by the tier-2 step budget (tier 2 escalates to tier 3 long before then).
+        // The forward localiser reuses the same hop/match probes. It is stepped
+        // once per landing while tier 2 lasts; its set only shrinks, so a step
+        // never costs more than the seed did.
         _tier2Forward = new FootprintMatcher(
             probeHop: ProbeHop,
             matchesObservation: KeyMatchesObservation,
-            log: log,
-            depthCeiling: Tier2StepBudget + 1);
+            log: log);
     }
 
     // ----- external feeds (bound per-session by the main-window VM) ---
@@ -233,6 +262,7 @@ public sealed class EngineRecoveryGate
     // neighbour handed to the sweep.
     public void OnRoomObserved(RoomObservation obs)
     {
+        _shownForLanding = obs;
         switch (_tier3Phase)
         {
             case Tier3Phase.AwaitingLanding:
@@ -282,7 +312,7 @@ public sealed class EngineRecoveryGate
         }
 
         _engine = engine;
-        _executedSinceAnchor.Clear();
+        ClearExecuted();
         _tier3.Clear();
         ClearTier2Forward();
         ResetTier3Orchestration();
@@ -311,7 +341,7 @@ public sealed class EngineRecoveryGate
         _log?.Log(LogSeverity.Info, LogSource, $"detach engine={_engine.Name}");
         _engine = null;
         _anchor = null;
-        _executedSinceAnchor.Clear();
+        ClearExecuted();
         _tier3.Clear();
         ClearTier2Forward();
         ResetTier3Orchestration();
@@ -337,7 +367,15 @@ public sealed class EngineRecoveryGate
         if (_engine is null) return;
         if (direction == Direction.Teleport)
         {
-            _executedSinceAnchor.Clear();
+            ClearExecuted();
+            // The forward footprint is a walk from before the jump, and its count of
+            // folded steps indexes the history just dropped.
+            if (_tier2ForwardActive)
+            {
+                _log?.Log(LogSeverity.Info, LogSource,
+                    "Tier2.forward-dropped: a teleport broke the walked footprint.");
+                ClearTier2Forward();
+            }
             return;
         }
         _executedSinceAnchor.Add(direction);
@@ -347,7 +385,15 @@ public sealed class EngineRecoveryGate
 
     private void OnTrackerStateChanged(RoomTransition t)
     {
+        RoomObservation? shown = null;
+        if (t.Displayed)
+        {
+            shown = _shownForLanding;
+            _shownForLanding = null;
+        }
         if (_engine is null) return;
+        if (shown is { } display)
+            _lastLanding = (display, _executedSinceAnchor.Count - _tracker.MovesInFlight);
 
         // Dark backtrack landing: a dark room never renders, so OnRoomObserved
         // never fires — the tracker's dark-advance is our only "the move
@@ -362,8 +408,13 @@ public sealed class EngineRecoveryGate
             return;
         }
 
-        if (t.NewConfidence != RoomConfidence.Confirmed) return;
-        if (t.NewRoom is not { } room) return;
+        if (t.NewConfidence != RoomConfidence.Confirmed || t.NewRoom is not { } room)
+        {
+            // Not an anchor candidate, but it may still be a step landing (Pending
+            // with more steps queued, or one the tracker couldn't place).
+            FoldTier2ForwardLanding(t, shown);
+            return;
+        }
 
         // True 1-of-1 anchor refresh — independent of tier.
         IReadOnlyList<RoomKey> candidates = _graph.FindCandidates(room.Name, ExitMaskToSet(room.ExitMask));
@@ -372,7 +423,7 @@ public sealed class EngineRecoveryGate
         {
             RoomKey? prevAnchor = _anchor;
             _anchor = room.Key;
-            _executedSinceAnchor.Clear();
+            ClearExecuted();
             ClearTier2Forward();   // located by a clean 1-of-1 — forward narrowing no longer needed
             _log?.Log(LogSeverity.Info, LogSource,
                 $"Tier1.anchor-refresh → {room.Key} ({room.Name})"
@@ -408,7 +459,7 @@ public sealed class EngineRecoveryGate
         // an ambiguous area, fold this (move, observation) into the forward
         // footprint. A convergence re-anchors us here without ever escalating to
         // the tier-3 backtrack.
-        StepTier2Forward(new RoomObservation(room.Name, ExitMaskToSet(room.ExitMask)));
+        FoldTier2ForwardLanding(t, shown);
     }
 
     private static IReadOnlySet<Direction> ExitMaskToSet(uint mask)
@@ -531,7 +582,7 @@ public sealed class EngineRecoveryGate
         _awaitingAuthoritative = false;
         ResetResyncStage();
         _anchor = key;
-        _executedSinceAnchor.Clear();
+        ClearExecuted();
         _tier3.Clear();
         ClearTier2Forward();
         ResetTier3Orchestration();
@@ -715,6 +766,7 @@ public sealed class EngineRecoveryGate
             $"Tier3.start: {reason} (engine={_engine.Name} anchor={(_anchor?.ToString() ?? "(none)")} executed={_executedSinceAnchor.Count} steps)");
         SetTier(TierLevel.Tier3, reason);
         ClearTier2Forward();   // tier-3 backtrack supersedes forward narrowing
+        _tier3ReverseSteps = 0;
         _engine.PauseForRecovery(reason);
 
         if (_anchor is null)
@@ -766,7 +818,7 @@ public sealed class EngineRecoveryGate
         _awaitingAuthoritative = false;
         ResetResyncStage();
         _anchor = room.Key;
-        _executedSinceAnchor.Clear();
+        ClearExecuted();
         _tier3.Clear();
         ClearTier2Forward();
         ResetTier3Orchestration();
@@ -922,14 +974,26 @@ public sealed class EngineRecoveryGate
             FailTier3("backtrack exhausted to anchor without convergence");
             return;
         }
+        if (_tier3ReverseSteps >= Tier3DepthCeiling)
+        {
+            // Same give-up ladder as running out of history: the footprint is still
+            // ambiguous, and walking further back only takes the character further
+            // from where the engine was headed.
+            _log?.Log(LogSeverity.Warn, LogSource,
+                $"Tier3.cap: {_tier3ReverseSteps} reverse moves sent, the cap, with {_tier3.Candidates.Count} candidate(s) left "
+                + $"and {_executedSinceAnchor.Count} step(s) of history unreversed; giving up the walk-back.");
+            FailTier3($"backtrack reached the cap of {Tier3DepthCeiling} reverse moves without convergence");
+            return;
+        }
 
         Direction lastSent = _executedSinceAnchor[^1];
         _executedSinceAnchor.RemoveAt(_executedSinceAnchor.Count - 1);
         _lastBacktrackReverse = lastSent.Opposite();
         _tier3Phase = Tier3Phase.AwaitingLanding;
+        _tier3ReverseSteps++;
 
         _log?.Log(LogSeverity.Info, LogSource,
-            $"Tier3.backtrack: reverse({lastSent})={_lastBacktrackReverse} (history remaining={_executedSinceAnchor.Count})");
+            $"Tier3.backtrack: reverse({lastSent})={_lastBacktrackReverse} (reverse move {_tier3ReverseSteps}/{Tier3DepthCeiling}, history remaining={_executedSinceAnchor.Count})");
         _engine.SendBacktrackMove(_lastBacktrackReverse);
     }
 
@@ -937,6 +1001,7 @@ public sealed class EngineRecoveryGate
     {
         _tier3Phase = Tier3Phase.Idle;
         _combatClearResume = null;
+        _tier3ReverseSteps = 0;
         _sweep?.Cancel();
     }
 
@@ -951,34 +1016,77 @@ public sealed class EngineRecoveryGate
 
     // Seed the forward footprint from the mismatching observation's candidate set.
     // Only worth running when the current room is genuinely ambiguous (> 1 graph
-    // match) — a unique match would have refreshed the anchor already.
+    // match) — a unique match would have refreshed the anchor already. A sure
+    // tracker's room is where we stand. An unsure one still holds the room the
+    // mismatching step left, so the seed comes from what that step's landing
+    // showed, when the latest landing is that one; otherwise there is nothing to
+    // seed from.
     private void SeedTier2Forward()
     {
         ClearTier2Forward();
-        if (_tracker.State.CurrentRoom is not { } here) return;
-        IReadOnlyList<RoomKey> seeds = _graph.FindCandidates(here.Name, ExitMaskToSet(here.ExitMask));
+        int landed = Math.Max(0, _executedSinceAnchor.Count - _tracker.MovesInFlight);
+        RoomObservation? from =
+            _tracker.State.Confidence is RoomConfidence.Confirmed or RoomConfidence.Pending
+            && _tracker.State.CurrentRoom is { } here
+                ? new RoomObservation(here.Name, ExitMaskToSet(here.ExitMask))
+                : _lastLanding is { } last && last.Landed == landed ? last.Shown : null;
+        if (from is not { } seedFrom) return;
+        IReadOnlyList<RoomKey> seeds = _graph.FindCandidates(seedFrom.Name, seedFrom.Exits);
         if (seeds.Count <= 1) return;   // unique (or unknown) — nothing to narrow
         _tier2Forward.Reset(seeds);
         _tier2ForwardActive = true;
-        _tier2ForwardFed = _executedSinceAnchor.Count;   // the seed already reflects steps taken so far
+        // The seed reflects every step that has landed; a step still in flight
+        // folds on its own landing.
+        _tier2ForwardFed = landed;
         _log?.Log(LogSeverity.Info, LogSource,
-            $"Tier2.forward-seed: {seeds.Count} candidates from observation '{here.Name}'");
+            $"Tier2.forward-seed: {seeds.Count} candidates from observation '{seedFrom.Name}'");
     }
 
-    // Fold one forward (move, observation) pair into the footprint. Called on each
-    // non-strict landing while tier 2 keeps the engine executing the planned path.
-    // Convergence re-anchors us here without the tier-3 backtrack; exhaustion means
-    // the walk fits no graph path (a stale graph, or an unobserved forced move such
-    // as fear) — drop forward narrowing and leave the normal escalation to recover.
-    private void StepTier2Forward(RoomObservation obs)
+    // Fold one forward (move, landing) pair into the footprint, oldest unfolded step
+    // first. Called on every tracker transition while tier 2 keeps the engine
+    // executing the planned path; the steps that have landed are those executed
+    // less those the tracker still holds in flight, so a step going out or a
+    // re-display folds nothing. Convergence re-anchors us here without the tier-3
+    // backtrack; exhaustion means the walk fits no graph path (a stale graph, or an
+    // unobserved forced move such as fear) — drop forward narrowing and leave the
+    // normal escalation to recover. A step folds with what its landing showed
+    // (shown), so one the tracker couldn't place still folds; with no display read
+    // (a caller feeding the tracker directly) it folds with the room the tracker
+    // settled in. A landing the footprint can't read (no display and no room, no
+    // display outside the dark, or two steps landed on one transition) drops the
+    // footprint: folding the next display under the wrong step is how it would
+    // converge on the wrong room. The engines send a step only once the one before
+    // has landed (and MayProceedWithPlannedStep holds one the room can't make), so
+    // two steps landing together means one never did: a refused step the walker
+    // sent again. Convergence doesn't wait for steps in flight, so an engine that
+    // sent steps ahead would be re-anchored with them forgotten.
+    private void FoldTier2ForwardLanding(RoomTransition t, RoomObservation? shown)
     {
         if (!_tier2ForwardActive) return;
         if (CurrentTier != TierLevel.Tier2 || Tier3Active || _awaitingAuthoritative) return;
-        if (_executedSinceAnchor.Count <= _tier2ForwardFed) return;   // no new move since last fold
+        int landed = _executedSinceAnchor.Count - _tier2ForwardFed - _tracker.MovesInFlight;
+        if (landed <= 0) return;
+        if (landed > 1)
+        {
+            DropTier2Forward($"{landed} steps landed on one transition");
+            return;
+        }
 
-        Direction move = _executedSinceAnchor[^1];
-        _tier2ForwardFed = _executedSinceAnchor.Count;
-        _tier2Forward.Step(move, obs);
+        Direction move = _executedSinceAnchor[_tier2ForwardFed];
+        _tier2ForwardFed++;
+        bool placed = t.NewRoom is not null
+            && t.NewConfidence is RoomConfidence.Confirmed or RoomConfidence.Pending;
+        RoomObservation? landing = shown
+            ?? (t.Displayed && placed ? new RoomObservation(t.NewRoom!.Name, ExitMaskToSet(t.NewRoom.ExitMask)) : null);
+        if (t.Displayed && landing is { } read)
+            _tier2Forward.Step(move, read);
+        else if (!t.Displayed && placed && (_tracker.IsInDarkRoom || _tracker.EnteredBlind))
+            _tier2Forward.StepBlind(move);
+        else
+        {
+            DropTier2Forward($"step {move} landed {t.NewConfidence} with nothing to read it by");
+            return;
+        }
 
         if (_tier2Forward.IsConverged)
         {
@@ -994,19 +1102,34 @@ public sealed class EngineRecoveryGate
         }
     }
 
+    private void ClearExecuted()
+    {
+        _executedSinceAnchor.Clear();
+        _lastLanding = null;
+    }
+
+    private void DropTier2Forward(string why)
+    {
+        _log?.Log(LogSeverity.Info, LogSource,
+            $"Tier2.forward-dropped: {why}; leaving the normal tier-2/3 escalation to recover.");
+        ClearTier2Forward();
+    }
+
     // The forward footprint pinned a unique room while the engine was still walking.
     // Re-anchor there and hard-locate the tracker — the engine was never paused in
     // tier 2, so (unlike FinishTier3Success) there's no ResumeAfterRecovery; the
     // next MayProceedWithPlannedStep simply sees tier 1 again. Clear forward state
-    // and drop to tier 1 BEFORE SetLocated so the re-entrant StateChanged can't
-    // re-fold this same observation.
+    // and drop to tier 1 BEFORE re-locating so the re-entrant StateChanged can't
+    // re-fold this same observation. The tracker is located as a deduction: a
+    // footprint can converge on the wrong twin, so it mustn't become the persisted
+    // anchor the way an authoritative or hand-set locate does.
     private void FinishTier2ForwardConverged(RoomKey recovered)
     {
         if (_engine is null) return;
         _log?.Log(LogSeverity.Info, LogSource,
             $"Tier2.forward-converged → {recovered} (no backtrack needed)");
         _anchor = recovered;
-        _executedSinceAnchor.Clear();
+        ClearExecuted();
         ClearTier2Forward();
         ResetResyncStage();
         SetTier(TierLevel.Tier1, "tier-2 forward footprint converged");
@@ -1014,7 +1137,7 @@ public sealed class EngineRecoveryGate
         if (_tracker.State.Confidence != RoomConfidence.Confirmed
             || _tracker.State.CurrentRoom?.Key != recovered)
         {
-            _tracker.SetLocated(recovered);
+            _tracker.LocateDeduced(recovered, "tier-2 forward footprint converged");
         }
 
         Recovered?.Invoke(recovered);
@@ -1027,7 +1150,7 @@ public sealed class EngineRecoveryGate
         _log?.Log(LogSeverity.Info, LogSource,
             $"Tier3.recovered → {recovered}");
         _anchor = recovered;
-        _executedSinceAnchor.Clear();
+        ClearExecuted();
         _tier3.Clear();
         ClearTier2Forward();
         ResetTier3Orchestration();

@@ -1,5 +1,14 @@
 # Version history
 
+## 3.183.40
+
+- Lost-recovery walk-back stops after 64 reverse moves and gives up as an exhausted one does
+- Unsure of your room, a text-exit move (`go path`) still narrows down where you are
+- Unsure of your room, a refused, blocked, rate-limited or unanswered move is no longer counted when the room shows again
+- Unsure of your room, moves typed together are each matched to their own room display
+- Unsure of your room, a move into a dark room (or made blind) still counts, and so does a Lost room display that fits no room exactly
+- A walk's forward re-locate reads every step's landing in order, and the room it settles on is kept as a deduction, not a sure fix
+
 ## 3.183.34
 
 - Combat: a guarded monster's death no longer leaves a guard retry aimed at its corpse; the room is re-read after a kill in a guard fight and the retry waits for it (in a dark room it retries at once)

@@ -14,9 +14,13 @@ internal static class GraphFootprintProbes
         Room? source = graph.GetRoom(from);
         if (source is null) return HopOutcome.NoExit();
         if (!source.Exits.TryGetValue(dir, out RoomExit exit)) return HopOutcome.NoExit();
-        if (exit.Hint == RoomExitHint.Trap) return HopOutcome.TrappedExit();
-        return HopOutcome.Reached(exit.Target);
+        return Through(exit);
     }
+
+    // A hop through an exit the caller already picked out of the source room (a
+    // text exit, found by its command rather than by a direction).
+    public static HopOutcome Through(in RoomExit exit) =>
+        exit.Hint == RoomExitHint.Trap ? HopOutcome.TrappedExit() : HopOutcome.Reached(exit.Target);
 
     // A candidate room matches an observation when the names are equal and every
     // exit the live display shows is present in the graph room (subset — the graph

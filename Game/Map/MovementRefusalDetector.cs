@@ -108,8 +108,8 @@ public sealed partial class MovementRefusalDetector : IDisposable
         // ("You are typing too quickly - command ignored"). If that command was
         // the move in flight, it never executed — un-count it so the tracker
         // doesn't run a room ahead through a same-named grid.
-        // NoteCommandDropped self-guards: it reverts only a recently-sent,
-        // still-Pending move, since this line doesn't name what it dropped.
+        // NoteCommandDropped self-guards: it reverts only a recently-sent move
+        // still waiting on its answer, since this line doesn't name what it dropped.
         // "You are too afraid!" refuses whatever we sent while feared, move or not,
         // so it reverts a move only through the same self-guarding path.
         if (TypingTooQuickly().IsMatch(text) || TooAfraid().IsMatch(text))
@@ -147,12 +147,13 @@ public sealed partial class MovementRefusalDetector : IDisposable
             }
         }
 
-        // A gated exit or room turned the move away. Only while a move is Pending:
-        // a level-capped room answers with two of these lines for one move, and the
-        // second must not drop a later queued move.
+        // A gated exit or room turned the move away. Only while a move awaits its
+        // answer (Pending, or a move sent while unsure of the room): a level-capped
+        // room answers with two of these lines for one move, and the second must
+        // not drop a later queued move.
         if (ExitGateRefused().IsMatch(text))
         {
-            if (_tracker.State.Confidence != RoomConfidence.Pending) return;
+            if (!_tracker.MoveAwaitingAnswer) return;
             // Ahead of the revert: the walker re-plans off the revert, and by then
             // the toll gate must already know of the refusal.
             if (TollRefusal().Match(text) is { Success: true } toll)
@@ -165,10 +166,10 @@ public sealed partial class MovementRefusalDetector : IDisposable
         // Held: the hold's line is also what answers a move, and it prints when the
         // hold lands or is renewed with nothing sent. A hold that lands with a move
         // still unanswered refuses that move too, so any of them reverts one — but
-        // only while one is Pending.
+        // only while one awaits its answer.
         if (_isActiveHoldLine?.Invoke(text) == true)
         {
-            if (_tracker.State.Confidence != RoomConfidence.Pending) return;
+            if (!_tracker.MoveAwaitingAnswer) return;
             _tracker.NoteMoveBlocked(when);
             _log?.Info("MoveRefusal", $"held, the move never left the room: {text.Trim()}");
             return;
@@ -385,8 +386,8 @@ public sealed partial class MovementRefusalDetector : IDisposable
 
     // Typing-rate limiter dropped the just-sent command. Unlike the refusals
     // above this is NOT necessarily a move (it drops whatever was typed), so it
-    // routes to NoteCommandDropped — which self-guards on a recently-sent,
-    // still-Pending move — rather than the unconditional NoteMoveBlocked. The
+    // routes to NoteCommandDropped — which self-guards on a recently-sent move
+    // still waiting on its answer — rather than the unconditional NoteMoveBlocked. The
     // preceding "Why don't you slow down for a few seconds?" warning carries no
     // drop, so only the "command ignored" line reverts anything.
     [GeneratedRegex(
