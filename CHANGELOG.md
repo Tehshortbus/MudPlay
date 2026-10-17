@@ -1,5 +1,10 @@
 # Version history
 
+## 3.183.42
+
+- Combat: after a teleport, a drag with no follow line or a fear run, "Attack Not Last" and follow Target Priority hold the new room's first attack again
+- Combat: a relog or reconnect starts the room's attack order afresh, even in the same room
+
 ## 3.183.41
 
 - Combat: Attack Order "Attack Not Last" attacks again when the party walks into each room behind you

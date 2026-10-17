@@ -5799,10 +5799,7 @@ public sealed class AppServices
             onAttack: Combat.NoteUserAttack,
             isExitCommandHere: IsExitCommandHere);
         Combat.UserBreakHoldNotice += text => WriteTerminalNotice($"[{text}]");
-        RoomTracker.StateChanged += t =>
-        {
-            if (t.NewRoom?.Key != t.PreviousRoom?.Key) Combat.NoteRoomLeft(RoomTracker.LastMoveSentAt);
-        };
+        RoomTracker.StateChanged += t => Combat.NoteRoomTransition(t, RoomTracker.LastMoveSentAt);
         Profile.ProfileLoaded += _ => Combat.ClearUserBreakHold("another profile was loaded");
         // The room read a held monster's silent round asked for is sent from here
         // when another re-display's cooldown held it back.
@@ -6394,6 +6391,8 @@ public sealed class AppServices
             StatlineReconcile.Arm();
             // Whoever was in the room is not known to be there on the way back in.
             RoomClassifier.NoteGameLeft();
+            // Nor is the fight that was going on in it.
+            Combat.NoteGameLeft();
         };
         // Same in-game gate arms unrecognized-line capture: nothing before the first
         // realm prompt (splash / login menu / connect banner) stages a candidate.

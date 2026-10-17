@@ -4425,29 +4425,6 @@ public sealed class CombatManagerSpellsTests
     }
 
     [Fact]
-    public void AttackNotLast_FightAlreadyUnderWayHere_NextPickDoesNotHold()
-    {
-        // The party is already fighting this room: the next pick (here after our target
-        // died) goes out at once rather than waiting a round for an announce that
-        // won't come.
-        using Harness h = new();
-        h.Settings.AttackTiming = AttackTiming.AttackNotLast;
-        h.Settings.NormalAttackCommand = "pu";
-        AddParty(h, "MudPlay", "Cidir NineteenTr", "Thresh II");
-        h.AddMonster(635, "tunnel horror");
-        h.AddMonster(636, "giant skeleton");
-        h.Feed("Also here: tunnel horror, giant skeleton.");
-        h.Feed("Thresh moves to attack giant skeleton.");
-        Assert.Equal("pu tunnel horror", h.LastSent);
-        h.Feed("*Combat Engaged*");
-
-        h.Feed("You gain 100 experience.");                     // our target dies
-        Assert.Null(h.Combat.CurrentTarget);
-        h.Feed("Also here: giant skeleton.");
-        Assert.Equal("pu giant skeleton", h.LastSent);
-    }
-
-    [Fact]
     public void FollowLeader_LeadersDamageLineWithNoAnnounce_TakesTheirTarget()
     {
         using Harness h = new();

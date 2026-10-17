@@ -1,10 +1,9 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.183.41**
-> - Combat: Attack Order "Attack Not Last" attacks again when the party walks into each room behind you
-> - Combat: "Attack Not Last" and follow Target Priority never cost a round; unanswered, they attack before the round fires
-> - Combat: a party member seen fighting releases those holds, and the followed player's hits set the target
+> **Version 3.183.42**
+> - Combat: after a teleport, a drag with no follow line or a fear run, "Attack Not Last" and follow Target Priority hold the new room's first attack again
+> - Combat: a relog or reconnect starts the room's attack order afresh, even in the same room
 >
 > See the [version history](CHANGELOG.md) for the full changelog.
 <!-- current-version:end -->
