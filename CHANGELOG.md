@@ -1,5 +1,9 @@
 # Version history
 
+## 3.183.42
+
+- Combat tests run on one manual clock the whole engine reads, with no real-time waits
+
 ## 3.183.41
 
 - Commands the client sends are no longer kept in memory for the whole session

@@ -58,13 +58,19 @@ public sealed class CombatManagerBreakHoldTests
         public List<string> Notices { get; } = new();
         public List<Action> Posted { get; } = new();
 
-        private DateTimeOffset _clock = DateTimeOffset.UtcNow;
+        // The one clock every component here reads; nothing waits on real time.
+        // Tick() moves it a round, each line fed in lands a millisecond after the
+        // one before (the game's lines never share an instant), and anything
+        // longer the test moves it by itself.
+        public ManualClock Clock { get; } = new();
+        public DateTimeOffset Now => Clock.Now;
+        private static readonly TimeSpan LineGap = TimeSpan.FromMilliseconds(1);
 
         public Harness(bool wireCaster = true)
         {
             DefaultPatterns.Seed(Router);
             Coordinator = new MovementCoordinator(Log);
-            Classifier = new RoomEntityClassifier(Router, Monsters, Players, Log);
+            Classifier = new RoomEntityClassifier(Router, Monsters, Players, Log, now: () => Clock.Now);
             // Same construction order as AppServices: the tracker hears a room
             // observation, and the death watcher an exp line, ahead of the engine.
             Tracker = new CombatStateTracker(
@@ -72,14 +78,14 @@ public sealed class CombatManagerBreakHoldTests
                 () => AutoCombatEnabled,
                 resolveOverlay: n => Overlays.TryGetValue(n, out MonsterOverlay? o) ? o : new MonsterOverlay(),
                 log: Log,
-                clock: () => _clock);
+                clock: () => Clock.Now);
             Tracker.SetWireSender(b => TrackerSent.Add(b));
-            Deaths = new MonsterDeathWatcher(Router, Log);
+            Deaths = new MonsterDeathWatcher(Router, Log, now: () => Clock.Now);
             Deaths.MonsterDied += evt =>
             {
                 if (evt.RoomSpellRoster is null) Combat!.NoteUnattributedDeath();
             };
-            Cast = new CastCoordinator(Router, Log);
+            Cast = new CastCoordinator(Router, Log, now: () => Clock.Now);
             Cast.SetWireSender(b => Sent.Add(b));
             Combat = new CombatManager(Router, Classifier, Monsters,
                 resolveOverlay: n => Overlays.TryGetValue(n, out MonsterOverlay? o) ? o : new MonsterOverlay(),
@@ -89,7 +95,7 @@ public sealed class CombatManagerBreakHoldTests
                 readOwnGivenName: () => "MudPlay",
                 post: a => Posted.Add(a),
                 log: Log,
-                now: () => _clock);
+                now: () => Clock.Now);
             Combat.SetWireSender(b => Sent.Add(b));
             Combat.RoomSpellKill += Deaths.NoteRoomSpellKill;
             Combat.SetDarkRoomProbe(() => Dark);
@@ -111,8 +117,9 @@ public sealed class CombatManagerBreakHoldTests
 
         public void Feed(string line)
         {
+            Clock.Advance(LineGap);
             Router.Dispatch(new LineExtractor.EmittedLine(
-                line, Array.Empty<CellAttributes>(), DateTimeOffset.UtcNow, IsPromptLine: false));
+                line, Array.Empty<CellAttributes>(), Clock.Now, IsPromptLine: false));
             DrainPosted();
         }
 
@@ -122,12 +129,13 @@ public sealed class CombatManagerBreakHoldTests
         {
             CellAttributes[] attributes = Enumerable.Repeat(
                 CellAttributes.Default.WithForeground(TerminalColor.Indexed(colour)), line.Length).ToArray();
+            Clock.Advance(LineGap);
             Router.Dispatch(new LineExtractor.EmittedLine(
-                line, attributes, DateTimeOffset.UtcNow, IsPromptLine: false));
+                line, attributes, Clock.Now, IsPromptLine: false));
             DrainPosted();
         }
 
-        public void Advance(TimeSpan by) => _clock += by;
+        public void Advance(TimeSpan by) => Clock.Advance(by);
 
         // A command of the user's own as MainWindowViewModel.SendUserInput hands it
         // to the break observer: at send, ahead of anything the game says back.
@@ -156,7 +164,8 @@ public sealed class CombatManagerBreakHoldTests
         // The game's answer to a `break` typed in a fight: the echo, then the Off.
         public void GameAnswersBreak()
         {
-            DateTimeOffset at = DateTimeOffset.UtcNow;
+            Clock.Advance(LineGap);
+            DateTimeOffset at = Clock.Now;
             Router.Dispatch(new LineExtractor.EmittedLine(
                 "[HP=100/MA=50]:", Array.Empty<CellAttributes>(), at, IsPromptLine: true));
             Router.Dispatch(new LineExtractor.EmittedLine(
@@ -174,7 +183,7 @@ public sealed class CombatManagerBreakHoldTests
         // heartbeat runs as AppServices orders it.
         public void Tick()
         {
-            _clock += TimeSpan.FromSeconds(5);
+            Clock.Advance(TimeSpan.FromSeconds(5));
             Cast.OnCombatTick();
             Combat.OnCombatTick();
             DrainPosted();
@@ -182,7 +191,7 @@ public sealed class CombatManagerBreakHoldTests
 
         public void Quiet(TimeSpan forThisLong)
         {
-            _clock += forThisLong;
+            Clock.Advance(forThisLong);
             Combat.OnHeartbeat();
             Tracker.OnCombatTick();
             DrainPosted();
@@ -1162,19 +1171,20 @@ public sealed class CombatManagerBreakHoldTests
 
     // A monster that stays silent and listed isn't looked at every round: after a
     // look has shown it, its silence asks for the next one no sooner than thirty
-    // seconds on. That one meets the first look's cooldown here (it runs on real
-    // time), and the heartbeat sends it once the cooldown lets it out.
+    // seconds on. When that one falls inside another re-display's cooldown (here a
+    // later kill's, two seconds before), the heartbeat sends it once the cooldown
+    // lets it out, and only once.
     [Fact]
     public void SilentAndStillListed_IsLookedAtAgainOnlyAfterThirtySeconds()
     {
-        using Harness h = FightingARat();
+        using Harness h = FightingARatBesideAThief();
         h.UserBreaks();
         int sent = h.Sent.Count;
 
         h.Tick();
         h.Tick();                                   // 10 s: the first look
         Assert.Equal(sent + 1, h.Sent.Count);
-        h.Feed($"Also here: {Rat}.");
+        h.Feed($"Also here: {Rat}, {Thief}.");
         Assert.Contains("silent but listed at the last look", h.Combat.UserBreakHoldSummary);
 
         for (int round = 0; round < 5; round++)     // 15 s to 35 s: silent, and no look
@@ -1185,18 +1195,27 @@ public sealed class CombatManagerBreakHoldTests
         Assert.Equal(sent + 1, h.Sent.Count);
         Assert.Equal(Rat, HeldOn(h));
 
-        h.Tick();                                   // 40 s: thirty seconds after that reading
+        h.Advance(TimeSpan.FromSeconds(3));         // 38 s: a kill, and the room read again
+        h.Feed("You gain 50 experience.");
+        h.Feed("*Combat Off*");
+        Assert.Equal(sent + 2, h.Sent.Count);
+        h.Feed($"Also here: {Rat}.");               // the thief was the one that died
+        Assert.Equal(Rat, HeldOn(h));
+
+        h.Advance(TimeSpan.FromSeconds(2));         // 40 s: thirty seconds after the first reading
+        h.Cast.OnCombatTick();
+        h.Combat.OnCombatTick();
         h.Combat.OnHeartbeat();
-        Assert.Equal(sent + 1, h.Sent.Count);       // asked for, held back by the cooldown
+        Assert.Equal(sent + 2, h.Sent.Count);       // asked for, held back by the kill's re-display
         Assert.Contains("the room is being read", h.Combat.UserBreakHoldSummary);
 
-        Thread.Sleep(3100);
+        h.Advance(TimeSpan.FromSeconds(1));         // 41 s: three seconds after it
         h.Combat.OnHeartbeat();
 
-        Assert.Equal(sent + 2, h.Sent.Count);
+        Assert.Equal(sent + 3, h.Sent.Count);
         Assert.Equal(string.Empty, h.LastSent);
         h.Combat.OnHeartbeat();
-        Assert.Equal(sent + 2, h.Sent.Count);       // asked once
+        Assert.Equal(sent + 3, h.Sent.Count);       // asked once
         Assert.Equal(Rat, HeldOn(h));
     }
 
@@ -1249,7 +1268,7 @@ public sealed class CombatManagerBreakHoldTests
         h.Feed($"Also here: {Rat}, {Thief}.");
         Assert.Equal(sent, h.Sent.Count);
 
-        h.Combat.NoteRoomLeft(lastMoveSentAt: DateTimeOffset.Now);
+        h.Combat.NoteRoomLeft(lastMoveSentAt: h.Now);
         h.DrainPosted();
 
         Assert.Null(HeldOn(h));
@@ -1269,7 +1288,7 @@ public sealed class CombatManagerBreakHoldTests
     public void RoomChangedWithNoMoveSinceTheBreak_IsACorrection_AndTheHoldStands(bool movedBeforeTheBreak)
     {
         using Harness h = FightingARat();
-        DateTimeOffset? lastMove = movedBeforeTheBreak ? DateTimeOffset.Now.AddSeconds(-20) : null;
+        DateTimeOffset? lastMove = movedBeforeTheBreak ? h.Now.AddSeconds(-20) : null;
         h.UserBreaks();
         int sent = h.Sent.Count;
 
@@ -1354,7 +1373,7 @@ public sealed class CombatManagerBreakHoldTests
             Assert.Contains("break", healthSent);
             Assert.Equal(Rat, HeldOn(h));    // the flee's own break is no user's attack or break
 
-            h.Combat.NoteRoomLeft(lastMoveSentAt: DateTimeOffset.Now);
+            h.Combat.NoteRoomLeft(lastMoveSentAt: h.Now);
 
             Assert.Null(HeldOn(h));
             Assert.Contains("left the room", h.Combat.UserBreakHoldSummary);

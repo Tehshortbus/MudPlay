@@ -685,12 +685,14 @@ How to keep it current:
 
 ### CombatManagerBreakHoldTests.cs
 - Covers: Game/Combat/CombatManager (user-break hold) + CombatStateTracker, OutboundBreakObserver, HealthManager
-- Checks: what sets the hold (typed, @do, @party); no attack path fires under it; every way it ends; silent-round look-and-judge; flee still moves.
+- Checks: what sets the hold (typed, @do, @party); no attack path fires under it; every way it ends; silent-round look-and-judge, the 30 s back-off, and the heartbeat sending a look another re-display's cooldown held back; flee still moves.
+- Time: one `ManualClock` read by every component in the harness (combat manager, classifier, cast coordinator, death watcher, state tracker); each fed line lands 1 ms after the last, Tick() is a 5 s round, and nothing waits on real time.
 - Why: user 2026-10-10 rulings on manual break.
 
 ### CombatManagerSpellsTests.cs
 - Covers: Game/Combat/CombatManager (spell economy) + CastCoordinator, MonsterDeathWatcher, TickEngine
 - Checks: spell vs weapon choice; room-channel lifetime; arrival settle and moves in flight; MaxCasts counting; corpse-cast guards; resumes after interrupts; manual overrides; overrides and immunity; alternating/cycle orders; self-defence; attack timing; room-spell kills as deaths.
+- Time: one `ManualClock` read by every component in the harness (combat manager, classifier, cast coordinator, death watcher); each fed line or arrival lands 1 ms after the last, Tick() is a 5 s round, and nothing waits on real time. A fight that runs past its opening round is fed the game's `*Combat Engaged*`, or the engage-verify window (5 s) re-displays the room as it would live.
 - Why: dozens of paradigm reports cited inline.
 
 ### CombatManagerTests.cs
@@ -2103,7 +2105,7 @@ How to keep it current:
 
 ### ManualClock.cs
 - Test infrastructure.
-- Covers: test helper (clock, Stopwatch timestamp, delays) used by 4 test files.
+- Covers: test helper (clock, Stopwatch timestamp, delays) used by 5 test files.
 - Checks: n/a (helper; all members used). `RegenTrackerTests` / `RegenDiagnosticsRecorderTests` keep private FakeClock copies that could use it.
 - Why: deterministic timing.
 

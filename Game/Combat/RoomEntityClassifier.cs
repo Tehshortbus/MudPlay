@@ -57,6 +57,7 @@ public sealed class RoomEntityClassifier : IDisposable
     private static readonly Regex AndNormaliser = new(@"\s+and\s+", RegexOptions.Compiled);
 
     private readonly MessageRouter _router;
+    private readonly Func<DateTimeOffset> _now;
     private readonly MonsterMessageStore _monsters;
     private readonly PlayerDatabase _players;
     private readonly RoomTracker? _roomTracker;
@@ -141,8 +142,9 @@ public sealed class RoomEntityClassifier : IDisposable
         MessageRouter router,
         MonsterMessageStore monsters,
         PlayerDatabase players,
-        LogService? log = null)
-        : this(router, monsters, players, roomTracker: null, log) { }
+        LogService? log = null,
+        Func<DateTimeOffset>? now = null)
+        : this(router, monsters, players, roomTracker: null, log, now: now) { }
 
     // Construct with a RoomTracker binding so the classifier wipes its
     // observation when the player moves rooms. Without this, a stale Also-Here
@@ -159,11 +161,13 @@ public sealed class RoomEntityClassifier : IDisposable
         RoomTracker? roomTracker,
         LogService? log = null,
         GameDataCache? gameData = null,
-        FlavorPrefixStore? flavorPrefixes = null)
+        FlavorPrefixStore? flavorPrefixes = null,
+        Func<DateTimeOffset>? now = null)
     {
         ArgumentNullException.ThrowIfNull(router);
         ArgumentNullException.ThrowIfNull(monsters);
         ArgumentNullException.ThrowIfNull(players);
+        _now      = now ?? (static () => DateTimeOffset.Now);
         _router   = router;
         _monsters = monsters;
         _players  = players;
@@ -269,7 +273,7 @@ public sealed class RoomEntityClassifier : IDisposable
             entities.Add(Classify(cleaned, rawFirst));
         }
 
-        RoomEntitiesObservation obs = new(rawFirst, entities, DateTimeOffset.Now);
+        RoomEntitiesObservation obs = new(rawFirst, entities, _now());
         Current = obs;
         _lastAlsoHereAt = obs.At;
         SetRosterWhole(true);
@@ -299,7 +303,7 @@ public sealed class RoomEntityClassifier : IDisposable
             entities.Add(Classify(cleaned, rawLine));
         }
 
-        RoomEntitiesObservation obs = new(rawLine, entities, DateTimeOffset.Now);
+        RoomEntitiesObservation obs = new(rawLine, entities, _now());
         Current = obs;
         _lastAlsoHereAt = obs.At;
         SetRosterWhole(true);
@@ -363,7 +367,7 @@ public sealed class RoomEntityClassifier : IDisposable
         updated.Add(entity);
 
         RoomEntitiesObservation obs = new(
-            rawWireLine, updated, DateTimeOffset.Now, RoomObservationSource.Arrival);
+            rawWireLine, updated, _now(), RoomObservationSource.Arrival);
         Current = obs;
         EntitiesObserved?.Invoke(obs);
     }
@@ -777,7 +781,7 @@ public sealed class RoomEntityClassifier : IDisposable
             if (i != removeIndex) updated.Add(cur.Entities[i]);
 
         RoomEntitiesObservation obs = new(
-            cur.RawAlsoHereLine, updated, DateTimeOffset.Now, source);
+            cur.RawAlsoHereLine, updated, _now(), source);
         Current = obs;
         EntitiesObserved?.Invoke(obs);
         return true;
@@ -816,7 +820,7 @@ public sealed class RoomEntityClassifier : IDisposable
         RoomEntitiesObservation obs = new(
             RawAlsoHereLine: string.Empty,
             Entities: entities,
-            At: DateTimeOffset.Now,
+            At: _now(),
             Source: RoomObservationSource.RoomChange);
         Current = obs;
         SetRosterWhole(false, "a room too dark to list who is in it was entered");
@@ -843,7 +847,7 @@ public sealed class RoomEntityClassifier : IDisposable
         RoomEntitiesObservation wiped = new(
             RawAlsoHereLine: string.Empty,
             Entities: Array.Empty<RoomEntity>(),
-            At: DateTimeOffset.Now,
+            At: _now(),
             Source: RoomObservationSource.RoomChange);
         Current = wiped;
         SetRosterWhole(shownEmpty, "the room changed and its list was dropped");

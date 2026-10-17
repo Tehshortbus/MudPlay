@@ -132,12 +132,14 @@ public sealed class CastCoordinator : IDisposable
     private string? _lastSpellSent;
     // Read for the command echoed ahead of a refusal that names no spell.
     private readonly MessageRouter _router;
+    private readonly Func<DateTimeOffset> _now;
 
-    public CastCoordinator(MessageRouter router, LogService? log = null)
+    public CastCoordinator(MessageRouter router, LogService? log = null, Func<DateTimeOffset>? now = null)
     {
         ArgumentNullException.ThrowIfNull(router);
         _router = router;
         _log = log;
+        _now = now ?? (static () => DateTimeOffset.Now);
         _fizzleSub    = router.Subscribe(KnownPatterns.CastFizzled,          OnFizzle);
         _noManaSub    = router.Subscribe(KnownPatterns.CastNoMana,           OnNoMana);
         _alreadySub   = router.Subscribe(KnownPatterns.CastAlreadyThisRound, OnAlreadyThisRound);
@@ -157,7 +159,7 @@ public sealed class CastCoordinator : IDisposable
     // tick never fires, so the latch must self-expire or buffs would never recast).
     private void ExpireStaleBlockLatch()
     {
-        if (_castBlocked && DateTimeOffset.Now - _castBlockedSince >= CastBlockExpiry)
+        if (_castBlocked && _now() - _castBlockedSince >= CastBlockExpiry)
         {
             _castBlocked = false;
             _log?.Debug(LogCategory, "cast-block latch expired (no combat tick received)");
@@ -174,7 +176,7 @@ public sealed class CastCoordinator : IDisposable
         {
             ExpireStaleBlockLatch();
             if (_castBlocked) return true;
-            return DateTimeOffset.Now - _lastBetweenRoundSentAt < CastCommandCooldown;
+            return _now() - _lastBetweenRoundSentAt < CastCommandCooldown;
         }
     }
 
@@ -213,7 +215,7 @@ public sealed class CastCoordinator : IDisposable
             return false;
         }
 
-        DateTimeOffset now = DateTimeOffset.Now;
+        DateTimeOffset now = _now();
         ExpireStaleBlockLatch();
 
         // The failure latch (fizzle / no-mana / interrupt) blocks regardless of the
@@ -264,7 +266,7 @@ public sealed class CastCoordinator : IDisposable
     // blocks subsequent TryCast attempts for this round.
     public void NotifyExternalCastSent()
     {
-        _lastBetweenRoundSentAt = DateTimeOffset.Now;
+        _lastBetweenRoundSentAt = _now();
         _lastCastWasAttackSlot = false;   // external casts are between-round (item-cast buff, `c X`)
         _log?.Debug(LogCategory, "external cast noted — cooldown started");
     }
@@ -386,7 +388,7 @@ public sealed class CastCoordinator : IDisposable
     private void BlockAndLog(CastFailureReason reason, string detail)
     {
         _castBlocked = true;
-        _castBlockedSince = DateTimeOffset.Now;
+        _castBlockedSince = _now();
         _log?.Info(LogCategory, $"cast failed reason={reason} {detail} spell={_lastSpellSent ?? "<unknown>"}");
         CastFailed?.Invoke(reason, detail, _lastSpellSent);
     }

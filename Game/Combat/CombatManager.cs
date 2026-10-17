@@ -645,9 +645,8 @@ public sealed partial class CombatManager : IDisposable
     // next-round tick is never itself rejected.
     private static readonly TimeSpan AttackTallyMinGap = AlternationAdvanceMinGap;
 
-    // Clock for AlternationAdvanceMinGap and the move hold, so a synchronous burst
-    // of combat ticks can carry multi-round phase timing. Every other timestamp in
-    // this file still reads DateTimeOffset.Now directly.
+    // The one clock every timestamp and window in this engine reads, so a
+    // synchronous burst of combat ticks can carry multi-round timing.
     private readonly Func<DateTimeOffset> _now;
 
     private string? _lastAttackCommand;
@@ -819,7 +818,7 @@ public sealed partial class CombatManager : IDisposable
     // clean and a later *Combat Off* is our own cast interrupting the fresh swing,
     // not the kill's Off; suppressing it there idles a full round. A boolean, not a
     // _lastAttackSentAt > _lastDeathAt compare, because the death stamp and the
-    // re-observe swing can land on the same DateTimeOffset.Now tick.
+    // re-observe swing can land on the same clock tick.
     private bool _attackSentSinceDeath;
 
     // Prompt kill signal. A kill emits "You gain N experience." immediately before
@@ -1255,7 +1254,7 @@ public sealed partial class CombatManager : IDisposable
     public string? DeathAttributionTarget =>
         _currentTarget
         ?? (_inferredKillPendingRemoval is { } name
-            && DateTimeOffset.Now - _inferredKillPendingAt < ExpKillWindow
+            && _now() - _inferredKillPendingAt < ExpKillWindow
                 ? name
                 : null);
 
@@ -1652,7 +1651,7 @@ public sealed partial class CombatManager : IDisposable
             {
                 _arrivalSettleRearmed = true;
                 _arrivalSettleArmed = true;
-                _arrivalSettleArmedAt = DateTimeOffset.Now;
+                _arrivalSettleArmedAt = _now();
                 NoteArrivalSettleDecision("an exp line came during the window and no re-display could be asked for — waited one more window");
                 _log?.Combat(LogCategory,
                     "arrival-settle: an exp line came during the window and no re-display could be asked for — "
@@ -1686,7 +1685,7 @@ public sealed partial class CombatManager : IDisposable
         ? $"{d.At:HH:mm:ss.fff} {d.Text}"
         : null;
 
-    private void NoteArrivalSettleDecision(string text) => _lastArrivalSettleDecision = (DateTimeOffset.Now, text);
+    private void NoteArrivalSettleDecision(string text) => _lastArrivalSettleDecision = (_now(), text);
 
     private void OnEntitiesObserved(RoomEntitiesObservation obs)
     {
@@ -2009,7 +2008,7 @@ public sealed partial class CombatManager : IDisposable
             {
                 _arrivalSettleArmed = true;
                 _arrivalSettleRearmed = false;
-                _arrivalSettleArmedAt = DateTimeOffset.Now;
+                _arrivalSettleArmedAt = _now();
                 _log?.Combat(LogCategory,
                     $"arrival-settle: holding first engage {ArrivalSettleWindow.TotalMilliseconds:F0}ms " +
                     "so a simultaneous burst + room re-display decide together");
@@ -3256,7 +3255,7 @@ public sealed partial class CombatManager : IDisposable
         // there was the extra attack every fight sent (report
         // paradigm-20261013-153710). The window lets a refused attack, which never gets
         // its Engaged, stop blocking re-fires.
-        if (!_engagedSinceLastAttack && DateTimeOffset.Now - _lastAttackSentAt < RefireAnswerWindow)
+        if (!_engagedSinceLastAttack && _now() - _lastAttackSentAt < RefireAnswerWindow)
         {
             _log?.Combat(LogCategory,
                 $"{settings.AttackTiming}: {announcer}'s announce came before our attack was answered — ours already lands after it, no re-fire");
@@ -3407,7 +3406,7 @@ public sealed partial class CombatManager : IDisposable
                 $"dark room — CR re-display suppressed ({context})");
             return false;
         }
-        DateTimeOffset now = DateTimeOffset.Now;
+        DateTimeOffset now = _now();
         if (now - _lastRoomRefreshAt < RoomRefreshCooldown)
         {
             if (!askAgainOnceRead) return false;
@@ -3779,7 +3778,7 @@ public sealed partial class CombatManager : IDisposable
     {
         if (_lastAttackCommand is not { Length: > 0 } attack) return;
         if (!string.Equals(message.Trim(), attack, StringComparison.OrdinalIgnoreCase)) return;
-        if (DateTimeOffset.Now - _lastAttackSentAt > AttackEchoWindow) return;
+        if (_now() - _lastAttackSentAt > AttackEchoWindow) return;
         DropMissingTarget("attack-read-as-say");
     }
 
@@ -3949,7 +3948,7 @@ public sealed partial class CombatManager : IDisposable
                 || (_isInDarkRoom?.Invoke() != true && _lastRoomRefreshAt > _rosterReadAt);
             if (reDisplayComing)
             {
-                DateTimeOffset killAt = DateTimeOffset.Now;
+                DateTimeOffset killAt = _now();
                 _guardFightKillAt = killAt;
                 _scheduleArrivalSettle?.Invoke(GuardKillJudgeWait, () => OnGuardKillWaitElapsed(killAt));
                 _log?.Combat(LogCategory, sent
@@ -3969,7 +3968,7 @@ public sealed partial class CombatManager : IDisposable
         string? presumedDead = _currentTarget;
         if (presumedDead is null
             && _inferredKillPendingRemoval is { } pending
-            && DateTimeOffset.Now - _inferredKillPendingAt < ExpKillWindow)
+            && _now() - _inferredKillPendingAt < ExpKillWindow)
         {
             presumedDead = pending;
         }
@@ -3979,7 +3978,7 @@ public sealed partial class CombatManager : IDisposable
         // A kill we couldn't pin to a roster slot still leaves the roster stale
         // until it resolves — the exact window in which the between-round-cast
         // resume must not re-engage (see _lastDeathAt).
-        _lastDeathAt = DateTimeOffset.Now;
+        _lastDeathAt = _now();
         _attackSentSinceDeath = false;
 
         // Clear the target BEFORE the removal re-fires EntitiesObserved so the
@@ -4087,7 +4086,7 @@ public sealed partial class CombatManager : IDisposable
             NoteResumeDecision("held — the user's own attack has this round", log: false);
             return false;
         }
-        DateTimeOffset now = DateTimeOffset.Now;
+        DateTimeOffset now = _now();
         // A fresh swing already went out a beat ago — this resume is redundant
         // and would double on top of it. Happens on a kill: the death→re-observe
         // path re-engages the surviving mob, then the kill's *Combat Off* re-arms
@@ -4151,7 +4150,7 @@ public sealed partial class CombatManager : IDisposable
 
     private void NoteResumeDecision(string text, bool log)
     {
-        _lastResumeDecision = (DateTimeOffset.Now, text);
+        _lastResumeDecision = (_now(), text);
         if (log) _log?.Combat(LogCategory, $"attack resume with combat off: {text}");
     }
 
@@ -4279,7 +4278,7 @@ public sealed partial class CombatManager : IDisposable
     private void DisarmCastResumeOnRefusal()
     {
         if (_betweenRoundCastAt == _typedGearStamp) return;
-        if (DateTimeOffset.Now - _betweenRoundCastAt >= CastInterruptResumeWindow) return;
+        if (_now() - _betweenRoundCastAt >= CastInterruptResumeWindow) return;
         _betweenRoundCastAt = DateTimeOffset.MinValue;
         _log?.Combat(LogCategory, "between-round cast refused — resume disarmed (a refused cast draws no *Combat Off*)");
     }
@@ -4434,7 +4433,7 @@ public sealed partial class CombatManager : IDisposable
         }
 
         _userBreakHold = target;
-        _userBreakHoldSince = DateTimeOffset.Now;
+        _userBreakHoldSince = _now();
         _userBreakHoldRoomAttack = _roomChannelSpell is not null;
         _userBreakHoldAnnounced = EngineOn();
         _userBreakHoldOffSeen = false;
@@ -4729,7 +4728,7 @@ public sealed partial class CombatManager : IDisposable
         _heldSilenceReadAsked = false;
         _heldSilenceReadNotBefore = DateTimeOffset.MinValue;
         _heldRoomLookPending = false;
-        _lastUserBreakHoldEnd = (DateTimeOffset.Now, $"'{held}': {why}");
+        _lastUserBreakHoldEnd = (_now(), $"'{held}': {why}");
         _log?.Info(LogCategory, $"attack hold on '{held}' ended — {why}");
         if (_userBreakHoldAnnounced)
             UserBreakHoldNotice?.Invoke($"Attack hold on {held} ended: {why}");
@@ -4954,7 +4953,7 @@ public sealed partial class CombatManager : IDisposable
     private void ResumeSpellAfterBetweenRoundCast(RoomEntitiesObservation live, string target,
         EngageableCandidate cand)
     {
-        if (_lastBetweenRoundCastManual) _lastManualCastResumeAt = DateTimeOffset.Now;
+        if (_lastBetweenRoundCastManual) _lastManualCastResumeAt = _now();
         // Clear the interrupt flag before attempting the re-announce, mirroring
         // ResumeEngage's weapon-mode path — NOT only inside DispatchRoundAction's
         // TryCast-succeeded branch. This attempt can lose the round's single cast
@@ -4977,7 +4976,7 @@ public sealed partial class CombatManager : IDisposable
         // fresh cast on the survivor) is untouched.
         if (_announcedSpellCode is { } interruptedSpell
             && _lastCastAction is { } interruptedAction
-            && DateTimeOffset.Now - _lastDeathAt >= DeathInterruptWindow
+            && _now() - _lastDeathAt >= DeathInterruptWindow
             && ReadRoundCount?.Invoke() is { } interruptedRound
             && interruptedRound != _lastTalliedRound)
         {
@@ -5021,7 +5020,7 @@ public sealed partial class CombatManager : IDisposable
 
     private void NoteBetweenRoundCast(bool manual)
     {
-        _betweenRoundCastAt = DateTimeOffset.Now;
+        _betweenRoundCastAt = _now();
         _lastBetweenRoundCastManual = manual;
         if (_castingSpellTarget is not null)
             _spellAttackOwed = true;
@@ -5044,11 +5043,11 @@ public sealed partial class CombatManager : IDisposable
     // identical for every monster, so no per-monster death message is needed.
     private void OnUserGainExperience(MatchResult match)
     {
-        _lastExpGainAt = DateTimeOffset.Now;
+        _lastExpGainAt = _now();
         _expGainsThisRound++;
         _expGainsSinceRosterRead++;
         if (_userBreakHold is not null && !_userBreakHoldOffSeen
-            && DateTimeOffset.Now - _userBreakHoldSince < UserBreakRaceWindow)
+            && _now() - _userBreakHoldSince < UserBreakRaceWindow)
             _userBreakHoldKillRaced = true;
         _lastExpWasRoomSpellKill = false;
         NoteRoomSpellKill(match);
@@ -5132,7 +5131,7 @@ public sealed partial class CombatManager : IDisposable
         int? gained = exp.Groups.Count > 0 && int.TryParse(exp.Groups[0], out int amount) ? amount : null;
         _lastExpWasRoomSpellKill = true;
         _roomSpellKillsCounted++;
-        _lastRoomSpellExp = (DateTimeOffset.Now,
+        _lastRoomSpellExp = (_now(),
             $"counted: kill under room spell '{spell}' ({_expGainsSinceRosterRead} of {listed} listed)");
         _log?.Combat(LogCategory,
             $"kill under room spell '{spell}' — counted on its exp line ({_expGainsSinceRosterRead} of {listed} listed)");
@@ -5150,7 +5149,7 @@ public sealed partial class CombatManager : IDisposable
     // counted before. Logged so a kill count that looks short can be traced.
     private void LeaveRoomSpellExp(string what)
     {
-        _lastRoomSpellExp = (DateTimeOffset.Now, $"left to its *Combat Off*: {what}");
+        _lastRoomSpellExp = (_now(), $"left to its *Combat Off*: {what}");
         _log?.Combat(LogCategory, $"{what} — not counted as a kill here; left to its *Combat Off*");
     }
 
@@ -5207,7 +5206,7 @@ public sealed partial class CombatManager : IDisposable
     // where no Off ever lands.
     private void ForceAoeMultiKillReparse(string context)
     {
-        _lastDeathAt = DateTimeOffset.Now;
+        _lastDeathAt = _now();
         _attackSentSinceDeath = false;
         _currentTarget = null;
         _castingSpellTarget = null;
@@ -5266,12 +5265,12 @@ public sealed partial class CombatManager : IDisposable
     private void DropTargetForInferredKill(string reason)
     {
         _lastExpGainAt = DateTimeOffset.MinValue;   // consume — a later non-kill Off must not reuse it
-        _lastDeathAt = DateTimeOffset.Now;
+        _lastDeathAt = _now();
         _attackSentSinceDeath = false;
         // Hand the corpse's identity to the Off-path roster removal (NoteUnattributedDeath):
         // we're nulling _currentTarget here, so without this it can't tell which mob to drop.
         _inferredKillPendingRemoval = _currentTarget;
-        _inferredKillPendingAt = DateTimeOffset.Now;
+        _inferredKillPendingAt = _now();
         _currentTarget = null;
         _castingSpellTarget = null;
         _spellChooser.ResetForNewTarget();
@@ -5333,8 +5332,8 @@ public sealed partial class CombatManager : IDisposable
             // share-exp landing beside one — from being misread as a kill (that path
             // resumes below).
             bool expExplainsOff = _currentTarget is not null
-                && DateTimeOffset.Now - _lastExpGainAt < ExpKillWindow
-                && DateTimeOffset.Now - _betweenRoundCastAt >= CastInterruptResumeWindow;
+                && _now() - _lastExpGainAt < ExpKillWindow
+                && _now() - _betweenRoundCastAt >= CastInterruptResumeWindow;
             // Nor is it a kill's when it answers a command (CommandOffProbe): the exp
             // is then an earlier kill's, a room spell's that left this target standing,
             // and the Off is the one our attack on that survivor prints ahead of its
@@ -5400,12 +5399,12 @@ public sealed partial class CombatManager : IDisposable
             // weapon- and spell-mode resumes below, so a capture shows why a resume
             // did or didn't fire instead of leaving it invisible. Combat-level, so
             // it only surfaces with combat diagnostics on.
-            if (DateTimeOffset.Now - _betweenRoundCastAt < CastInterruptResumeWindow)
+            if (_now() - _betweenRoundCastAt < CastInterruptResumeWindow)
                 _log?.Combat(LogCategory,
-                    $"*Combat Off* in resume window ({(DateTimeOffset.Now - _betweenRoundCastAt).TotalMilliseconds:F0}ms "
+                    $"*Combat Off* in resume window ({(_now() - _betweenRoundCastAt).TotalMilliseconds:F0}ms "
                     + $"after cast): spellTarget={_castingSpellTarget ?? "(none)"}, "
                     + $"engageable={_classifier.Current is { } cc && HasEngageable(cc)}, "
-                    + $"sinceDeath={(DateTimeOffset.Now - _lastDeathAt).TotalMilliseconds:F0}ms, "
+                    + $"sinceDeath={(_now() - _lastDeathAt).TotalMilliseconds:F0}ms, "
                     + $"castAtOrAfterLastSwing={_lastAttackSentAt <= _betweenRoundCastAt}, "
                     + $"spellResumeAlreadyFired={_betweenRoundCastAt == _lastSpellResumeForBetweenRoundCastAt}");
             // The Off nothing of ours explains: no cast in the window, no kill (that
@@ -5415,25 +5414,25 @@ public sealed partial class CombatManager : IDisposable
             // pummel) prints this Off every round.
             else if (_offEndedAnsweredAttack
                 && Fighting()
-                && DateTimeOffset.Now - _unexplainedOffLoggedAt > UnexplainedOffLogSpacing
+                && _now() - _unexplainedOffLoggedAt > UnexplainedOffLogSpacing
                 && _currentTarget is { } stillHere
                 && _classifier.Current is { } room
                 && HasEngageable(room))
             {
-                _unexplainedOffLoggedAt = DateTimeOffset.Now;
+                _unexplainedOffLoggedAt = _now();
                 _log?.Combat(LogCategory,
                     $"*Combat Off* with no cast of ours behind it and '{stillHere}' still in the room "
                     + "(a stun, an attack that stops after each strike) — re-attacking on the next combat line or round tick");
             }
 
             if (!suppressBetweenRoundResume
-                && DateTimeOffset.Now - _betweenRoundCastAt < CastInterruptResumeWindow
+                && _now() - _betweenRoundCastAt < CastInterruptResumeWindow
                 && _betweenRoundCastAt != _lastWeaponResumeForBetweenRoundCastAt
                 && _castingSpellTarget is null
                 && _classifier.Current is { } live
                 && HasEngageable(live))
             {
-                if (DateTimeOffset.Now - _lastDeathAt < DeathInterruptWindow
+                if (_now() - _lastDeathAt < DeathInterruptWindow
                     && !_attackSentSinceDeath)
                     _log?.Combat(LogCategory,
                         "between-round-cast resume suppressed — kill this burst; " +
@@ -5491,7 +5490,7 @@ public sealed partial class CombatManager : IDisposable
             bool survivorReadied = _currentTarget is { } curT
                 && string.Equals(curT, _castingSpellTarget, StringComparison.OrdinalIgnoreCase);
             bool manualPaced = _lastBetweenRoundCastManual
-                && DateTimeOffset.Now - _lastManualCastResumeAt < ManualResumePacing;
+                && _now() - _lastManualCastResumeAt < ManualResumePacing;
             // The attack already fired this round if our last attack went out AFTER the
             // between-round cast. That's the pre-attack-debuff-then-attack sequence
             // (isto → hsto same round, both 0-energy debuff + real attack): the attack's
@@ -5503,12 +5502,12 @@ public sealed partial class CombatManager : IDisposable
             // _lastAttackSentAt <= _betweenRoundCastAt and the resume still runs.
             bool attackAlreadyFiredThisRound = _lastAttackSentAt > _betweenRoundCastAt;
             if (!suppressBetweenRoundResume
-                && DateTimeOffset.Now - _betweenRoundCastAt < CastInterruptResumeWindow
+                && _now() - _betweenRoundCastAt < CastInterruptResumeWindow
                 && _betweenRoundCastAt != _lastSpellResumeForBetweenRoundCastAt
                 && !attackAlreadyFiredThisRound
                 && !manualPaced
                 && _castingSpellTarget is { } spellTarget
-                && (DateTimeOffset.Now - _lastDeathAt >= DeathInterruptWindow || survivorReadied)
+                && (_now() - _lastDeathAt >= DeathInterruptWindow || survivorReadied)
                 && _classifier.Current is { } liveSpell
                 && TargetPresent(liveSpell, spellTarget)
                 && TryBuildCandidate(liveSpell, spellTarget) is { } spellCand)
@@ -5595,7 +5594,7 @@ public sealed partial class CombatManager : IDisposable
         if (_castingSpellTarget is not null) return;   // spell mode owns its re-cast
         if (_wireSender is null) return;
 
-        DateTimeOffset now = DateTimeOffset.Now;
+        DateTimeOffset now = _now();
         if (HoldGuardRetryForUnjudgedKill(priority, now)) return;
         if (now - _lastAttackSentAt < ResumeAfterAttackGuard) return;
         if (now - _lastInterruptResumeAt < ResumePacing) return;
@@ -5621,7 +5620,7 @@ public sealed partial class CombatManager : IDisposable
             if (string.Equals(e.RawName, priority, StringComparison.OrdinalIgnoreCase)
                 || string.Equals(e.ResolvedName, priority, StringComparison.OrdinalIgnoreCase))
             {
-                _lastGuardRosterCheck = (DateTimeOffset.Now, $"'{priority}' still listed — block kept");
+                _lastGuardRosterCheck = (_now(), $"'{priority}' still listed — block kept");
                 return;
             }
         }
@@ -5631,7 +5630,7 @@ public sealed partial class CombatManager : IDisposable
     private void DropGuardBlock(string priority, string why)
     {
         _guardBlockedTarget = null;
-        _lastGuardRosterCheck = (DateTimeOffset.Now, $"'{priority}' {why} — block dropped");
+        _lastGuardRosterCheck = (_now(), $"'{priority}' {why} — block dropped");
         _log?.Combat(LogCategory, $"guarded priority '{priority}' {why} — clearing guard block");
     }
 
@@ -5656,7 +5655,7 @@ public sealed partial class CombatManager : IDisposable
         if (_disposed || _guardBlockedTarget is not { } priority) return;
         if (_guardFightKillAt != killAt || killAt <= _rosterReadAt) return;
         _guardFightKillAt = DateTimeOffset.MinValue;
-        _lastGuardRosterCheck = (DateTimeOffset.Now,
+        _lastGuardRosterCheck = (_now(),
             $"no room read within {GuardKillJudgeWait.TotalSeconds:F0}s of the kill at {killAt:HH:mm:ss.fff} — block kept, retried");
         _log?.Combat(LogCategory,
             $"no room read came within {GuardKillJudgeWait.TotalSeconds:F0}s of the kill — guard retry at '{priority}'");
@@ -5912,7 +5911,7 @@ public sealed partial class CombatManager : IDisposable
         // Stamp every real swing unconditionally — the interrupt-resume guard
         // reads this even when engagement is already confirmed (the death→re-
         // observe re-engage happens mid-fight, long after Engaged).
-        _lastAttackSentAt = DateTimeOffset.Now;
+        _lastAttackSentAt = _now();
         // The fight is underway in this room — closes the AoE debuff's "first round
         // only" window (the pre-attack debuff fires BEFORE this in the same dispatch,
         // so it still gets its entry shot).
@@ -5926,7 +5925,7 @@ public sealed partial class CombatManager : IDisposable
         _spellAttackOwed = false;
         _engagedSinceLastAttack = false;
         if (_engageConfirmed) return;
-        _awaitingEngageSince ??= DateTimeOffset.Now;
+        _awaitingEngageSince ??= _now();
     }
 
     // Engage-verification safety net, run on every combat tick. If we sent an
@@ -5941,7 +5940,7 @@ public sealed partial class CombatManager : IDisposable
         if (_awaitingEngageSince is not { } since) return;
         if (!Fighting()) { _awaitingEngageSince = null; return; }
         if (_engageConfirmed) { _awaitingEngageSince = null; return; }
-        if (DateTimeOffset.Now - since < EngageConfirmWindow) return;
+        if (_now() - since < EngageConfirmWindow) return;
 
         // Window elapsed with no server confirmation — the swing hit a
         // stale room view. Disarm regardless so we don't loop on the same

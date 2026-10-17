@@ -55,11 +55,15 @@ public sealed class CombatManagerSpellsTests
         public bool Sneaking { get; set; }
         public HashSet<int> SeeHidden { get; } = new();
 
-        // The combat manager's clock — Tick() advances it by a full
-        // round each call, matching TickEngine.CombatTickInterval (5s), so
-        // AlternationAdvanceMinGap sees genuine round-to-round elapsed time
-        // instead of the zero real elapsed time a synchronous test call has.
-        private DateTimeOffset _clock = DateTimeOffset.UtcNow;
+        // The one clock every component here reads: the combat manager, the
+        // classifier, the cast coordinator and the death watcher. Nothing in a
+        // test waits on real time. Tick() moves it a full round
+        // (TickEngine.CombatTickInterval, 5s), and each line fed in lands a
+        // millisecond after the one before, as the game's lines never share an
+        // instant; anything longer the test moves it by itself.
+        public ManualClock Clock { get; } = new();
+        public DateTimeOffset Now => Clock.Now;
+        private static readonly TimeSpan LineGap = TimeSpan.FromMilliseconds(1);
 
         // Models RoundDamageTracker's timer-driven RoundCount: a genuine round
         // boundary (Tick / TickFast) advances it; a premature same-round tick
@@ -92,17 +96,17 @@ public sealed class CombatManagerSpellsTests
         {
             _deferPost = deferPost;
             DefaultPatterns.Seed(Router);
-            Classifier = new RoomEntityClassifier(Router, Monsters, Players, Log);
+            Classifier = new RoomEntityClassifier(Router, Monsters, Players, Log, now: () => Clock.Now);
             if (wireDeathWatcher)
             {
-                Deaths = new MonsterDeathWatcher(Router, Log);
+                Deaths = new MonsterDeathWatcher(Router, Log, now: () => Clock.Now);
                 Deaths.MonsterDied += evt =>
                 {
                     DeathEvents.Add(evt);
                     if (evt.RoomSpellRoster is null) Combat!.NoteUnattributedDeath();
                 };
             }
-            Cast = new CastCoordinator(Router, Log);
+            Cast = new CastCoordinator(Router, Log, now: () => Clock.Now);
             Cast.SetWireSender(b => Sent.Add(b));
             Combat = new CombatManager(Router, Classifier, Monsters,
                 resolveOverlay: n => Overlays.TryGetValue(n, out MonsterOverlay? o)
@@ -114,7 +118,7 @@ public sealed class CombatManagerSpellsTests
                 post: a => { if (_deferPost) Posted.Add(a); else a(); },
                 log: Log,
                 resolveSpellByCode: c => SpellsByCode.TryGetValue(c, out KnownSpell s) ? s : null,
-                now: () => _clock);
+                now: () => Clock.Now);
             Combat.SetWireSender(b => Sent.Add(b));
             if (Deaths is not null) Combat.RoomSpellKill += Deaths.NoteRoomSpellKill;
             // Production counts MaxCasts off RoundDamageTracker.RoundCount; mirror it.
@@ -146,15 +150,21 @@ public sealed class CombatManagerSpellsTests
         // to the classifier's Current with Source=Arrival, the path RoomEntryWatcher
         // drives in production.
         public void Arrive(string name)
-            => Classifier.AppendArrivalEntity(
+        {
+            Clock.Advance(LineGap);
+            Classifier.AppendArrivalEntity(
                 Classifier.Classify(name),
                 rawWireLine: $"A {name} strides in from the west.");
+        }
 
         // A player walking into the room mid-fight.
         public void ArrivePlayer(string given)
-            => Classifier.AppendArrivalEntity(
+        {
+            Clock.Advance(LineGap);
+            Classifier.AppendArrivalEntity(
                 new RoomEntity(given, given, EntityKind.Player, MonsterNumber: null),
                 rawWireLine: $"{given} walks into the room from the west.");
+        }
 
         public void SetOverlay(int monsterNumber, MonsterAttackPriority? priority = null,
                                MonsterRelationship? relationship = null)
@@ -185,13 +195,14 @@ public sealed class CombatManagerSpellsTests
         // TickSameRound()/TickFast() carry (they also bump _roundCount and drive
         // Cast/Combat's tick) — for tests exercising ConfirmedAttackCastCount's own
         // real-time grouping window directly.
-        public void AdvanceClock(TimeSpan by) => _clock += by;
+        public void AdvanceClock(TimeSpan by) => Clock.Advance(by);
 
         public void Feed(string line)
         {
+            Clock.Advance(LineGap);
             LineExtractor.EmittedLine emitted = new(
                 line, Array.Empty<CellAttributes>(),
-                DateTimeOffset.UtcNow, IsPromptLine: false);
+                Clock.Now, IsPromptLine: false);
             Router.Dispatch(emitted);
         }
 
@@ -199,16 +210,18 @@ public sealed class CombatManagerSpellsTests
         public void FeedMiss(string line)
         {
             CellAttributes cyan = CellAttributes.Default with { Foreground = TerminalColor.Indexed(6) };
+            Clock.Advance(LineGap);
             Router.Dispatch(new LineExtractor.EmittedLine(
                 line, Enumerable.Repeat(cyan, line.Length).ToArray(),
-                DateTimeOffset.UtcNow, IsPromptLine: false));
+                Clock.Now, IsPromptLine: false));
         }
 
         // A command as the server echoes it: the prompt row, then its trailing
         // text as a second line carrying the same timestamp.
         public void FeedEchoed(string command)
         {
-            DateTimeOffset at = DateTimeOffset.UtcNow;
+            Clock.Advance(LineGap);
+            DateTimeOffset at = Clock.Now;
             Router.Dispatch(new LineExtractor.EmittedLine(
                 "[HP=724/MA=343]:", Array.Empty<CellAttributes>(), at, IsPromptLine: true));
             Router.Dispatch(new LineExtractor.EmittedLine(
@@ -234,7 +247,7 @@ public sealed class CombatManagerSpellsTests
         /// AlternationAdvanceMinGap doesn't reject this as a same-round re-fire.</summary>
         public void Tick()
         {
-            _clock += TimeSpan.FromSeconds(5);
+            Clock.Advance(TimeSpan.FromSeconds(5));
             _roundCount++;   // a genuine round boundary closed (mirrors RoundDamage)
             Cast.OnCombatTick();
             Combat.OnCombatTick();
@@ -246,7 +259,7 @@ public sealed class CombatManagerSpellsTests
         // MaxCasts tally gate should reject it as not a real round boundary.
         public void TickSameRound()
         {
-            _clock += TimeSpan.FromSeconds(1);
+            Clock.Advance(TimeSpan.FromSeconds(1));
             Cast.OnCombatTick();
             Combat.OnCombatTick();
         }
@@ -256,7 +269,7 @@ public sealed class CombatManagerSpellsTests
         // solo fight must still tally this as round 1, not reject it as premature.
         public void TickFast()
         {
-            _clock += TimeSpan.FromSeconds(3);
+            Clock.Advance(TimeSpan.FromSeconds(3));
             _roundCount++;   // a genuine (fast) round boundary — must tally, not reject
             Cast.OnCombatTick();
             Combat.OnCombatTick();
@@ -352,6 +365,7 @@ public sealed class CombatManagerSpellsTests
         // One resolvable mob → below MinEnemies=2 → single-target attack spell.
         h.Feed("Also here: giant rat.");
         Assert.Equal("nuke giant rat", h.LastSent);
+        h.Feed("*Combat Engaged*");
 
         // A second mob arrives whose number we can't resolve. The "already engaged"
         // guard blocks a re-dispatch here (giant rat still current), so the switch
@@ -771,7 +785,7 @@ public sealed class CombatManagerSpellsTests
         h.Settings.AreaDebuffSpell = new CombatSpellSlot { SpellName = "isto", MinEnemies = 2, MaxCastsPerRoom = 1 };
         h.AddMonster(2739, "brute zombie");
         bool moving = false;
-        DateTimeOffset stepSentAt = DateTimeOffset.UtcNow;
+        DateTimeOffset stepSentAt = h.Now;
         h.Combat.SetMoveInFlightProbe(() => moving, () => stepSentAt);
         land = () => moving = false;
 
@@ -980,7 +994,7 @@ public sealed class CombatManagerSpellsTests
         using Harness h = new();
         h.AddMonster(1, "big gravedigger");
         h.SetOverlay(1, relationship: MonsterRelationship.Friend);
-        DateTimeOffset stepSentAt = DateTimeOffset.UtcNow;
+        DateTimeOffset stepSentAt = h.Now;
         h.Combat.SetMoveInFlightProbe(() => true, () => stepSentAt);
 
         h.Feed("Also here: big gravedigger.");
@@ -1002,7 +1016,7 @@ public sealed class CombatManagerSpellsTests
     {
         using Harness h = new();
         h.AddMonster(1, "giant rat");
-        DateTimeOffset stepSentAt = DateTimeOffset.UtcNow;
+        DateTimeOffset stepSentAt = h.Now;
         h.Combat.SetMoveInFlightProbe(() => true, () => stepSentAt);
 
         h.Arrive("giant rat");
@@ -1080,6 +1094,7 @@ public sealed class CombatManagerSpellsTests
 
         h.Feed("Also here: giant rat.");            // engage → lbol announced (spell mode)
         Assert.Equal("lbol giant rat", h.LastSent);
+        h.Feed("*Combat Engaged*");
 
         // Round 1 tallies lbol to its cap and DECIDES the cap-switch to mmis — but the
         // dispatch is deferred (queued), not run inline.
@@ -1111,6 +1126,7 @@ public sealed class CombatManagerSpellsTests
 
         h.Feed("Also here: giant rat.");
         Assert.Equal("lbol giant rat", h.LastSent);
+        h.Feed("*Combat Engaged*");
 
         h.Tick();                                   // cap-switch to mmis, deferred
         h.DrainPosted();                            // no kill → runs → dispatches the alternate
@@ -1135,6 +1151,7 @@ public sealed class CombatManagerSpellsTests
 
         h.Feed("Also here: giant rat.");
         Assert.Equal("harm giant rat", h.LastSent);   // round 0 = spell phase
+        h.Feed("*Combat Engaged*");
 
         // Round 1 flips to physical — the continuation is deferred, not dispatched inline.
         h.Tick();
@@ -1163,6 +1180,7 @@ public sealed class CombatManagerSpellsTests
 
         h.Feed("Also here: giant rat.");
         Assert.Equal("harm giant rat", h.LastSent);
+        h.Feed("*Combat Engaged*");
 
         h.Tick();
         Assert.Single(h.Posted);
@@ -1186,6 +1204,7 @@ public sealed class CombatManagerSpellsTests
 
         h.Feed("Also here: giant rat.");
         Assert.Equal("lbol giant rat", h.LastSent);
+        h.Feed("*Combat Engaged*");
 
         h.Tick();                       // cap-switch to mmis, deferred (queued)
         Assert.Single(h.Posted);        // one dispatch armed
@@ -1212,6 +1231,7 @@ public sealed class CombatManagerSpellsTests
 
         h.Feed("Also here: giant rat.");
         Assert.Equal("lbol giant rat", h.LastSent);
+        h.Feed("*Combat Engaged*");
 
         h.TickSameRound();                                   // premature — no round closed yet
         Assert.Equal("lbol giant rat", h.LastSent);          // still lbol; not capped
@@ -1281,7 +1301,7 @@ public sealed class CombatManagerSpellsTests
 
         // Second party heal a beat later — well within ResumePacing (2.5s), distinct
         // cast stamp — must ALSO re-attack, not sit paced out for the round.
-        System.Threading.Thread.Sleep(2);   // distinct _betweenRoundCastAt, still << 2.5s
+        h.AdvanceClock(TimeSpan.FromMilliseconds(500));   // a beat later, well inside 2.5s
         h.Combat.NoteBetweenRoundCast();
         h.Feed("*Combat Off*");
         Assert.True(h.Sent.Count > afterFirstResume, "second heal within the pacing window must still re-attack");
@@ -1355,6 +1375,7 @@ public sealed class CombatManagerSpellsTests
 
         h.Feed("Also here: giant rat.");
         Assert.Equal("hamm giant rat", h.LastSent);   // engage → hamm (cast round 1 pending)
+        h.Feed("*Combat Engaged*");
 
         // Round 1: the real round-boundary tick tallies once; the mob's counter-swing
         // trips a second tick the same round, which the gate must reject. Cap (2) is
@@ -1389,6 +1410,7 @@ public sealed class CombatManagerSpellsTests
 
         h.Feed("Also here: rotworm, thin leprous outcast.");
         Assert.Equal("lbol rotworm", h.LastSent);          // engage → lbol (round 0, not yet fired)
+        h.Feed("*Combat Engaged*");
 
         // A second mob's swing trips a combat tick a beat after the engage — far short of a
         // real round. The gate must reject it: lbol hasn't fired, so no tally, no swap.
@@ -1784,6 +1806,7 @@ public sealed class CombatManagerSpellsTests
         // Round 0 (engage) — physical phase.
         h.Feed("Also here: giant rat.");
         Assert.Equal("a giant rat", h.LastSent);
+        h.Feed("*Combat Engaged*");
 
         // Round 1 — still physical, mid-phase.
         h.Tick();
@@ -1792,6 +1815,7 @@ public sealed class CombatManagerSpellsTests
         h.Combat.NoteBetweenRoundCast();
         h.Feed("*Combat Off*");
         Assert.Equal("a giant rat", h.LastSent);   // resumed with a weapon swing, still physical
+        h.Feed("*Combat Engaged*");
 
         // Rounds 2–3 — the phase boundary must land on schedule (round 3),
         // exactly as if the interrupt never happened. A phase-counter reset
@@ -2043,6 +2067,7 @@ public sealed class CombatManagerSpellsTests
         h.Ma = 30;                              // below the 50 per-cast floor
         h.Feed("Also here: giant rat.");        // engage → harm can't fire → weapon
         Assert.DoesNotContain("harm giant rat", h.AllSent);
+        h.Feed("*Combat Engaged*");
 
         h.Ma = 80;                              // mana regenerates back over the floor
         h.Tick();                               // round boundary → weapon→spell re-climb
@@ -2061,6 +2086,7 @@ public sealed class CombatManagerSpellsTests
         h.AddMonster(1, "giant rat");
 
         h.Feed("Also here: giant rat.");        // engage → "harm giant rat"
+        h.Feed("*Combat Engaged*");
         int afterEngage = h.Sent.Count;
 
         // The user takes this round: a hand-typed physical attack (no engine echo claim
@@ -2551,6 +2577,7 @@ public sealed class CombatManagerSpellsTests
         h.AddMonster(1, "giant rat");
 
         h.Feed("Also here: giant rat.");      // announce — round 0 (fires next tick), not counted
+        h.Feed("*Combat Engaged*");
         h.Tick();                             // fired round 1 of 2 — still repeating, no send
         Assert.Equal("blast", h.LastSent);
         h.Tick();                             // fired round 2 of 2 → cap reached → switch to weapon NOW
@@ -2575,6 +2602,7 @@ public sealed class CombatManagerSpellsTests
 
         h.Feed("Also here: giant rat.");        // announce harm
         Assert.Equal("harm giant rat", h.LastSent);
+        h.Feed("*Combat Engaged*");
         int sentAtKill = h.Sent.Count;
 
         h.Feed("The giant rat dies.");
@@ -2595,6 +2623,7 @@ public sealed class CombatManagerSpellsTests
         h.AddMonster(2, "orc");
 
         h.Feed("Also here: giant rat.");        // announce harm at the rat
+        h.Feed("*Combat Engaged*");
         h.Feed("The giant rat dies.");          // kill
         h.Feed("Also here: orc.");              // next monster
         h.Tick();                               // re-announce at the survivor
@@ -2638,6 +2667,7 @@ public sealed class CombatManagerSpellsTests
 
         h.Feed("Also here: giant rat.");
         Assert.Equal("lbol giant rat", h.LastSent);
+        h.Feed("*Combat Engaged*");
         int sentAtKill = h.Sent.Count;
 
         h.Feed("You gain 100 experience.");
@@ -2665,6 +2695,7 @@ public sealed class CombatManagerSpellsTests
         h.Feed("Also here: giant rat.");        // announce lbol — round 0, not counted
         Assert.Equal("lbol giant rat", h.LastSent);
         Assert.DoesNotContain("mmis giant rat", h.AllSent);   // not flipped the round it's announced
+        h.Feed("*Combat Engaged*");
 
         h.Tick();                               // lbol's one fired round → cap → cascade to alt
         Assert.Equal("mmis giant rat", h.LastSent);
@@ -2686,6 +2717,7 @@ public sealed class CombatManagerSpellsTests
 
         h.Feed("Also here: giant rat.");        // announce vamp — round 0 (fires next tick)
         Assert.Equal("vamp giant rat", h.LastSent);
+        h.Feed("*Combat Engaged*");
 
         h.Tick();                               // vamp's one fired round → cap → switch NOW
         Assert.Equal("mmis giant rat", h.LastSent);
@@ -2706,6 +2738,7 @@ public sealed class CombatManagerSpellsTests
         h.AddMonster(2, "orc");
 
         h.Feed("Also here: giant rat.");        // lbol at the rat
+        h.Feed("*Combat Engaged*");
         h.Tick();                               // lbol's fired round → cap → cascade to mmis
         Assert.Equal("mmis giant rat", h.LastSent);
 
@@ -2732,6 +2765,7 @@ public sealed class CombatManagerSpellsTests
         h.Ma = 50;
         h.Feed("Also here: giant rat.");      // cast (50 >= 30)
         Assert.Equal("blast", h.LastSent);
+        h.Feed("*Combat Engaged*");
 
         h.Ma = 20;                            // now below the gate
         h.Tick();                             // mana too low → weapon
@@ -2758,6 +2792,7 @@ public sealed class CombatManagerSpellsTests
         h.Feed("Also here: giant rat.");
         Assert.Contains("curse", h.AllSent);
         Assert.Equal("blast", h.LastSent);
+        h.Feed("*Combat Engaged*");
 
         // The debuff's own *Combat Off* must NOT fire the attack a SECOND time —
         // the immediate dispatch already sent it this round.
@@ -3407,10 +3442,9 @@ public sealed class CombatManagerSpellsTests
 
         // Three are left and the room is read again: the spell still covers them.
         h.Feed("Also here: brute zombie, brute zombie, brute zombie.");
-        // The re-attack after a *Combat Off* stands behind two real-time guards (an
-        // attack sent in the last 1.5 s, a kill in the last 2 s), so the next round
-        // is let come in real time.
-        Thread.Sleep(2100);
+        // The re-attack after a *Combat Off* stands behind two guards (an attack
+        // sent in the last 1.5 s, a kill in the last 2 s); the next round, five
+        // seconds on, is past both.
         h.Tick();
         h.Feed("The brute zombie swings at you with its arm!");
 
@@ -4026,6 +4060,7 @@ public sealed class CombatManagerSpellsTests
 
         h.Feed("Also here: acid slime.");                 // primary attack spell
         Assert.Equal("firebolt acid slime", h.LastSent);
+        h.Feed("*Combat Engaged*");
 
         // A round passes (firebolt repeats server-side; its result comes back next
         // round). The immunity line then swaps to the alternate SPELL *on the same
@@ -4085,6 +4120,7 @@ public sealed class CombatManagerSpellsTests
         h.AddMonster(1, "acid slime");
 
         h.Feed("Also here: acid slime.");
+        h.Feed("*Combat Engaged*");
         h.Tick();
         h.Feed("Your spell has no effect on acid slime.");   // firebolt immune → icebolt
         Assert.Equal("icebolt acid slime", h.LastSent);
@@ -4103,6 +4139,7 @@ public sealed class CombatManagerSpellsTests
 
         h.Feed("Also here: acid slime.");                 // multi-attack room spell
         Assert.Equal("blast", h.LastSent);
+        h.Feed("*Combat Engaged*");
 
         // One immune mob doesn't mean the room spell isn't damaging the
         // rest — multi-attack is never marked immune.
@@ -4129,6 +4166,7 @@ public sealed class CombatManagerSpellsTests
         // Engage — round 0 = spell phase.
         h.Feed("Also here: giant rat.");
         Assert.Equal("harm giant rat", h.LastSent);
+        h.Feed("*Combat Engaged*");
 
         // Round 1 — physical (the weapon-phase flip the fixed heartbeat can't do).
         h.Tick();
@@ -4154,6 +4192,7 @@ public sealed class CombatManagerSpellsTests
         // Engage — round 0 = physical phase.
         h.Feed("Also here: giant rat.");
         Assert.Equal("a giant rat", h.LastSent);
+        h.Feed("*Combat Engaged*");
 
         // Round 1 — spell.
         h.Tick();
@@ -4180,6 +4219,7 @@ public sealed class CombatManagerSpellsTests
         // Engage — round 0 = physical phase.
         h.Feed("Also here: giant rat.");
         Assert.Equal("a giant rat", h.LastSent);
+        h.Feed("*Combat Engaged*");
 
         // A genuine round boundary — round 1 flips to spell.
         h.Tick();
@@ -4235,6 +4275,7 @@ public sealed class CombatManagerSpellsTests
         // Round 0 (engage) — physical phase.
         h.Feed("Also here: giant rat.");
         Assert.Equal("a giant rat", h.LastSent);
+        h.Feed("*Combat Engaged*");
         int afterEngage = h.Sent.Count;
 
         // Round 1 — still physical (1 < 2 rounds configured). No resend: the
@@ -4269,6 +4310,7 @@ public sealed class CombatManagerSpellsTests
 
         h.Feed("Also here: giant rat.");
         Assert.Equal("a giant rat", h.LastSent);       // round 0 — physical (default open)
+        h.Feed("*Combat Engaged*");
 
         h.Tick();
         Assert.Equal("harm giant rat", h.LastSent);    // round 1 — spell
@@ -4294,6 +4336,7 @@ public sealed class CombatManagerSpellsTests
         // Round 0 (engage) — opens on the spell phase.
         h.Feed("Also here: giant rat.");
         Assert.Equal("harm giant rat", h.LastSent);
+        h.Feed("*Combat Engaged*");
 
         // Round 1 — phase boundary: switches to physical.
         h.Tick();

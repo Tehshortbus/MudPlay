@@ -1091,7 +1091,7 @@ public sealed partial class CombatManager
             // double-attack (report paradigm-20260903-113054). The name / TargetPresent
             // guard below can't catch it because the survivor shares the killed mob's
             // RawName. Skip (mirrors the resume path's death-interrupt guard).
-            if (DateTimeOffset.Now - _lastDeathAt < DeathInterruptWindow && _attackSentSinceDeath)
+            if (_now() - _lastDeathAt < DeathInterruptWindow && _attackSentSinceDeath)
             {
                 _log?.Combat(LogCategory,
                     $"spell {reason} {from ?? "?"}→{to ?? "?"} at '{target}' skipped — a kill re-picked a "
@@ -1193,7 +1193,7 @@ public sealed partial class CombatManager
     private void LogSpellReannounce(string reason, string? from, string? to, string target, RoomEntitiesObservation obs)
     {
         if (_log is null) return;
-        DateTimeOffset now = DateTimeOffset.Now;
+        DateTimeOffset now = _now();
         _log.Combat(LogCategory,
             $"spell {reason} {from ?? "?"}→{to ?? "?"} at '{target}' — "
             + $"sinceAttack={(now - _lastAttackSentAt).TotalMilliseconds:F0}ms, "
@@ -1343,7 +1343,7 @@ public sealed partial class CombatManager
     // _suppressResumeForBetweenRoundStamp so the debuff's Off can't fire it a second time.
     private void DeferPostDebuffAttack(CombatSettings settings, string target)
     {
-        DateTimeOffset debuffAt = DateTimeOffset.Now;
+        DateTimeOffset debuffAt = _now();
         void Dispatch()
         {
             if (_disposed || !Fighting()) return;
@@ -1408,7 +1408,7 @@ public sealed partial class CombatManager
         // so within the death-interrupt window after an inferred kill, and before
         // an attack has confirmed a live survivor, _currentTarget may be a corpse
         // the roster hasn't dropped yet. Hold rather than dispatch a debuff at it.
-        if (DateTimeOffset.Now - _lastDeathAt < DeathInterruptWindow && !_attackSentSinceDeath)
+        if (_now() - _lastDeathAt < DeathInterruptWindow && !_attackSentSinceDeath)
             return null;
 
         CombatSettings settings = _readSettings();
