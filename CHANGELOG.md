@@ -1,5 +1,11 @@
 # Version history
 
+## 3.185.48
+
+- Expanding a quest in the Player Workshop no longer crashes the client
+- Quest-step and chat links are now hot-text in the line, same look and click; no longer reachable with Tab
+- bug reports addressed: Crash-20261024-150744, Crash-20261024-150914
+
 ## 3.185.46
 
 - Four starter GOTOs pointing at the wrong map corrected, existing favourites fixed on update

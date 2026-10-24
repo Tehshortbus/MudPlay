@@ -2,17 +2,22 @@ using System.Collections.Generic;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Documents;
+using MudPlay.Controls;
 using MudPlay.ViewModels.CharacterWorkshop;
 
 namespace MudPlay.Views.CharacterWorkshop;
 
 // Attached behaviour that renders a quest step's QuestStepSegmentViewModel list
 // into a TextBlock's inline runs: plain segments become text Runs (so the line
-// still wraps at word boundaries) and link segments become an inline, underlined
-// hot-text button wired to the segment's command (a walk to a map/room, or a
-// command typed at the game). Bind SegmentsProperty in XAML; the handler rebuilds the inlines whenever the bound list changes.
+// still wraps at word boundaries) and link segments become underlined LinkRuns
+// wired to the segment's command (a walk to a map/room, or a command typed at
+// the game). Bind SegmentsProperty in XAML; the handler rebuilds the inlines whenever the bound list changes.
 public static class QuestStepInlines
 {
+    // Narrow no-break space either side of a link: a few pixels of breathing room
+    // around the hot-text without adding a wrap point.
+    private const string LinkGap = "\u202F";
+
     public static readonly AttachedProperty<IReadOnlyList<QuestStepSegmentViewModel>?> SegmentsProperty =
         AvaloniaProperty.RegisterAttached<TextBlock, IReadOnlyList<QuestStepSegmentViewModel>?>(
             "Segments", typeof(QuestStepInlines));
@@ -32,19 +37,19 @@ public static class QuestStepInlines
         if (e.NewValue is IReadOnlyList<QuestStepSegmentViewModel> segments)
             foreach (QuestStepSegmentViewModel seg in segments)
             {
-                if (!seg.IsLink) { inlines.Add(new Run(seg.Text)); continue; }
+                if (seg.Command is not { } command) { inlines.Add(new Run(seg.Text)); continue; }
 
                 // Walk links read cyan (MapLinkText); send-command links read green
                 // (CmdLinkText) so a "walks me there" token is visually distinct from
-                // a "types this at the game" one. Both share the flat MapLink chrome.
-                var linkText = new TextBlock { Text = seg.Text };
-                linkText.Classes.Add(seg.Kind == QuestStepLinkKind.Send ? "CmdLinkText" : "MapLinkText");
-                inlines.Add(new InlineUIContainer(new Button
+                // a "types this at the game" one.
+                var link = new LinkRun(seg.Text, () =>
                 {
-                    Classes = { "MapLink" },
-                    Command = seg.Command,
-                    Content = linkText,
-                }));
+                    if (command.CanExecute(null)) command.Execute(null);
+                });
+                link.Classes.Add(seg.Kind == QuestStepLinkKind.Send ? "CmdLinkText" : "MapLinkText");
+                inlines.Add(new Run(LinkGap));
+                inlines.Add(link);
+                inlines.Add(new Run(LinkGap));
             }
         target.Inlines = inlines;
     }

@@ -8,6 +8,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
+using MudPlay.Controls;
 using MudPlay.Game.Emotes;
 using MudPlay.Services;
 
@@ -16,7 +17,7 @@ namespace MudPlay.Views;
 // Attached behaviour that renders a conversation message into a TextBlock's inline
 // runs with clickable web links: plain spans stay text Runs (so the line still
 // wraps) and http/https URLs become
-// underlined hot-text that opens in the OS default browser via ShellLaunch.OpenUrl.
+// underlined LinkRuns that open in the OS default browser via ShellLaunch.OpenUrl.
 // Bind MessageProperty in XAML instead of Text; the handler rebuilds the inlines
 // whenever the text changes. Mirrors the CharacterWorkshop QuestStepInlines pattern.
 public static class ConversationMessageInlines
@@ -195,19 +196,13 @@ public static class ConversationMessageInlines
         return segments;
     }
 
-    private static InlineUIContainer LinkInline(string url)
+    private static LinkRun LinkInline(string url)
     {
         // Font is left to inherit from the host TextBlock so the link
         // tracks the user's message font size / family; only colour + underline
         // come from the ChatLinkText style.
-        var button = new Button
-        {
-            Classes = { "ChatLink" },
-            Content = new TextBlock { Text = url, Classes = { "ChatLinkText" } },
-            VerticalAlignment = VerticalAlignment.Center,
-            [ToolTip.TipProperty] = url,
-        };
-        button.Click += (_, _) => ShellLaunch.OpenUrl(url);
-        return new InlineUIContainer(button);
+        var link = new LinkRun(url, () => ShellLaunch.OpenUrl(url), tip: url);
+        link.Classes.Add("ChatLinkText");
+        return link;
     }
 }
