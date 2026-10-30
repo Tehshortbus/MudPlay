@@ -15,6 +15,11 @@ namespace MudPlay.ViewModels.CharacterWorkshop;
 // labels both surfaces render. Pure functions over the active GameDataCache; no state.
 internal static partial class QuestTextFormatter
 {
+    // The title a crawled quest is shown under: its name (QuestStore.DisplayName),
+    // else the auto-draft title.
+    public static string Title(QuestStore quests, CrawledQuest q) =>
+        quests.DisplayName(q.Flag, q.Step, q.StepRangeStart) is { Length: > 0 } name ? name : FallbackTitle(q);
+
     // Auto-draft title for a quest when the user hasn't named it: the flag's ability
     // name for a single-part quest; for a multi-part band, the flag's base name (its
     // trailing "Quest" dropped) plus the 1-based band number — e.g. "Good 1" from the

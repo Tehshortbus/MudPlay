@@ -284,7 +284,8 @@ public sealed partial class GmcpIntegration
         return $"Contract: {State.ServerContract ?? "none"}; boot: {State.Boot ?? "none"}; session: {State.InSession}; "
             + $"room: {State.CurrentRoom ?? "none"}\n"
             + $"Item cards: {State.ItemCards.Count}; current usability responses: {State.ItemUsability.Count}; "
-            + $"communication authority: {State.OwnsCommunication}\n{DescribeFallback()}\n{modes}";
+            + $"communication authority: {State.OwnsCommunication}; realm quest names: {_quests?.ServerNames.Count ?? 0}\n"
+            + $"{DescribeFallback()}\n{modes}";
     }
 
     // Raised before the text's list is written (SpellListParser.Commit), so a server

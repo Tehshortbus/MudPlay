@@ -1,6 +1,6 @@
 # GMCP replay fixtures
 
-The milestone-1 synthetic sequences come from Anomaly contract 1.0.0 (schema commit `0e9ac9f`, including nullable monster level). Milestone 2 embeds the tagged `contract-v1.1.0` schemas and examples, plus synthetic and captured `13-milestone2` recordings (server `b8fdb38`). They exercise the client and are not evidence of server correctness. Captured recordings will replace matching replay inputs when the isolated test host supplies them. Preserve capture headers and raw bytes when importing captures.
+The milestone-1 synthetic sequences come from Anomaly contract 1.0.0 (schema commit `0e9ac9f`, including nullable monster level). Milestone 2 embeds the tagged `contract-v1.1.0` schemas and examples, plus synthetic and captured `13-milestone2` recordings (server `b8fdb38`). They exercise the client and are not evidence of server correctness. Contract 1.2.0 (proposed) adds the `Anomaly.Quests.Names` schema, its valid and invalid examples, and the synthetic `15-quest-names` recording; no capture exists yet. Captured recordings will replace matching replay inputs when the isolated test host supplies them. Preserve capture headers and raw bytes when importing captures.
 
 `Captured/` contains server captures for client replay. Client-to-server text is omitted so login credentials do not enter the public repository; server frames, GMCP raw bytes, headers and build identifiers are preserved. The full evidence remains in the shared contract repository. These replays validate client handling; they do not replace active client/server runs.
 

@@ -1,0 +1,10 @@
+{
+  "pkg": "Anomaly.Quests.Names",
+  "expect": {"reject": "schema"},
+  "why": "every entry names its value range: from, and to (null for open-ended)",
+  "payload": {
+    "quests": [
+      {"flag": 3200, "name": "Kotar: The Price of an Open Gate"}
+    ]
+  }
+}

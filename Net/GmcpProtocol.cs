@@ -7,13 +7,13 @@ namespace MudPlay.Net;
 // 201 and IAC SE with any 255 byte doubled. The body limits are the contract's.
 internal static class GmcpProtocol
 {
-    public const string ContractVersion = "1.1.0";
+    public const string ContractVersion = "1.2.0";
     public const int MaxOutgoingBodyBytes = 8192;
     public const int MaxIncomingBodyBytes = 1024 * 1024;
     public static readonly string[] Supports =
     [
         "Anomaly.Char 1", "Anomaly.Room 1", "Anomaly.Mob 1", "Anomaly.Items 1",
-        "Anomaly.Shop 1", "Anomaly.Spells 1", "Anomaly.Group 1", "Anomaly.Comm 1",
+        "Anomaly.Shop 1", "Anomaly.Spells 1", "Anomaly.Group 1", "Anomaly.Comm 1", "Anomaly.Quests 1",
     ];
     private static readonly UTF8Encoding Utf8 = new(false, true);
 

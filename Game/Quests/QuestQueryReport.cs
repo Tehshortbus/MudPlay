@@ -52,7 +52,7 @@ public static class QuestQueryReport
         {
             IReadOnlyList<int> ordinals = MarkedOrdinals(flag, log, quests.StepsForFlag(flag));
             if (ordinals.Count == 0) continue;
-            string label = QuestNameResolver.Label(flag, UserName(flag, log, quests));
+            string label = QuestNameResolver.Label(flag, quests.FlagName(flag, log));
             parts.Add($"{label} {string.Join(", ", ordinals)}");
         }
 
@@ -69,15 +69,5 @@ public static class QuestQueryReport
         SortedSet<int> bands = new(knownSteps);
         foreach (QuestProgress p in log) if (p.Flag == flag) bands.Add(p.Step);
         return bands.ToList();
-    }
-
-    private static string UserName(int flag, IReadOnlyList<QuestProgress> log, QuestStore quests)
-    {
-        foreach (int step in quests.StepsForFlag(flag).Concat(log.Where(p => p.Flag == flag).Select(p => p.Step)))
-        {
-            string name = quests.Resolve(flag, step).Name;
-            if (!string.IsNullOrWhiteSpace(name)) return name;
-        }
-        return string.Empty;
     }
 }

@@ -19,17 +19,18 @@ public sealed partial class QuestFlagStepsViewModel : ObservableObject, IDialogV
     private readonly QuestFlagIndex _index;
     private readonly GameDataCache _cache;
     private readonly Func<IReadOnlyDictionary<int, IReadOnlyList<RoomKey>>?> _monsterRooms;
-    private readonly Func<int, int, string?> _questName;
+    private readonly Func<CrawledQuest, string?> _questName;
     private readonly LogService? _log;
     private readonly Action<string?> _activeSetHandler;
     private readonly Stack<int> _history = new();
 
-    // monsterRooms is where each monster stands; questName the user's name for a quest by
-    // flag and tier step (null or empty when it has none).
+    // monsterRooms is where each monster stands; questName a crawled quest's name
+    // (QuestStore.DisplayName: the user's, the realm's or the seed's; null or empty
+    // when none names it).
     public QuestFlagStepsViewModel(
         QuestFlagIndex index, GameDataCache cache, int flag,
         Func<IReadOnlyDictionary<int, IReadOnlyList<RoomKey>>?> monsterRooms,
-        Func<int, int, string?> questName,
+        Func<CrawledQuest, string?> questName,
         LogService? log = null)
     {
         ArgumentNullException.ThrowIfNull(index);
@@ -95,7 +96,7 @@ public sealed partial class QuestFlagStepsViewModel : ObservableObject, IDialogV
 
         Heading = string.Create(CultureInfo.InvariantCulture, $"{walk.FlagName} ({walk.Flag})");
         List<string> named = walk.Quests
-            .Select(q => _questName(q.Flag, q.Step)?.Trim() ?? string.Empty)
+            .Select(q => _questName(q)?.Trim() ?? string.Empty)
             .Where(n => n.Length > 0)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();

@@ -32,7 +32,7 @@ public sealed partial class QuestEditRowViewModel : ObservableObject
     public string FallbackLabel { get; }
 
     // The crawler's drafted steps — pre-fills Steps and is its delta baseline.
-    public string AutoSteps { get; }
+    public string AutoSteps { get; private set; }
 
     // The crawler's inferred award label — pre-fills Rewards and is its delta baseline.
     public string AutoRewards { get; }
@@ -207,6 +207,17 @@ public sealed partial class QuestEditRowViewModel : ObservableObject
             if (IsIneligible && !_showIfIneligible) return $"{baseName}  (cannot complete — hidden)";
             return Visible ? baseName : $"{baseName}  (hidden)";
         }
+    }
+
+    // The draft redrawn (the tier before this one got its realm name while the editor
+    // was open). Steps still at the old draft follow it, so the save's diff still sees
+    // them untouched and no stale copy of the draft is kept as the user's own.
+    public void Redraft(string autoSteps)
+    {
+        if (string.Equals(autoSteps, AutoSteps, StringComparison.Ordinal)) return;
+        bool atDraft = string.Equals((Steps ?? string.Empty).Trim(), AutoSteps.Trim(), StringComparison.Ordinal);
+        AutoSteps = autoSteps;
+        if (atDraft) Steps = autoSteps;
     }
 
     // Materialize the current edits into a persistable definition, diffed against the

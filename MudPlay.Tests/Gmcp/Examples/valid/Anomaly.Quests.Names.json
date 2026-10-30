@@ -1,0 +1,9 @@
+{
+  "quests": [
+    {"flag": 126, "from": 1, "to": 6, "name": "1st Alignment Quest", "level": 10},
+    {"flag": 126, "from": 7, "to": 12, "name": "2nd Alignment Quest", "level": 20},
+    {"flag": 201, "from": 1, "to": null, "name": "Ormund's Legacy", "level": 75},
+    {"flag": 3200, "from": 1, "to": null, "name": "Kotar: The Price of an Open Gate", "level": null},
+    {"flag": 3300, "from": 1, "to": null, "name": "The Price of Iron", "level": 30}
+  ]
+}

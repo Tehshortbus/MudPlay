@@ -2325,7 +2325,7 @@ public partial class MainWindowViewModel : ObservableObject
 
     private void OnQuestAvailable(string questName)
         => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
-            WriteTerminalStatus($"[{questName} Quest is Now Available]", TerminalStatusKind.Notice));
+            WriteTerminalStatus(Game.Quests.QuestAvailabilityAnnouncer.AvailableLine(questName), TerminalStatusKind.Notice));
 
     private void OnEquipSlotBlocked(Game.Inventory.EquipmentManager.EquipBlock block)
         => Avalonia.Threading.Dispatcher.UIThread.Post(() =>

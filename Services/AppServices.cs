@@ -10210,17 +10210,14 @@ public sealed class AppServices
         LevelUp = new Game.LevelUpAnnouncer(PlayerStats, Stats, GameData, Profile, Log);
 
         // Quest-availability announcer — watches the same StatParser for level crossings.
-        // The name resolver mirrors the Quest Status journal's title rule (user name, else
-        // the crawler's fallback title); injected so the domain service stays out of the
-        // ViewModels layer.
+        // The name resolver is the Quest Status journal's title rule (QuestTextFormatter.Title);
+        // injected so the domain service stays out of the ViewModels layer.
         QuestAvailability = new Game.Quests.QuestAvailabilityAnnouncer(
             Stats, Profile,
             currentLevel: () => PlayerStats.Level,
             eligibleAtLevel: level => Game.Quests.QuestEligibility.Resolve(
                 GameData, Quests, PlayerStats, Profile,
-                resolveName: static (q, def) => string.IsNullOrWhiteSpace(def.Name)
-                    ? ViewModels.CharacterWorkshop.QuestTextFormatter.FallbackTitle(q)
-                    : def.Name,
+                resolveName: (q, _) => ViewModels.CharacterWorkshop.QuestTextFormatter.Title(Quests, q),
                 level),
             // In the realm only once a status line has been observed — keeps the
             // login dump off the character-select / main menu.
@@ -10248,9 +10245,7 @@ public sealed class AppServices
             // character can actually complete now (not every quest in the realm).
             availableQuests: () => Game.Quests.QuestEligibility.Resolve(
                 GameData, Quests, PlayerStats, Profile,
-                resolveName: static (q, def) => string.IsNullOrWhiteSpace(def.Name)
-                    ? ViewModels.CharacterWorkshop.QuestTextFormatter.FallbackTitle(q)
-                    : def.Name,
+                resolveName: (q, _) => ViewModels.CharacterWorkshop.QuestTextFormatter.Title(Quests, q),
                 PlayerStats.Level),
             log: Log);
         // A sync that marks quests complete changes the quest bonuses in both regen percents.
@@ -11148,6 +11143,7 @@ public sealed class AppServices
         Gmcp.BindConsumers(Conditions, Stealth, MonsterHpEstimates);
         PartyPoller.AskServerForParty = Gmcp.RequestGroup;
         Gmcp.BindMilestone2(Inventory, AutoBuy, Spellbook, SpellList, Party, Chat, AbilBreakdown, CastDirector);
+        Gmcp.BindQuests(Quests);
         GmcpLocator = new Game.Gmcp.GmcpPositionLocator(Gmcp, RoomTracker, Recovery, uiOneShot, Log);
         // Where reading the displays runs out with no engine driving, the server's
         // room, when it is the room shown; the gate asks for itself while one drives.

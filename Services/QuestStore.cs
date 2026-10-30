@@ -1,3 +1,4 @@
+using MudPlay.Game.Quests;
 using MudPlay.Models.Profile;
 
 namespace MudPlay.Services;
@@ -16,6 +17,10 @@ namespace MudPlay.Services;
 //      realms reuse the numbers) so a curated default ports across every board;
 //   3. an auto-draft (blank name, shown, no edited steps) for any quest the
 //      crawler discovers that neither layer names yet.
+// A quest's displayed name (DisplayName, FlagName, NamedQuests) also takes the
+// realm's own name, which a server sends over GMCP: it ranks below a name the user
+// gave and above the seed's. It is held apart from both layers and never saved, so
+// a realm's name is never taken for a user edit, and it goes with the session.
 // The seed is never written. The mechanical data — ordered steps + stat bonuses —
 // is crawled from the active set's TBInfo elsewhere; this store owns only the
 // user/seed text layer.
@@ -34,12 +39,18 @@ public sealed class QuestStore
     private readonly Dictionary<(int Flag, int Step), QuestDefinition> _seed = new();
     private readonly Dictionary<(int Flag, int Step), QuestDefinition> _overlay = new();
     private readonly SharedFileStamp _stamp = new();
+    // Swapped whole, never changed in place, so a reader holds a consistent list.
+    private IReadOnlyList<ServerQuestName> _server = Array.Empty<ServerQuestName>();
 
     // The game-data set whose overlay is loaded, or null when none.
     public string? ActiveSet { get; private set; }
 
+    // The connected realm's quest names; empty when it sends none.
+    public IReadOnlyList<ServerQuestName> ServerNames => _server;
+
     // Raised after the overlay reloads (set change, a realm's old file taken in,
-    // another client's save) so consumers re-resolve their displayed quest text.
+    // another client's save) or the realm's names change, so consumers re-resolve
+    // their displayed quest text.
     public event Action? Reloaded;
 
     // Production ctor: seed from Global; the overlay tracks the profile's
@@ -146,6 +157,84 @@ public sealed class QuestStore
         return new QuestDefinition(flag, step);
     }
 
+    // The realm's quest names, replacing any held; an empty list clears them.
+    public void ApplyServerNames(IReadOnlyList<ServerQuestName> names)
+    {
+        ArgumentNullException.ThrowIfNull(names);
+        if (names.SequenceEqual(_server)) return;
+        _server = names.ToArray();
+        _log?.Info("Quests", _server.Count == 0
+            ? "the realm's quest names cleared"
+            : $"the realm named {_server.Count} quest range(s) over {_server.Select(n => n.Flag).Distinct().Count()} flag(s)");
+        Reloaded?.Invoke();
+    }
+
+    // The name a quest is shown under: the user's own, else the realm's, else the
+    // seed's unless the user cleared it; empty when none names it (the caller builds
+    // a title from the flag). startValue is the flag value the quest's stage starts
+    // at (a band's CrawledQuest.StepRangeStart), which the realm's ranges are in; 0
+    // for a quest that is the whole flag.
+    public string DisplayName(int flag, int step, int startValue) =>
+        UserName(flag, step) is { Length: > 0 } user ? user
+        : ServerName(flag, startValue) ?? ShownSeedName(flag, step);
+
+    // One name for the whole flag, when only the flag is known (the @quest reply):
+    // a name the user gave any of its steps, else the realm's for the range the
+    // character's flag value is in (its lowest range before a value is read), else
+    // the seed's. log is the character's quest log; its steps for the flag may be
+    // ones neither layer lists.
+    public string FlagName(int flag, IEnumerable<QuestProgress> log)
+    {
+        ArgumentNullException.ThrowIfNull(log);
+        List<QuestProgress> mine = log.Where(p => p.Flag == flag).ToList();
+        List<int> steps = StepsForFlag(flag).Concat(mine.Select(p => p.Step)).Distinct().ToList();
+        int reached = mine.Select(p => p.FlagValue ?? 0).DefaultIfEmpty(0).Max();
+        return steps.Select(s => UserName(flag, s)).FirstOrDefault(n => n.Length > 0)
+            ?? (reached > 0 ? ServerName(flag, reached) : null)
+            ?? ServerName(flag, 0)
+            ?? steps.Select(s => ShownSeedName(flag, s)).FirstOrDefault(n => n.Length > 0)
+            ?? string.Empty;
+    }
+
+    // The realm's name for the range that holds value, or for a whole-flag lookup
+    // (value 0) the range starting lowest, whatever order the server listed them in.
+    private string? ServerName(int flag, int value)
+    {
+        ServerQuestName? lowest = null;
+        foreach (ServerQuestName name in _server)
+        {
+            if (name.Flag != flag) continue;
+            if (name.Covers(value)) return name.Name;
+            if (lowest is not { } low || name.From < low.From) lowest = name;
+        }
+        return value > 0 ? null : lowest?.Name;
+    }
+
+    // A name in the overlay counts as the user's only when it isn't the seed's: an
+    // edit to anything else on a seeded quest saves the seed's name with it, and
+    // that copy mustn't hide the realm's name.
+    private string UserName(int flag, int step)
+    {
+        if (!_overlay.TryGetValue((flag, step), out QuestDefinition? user) || string.IsNullOrWhiteSpace(user.Name))
+            return string.Empty;
+        string name = user.Name.Trim();
+        return string.Equals(name, SeedName(flag, step), StringComparison.Ordinal) ? string.Empty : name;
+    }
+
+    private string SeedName(int flag, int step) =>
+        _seed.TryGetValue((flag, step), out QuestDefinition? seeded) && !string.IsNullOrWhiteSpace(seeded.Name)
+            ? seeded.Name.Trim()
+            : string.Empty;
+
+    // The seed's name unless the user cleared it: the editor saves a blank name only
+    // when the user emptied the box (or typed the auto-draft title back), so the quest
+    // goes back to its flag's title. The clearing was of the seed's name, the only
+    // one the editor offers, so the realm's name still ranks above it.
+    private string ShownSeedName(int flag, int step) =>
+        _overlay.TryGetValue((flag, step), out QuestDefinition? user) && string.IsNullOrWhiteSpace(user.Name)
+            ? string.Empty
+            : SeedName(flag, step);
+
     // Persist the user's edited definitions to the active set's overlay
     // (its quests.json) and refresh the in-memory layer so later
     // Resolve calls see the edits immediately. The overlay stays a delta: a
@@ -216,17 +305,21 @@ public sealed class QuestStore
         return steps.ToList();
     }
 
-    // Every named quest known across seed + overlay as (flag, resolved name) with a
-    // non-empty name — the candidate set the @quest name resolver matches against.
+    // Every named quest known as (flag, name) — the candidate set the @quest name
+    // resolver matches against, in DisplayName's order: the user's names, the
+    // realm's, then the seed's for the quests the user didn't rename.
     public IEnumerable<(int Flag, string Name)> NamedQuests()
     {
         HashSet<(int Flag, int Step)> keys = new(_seed.Keys);
         foreach ((int Flag, int Step) k in _overlay.Keys) keys.Add(k);
+        List<(int Flag, string Name)> seeded = new();
         foreach ((int Flag, int Step) k in keys)
         {
-            string name = Resolve(k.Flag, k.Step).Name;
-            if (!string.IsNullOrWhiteSpace(name)) yield return (k.Flag, name);
+            if (UserName(k.Flag, k.Step) is { Length: > 0 } user) yield return (k.Flag, user);
+            else if (ShownSeedName(k.Flag, k.Step) is { Length: > 0 } seed) seeded.Add((k.Flag, seed));
         }
+        foreach (ServerQuestName name in _server) yield return (name.Flag, name.Name);
+        foreach ((int Flag, string Name) seed in seeded) yield return seed;
     }
 
     // The no-overlay resolution for a quest: the seed entry if one exists, else a

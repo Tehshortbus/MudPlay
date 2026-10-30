@@ -23,12 +23,15 @@ namespace MudPlay.ViewModels.CharacterWorkshop;
 // seed/default rows aren't frozen in, manual rows verbatim) via QuestStore.Save;
 // Cancel / title-bar X discard. Standard edit-window contract: Save commits,
 // X / Cancel discards.
-public sealed partial class QuestEditorViewModel : ObservableObject, IDialogViewModel<bool>
+public sealed partial class QuestEditorViewModel : ObservableObject, IDialogViewModel<bool>, IDisposable
 {
     public event Action<bool>? CloseRequested;
 
     private readonly QuestStore _quests;
     private readonly GameDataCache _gameData;
+
+    // Each crawled row's quest and drafted step lines, to redraw its draft from.
+    private readonly Dictionary<QuestEditRowViewModel, (CrawledQuest Quest, IReadOnlyList<string> StepLines)> _drafted = new();
 
     // Every class in the active set (Number, Name), enumerated once — the source for
     // each row's "Restrict to classes" checklist.
@@ -100,20 +103,16 @@ public sealed partial class QuestEditorViewModel : ObservableObject, IDialogView
             AppServices.Current?.RoomSearch?.QuestKillRooms();
         ItemSourceIndex? itemSources = AppServices.Current?.ItemSources;
         MonsterDropIndex? itemDrops = AppServices.Current?.MonsterDrops;
-        string TierTitle(CrawledQuest c) => quests.Resolve(c.Flag, c.Step).Name is { } n && !string.IsNullOrWhiteSpace(n)
-            ? n : QuestTextFormatter.FallbackTitle(c);
-
         foreach (CrawledQuest q in QuestCrawler.Crawl(gameData, classId))
         {
             QuestDefinition def = quests.Resolve(q.Flag, q.Step);
             bool ineligible = QuestEligibilityResolver.IsIneligible(
                 q, classId, raceId, def.ClassRestrict, alignGood, alignNeutral, alignEvil);
-            Quests.Add(new QuestEditRowViewModel(
+            List<string> stepLines = QuestTextFormatter.StepLines(gameData, q, monsterRooms, itemSources, itemDrops).ToList();
+            QuestEditRowViewModel row = new(
                 q.Flag, q.Step,
                 QuestTextFormatter.FallbackTitle(q),
-                string.Join("\n", new[] { QuestTextFormatter.PriorTierLine(gameData, q, TierTitle) }
-                    .OfType<string>()
-                    .Concat(QuestTextFormatter.StepLines(gameData, q, monsterRooms, itemSources, itemDrops))),
+                Draft(q, stepLines),
                 QuestTextFormatter.Awards(gameData, q),
                 QuestTextFormatter.Bonuses(q.Bonuses),
                 QuestTextFormatter.Level(q.RequiredLevel),
@@ -129,8 +128,13 @@ public sealed partial class QuestEditorViewModel : ObservableObject, IDialogView
                 BuildClassOptions(def.ClassRestrict),
                 autoCompleteValue: q.CompleteValue,
                 completeValueOverride: def.CompleteValueOverride)
-            { Blocked = def.Blocked });
+            { Blocked = def.Blocked };
+            Quests.Add(row);
+            _drafted[row] = (q, stepLines);
         }
+        // A later tier's draft opens with the earlier tier's name, which the realm can
+        // send while the editor is open (QuestStore.Reloaded).
+        _quests.Reloaded += Redraft;
 
         // User-added quests the crawl never produces, listed after the crawled ones.
         foreach (QuestDefinition def in quests.ManualQuests())
@@ -228,4 +232,20 @@ public sealed partial class QuestEditorViewModel : ObservableObject, IDialogView
 
     [RelayCommand]
     private void Cancel() => CloseRequested?.Invoke(false);
+
+    // A crawled quest's drafted steps: the "-Complete <tier> first-" line naming the
+    // tier before it, then its own step lines.
+    private string Draft(CrawledQuest q, IReadOnlyList<string> stepLines) =>
+        string.Join("\n", new[] { QuestTextFormatter.PriorTierLine(_gameData, q, c => QuestTextFormatter.Title(_quests, c)) }
+            .OfType<string>()
+            .Concat(stepLines));
+
+    private void Redraft()
+    {
+        foreach ((QuestEditRowViewModel row, (CrawledQuest quest, IReadOnlyList<string> stepLines)) in _drafted)
+            row.Redraft(Draft(quest, stepLines));
+    }
+
+    // The store outlives the window; the opener lets go once it has closed.
+    public void Dispose() => _quests.Reloaded -= Redraft;
 }

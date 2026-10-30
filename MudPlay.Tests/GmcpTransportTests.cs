@@ -103,7 +103,7 @@ public sealed class GmcpTransportTests
         using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(5));
         List<byte> received = new();
         byte[] buffer = new byte[4096];
-        while (!Encoding.UTF8.GetString(received.ToArray()).Contains("Anomaly.Mob 1", StringComparison.Ordinal))
+        while (!Encoding.UTF8.GetString(received.ToArray()).Contains("Anomaly.Quests 1", StringComparison.Ordinal))
         {
             int count = await stream.ReadAsync(buffer, timeout.Token);
             Assert.True(count > 0);
@@ -112,7 +112,7 @@ public sealed class GmcpTransportTests
         string text = Encoding.UTF8.GetString(received.ToArray());
         Assert.Equal(new byte[] { 255, 253, 201 }, received.Take(3));
         Assert.Contains("Core.Hello", text);
-        Assert.Contains("\"contract\":\"1.1.0\"", text);
+        Assert.Contains("\"contract\":\"1.2.0\"", text);
         Assert.Contains("Core.Supports.Set", text);
         await client.SendGmcpAsync("Anomaly.Request", new { package = "Anomaly.Mob.Info", uid = 102 });
         int requestLength = await stream.ReadAsync(buffer, timeout.Token);

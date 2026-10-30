@@ -129,6 +129,18 @@ public sealed class QuestAvailabilityAnnouncerTests
         Assert.Equal(new[] { "A", "B" }, h.Announced);
     }
 
+    [Theory]
+    [InlineData("Sunstone Wristband", "[Sunstone Wristband Quest is Now Available]")]
+    [InlineData("Cartographer's Quest", "[Cartographer's Quest is Now Available]")]
+    [InlineData("CartographerQuest", "[CartographerQuest is Now Available]")]
+    [InlineData("The Conquest", "[The Conquest Quest is Now Available]")]
+    [InlineData("A Merchant's Request", "[A Merchant's Request Quest is Now Available]")]
+    [InlineData("the lost quest", "[the lost quest is Now Available]")]
+    public void AvailableLine_NeverSaysQuestTwice(string name, string line)
+    {
+        Assert.Equal(line, QuestAvailabilityAnnouncer.AvailableLine(name));
+    }
+
     [Fact]
     public void ToggleOff_SuppressesButStillTracks()
     {

@@ -149,7 +149,7 @@ public sealed class QuestFlagsSectionViewModel : GameDataTableSectionViewModel, 
         QuestFlagStepsViewModel vm = new(
             _index, _cache, flag,
             monsterRooms: () => AppServices.CurrentOrNull?.RoomSearch?.QuestKillRooms(),
-            questName: (f, step) => AppServices.CurrentOrNull?.Quests.Resolve(f, step).Name,
+            questName: q => AppServices.CurrentOrNull?.Quests.DisplayName(q.Flag, q.Step, q.StepRangeStart),
             log: AppServices.CurrentOrNull?.Log);
         _openSteps = vm;
         try

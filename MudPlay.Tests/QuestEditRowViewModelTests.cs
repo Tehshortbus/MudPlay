@@ -21,6 +21,25 @@ public sealed class QuestEditRowViewModelTests
             requiredLevel: null, ineligible: ineligible, showIfIneligible: showIfIneligible,
             classOptions: options);
 
+    // The draft is redrawn when the tier before it gets the realm's name with the editor
+    // open: steps still at the draft follow it and save as untouched; steps the user
+    // wrote stay as written.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Redraft_MovesUntouchedStepsWithTheDraft_AndLeavesTheUsersOwn(bool edited)
+    {
+        QuestEditRowViewModel row = new(50, 2, "Good 2", autoSteps: "-Complete Good 1 first-\nsay hi", autoRewards: "",
+            bonusText: "", levelText: "", autoRequiredLevel: 0, requirementsText: "",
+            name: "Good 2", visible: true, steps: "", rewards: "", requiredLevel: null);
+        if (edited) row.Steps = "my own notes";
+
+        row.Redraft("-Complete 1st Alignment Quest first-\nsay hi");
+
+        Assert.Equal(edited ? "my own notes" : "-Complete 1st Alignment Quest first-\nsay hi", row.Steps);
+        Assert.Equal(edited ? "my own notes" : null, row.ToDefinition().Steps);
+    }
+
     [Fact]
     public void ShowInJournal_EligibleQuest_MapsToVisibleHide()
     {

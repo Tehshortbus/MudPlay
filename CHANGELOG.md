@@ -1,5 +1,12 @@
 # Version history
 
+## 3.193.0
+
+- Quests take the realm's own names when the server sends them (Anomaly GMCP 1.2.0 `Anomaly.Quests.Names`): no more `[Ability 3200 Quest is Now Available]`
+- A quest's name: the one you gave it, else the realm's, else the shipped guide's, else its flag's; in the announcements, the Quest Status journal, Game Data's Quest Flags and `@quest`
+- The realm's names are never saved into your quest guides and go when the session ends
+- Availability announcements no longer say "Quest Quest" for a name that already ends in Quest
+
 ## 3.192.6
 
 - No more crash on a click after a long session on Windows: the client keeps its unpacked files open so temp clean-up can't remove them

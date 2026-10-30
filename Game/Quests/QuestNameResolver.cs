@@ -8,9 +8,9 @@ namespace MudPlay.Game.Quests;
 //
 // Resolution order (first hit wins): an explicit flag number, a curated alias (the
 // alignment quests the seed leaves unnamed — "good align" → 126), an exact name
-// match against the supplied candidates (AbilityNames flag names + user-set quest
-// names), then a loose substring match. The candidates come from the handler so this
-// stays free of GameDataCache / profile dependencies.
+// match against the supplied candidates (quest names — the user's, the realm's, the
+// seed's — and AbilityNames flag names), then a loose substring match. The candidates
+// come from the handler so this stays free of GameDataCache / profile dependencies.
 public static class QuestNameResolver
 {
     // Curated aliases for flags the seed doesn't name — chiefly the three alignment
@@ -35,8 +35,8 @@ public static class QuestNameResolver
     };
 
     // Resolve a @quest arg to a flag number, or null when nothing matches. candidates
-    // is (flag, name) pairs the handler already knows — flag names from AbilityNames
-    // and any user-set quest names.
+    // is (flag, name) pairs the handler already knows — QuestStore.NamedQuests and flag
+    // names from AbilityNames.
     public static int? Resolve(string? query, IEnumerable<(int Flag, string Name)> candidates)
     {
         if (string.IsNullOrWhiteSpace(query)) return null;
@@ -57,13 +57,13 @@ public static class QuestNameResolver
         return partial;
     }
 
-    // A friendly label for a flag: the curated alignment label, else a user-set quest
-    // name, else the AbilityNames flag name, else "Flag <n>". userName is the resolved
-    // QuestDefinition.Name (may be empty).
-    public static string Label(int flag, string? userName)
+    // A friendly label for a flag: the curated alignment label, else the quest's name,
+    // else the AbilityNames flag name, else "Flag <n>". questName is QuestStore.FlagName
+    // (may be empty).
+    public static string Label(int flag, string? questName)
     {
         if (Labels.TryGetValue(flag, out string? curated)) return curated;
-        if (!string.IsNullOrWhiteSpace(userName)) return userName!.Trim();
+        if (!string.IsNullOrWhiteSpace(questName)) return questName!.Trim();
         return AbilityNames.GetName(flag) ?? $"Flag {flag}";
     }
 

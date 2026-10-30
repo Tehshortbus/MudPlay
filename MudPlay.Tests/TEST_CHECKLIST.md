@@ -1649,6 +1649,11 @@ How to keep it current:
 - Why: a payload the contract doesn't validate, or one kept past its reset, must never take state away from text.
 - Run: `dotnet test --filter FullyQualifiedName~GmcpMilestone2StateTests` with a fresh scratch data root.
 
+### GmcpQuestNamesTests.cs
+- Covers: Game/Gmcp/GmcpIntegration.Quests, Services/QuestStore (DisplayName, FlagName, NamedQuests, ApplyServerNames), Game/Quests/ServerQuestName, QuestNameResolver, QuestEligibility, QuestAvailabilityAnnouncer, ViewModels/CharacterWorkshop/QuestTextFormatter.Title, through the GmcpIntegrationTests session harness and the `15-quest-names` recording's bytes (contract 1.2.0, synthetic).
+- Checks: the subscription and package are listed; each stage takes the name of the realm's range its first flag value falls in (two ranges on one flag, open-ended `to`, the whole flag's lowest range for a single-part quest, whatever order the server listed them in); @quest names a flag by the range the character's flag value is in; the user's name beats the realm's, which beats the seed's (a seed name an unrelated edit copied into the overlay doesn't count as the user's), which beats the AbilityNames title; a seeded name the user cleared stays cleared (the flag's title, not offered to @quest), with the realm's name still above it; @quest matches and labels by the same order with the alignment flags' curated labels kept; the realm's names are never in the definitions the editor saves; a full reset, a package reset, a disconnect and a new boot clear them, a room reset doesn't; a rejected snapshot drops them; Off ignores them while Shadow and Active apply them; the login dump announces realm names, without "Quest Quest".
+- Why: Anomaly's own quests read `[Ability 3200 Quest is Now Available]` and its renamed ports read Paradigm's internal names (user, 2026-10-30); one realm's names must never show on another, and a realm's name must never become a user edit.
+
 ### GmcpShadowFallbackTests.cs
 - Covers: Game/Gmcp/GmcpIntegration.Fallback, GmcpPositionLocator, RoomTracker.ServerRoom, MonsterHpTracker.ServerIdFor, SpellListParser (the order of its read event), through the GmcpIntegrationTests session harness.
 - Checks: a stalled walk asks where it is and the server's room answers a tick later, as an `rm` reply would, resuming the walk there with no walk-back; Room.Info Off or a server room not on the map leaves the ask to the game; a move sent after the ask from the room the server has us in is kept. With no engine, a display no single room fits takes the server's room when it is the room shown, and goes Lost when the name differs. Until the text's first reading the server stands in for stats and level (stat screen), the spell list (`sp`; the book is handed back ahead of the text's write, so even "You have no spells." stands), the inventory (`i`; again in a new session) and the party (`par`; the server's own writes don't count as the reading); an Off package stands in for nothing. A monster with no max HP in the game data takes the server's HP and follows its updates, announced to the status bar; one with a max HP keeps the text's estimate.
@@ -1662,7 +1667,7 @@ How to keep it current:
 ### GmcpTransportTests.cs
 - Core.Hello advertises contract 1.1.0 and milestone-2 capability modules.
 - Covers: Net/TelnetClient and GMCP UTF-8 framing.
-- Checks: every fragmentation boundary, literal UTF-8, display/message ordering, malformed/oversize/unterminated recovery, larger incoming snapshots, escaped IAC, WONT/WILL transitions and real-socket Hello/Supports/recovery requests.
+- Checks: every fragmentation boundary, literal UTF-8, display/message ordering, malformed/oversize/unterminated recovery, larger incoming snapshots, escaped IAC, WONT/WILL transitions and real-socket Hello (the client's contract version)/Supports (through `Anomaly.Quests 1`)/recovery requests.
 - Why: GMCP frames must stay out of terminal text and survive arbitrary network reads.
 - Named seam: TelnetClient.Interpret is the read loop's incremental decoder; direct chunk feeding makes every fragmentation boundary deterministic rather than depending on TCP packet coalescing.
 
@@ -3235,8 +3240,8 @@ How to keep it current:
 
 ### QuestAvailabilityAnnouncerTests.cs
 - Covers: Game/Quests/QuestAvailabilityAnnouncer
-- Checks: announces each quest whose level is crossed (multi-level, once); login dump only in the realm; the toggle suppresses without a backlog.
-- Why: report paradigm-20260909-172633.
+- Checks: announces each quest whose level is crossed (multi-level, once); login dump only in the realm; the toggle suppresses without a backlog; the announcement line never says "Quest Quest" for a name that already ends in the word Quest (separate or run together), and keeps it for a name that only ends in the letters (`Conquest`, `Request`).
+- Why: report paradigm-20260909-172633; a name ending in Quest (Paradigm's `Volums Quest` flag, a realm's `1st Alignment Quest`) read `… Quest Quest` (user, 2026-10-30).
 
 ### QuestCrawlerTests.cs
 - Covers: Game/Quests/QuestCrawler
@@ -3245,8 +3250,8 @@ How to keep it current:
 
 ### QuestEditRowViewModelTests.cs
 - Covers: ViewModels/CharacterWorkshop/QuestEditRowViewModel
-- Checks: ShowInJournal mapping for eligible and ineligible quests; class-restrict options persist; complete-value prefill and delta.
-- Why: Quest editor eligibility controls.
+- Checks: ShowInJournal mapping for eligible and ineligible quests; class-restrict options persist; complete-value prefill and delta; a redrawn draft (a realm's tier name arriving with the editor open) carries untouched steps along and leaves the user's own.
+- Why: Quest editor eligibility controls; a redraw must not turn the old draft into a saved override (PR 1165 review).
 
 ### QuestEligibilityResolverTests.cs
 - Covers: Game/Quests/QuestEligibilityResolver
