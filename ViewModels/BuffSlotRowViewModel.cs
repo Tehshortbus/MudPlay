@@ -9,7 +9,8 @@ namespace MudPlay.ViewModels;
 // A slot's targeting scope, derived live from the spell's Targets code.
 public enum BuffSlotScope
 {
-    SelfOnly,      // Targets 0 / 1 — only castable on us.
+    SelfOnly,      // Targets 1 — only castable on us.
+    OthersOnly,    // Targets 0 — only castable on chosen members, never on us.
     SingleTarget,  // Targets 2 — castable on us and/or chosen members.
     WholeParty,    // Targets 10 / 13 — one cast blankets the party (and us).
 }
@@ -168,14 +169,15 @@ public sealed partial class BuffSlotRowViewModel : ObservableObject
     public bool IsWholeParty => Scope == BuffSlotScope.WholeParty;
     public bool IsSingleTarget => Scope == BuffSlotScope.SingleTarget;
     public bool IsSelfOnly => Scope == BuffSlotScope.SelfOnly;
+    public bool IsOthersOnly => Scope == BuffSlotScope.OthersOnly;
 
     // The "self" checkbox shows whenever the spell can land on us — a self-only buff
     // (its only target) or a single-target buff (self is one option among members).
     public bool ShowSelf => IsSelfOnly || IsSingleTarget;
 
-    // The per-member checkboxes and the All/None master show only for a single-
-    // target buff AND when there's actually a party to target — solo shows just Self.
-    public bool ShowMemberTargets => IsSingleTarget && HasPartyMembers;
+    // The per-member checkboxes and the All/None master show for a buff a member can
+    // take AND when there's actually a party to target — solo shows just Self.
+    public bool ShowMemberTargets => (IsSingleTarget || IsOthersOnly) && HasPartyMembers;
 
     // The "Solo" checkbox shows only for a whole-party buff — the one scope that
     // otherwise fires only in a party. Self / single-target buffs already fire solo
@@ -242,6 +244,7 @@ public sealed partial class BuffSlotRowViewModel : ObservableObject
         OnPropertyChanged(nameof(IsWholeParty));
         OnPropertyChanged(nameof(IsSingleTarget));
         OnPropertyChanged(nameof(IsSelfOnly));
+        OnPropertyChanged(nameof(IsOthersOnly));
         OnPropertyChanged(nameof(ShowSelf));
         OnPropertyChanged(nameof(ShowMemberTargets));
         OnPropertyChanged(nameof(ShowSolo));

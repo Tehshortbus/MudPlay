@@ -17,8 +17,8 @@ public sealed class BuffCombatCalculatorTests
 
     private static readonly List<KnownSpell> Available = new()
     {
-        Spell("smit", targets: 0, new SpellAbility(4, 2)),                               // +max damage
-        Spell("shad", targets: 0, new SpellAbility(116, 5), new SpellAbility(117, 9), new SpellAbility(118, 11)),
+        Spell("smit", targets: 1, new SpellAbility(4, 2)),                               // +max damage
+        Spell("shad", targets: 1, new SpellAbility(116, 5), new SpellAbility(117, 9), new SpellAbility(118, 11)),
         Spell("bles", targets: 10, new SpellAbility(22, 4)),                             // party accuracy
     };
 

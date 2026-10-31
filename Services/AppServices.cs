@@ -3383,7 +3383,10 @@ public sealed class AppServices
         // Emit side of @wait/@ok. Observes our own
         // position transitions and telepaths the leader when we enter
         // / leave a rest state. Wire-sender hookup in MainWindowVM.
-        PartyRest = new Game.PartyRestSync(PartyState, Log);
+        PartyRest = new Game.PartyRestSync(PartyState, Log)
+        {
+            HealChannel = () => ReadSection<Models.Profile.PartySettings>(Profile.Current, "Party").RequestHealChannel,
+        };
         // One-to-many @-command sender: the @Reset on loop start (LoopRunner's
         // ReachedFirstWaypoint handler below) and the @have / @level / @wealth
         // party probes.
@@ -5725,6 +5728,7 @@ public sealed class AppServices
         // cast once for the whole party; the picker checks this to skip the
         // per-member loop.
         CastDirector.SetPartyWideBuffCheck(IsPartyWideBuff);
+        CastDirector.SetOthersOnlyBuffCheck(IsOthersOnlyBuff);
         // Self-buff supersession: in a party, a configured party-wide buff that removes a
         // self-buff (RemovesSpell) covers us, so the director stops self-casting the
         // removed one — the Buff Watchdog shows that slot "covered by" the party buff.
@@ -6948,7 +6952,10 @@ public sealed class AppServices
         // MainWindowVM.
         Heal = new Game.Remote.HealCommandHandler(
             RemoteCommands,
-            readParty: () => ReadSection<Models.Profile.PartySettings>(Profile.Current, "Party"))
+            readParty: () => ReadSection<Models.Profile.PartySettings>(Profile.Current, "Party"),
+            queueHeal: (sender, member) => CastDirector.RequestHeal(sender, member),
+            isPartyMember: sender => PartyState.IsInParty && PartyState.Members.Any(m => !m.IsSelf
+                && string.Equals(m.Name.Split(' ')[0], sender.Split(' ')[0], StringComparison.OrdinalIgnoreCase)))
         {
             // Same trainer-screen suppression as the timed par poll — an @heal
             // that fires while parked on the stat form would corrupt the last name.
@@ -12894,6 +12901,12 @@ public sealed class AppServices
         return null;
     }
 
+    // A buff only another player can take (Spells.Targets 0, "User"): never cast on us.
+    private bool IsOthersOnlyBuff(string castCode) =>
+        !string.IsNullOrWhiteSpace(castCode) && !Game.Spells.ItemCastToken.IsToken(castCode)
+        && Spellbook.FindByCastCode(castCode.Trim()) is { } spell
+        && Game.Spells.BuffClassifier.IsOthersOnlyBuff(spell.Targets);
+
     // True when the buff with cast code castCode targets
     // the whole party at once. Resolved from the active set's
     // Spells.Targets scope code: 13 = Full Party Area, 10 = Divided
@@ -12966,7 +12979,8 @@ public sealed class AppServices
         // when-full folded here). Whole-party / member-target slots aren't self-casts.
         if (buffs is not null)
             foreach (Models.Profile.BuffSlot pslot in buffs.Slots)
-                if (pslot.CastOnSelf && !IsPartyWideBuff(pslot.Spell ?? string.Empty))
+                if (pslot.CastOnSelf && !IsPartyWideBuff(pslot.Spell ?? string.Empty)
+                    && !IsOthersOnlyBuff(pslot.Spell ?? string.Empty))
                     AddSelf(pslot.Spell);
         // HP regen still lives on the Spells tab (mana regen is a unified slot, already
         // covered by the CastOnSelf loop above).
@@ -13937,7 +13951,7 @@ public sealed class AppServices
 
             System.Collections.Generic.List<string> who = new();
             bool wholeParty = IsPartyWideBuff(s.Spell);
-            if (s.CastOnSelf) who.Add("self");
+            if (s.CastOnSelf) who.Add(IsOthersOnlyBuff(s.Spell) ? "self (not cast: only another player can take it)" : "self");
             if (s.WholePartyOn && wholeParty)
             {
                 who.Add("party-wide");

@@ -1,5 +1,11 @@
 # Version history
 
+## 3.194.0
+
+- Buff Watchdog: a buff only another player can take (renewal on Anomaly) shows member boxes and no Self, and is never cast on you
+- Request healing (`@heal`) goes out on say by default, with a channel drop-down (Say / Gangpath / Broadcast) in Settings → Party, even if it ends a sneak
+- Healers heal a party member who asks with `@heal` at once, and a player outside the party who asks on gangpath or broadcast once the party needs no heal (Settings → Party: Answer @heal from outside the party)
+
 ## 3.193.7
 
 - In a dark room shown again before the next move's echo, the map no longer runs a room ahead (the pyramid solver walking off its route)

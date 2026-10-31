@@ -2,6 +2,7 @@ using System.Text;
 using MudPlay.Game;
 using MudPlay.Game.Remote;
 using MudPlay.Models.GameData;
+using MudPlay.Models.Profile;
 using MudPlay.Services;
 using MudPlay.Services.Patterns;
 using Xunit;
@@ -454,16 +455,21 @@ public sealed class PartyRestSyncTests
 
     // ===== RequestHeal — follower flee-substitute broadcast =====
 
-    [Fact]
-    public void RequestHeal_AsFollower_BroadcastsGangHeal()
+    // Said to the room by default, not telepathed to the leader, since the healer may
+    // be any member; Settings → Party picks gangpath or the broadcast channel instead.
+    [Theory]
+    [InlineData(null, ".@heal\r")]
+    [InlineData(HealRequestChannel.Say, ".@heal\r")]
+    [InlineData(HealRequestChannel.Gangpath, "bg @heal\r")]
+    [InlineData(HealRequestChannel.Broadcast, "br @heal\r")]
+    public void RequestHeal_AsFollower_GoesOutOnTheChosenChannel(HealRequestChannel? channel, string expected)
     {
-        // Broadcasts to the party (gangpath), not a leader telepath, since the
-        // healer may be any member. Leader name is irrelevant to the send.
         var (sync, party, wire) = Setup();
+        if (channel is { } c) sync.HealChannel = () => c;
         party.IsInParty = true;
         party.LeaderName = "Leader";
         sync.RequestHeal();
-        Assert.Equal("bg @heal\r", LastWire(wire));
+        Assert.Equal(expected, LastWire(wire));
     }
 
     [Fact]

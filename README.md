@@ -1,12 +1,10 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.193.7**
-> - In a dark room shown again before the next move's echo, the map no longer runs a room ahead (the pyramid solver walking off its route)
-> - With server vitals on Active, `@exp` and `@level` give exp needed and time to level from the server's data instead of "type exp"
-> - `@exp` sends `exp` first when the last `exp` line read is over an hour old, then answers
-> - Settings → BBS: All Off / All Shadow / All Active buttons set every GMCP package at once
-> - Hang reports name the frozen code from its call stack on Windows, and say on every system whether the client was computing, waiting or paused for memory clean-up
+> **Version 3.194.0**
+> - Buff Watchdog: a buff only another player can take (renewal on Anomaly) shows member boxes and no Self, and is never cast on you
+> - Request healing (`@heal`) goes out on say by default, with a channel drop-down (Say / Gangpath / Broadcast) in Settings → Party, even if it ends a sneak
+> - Healers heal a party member who asks with `@heal` at once, and a player outside the party who asks on gangpath or broadcast once the party needs no heal (Settings → Party: Answer @heal from outside the party)
 <!-- current-version:end -->
 
 A modern Telnet terminal client for **MajorMUD** and other BBS door games, built in C# / .NET 10 with [Avalonia](https://avaloniaui.net/). It renders a faithful CP437 cell grid with full VT100/ANSI parsing, and layers a MegaMUD-style automation suite (combat, party, navigation, healing, and more) on top — all in modeless, dockable windows so the terminal stays live while you configure anything.

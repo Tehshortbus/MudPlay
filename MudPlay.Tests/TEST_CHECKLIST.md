@@ -484,7 +484,7 @@ How to keep it current:
 
 ### BuffClassifierTests.cs
 - Covers: Game/Spells/BuffClassifier
-- Checks: whole-party targets; buff vs instant vs attack shapes; alignment eligibility.
+- Checks: whole-party targets; buff vs instant vs attack shapes; Targets 1 self, 0 another player only, and which scopes land on the caster; alignment eligibility.
 - Why: the "Add all blesses" report and the evil-priest picks.
 
 ### BuffCombatCalculatorTests.cs
@@ -524,7 +524,7 @@ How to keep it current:
 
 ### BuffSlotRowViewModelTests.cs
 - Covers: ViewModels/BuffSlotRowViewModel
-- Checks: name abbreviation and recast text; All/Self independence; member auto-assign; solo visibility; overwrite tooltip; self-activation hook; learned flag; negated marks.
+- Checks: name abbreviation and recast text; All/Self independence; member auto-assign; solo visibility; an others-only buff shows members and no Self; overwrite tooltip; self-activation hook; learned flag; negated marks.
 - Why: the "unchecking All cleared Self" bug; user 2026-10-17 (negates).
 
 ### BuffTimerKeeperTests.cs
@@ -636,7 +636,7 @@ How to keep it current:
 
 ### CastingDirectorTests.cs
 - Covers: Game/Spells/CastingDirector (+ CastCoordinator, ConditionTracker, TickEngine)
-- Checks: heal tiers and priorities; mana gates; cures; buff slot walk, timers and margins; burst-settle; pause/resume and restore; party heal, cure and bless; negates; draw items; item casts; a between-round cast sent just ahead of a projected round leaves the slot doubted (BetweenRoundSlotMayBeSpent) until the next tick, on a real TickEngine; the rest-time heal goes out while resting, meditating or idle, and standing it is held only while our own walk or loop moves us (logged once, flagged RestHealHeldForMovement), never for a follower.
+- Checks: heal tiers and priorities; mana gates; cures; buff slot walk, timers and margins; burst-settle; pause/resume and restore; party heal, cure and bless; a requested heal: a party member's Major heal once whatever `par` shows, a stranger's only once the party (us included) needs none and they're in the room, the Minor when the Major is whole-party, dropped after its window; an others-only buff (Targets 0) with self ticked cast on the member only; negates; draw items; item casts; a between-round cast sent just ahead of a projected round leaves the slot doubted (BetweenRoundSlotMayBeSpent) until the next tick, on a real TickEngine; the rest-time heal goes out while resting, meditating or idle, and standing it is held only while our own walk or loop moves us (logged once, flagged RestHealHeldForMovement), never for a follower.
 - Why: dozens of reports cited inline (the doubted slot: paradigm-20261023-001124; the follower's standing heal: paradigm-20261027-094915, paradigm-20261027-123536); user rulings 2026-10-10 and 2026-10-17.
 
 ### CharacterCalculatorMatchupProfileTests.cs
@@ -1745,7 +1745,7 @@ How to keep it current:
 
 ### HealCommandHandlerTests.cs
 - Covers: Game/Remote/HealCommandHandler
-- Checks: @heal makes a configured healer poll `par` and acknowledge; stays silent with no heal configured, in the trainer menu, or for a denied sender; unregisters on dispose.
+- Checks: @heal makes a configured healer poll `par` and acknowledge; a party member's queues a heal on them; one from outside the party on gangpath or broadcast queues a heal (no `par`) unless Answer @heal from outside the party is off, and by telepath queues none; stays silent with no heal configured, in the trainer menu, or for a denied sender; unregisters on dispose.
 - Why: party healing on request; protects the stat-form last name
 
 ### HealLineReaderTests.cs
@@ -2974,7 +2974,7 @@ How to keep it current:
 
 ### PartyRestSyncTests.cs
 - Covers: Game/PartyRestSync
-- Checks: a follower's @wait / @ok to the leader by given name (never solo or as leader); one @wait per held reason set and an @ok only when the last reason clears; reason notes (bare health unless a pool is named, explicit notes win); Resend; HeldReasons; a stuck reason suppresses later oks; a @wait asked while following a leader the client can't name is kept, warned once and sent when the leader is named, and not sent once released or after leaving the party; a restored leader is told a hold from before the loss and gets an @ok asked for meanwhile, another leader gets neither; a kept wait named with the master switch off goes out on its resync; the gang heal request; IsPaused and its Changed event.
+- Checks: a follower's @wait / @ok to the leader by given name (never solo or as leader); one @wait per held reason set and an @ok only when the last reason clears; reason notes (bare health unless a pool is named, explicit notes win); Resend; HeldReasons; a stuck reason suppresses later oks; a @wait asked while following a leader the client can't name is kept, warned once and sent when the leader is named, and not sent once released or after leaving the party; a restored leader is told a hold from before the loss and gets an @ok asked for meanwhile, another leader gets neither; a kept wait named with the master switch off goes out on its resync; the heal request on say by default, gangpath or broadcast as chosen; IsPaused and its Changed event.
 - Why: the party pause protocol: the leader must hold for every follower reason and resume only once all clear; paradigm-20261025-114837 (every @wait dropped silently while the leader's name was lost).
 
 ### PartyRestWatcherTests.cs
@@ -3898,7 +3898,7 @@ How to keep it current:
 
 ### SneakGuardTests.cs
 - Covers: Game/Stealth/SneakGuard, SneakBreakingCommands, Game/Inventory/EquipmentManager (held gear)
-- Checks: The hold kinds (until backstab, until clear room, move in flight, until rested by shadow rest) and when none applies. Held commands queue and release, and are kept while the master switch is off. Which commands end a sneak or may wait. A held gear swap re-runs on release.
+- Checks: The hold kinds (until backstab, until clear room, move in flight, until rested by shadow rest) and when none applies. Held commands queue and release, and are kept while the master switch is off. Which commands end a sneak or may wait (a hurt follower's `.@heal` never waits). A held gear swap re-runs on release.
 - Why: User, 2026-09-28/30; reports `paradigm-20260927-121050`, `paradigm-20260930-193005`.
 
 ### SoldiersQuartersGridLostRepro.cs

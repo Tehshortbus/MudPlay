@@ -182,6 +182,14 @@ public sealed class PartySettings
     [SettingRange(2, 6)]
     public int AoeMinMembers { get; set; } = 2;
 
+    // The channel a following party member asks for a heal on (`@heal`) when its HP
+    // reaches the Health tab's Run if below, in place of running. Default Say.
+    public HealRequestChannel RequestHealChannel { get; set; } = HealRequestChannel.Say;
+
+    // A healer answers an @heal heard on gangpath or the broadcast channel from a
+    // player outside its party, once no one in the party needs a heal. Default on.
+    public bool AnswerOutsideHealRequests { get; set; } = true;
+
     // ----- Capacity --------------------------------------------------
 
     // Cap on engageable hostiles while in an active party — overrides the

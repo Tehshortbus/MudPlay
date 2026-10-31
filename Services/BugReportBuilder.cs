@@ -817,6 +817,8 @@ public static class BugReportBuilder
             ? "(nobody)"
             : string.Join(", ", svc.PartyEssentials.WaitingMembers.Select(m =>
                 svc.PartyEssentials.OkDistrusted.Contains(m) ? $"{m} (full window, @ok ignored)" : m)));
+        Kv(sb, "@heal requests queued (heal owed, at most 30 s)",
+            svc.CastDirector.PendingHealRequests is { Count: > 0 } asked ? string.Join(", ", asked) : "(none)");
         Kv(sb, "Fresh @ok asked after an early one (again soon: full window)",
             svc.PartyComeback.FreshOkAskedSummary ?? "(nobody)");
         Kv(sb, "Reconnect hold for", svc.PartyDisconnectMovement.PendingMembers.Count == 0

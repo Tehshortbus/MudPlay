@@ -2037,24 +2037,28 @@ Reports how many lives you have left.
 
 #### @heal
 
-Asks a party healer to look at the party's health now and heal whoever is low.
+Asks a healer for a heal now: the emergency call for when the healer hasn't seen you drop.
 
-**What it does.** A character with a party heal spell set up sends `par` at once and answers `healing`. The fresh `par` gives your healing engine everyone's current HP, and it then heals by your own thresholds, as it would have at the next poll. The command brings that poll forward; it does not force a cast, and it does not pick the sender as the target.
+**What it does.** A character with a party heal spell set up queues a heal on the sender, sends `par` at once and answers `healing`. The fresh `par` gives your healing engine everyone's current HP, so it also heals anyone below your own thresholds. The queued heal is your **Major** single-target party heal, or the **Minor** one when the Major is a whole-party spell (it can't be aimed). It goes out once, and stands for 30 seconds:
+
+- **From a member of your party** (any channel): it goes out in the Major party heal's turn, even if `par` doesn't show them low yet. Someone below your thresholds is still healed first.
+- **From a player outside your party, heard on gangpath or broadcast**: it goes out only when no one in your party, you included, is below your Minor party threshold, and only while they're in your room. No `par` is sent for them, since it can't show them. Untick **Answer @heal from outside the party** (Settings → Party, beside Request healing) to ignore these. A player outside your party asking by telepath or say gets the `par` and `healing` as before, and no heal.
 
 **Who may send it:** a player with **Execute commands**, on any channel remote commands are read on. Being in the party is not enough: a healer has to tick that box for the members who should be able to ask.
 
 | Reply | When |
 |---|---|
-| `healing` | You have a party heal spell set up and `par` was sent. |
+| `healing` | You have a party heal spell set up: a heal is queued on the sender (if they're in your party, or outside it on gangpath or broadcast) and `par` was sent (not for a player outside your party). |
+| nothing | The sender is outside your party, on gangpath or broadcast, and **Answer @heal from outside the party** is unticked. |
 | nothing | You have none of the four party heal spells set (Settings → Party: minor or major, single-target or party). Only healers answer, so a `@heal` said aloud doesn't draw a "can't" from everyone else. |
 | nothing | You are on a trainer's or character-creation screen, where a `par` would be typed into the form. |
 | the Failure message | **Refusal:** the sender doesn't hold Execute commands. |
 
 **Situations:**
 
-- **The cast is your healing engine's, not this command's.** `par` is sent and `healing` is answered whatever your toggles say; whether a heal is then cast follows Auto-Heal and your party heal thresholds.
+- **The cast is your healing engine's, not this command's.** `healing` is answered whatever your toggles say; whether a heal is then cast follows Auto-Heal, your mana and, for a player outside the party, your party's health. A queued heal that can't go out within 30 seconds is dropped, and the program log says so.
 - **Master switch off:** ignored, no answer.
-- **The sending side:** a MudPlay follower at low HP asks the party with `@heal` in place of running off alone (see **Health: rest, heal, flee**).
+- **The sending side:** a MudPlay follower at low HP asks the party with `@heal` in place of running off alone, on the channel Settings → Party → Request healing picks (Say by default; see **Health: rest, heal, flee**).
 
 #### @hangup and @relog
 
@@ -4618,6 +4622,7 @@ Each slot is a **row** with the grip / ▲ / ▼ / **✎** (edit — reopens the
 - **All/None** ticks or clears every party member at once — and it's **independent of your Self box** (toggling it never changes Self). Ticked, it blesses **every member, auto-adapting**, so anyone who joins later is blessed too; unticked, it blesses **no** members — a joiner is **not** auto-assigned, only the members you've explicitly ticked keep getting it. Unticking one member drops out of All/None but leaves the rest ticked.
 - A member's box turns **red** when they **negated** that buff: you cast it on them and the game answered *"You attempt to cast … at …, but it's negated!"*. An item they wear negates that spell, so the client stops casting it on them **for good**, not just for this fight: the mark is saved with your character and is still there next session. Hover the box to see why. To try again, **untick the box and tick it again**; unticking All/None clears every member's mark the same way. Only a cast the client sent counts, matched by the spell's name and the member: a line about anyone else's cast (or a room's own spell, such as the Underwater Passage's *holding breath*) changes nothing. A **resisted** cast (*"… but the spell is resisted."*) is not a negate: it marks nobody, and the buff is tried again. **On Stock no member is ever marked**: Stock words even an item's negate as *"… but the spell is resisted."*, with no "negated" line at all. A buff a member negated or resisted is not counted as a miss of yours in Session Stats.
 - A **whole-party** spell shows a master **Party** on/off toggle plus a **Solo** option. Unticking **Party** disables that buff completely and clears Solo too, leaving both boxes visibly off; Solo stays disabled until Party is turned back on. While Party is enabled, tick **Solo** to also cast it when you're alone; a whole-party cast still lands on a lone character (a party of one), so it isn't wasted. Untick only Solo to make the enabled buff party-only. A **self-only** spell shows just the **Self** box (which already fires solo or partied).
+- A spell **only another player can take** (its game data's target is *User*, such as *renewal* on Anomaly) has **no Self box**: it shows only the member boxes, so solo its row is empty. **Add all blesses** adds it with nothing ticked, and the engine never casts it at you, even on a row set up before this was read right.
 
 A given spell is **one slot** — once it's slotted it drops out of the Add dialog, so you can't double up. Everything saves as you edit it; there's no Save button. Existing setups from before the unification are migrated into this list automatically.
 
@@ -6121,9 +6126,13 @@ Settings → Party. The **Combat profile** chips at the top switch profiles from
 **Available options:** 2–6
 **What it does:** How many hurt party members are needed at once before MudPlay switches from single-target healing to the AOE/group heal pick.
 
-### Request healing (@heal broadcast) — not functional
+### Request healing (@heal) — the threshold is not functional
 
-**Important notes:** The threshold box is a placeholder and is greyed out; it has no setting behind it. `@heal` itself does work: as a party follower, your client sends `@heal` on the gang channel when your HP reaches **Run if below** (Health tab), in place of fleeing. Party healers running MudPlay answer it.
+**Important notes:** The threshold box is a placeholder and is greyed out; it has no setting behind it. `@heal` itself does work: as a party follower, your client sends `@heal` when your HP reaches **Run if below** (Health tab), in place of fleeing. It is the emergency call, for when the party's healer hasn't already seen you drop. Party healers running MudPlay answer it.
+
+The drop-down to its right picks the channel it goes out on: **Say** (the default: `.@heal`, heard only in the room your party is in), **Gangpath** (`bg @heal`, your whole gang) or **Broadcast** (`br @heal`, everyone on your numbered channel). It goes out even if it ends your sneak: a follower that hurt is in the fight already.
+
+**Answer @heal from outside the party** (beside it, ticked by default) is for your side as a healer: a player outside your party who asks with `@heal` on gangpath or broadcast gets your heal once your own party needs none and while they're in your room (see the `@heal` command). They still need **Execute commands** in your Players list, as any `@heal` does.
 
 ### Party bless
 

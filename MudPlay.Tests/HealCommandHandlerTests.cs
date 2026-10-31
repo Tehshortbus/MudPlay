@@ -10,10 +10,11 @@ using Xunit;
 namespace MudPlay.Tests;
 
 // Pins the receive side of HealCommandHandler: an inbound
-// @heal makes a configured party-healer poll par (so
-// CastingDirector re-evaluates against fresh party HP) and acknowledge;
-// a member with no party-heal spell configured stays silent, and an
-// unauthorised sender is denied before the handler runs.
+// @heal makes a configured party-healer queue a heal on a party member, poll par (so
+// CastingDirector re-evaluates against fresh party HP) and acknowledge; a player
+// outside the party heard on gangpath or broadcast gets a queued heal unless the
+// healer turned that off; a member with no party-heal spell configured stays silent,
+// and an unauthorised sender is denied before the handler runs.
 public sealed class HealCommandHandlerTests
 {
     // The router each engine reads, which a test's chat lines go through.
@@ -31,6 +32,9 @@ public sealed class HealCommandHandlerTests
         public required PartySettings Party { get; init; }
         public required List<byte[]> WireSent { get; init; }
         public required HealCommandHandler Handler { get; init; }
+        // The heals the handler queued (sender, party member), and who is in our party.
+        public required List<(string Sender, bool Member)> Queued { get; init; }
+        public required HashSet<string> Members { get; init; }
     }
 
     private Harness Setup()
@@ -45,7 +49,10 @@ public sealed class HealCommandHandlerTests
         engine.SetWireSender(_replies.Add);
         PartySettings settings = new();
         List<byte[]> wire = new();
-        HealCommandHandler handler = new(engine, () => settings);
+        List<(string, bool)> queued = new();
+        HashSet<string> members = new(StringComparer.OrdinalIgnoreCase);
+        HealCommandHandler handler = new(engine, () => settings,
+            queueHeal: (sender, member) => queued.Add((sender, member)), isPartyMember: members.Contains);
         handler.SetWireSender(wire.Add);
         return new Harness
         {
@@ -54,6 +61,8 @@ public sealed class HealCommandHandlerTests
             Party = settings,
             WireSent = wire,
             Handler = handler,
+            Queued = queued,
+            Members = members,
         };
     }
 
@@ -94,6 +103,56 @@ public sealed class HealCommandHandlerTests
 
         Assert.Equal(new[] { "par" }, Wire(h));
         Assert.Equal("healing", Assert.Single(Replies()));
+    }
+
+    // A party member's @heal, on any channel, queues a heal on them as well as the poll.
+    [Fact]
+    public void Heal_FromAPartyMember_QueuesAHealOnThem()
+    {
+        Harness h = Setup();
+        SeedPlayer(h.Players, "Bob", PlayerRemoteControls.ExecuteCommands);
+        h.Party.MajorPartyHealSpell = "mahe";
+        h.Members.Add("Bob");
+
+        ChatLines.Hear(_routers[h.Engine], new ChatLine(ChatChannel.Local, "Bob", "@heal"));
+
+        Assert.Equal(new[] { ("Bob", true) }, h.Queued);
+        Assert.Equal(new[] { "par" }, Wire(h));
+    }
+
+    // A player outside the party heard on gangpath or broadcast gets a queued heal (and
+    // no par, which can't show them), unless the healer turned that off.
+    [Theory]
+    [InlineData(ChatChannel.Gangpath, true, true)]
+    [InlineData(ChatChannel.Broadcast, true, true)]
+    [InlineData(ChatChannel.Gangpath, false, false)]
+    public void Heal_FromOutsideTheParty_OnGangOrBroadcast_IsQueuedIfAllowed(ChatChannel channel, bool allowed, bool queued)
+    {
+        Harness h = Setup();
+        SeedPlayer(h.Players, "Eddie", PlayerRemoteControls.ExecuteCommands);
+        h.Party.MajorPartyHealSpell = "mahe";
+        h.Party.AnswerOutsideHealRequests = allowed;
+        h.Engine.DisableBroadcastChannel = false;
+
+        ChatLines.Hear(_routers[h.Engine], new ChatLine(channel, "Eddie", "@heal"));
+
+        Assert.Equal(queued ? new[] { ("Eddie", false) } : [], h.Queued);
+        Assert.Empty(Wire(h));
+        Assert.Equal(queued ? 1 : 0, Replies().Count);
+    }
+
+    // Outside the party by telepath, nothing is queued: only gangpath and broadcast
+    // carry a stranger's call.
+    [Fact]
+    public void Heal_FromOutsideTheParty_ByTelepath_QueuesNothing()
+    {
+        Harness h = Setup();
+        SeedPlayer(h.Players, "Eddie", PlayerRemoteControls.ExecuteCommands);
+        h.Party.MajorPartyHealSpell = "mahe";
+
+        ChatLines.Hear(_routers[h.Engine], Telepath("Eddie", "@heal"));
+
+        Assert.Empty(h.Queued);
     }
 
     [Fact]
@@ -168,7 +227,7 @@ public sealed class HealCommandHandlerTests
         engine.SetWireSender(_replies.Add);
         PartySettings settings = new() { MinorPartyHealSpell = "mheal" };
         List<byte[]> wire = new();
-        HealCommandHandler handler = new(engine, () => settings);
+        HealCommandHandler handler = new(engine, () => settings, queueHeal: (_, _) => { }, isPartyMember: _ => true);
         handler.SetWireSender(wire.Add);
         SeedPlayer(players, "Bob", PlayerRemoteControls.ExecuteCommands);
         engine.WarnOnDenial = false;

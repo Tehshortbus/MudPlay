@@ -119,6 +119,17 @@ public sealed class BuffSlotRowViewModelTests
         Assert.True(row.ShowSelf);
     }
 
+    // A buff only another player can take (renewal on Anomaly) offers its members
+    // and no self box.
+    [Fact]
+    public void OthersOnlyBuff_ShowsMembersButNoSelf()
+    {
+        var row = Row(new BuffSlot { Spell = "renw" }, BuffSlotScope.OthersOnly);
+        row.RebuildMemberTargets(Party("aragorn"));
+        Assert.True(row.ShowMemberTargets);
+        Assert.False(row.ShowSelf);
+    }
+
     [Fact]
     public void UncheckingWholePartyMaster_ClearsSoloOptionAndPersistsOnce()
     {

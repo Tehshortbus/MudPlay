@@ -6,9 +6,9 @@ namespace MudPlay.Tests;
 
 // Party-buff picker filter, confirmed against game data: zero energy cost + a
 // real duration = a buff (not an attack, not an instant heal/cure/utility spell);
-// Targets 2 = single-target-on-a-member, 10 / 13 = whole party. Self-only / enemy
-// / item scopes are excluded from IsPartyBuff (IsAnyBuff below includes self-only
-// too, for the unified self+party picker).
+// Targets 2 = single-target-on-a-member, 10 / 13 = whole party, 1 = self only,
+// 0 = another player only. Enemy / item scopes are excluded (IsAnyBuff below takes
+// the self and others-only scopes too, for the unified self+party picker).
 public sealed class BuffClassifierTests
 {
     private static KnownSpell Spell(int targets, int energy, int dur = 10) =>
@@ -24,11 +24,11 @@ public sealed class BuffClassifierTests
         Assert.Equal(expected, BuffClassifier.IsWholeParty(targets));
 
     [Theory]
-    [InlineData(0, 0, 10, true)]     // self-only, maintained (bless, troll skin)
-    [InlineData(1, 0, 10, true)]     // self-only, maintained
+    [InlineData(0, 0, 10, true)]     // another player only, maintained (renewal)
+    [InlineData(1, 0, 10, true)]     // self-only, maintained (bless, troll skin)
     [InlineData(2, 0, 10, true)]     // single-target, maintained
     [InlineData(13, 0, 40, true)]    // whole-party, maintained
-    [InlineData(0, 0, 0, false)]     // self-only, instant — minor healing / cure poison's shape
+    [InlineData(0, 0, 0, false)]     // another player only, instant
     [InlineData(1, 0, 0, false)]     // self-only, instant
     [InlineData(2, 0, 0, false)]     // single-target, instant — cure poison's actual shape
     [InlineData(13, 0, 0, false)]    // whole-party, instant — greater healing rain's actual shape
@@ -36,6 +36,20 @@ public sealed class BuffClassifierTests
     [InlineData(4, 0, 10, false)]    // monster (enemy) scope, even if it happened to carry a duration
     public void IsAnyBuff(int targets, int energy, int dur, bool expected) =>
         Assert.Equal(expected, BuffClassifier.IsAnyBuff(Spell(targets, energy, dur)));
+
+    // Targets 0 ("User") goes to another player only, never the caster (user,
+    // 2026-10-30: renewal on Anomaly); 1 is the caster only.
+    [Theory]
+    [InlineData(0, false, true, false)]
+    [InlineData(1, true, false, true)]
+    [InlineData(2, false, false, true)]
+    [InlineData(13, false, false, true)]
+    public void SelfAndOthersOnlyScopes(int targets, bool self, bool othersOnly, bool landsOnSelf)
+    {
+        Assert.Equal(self, BuffClassifier.IsSelfBuff(targets));
+        Assert.Equal(othersOnly, BuffClassifier.IsOthersOnlyBuff(targets));
+        Assert.Equal(landsOnSelf, BuffClassifier.CanLandOnSelf(targets));
+    }
 
     [Fact]
     public void HasDuration_LevelScaledDurationWithZeroBase_CountsAsMaintained()

@@ -64,12 +64,13 @@ public static class BuffDefenseCalculator
     }
 
     // A configured slot lands on us (so its AC/DR counts toward our buffed defense)
-    // when the spell is self-only (Targets 0/1), a whole-party spell we keep on
+    // when the spell is self-only (Targets 1), a whole-party spell we keep on
     // (10/13 + WholePartyOn), or a single-target spell we cast on ourselves
-    // (Targets 2 + CastOnSelf).
+    // (Targets 2 + CastOnSelf). A Targets 0 spell goes only to other players.
     private static bool LandsOnSelf(int targets, BuffSlot slot) => targets switch
     {
-        0 or 1 => true,
+        0 => false,
+        1 => true,
         10 or 13 => slot.WholePartyOn,
         _ => slot.CastOnSelf,
     };

@@ -36,9 +36,10 @@ public static class SneakBreakingCommands
 
     // Say-channel relays that carry a walk step or a flight. They go out even while a
     // sneak is being kept: a step relay belongs to a step that ends the sneak anyway
-    // (teleport / boat keyword, trap, token use), and @panic tells the party to hang
-    // up, which we do right after.
-    private static readonly string[] MustSendRelays = { ".@party ", ".@trap ", ".@panic" };
+    // (teleport / boat keyword, trap, token use), @panic tells the party to hang up,
+    // which we do right after, and @heal is a follower too hurt to wait (user,
+    // 2026-10-30: it fires even if it breaks the sneak).
+    private static readonly string[] MustSendRelays = { ".@party ", ".@trap ", ".@panic", ".@heal" };
 
     // True when sending this command ends a sneak. A ShadowRest character's rest
     // keeps it (Paradigm; GAME_MECHANICS "ShadowRest"). With no item rule to ask, an

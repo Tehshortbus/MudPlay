@@ -485,8 +485,9 @@ public sealed partial class BuffPanelViewModel : ObservableObject, IDisposable
 
     // Resolve a slot's targeting scope live from the active set. A #item-cast slot is
     // whole-party or self-only per the item (both no-target kinds are offered — see
-    // EligibleBuffs); a spell splits self-only / single-target / whole-party by its
-    // Targets code. An unresolved code defaults to self-only (a plain "cast on me" row).
+    // EligibleBuffs); a spell splits self-only / others-only / single-target /
+    // whole-party by its Targets code. An unresolved code defaults to self-only (a
+    // plain "cast on me" row).
     private BuffSlotScope ResolveScope(string? code)
     {
         if (string.IsNullOrWhiteSpace(code)) return BuffSlotScope.SelfOnly;
@@ -496,6 +497,7 @@ public sealed partial class BuffPanelViewModel : ObservableObject, IDisposable
         if (_spellbook.FindByCastCode(c) is not { } s) return BuffSlotScope.SelfOnly;
         if (BuffClassifier.IsWholeParty(s.Targets)) return BuffSlotScope.WholeParty;
         if (BuffClassifier.IsSingleTargetBuff(s.Targets)) return BuffSlotScope.SingleTarget;
+        if (BuffClassifier.IsOthersOnlyBuff(s.Targets)) return BuffSlotScope.OthersOnly;
         return BuffSlotScope.SelfOnly;
     }
 
@@ -771,12 +773,12 @@ public sealed partial class BuffPanelViewModel : ObservableObject, IDisposable
             int casts;
             if (BuffClassifier.IsWholeParty(r.Targets))
                 casts = dto.WholePartyOn && (hasParty || dto.CastSolo) ? 1 : 0;
-            else if (BuffClassifier.IsSingleTargetBuff(r.Targets))
+            else if (BuffClassifier.IsSingleTargetBuff(r.Targets) || BuffClassifier.IsOthersOnlyBuff(r.Targets))
             {
                 int memberCasts = dto.AllMembers
                     ? members.Count
                     : dto.Targets.Count(t => members.Any(m => string.Equals(m.Given, t, StringComparison.OrdinalIgnoreCase)));
-                casts = (dto.CastOnSelf ? 1 : 0) + memberCasts;
+                casts = (dto.CastOnSelf && BuffClassifier.IsSingleTargetBuff(r.Targets) ? 1 : 0) + memberCasts;
             }
             else
                 casts = dto.CastOnSelf ? 1 : 0;
@@ -918,8 +920,15 @@ public sealed partial class BuffPanelViewModel : ObservableObject, IDisposable
         List<(string Display, string Given)> members = CurrentMembers();
 
         List<(BuffSlot Dto, int ReqLevel, string Name)> toAdd = new();
+        // A buff only another player can take is added with self off: its members
+        // are ticked in the row.
         foreach (Game.Spells.SelfBlessPick pick in _selfBlessCandidates)
-            toAdd.Add((new BuffSlot { Spell = pick.Candidate.CastCode, CastOnSelf = pick.Recommended, BlessIfAboveMa = _settings.BlessIfAboveMa },
+            toAdd.Add((new BuffSlot
+                {
+                    Spell = pick.Candidate.CastCode,
+                    CastOnSelf = pick.Recommended && ResolveScope(pick.Candidate.CastCode) != BuffSlotScope.OthersOnly,
+                    BlessIfAboveMa = _settings.BlessIfAboveMa,
+                },
                 pick.Candidate.ReqLevel, pick.Candidate.Name));
         foreach (Game.Spells.SelfBlessCandidate cand in _partyBlessCandidates)
             toAdd.Add((new BuffSlot { Spell = cand.CastCode, WholePartyOn = false, CastSolo = false, BlessIfAboveMa = _settings.BlessIfAboveMa },
