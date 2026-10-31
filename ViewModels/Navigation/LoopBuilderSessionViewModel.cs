@@ -47,10 +47,7 @@ public sealed partial class LoopBuilderSessionViewModel : ObservableObject
         if (string.Equals(_builtOn, _loops.SetName, StringComparison.OrdinalIgnoreCase)) return false;
         bool had = HasClicks;
         _builtOn = _loops.SetName;
-        Clear();
-        // The name and notes were the dropped loop's.
-        Notes = string.Empty;
-        ProposedName = $"Loop {DateTime.Now:HH-mm}";
+        Discard();
         return had;
     }
 
@@ -225,6 +222,15 @@ public sealed partial class LoopBuilderSessionViewModel : ObservableObject
         LairDebuffWaitChoice = LairEntryDebuffModes.WaitForSpellsChoice;
         OnPropertyChanged(nameof(HasClicks));
         OnPropertyChanged(nameof(CanSave));
+    }
+
+    // The draft thrown away: its rooms, and the name and notes that were its own.
+    // Clear (the "Clear all" chip) keeps those for a loop built again in their place.
+    public void Discard()
+    {
+        Clear();
+        Notes = string.Empty;
+        ProposedName = $"Loop {DateTime.Now:HH-mm}";
     }
 
     // Persist the current loop under ProposedName. Returns the saved Loop, or

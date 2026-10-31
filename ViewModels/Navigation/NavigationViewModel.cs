@@ -5587,7 +5587,9 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
             restHereHp: row.RestHereHp,
             restHereMana: row.RestHereMana,
             lapWaitMs: row.LapWaitMs,
-            startHere: row.StartHere);
+            startHere: row.StartHere,
+            otherStartRoom: builder.Clicks.FirstOrDefault(c => c.StartHere && c.StepId != row.StepId) is { } start
+                ? $"{start.Index}. {start.Name}" : null);
         WaypointActionEditResult? result = await AppServices.Current.Dialogs
             .OpenWindowAsync<WaypointActionEditDialogViewModel, WaypointActionEditResult?>(vm);
         if (result is null) return;
@@ -5666,7 +5668,9 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
             restHereHp: row.RestHereHp,
             restHereMana: row.RestHereMana,
             lapWaitMs: row.LapWaitMs,
-            startHere: row.StartHere);
+            startHere: row.StartHere,
+            otherStartRoom: RunningLoopRows.FirstOrDefault(r => r.StartHere && r.Index != row.Index) is { } start
+                ? $"{start.Index}. {start.Name}" : null);
         WaypointActionEditResult? result = await AppServices.Current.Dialogs
             .OpenWindowAsync<WaypointActionEditDialogViewModel, WaypointActionEditResult?>(vm);
         if (result is null) return;

@@ -1,5 +1,13 @@
 # Version history
 
+## 3.195.5
+
+- The waypoint dialog sizes to fit, so nothing is cut off
+- The waypoint dialog names the loop's start room and says ticking the box moves it
+- The loop editor's start column is now "Always Start Here"
+- The loop editor's column headers line up with the cells under them
+- Discard in Navigation Management clears the loaded loop's name and notes too
+
 ## 3.195.0
 
 - A loop room can be marked as the loop's start: starting the loop always walks there first

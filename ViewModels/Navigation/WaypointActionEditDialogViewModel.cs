@@ -43,12 +43,24 @@ public sealed partial class WaypointActionEditDialogViewModel : ObservableObject
 
     // A fresh start of the loop walks here first and opens the lap here
     // (LoopWaypoint.StartHere).
-    [ObservableProperty] private bool _startHere;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(StartRoomNote))]
+    private bool _startHere;
+
+    // The loop's start room when it is another room: a loop has one, so the dialog
+    // says that ticking the box here moves it.
+    private readonly string? _otherStartRoom;
+
+    public string? StartRoomNote => _otherStartRoom is null ? null
+        : StartHere ? $"Saving moves the start from {_otherStartRoom} to this room."
+        : $"The loop's start room is {_otherStartRoom}. A loop has one: ticking this moves it here.";
 
     public WaypointActionEditDialogViewModel(string waypointLabel, string? command, long delayMs, bool doNotRest, bool doNotAttack,
-        bool restHereHp = false, bool restHereMana = false, long lapWaitMs = 0, bool startHere = false)
+        bool restHereHp = false, bool restHereMana = false, long lapWaitMs = 0, bool startHere = false,
+        string? otherStartRoom = null)
     {
         _startHere = startHere;
+        _otherStartRoom = otherStartRoom;
         _lapWaitMs = lapWaitMs;
         _restHereHp = restHereHp;
         _restHereMana = restHereMana;

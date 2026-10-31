@@ -1,12 +1,12 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.195.0**
-> - A loop room can be marked as the loop's start: starting the loop always walks there first
-> - Auto-invite now invites players in a room list long enough to wrap onto two lines
-> - Auto-invite also reads the server's room list, and looks at the room when a flagged player logs in beside you
-> - A room attack keeps going when the followed leader names one monster, instead of switching to it
-> - With GMCP stats on Active, a `stat` no longer stops the CP plan checking its rows
+> **Version 3.195.5**
+> - The waypoint dialog sizes to fit, so nothing is cut off
+> - The waypoint dialog names the loop's start room and says ticking the box moves it
+> - The loop editor's start column is now "Always Start Here"
+> - The loop editor's column headers line up with the cells under them
+> - Discard in Navigation Management clears the loaded loop's name and notes too
 <!-- current-version:end -->
 
 A modern Telnet terminal client for **MajorMUD** and other BBS door games, built in C# / .NET 10 with [Avalonia](https://avaloniaui.net/). It renders a faithful CP437 cell grid with full VT100/ANSI parsing, and layers a MegaMUD-style automation suite (combat, party, navigation, healing, and more) on top — all in modeless, dockable windows so the terminal stays live while you configure anything.
