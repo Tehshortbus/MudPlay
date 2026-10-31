@@ -1860,6 +1860,12 @@ public static class BugReportBuilder
         // these can have cast is left out (ConditionTracker.KeepWhatCouldBeCastHere).
         Kv(sb, "Who can cast here", Game.Conditions.CastReach.Describe(svc.CastReach.Now()));
         AppendCastReachState(sb, svc);
+        // Where @exp / @level take exp needed from (ExperienceQueryHandler).
+        Kv(sb, "Exp needed comes from", svc.Stats.ServerOwnsExp
+            ? "the server's vitals"
+            : svc.Stats.ExpLineReadAt is { } read
+                ? $"the `exp` line read {read.ToLocalTime():HH:mm:ss}"
+                : "nothing yet: no `exp` line read this session");
         sb.Append('\n');
         sb.Append("**Stat screen (PlayerStats)**\n\n");
         sb.Append(Json(svc.PlayerStats));

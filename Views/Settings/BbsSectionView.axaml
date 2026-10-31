@@ -2,6 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:MudPlay.ViewModels.Settings"
              xmlns:settings="using:MudPlay.Views.Settings"
+             xmlns:gmcp="using:MudPlay.Game.Gmcp"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="540" d:DesignHeight="420"
@@ -188,6 +189,17 @@
                     <TextBlock Text="{Binding GmcpStatus}" TextWrapping="Wrap" Margin="0,0,0,4"/>
                     <TextBlock Text="Off: text only · Shadow: compare · Active: use server data. Applies on next connection."
                                TextWrapping="Wrap" Margin="0,0,0,6"/>
+                    <Grid ColumnDefinitions="160,*" Margin="0,2,0,6">
+                        <TextBlock Classes="FieldLabel" Text="All packages"/>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
+                            <Button Content="All Off" Command="{Binding SetAllGmcpModesCommand}"
+                                    CommandParameter="{x:Static gmcp:GmcpMode.Off}"/>
+                            <Button Content="All Shadow" Command="{Binding SetAllGmcpModesCommand}"
+                                    CommandParameter="{x:Static gmcp:GmcpMode.Shadow}"/>
+                            <Button Content="All Active" Command="{Binding SetAllGmcpModesCommand}"
+                                    CommandParameter="{x:Static gmcp:GmcpMode.Active}"/>
+                        </StackPanel>
+                    </Grid>
                     <ItemsControl ItemsSource="{Binding GmcpPackages}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:GmcpPackageOption">

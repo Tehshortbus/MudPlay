@@ -59,19 +59,27 @@ public static class HangReport
         (string What, DateTimeOffset At)? LastWindowEvent,
         (string Name, DateTimeOffset At)? LastFocused,
         string? LongOperation = null,
-        MemoryTrail? Memory = null);
+        MemoryTrail? Memory = null,
+        ThreadStacks.Capture? Stacks = null);
 
     // The process's memory at one moment. PrivateBytes is the last one read (it
-    // is dear to read on Windows, so read less often), or null.
+    // is dear to read on Windows, so read less often), or null. With it, running
+    // totals that tell a busy freeze from a waiting one: the CPU the process has
+    // used, the time the GC has held every thread, and the lock waits; and the
+    // thread pool's backlog then.
     public readonly record struct Memory(long Heap, long Allocated, long WorkingSet, long? PrivateBytes,
-        long GcHeapSize, long GcCommitted, int Gen0, int Gen1, int Gen2)
+        long GcHeapSize, long GcCommitted, int Gen0, int Gen1, int Gen2,
+        TimeSpan Cpu = default, TimeSpan GcPause = default, long LockContentions = 0,
+        long PoolPending = 0, int PoolThreads = 0)
     {
         // Never GC.GetTotalMemory(true): that forces a collection. Touches no window.
         public static Memory Read(long? privateBytes)
         {
             GCMemoryInfo info = GC.GetGCMemoryInfo();
             return new Memory(GC.GetTotalMemory(false), GC.GetTotalAllocatedBytes(), Environment.WorkingSet, privateBytes,
-                info.HeapSizeBytes, info.TotalCommittedBytes, GC.CollectionCount(0), GC.CollectionCount(1), GC.CollectionCount(2));
+                info.HeapSizeBytes, info.TotalCommittedBytes, GC.CollectionCount(0), GC.CollectionCount(1), GC.CollectionCount(2),
+                Environment.CpuUsage.TotalTime, GC.GetTotalPauseDuration(), System.Threading.Monitor.LockContentionCount,
+                ThreadPool.PendingWorkItemCount, ThreadPool.ThreadCount);
         }
     }
 
@@ -199,9 +207,11 @@ public static class HangReport
         sb.Append('\n');
 
         AppendStack(sb, snapshot);
+        AppendBusy(sb, snapshot);
         AppendMemory(sb, snapshot, gathered.Resources);
         AppendRecent(sb, snapshot);
         AppendWindows(sb, snapshot);
+        AppendOtherStacks(sb, snapshot.Stacks);
 
         if (gathered.Missing is null)
         {
@@ -224,10 +234,14 @@ public static class HangReport
     private static void AppendStack(StringBuilder sb, Snapshot snapshot)
     {
         sb.Append("## Where the UI thread is\n\n");
+        AppendUiCallStack(sb, snapshot.Stacks);
         if (snapshot.Stack.Count == 0)
         {
             sb.Append("No measured scope was open: the UI thread is in code no scope covers (layout, drawing, ")
-              .Append("input, a window's own handlers). The activity and the windows below say what led up to it.\n\n");
+              .Append("input, a window's own handlers). ")
+              .Append(snapshot.Stacks?.Ui is { Frames.Count: > 0 }
+                  ? "Its call stack above names the code.\n\n"
+                  : "The activity and the windows below say what led up to it.\n\n");
             return;
         }
         sb.Append("The scopes open on the UI thread, outermost first. The last is the innermost measured code it ")
@@ -242,6 +256,68 @@ public static class HangReport
         if (snapshot.Depth > snapshot.Stack.Count)
             sb.Append("\n_").Append(snapshot.Depth - snapshot.Stack.Count)
               .Append(" deeper scope(s) are not listed: only the outermost ").Append(snapshot.Stack.Count).Append(" are kept._\n");
+        sb.Append('\n');
+    }
+
+    // The UI thread's call stack, read from a snapshot of the process (Windows).
+    private static void AppendUiCallStack(StringBuilder sb, ThreadStacks.Capture? stacks)
+    {
+        if (stacks is null) return;
+        if (stacks.Ui is not { Frames.Count: > 0 } ui)
+        {
+            sb.Append("_No call stack: ").Append(stacks.Missing ?? "the UI thread wasn't among the threads read").Append("._\n\n");
+            return;
+        }
+        sb.Append("Its call stack when this was written, innermost first (read in ").Append(Ms(stacks.Took.TotalMilliseconds))
+          .Append("). The first lines that name MudPlay code are where it is stuck; what is above them is what that ")
+          .Append("code called, below it how it got there.\n\n```\n");
+        AppendFrames(sb, ui);
+        sb.Append("```\n\n");
+    }
+
+    private static void AppendFrames(StringBuilder sb, ThreadStacks.Stack stack)
+    {
+        foreach (string frame in stack.Frames) sb.Append(frame).Append('\n');
+        if (stack.MoreFrames > 0) sb.Append("… ").Append(stack.MoreFrames).Append(" more frame(s)\n");
+    }
+
+    // The other threads' stacks: a lock the UI thread waits on is held by one of them.
+    private static void AppendOtherStacks(StringBuilder sb, ThreadStacks.Capture? stacks)
+    {
+        if (stacks is null || stacks.Stacks.All(s => s.IsUi)) return;
+        sb.Append("## Other threads\n\n")
+          .Append("The client's other managed threads at the same moment, innermost frame first: a lock or a result ")
+          .Append("the UI thread is waiting on is held or worked on by one of these.\n\n");
+        foreach (ThreadStacks.Stack stack in stacks.Stacks.Where(s => !s.IsUi))
+        {
+            sb.Append("**Thread ").Append(stack.ManagedId).Append("** (OS ").Append(stack.OsId)
+              .Append(stack.Role is { } role ? ", " + role : string.Empty).Append(")\n\n```\n");
+            AppendFrames(sb, stack);
+            sb.Append("```\n\n");
+        }
+    }
+
+    // Busy, waiting or collecting: what the whole process did while the UI thread
+    // was silent, from the figures read when the hang began and when this was written.
+    private static void AppendBusy(StringBuilder sb, Snapshot snapshot)
+    {
+        if (snapshot.Memory is not { } m) return;
+        double wall = (m.NowAt - m.StartAt).TotalSeconds;
+        if (wall <= 0 || m.Now.Cpu == default) return;
+        double cpu = (m.Now.Cpu - m.Start.Cpu).TotalSeconds;
+        double gc = (m.Now.GcPause - m.Start.GcPause).TotalSeconds;
+        sb.Append("## Busy, waiting or collecting\n\n")
+          .Append("What the whole client did between the hang beginning (").Append(Time(m.StartAt)).Append(") and this ")
+          .Append("being written (").Append(Time(m.NowAt)).Append("). About one core's worth of CPU means a thread was ")
+          .Append("computing; next to none means the UI thread was waiting (on a lock, the disk, another thread). Time the ")
+          .Append("GC held every thread is time no code ran at all.\n\n");
+        Kv(sb, "CPU used", $"{cpu.ToString("0.0", CultureInfo.InvariantCulture)} s in {wall.ToString("0.0", CultureInfo.InvariantCulture)} s, "
+            + $"about {(cpu / wall).ToString("0.0", CultureInfo.InvariantCulture)} cores' worth");
+        Kv(sb, "GC held every thread", $"{gc.ToString("0.00", CultureInfo.InvariantCulture)} s "
+            + $"({(gc / wall * 100).ToString("0", CultureInfo.InvariantCulture)}% of it), "
+            + $"collections gen0 / gen1 / gen2 +{m.Now.Gen0 - m.Start.Gen0} / +{m.Now.Gen1 - m.Start.Gen1} / +{m.Now.Gen2 - m.Start.Gen2}");
+        Kv(sb, "Waits for a lock another thread held", $"{m.Now.LockContentions - m.Start.LockContentions}");
+        Kv(sb, "Thread pool", $"{m.Now.PoolThreads} thread(s), {m.Now.PoolPending} work item(s) queued");
         sb.Append('\n');
     }
 

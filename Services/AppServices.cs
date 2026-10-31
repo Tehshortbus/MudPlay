@@ -6661,11 +6661,16 @@ public sealed class AppServices
         SessionReset = new Game.Remote.SessionResetHandler(
             RemoteCommands, CombatSession, TimeAnalysis, SessionActivity, Log);
 
-        // Read-only progression queries — @exp / @level report against the
-        // PlayerStats snapshot (from `stat` / `exp`) and the session
-        // exp-rate tracker. No wire output, so no sender to bind.
+        // Progression queries — @exp / @level report against the server's vitals
+        // or the PlayerStats snapshot (from `stat` / `exp`) and the session
+        // exp-rate tracker; an @exp with the exp line an hour old sends `exp` first.
         ExperienceQuery = new Game.Remote.ExperienceQueryHandler(
-            RemoteCommands, PlayerStats, SessionActivity, GameData);
+            RemoteCommands, PlayerStats, SessionActivity, GameData, Stats,
+            send: cmd => SendGameCommand(cmd),
+            armTimer: (delay, action) => _ = System.Threading.Tasks.Task.Delay(delay)
+                .ContinueWith(_ => Avalonia.Threading.Dispatcher.UIThread.Post(action),
+                    System.Threading.Tasks.TaskScheduler.Default),
+            log: Log);
 
         // Per-realm runic-currency naming. Reads the active realm's RunicCurrencyName
         // live (via ResolveActiveRealm) and re-reads on profile / realm swap. Injected

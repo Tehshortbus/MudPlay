@@ -34,7 +34,7 @@
          (~1000+ line) rewrite/expansion of an existing one, PATCH = bug
          fixes AND ordinary enhancements to existing features (one bump per
          report handled or per enhancement). -->
-    <Version>3.193.2</Version>
+    <Version>3.193.7</Version>
 
     <!-- Memory footprint: pin the Workstation GC (one small heap) rather than
          the Server GC (a heap + background thread per core), which on a
@@ -174,6 +174,11 @@
     </PackageReference>
     <!-- Source-generated MVVM helpers ([ObservableProperty], [RelayCommand]). -->
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.1" />
+    <!-- Reads the managed call stacks of a frozen client's threads for its Hang
+         report (Services/ThreadStacks.cs, Windows only). Held at 3.1: 4.x adds
+         Azure and identity libraries for symbol-server downloads the client never
+         makes. Loaded only when a hang report is written. -->
+    <PackageReference Include="Microsoft.Diagnostics.Runtime" Version="3.1.512801" />
     <!-- Pure-managed Jet (.mdb / .accdb) reader for the Phase 5 MdbImporter.
          Vendored in Vendor/JetDatabaseReader/ rather than pulled from the
          NuGet so we can patch a false-positive encryption-flag check that
