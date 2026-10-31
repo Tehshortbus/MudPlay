@@ -414,8 +414,11 @@ public sealed class WindowLayoutStore
     private void CaptureFrom(Window window, string id)
     {
         _bounds.TryGetValue(id, out WindowBounds? previous);
-        WindowBounds? captured = BoundsToPersist(
-            window.WindowState, window.Position, window.Width, window.Height, previous);
+        // A window sized by its content (SizeToContent) leaves Width / Height unset,
+        // NaN: its size is the client area's.
+        double width = double.IsFinite(window.Width) ? window.Width : window.ClientSize.Width;
+        double height = double.IsFinite(window.Height) ? window.Height : window.ClientSize.Height;
+        WindowBounds? captured = BoundsToPersist(window.WindowState, window.Position, width, height, previous);
         if (captured is not null) _bounds[id] = captured;
     }
 
@@ -466,8 +469,11 @@ public sealed class WindowLayoutStore
 
         // Don't capture transient zero / collapsing sizes — those usually
         // happen during the teardown rather than reflecting where the
-        // user actually left the window.
-        if (width < MinPersistedWidth || height < MinPersistedHeight)
+        // user actually left the window. Nor a size that is no number: JSON can't
+        // hold one, and every profile save after it threw (report
+        // Crash-20261031-145330, the content-sized Round Totals window's NaN).
+        if (!double.IsFinite(width) || !double.IsFinite(height)
+            || width < MinPersistedWidth || height < MinPersistedHeight)
             return null;
 
         return new WindowBounds

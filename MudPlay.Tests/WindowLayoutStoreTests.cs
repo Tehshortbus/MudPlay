@@ -48,6 +48,18 @@ public sealed class WindowLayoutStoreTests
             WindowState.Normal, new PixelPoint(100, 100), 725, 59));
     }
 
+    // A content-sized window's unset Width / Height is NaN; stored, it made every
+    // later profile save throw (report Crash-20261031-145330).
+    [Theory]
+    [InlineData(double.NaN, 580)]
+    [InlineData(725, double.NaN)]
+    [InlineData(double.PositiveInfinity, 580)]
+    public void BoundsToPersist_ASizeThatIsNoNumber_IsRejected(double width, double height)
+    {
+        Assert.Null(WindowLayoutStore.BoundsToPersist(
+            WindowState.Normal, new PixelPoint(100, 100), width, height));
+    }
+
     [Fact]
     public void BoundsToPersist_Maximized_KeepsTheNormalSizeAndFlagsIt()
     {
