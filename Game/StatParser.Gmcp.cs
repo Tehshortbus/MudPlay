@@ -57,10 +57,14 @@ public sealed partial class StatParser
         Stats.Agility = Current("agility");
         Stats.Health = Current("health");
         Stats.Charm = Current("charm");
-        // A stat off its base is the one the stat screen would mark modified.
-        Stats.ModifiedStats = StatSet.None;
+        // A stat off its base is the one the stat screen would mark modified. Set in one
+        // write: cleared first, the gear-raised stat read for a moment as trained at its
+        // raised value, and the CP plan took that as a trusted reading (report
+        // paradigm-20261031-101847).
+        StatSet modified = StatSet.None;
         foreach ((string key, StatSet flag) in ServerStats)
-            if (stats.GetProperty(key).GetProperty("base").GetInt32() != Current(key)) Stats.ModifiedStats |= flag;
+            if (stats.GetProperty(key).GetProperty("base").GetInt32() != Current(key)) modified |= flag;
+        Stats.ModifiedStats = modified;
         Stats.ModifiedMarksRead = true;
         Stats.ArmourClass = value.GetProperty("ac").GetProperty("shown").GetInt32();
         Stats.MaxArmourClass = value.GetProperty("dr").GetProperty("shown").GetInt32();

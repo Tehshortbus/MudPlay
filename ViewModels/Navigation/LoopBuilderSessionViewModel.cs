@@ -167,9 +167,13 @@ public sealed partial class LoopBuilderSessionViewModel : ObservableObject
     // WaypointActionEditDialog. Commands don't change the
     // gap-filled path, so no re-expand. No-op when index is out of range.
     public void SetClickAction(int index, string? command, long delayMs, bool doNotRest = false, bool doNotAttack = false,
-        bool restHereHp = false, bool restHereMana = false, long lapWaitMs = 0)
+        bool restHereHp = false, bool restHereMana = false, long lapWaitMs = 0, bool startHere = false)
     {
         if (index < 0 || index >= Clicks.Count) return;
+        // One start room per loop (LoopWaypoint.StartHere).
+        if (startHere)
+            for (int i = 0; i < Clicks.Count; i++)
+                if (i != index && Clicks[i].StartHere) Clicks[i] = Clicks[i] with { StartHere = false };
         string? cmd = string.IsNullOrWhiteSpace(command) ? null : command;
         Clicks[index] = Clicks[index] with
         {
@@ -180,6 +184,7 @@ public sealed partial class LoopBuilderSessionViewModel : ObservableObject
             RestHereHp = restHereHp,
             RestHereMana = restHereMana,
             LapWaitMs = Math.Max(0, lapWaitMs),
+            StartHere = startHere,
         };
     }
 
@@ -256,6 +261,7 @@ public sealed partial class LoopBuilderSessionViewModel : ObservableObject
                 RestHereHp = row.RestHereHp,
                 RestHereMana = row.RestHereMana,
                 LapWaitMs = row.LapWaitMs,
+                StartHere = row.StartHere,
             });
 
         return new Loop(ProposedName, waypoints)
@@ -322,7 +328,7 @@ public sealed partial class LoopBuilderSessionViewModel : ObservableObject
 // marker.
 public sealed record LoopBuilderRow(
     int Index, RoomKey Key, string Name, string? Command = null, long DelayMs = 0, bool DoNotRest = false, bool DoNotAttack = false,
-    bool RestHereHp = false, bool RestHereMana = false, long LapWaitMs = 0)
+    bool RestHereHp = false, bool RestHereMana = false, long LapWaitMs = 0, bool StartHere = false)
 {
     // The step's identity within its build, kept through every edit, renumber and
     // move (each of those replaces the row). 0 on the Exp/Hr estimator's rows, which
@@ -337,4 +343,5 @@ public sealed record LoopBuilderRow(
         : RestHereHp ? "Rest up here (HP)" : "Rest up here (mana)";
     public bool HasLapWait => LapWaitMs > 0;
     public string LapWaitTip => $"Wait here until lap time {LoopDelay.Describe(LapWaitMs)}";
+    public bool HasStartHere => StartHere;
 }

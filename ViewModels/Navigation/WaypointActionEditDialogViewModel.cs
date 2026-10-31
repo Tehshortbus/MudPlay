@@ -41,9 +41,14 @@ public sealed partial class WaypointActionEditDialogViewModel : ObservableObject
     // of Command and Delay: it reads the lap's clock, not the command's.
     [ObservableProperty] private long _lapWaitMs;
 
+    // A fresh start of the loop walks here first and opens the lap here
+    // (LoopWaypoint.StartHere).
+    [ObservableProperty] private bool _startHere;
+
     public WaypointActionEditDialogViewModel(string waypointLabel, string? command, long delayMs, bool doNotRest, bool doNotAttack,
-        bool restHereHp = false, bool restHereMana = false, long lapWaitMs = 0)
+        bool restHereHp = false, bool restHereMana = false, long lapWaitMs = 0, bool startHere = false)
     {
+        _startHere = startHere;
         _lapWaitMs = lapWaitMs;
         _restHereHp = restHereHp;
         _restHereMana = restHereMana;
@@ -65,7 +70,7 @@ public sealed partial class WaypointActionEditDialogViewModel : ObservableObject
         if (trimmed is null) delay = 0;
         GuideActions.Report(GuideActions.WaypointActionSaved);
         CloseRequested?.Invoke(new WaypointActionEditResult(trimmed, delay, DoNotRest, DoNotAttack, RestHereHp, RestHereMana,
-            Math.Max(0, LapWaitMs)));
+            Math.Max(0, LapWaitMs), StartHere));
     }
 
     [RelayCommand]
@@ -74,4 +79,4 @@ public sealed partial class WaypointActionEditDialogViewModel : ObservableObject
 
 // Committed payload — null Command means "no command attached".
 public sealed record WaypointActionEditResult(string? Command, long DelayMs, bool DoNotRest, bool DoNotAttack,
-    bool RestHereHp, bool RestHereMana, long LapWaitMs);
+    bool RestHereHp, bool RestHereMana, long LapWaitMs, bool StartHere);

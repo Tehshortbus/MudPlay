@@ -129,6 +129,24 @@ public sealed class LoopReconnectRestartRoomTests
         Assert.Equal(Yard, w.Rig.Believed);
     }
 
+    // A loop with a start room walks there on a fresh start only: the run a dropped
+    // link ended is picked back up where the reconnect shows us, not walked back.
+    [Fact]
+    public void ReconnectRestart_OfALoopWithAStartRoom_JoinsWhereTheReconnectShowsUs()
+    {
+        using World w = new(Gate);
+        Loop loop = new("gyt", new[] { new LoopWaypoint(Gate) { StartHere = true }, new LoopWaypoint(Yard), new LoopWaypoint(Tower) });
+        Assert.True(w.Runner.Start(loop));
+        Assert.Equal("n", w.Rig.Sent.Last());
+        w.Drop();
+        int mark = w.Mark();
+
+        w.Reconnect(Yard);
+
+        Assert.Equal(new[] { "n" }, w.SentSince(mark));
+        Assert.Equal(LoopState.Running, w.Runner.State);
+    }
+
     // The wifi goes first and the drop is counted later: the step goes unanswered,
     // and recovery gives the loop up on it before the client calls the link lost.
     // The server never answered its last command, so the failure was the link's: the

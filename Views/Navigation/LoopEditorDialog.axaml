@@ -8,7 +8,7 @@
         x:Class="MudPlay.Views.Navigation.LoopEditorDialog"
         x:DataType="vm:LoopEditorDialogViewModel"
         Title="{Binding DialogTitle}"
-        Width="900" Height="560"
+        Width="944" Height="560"
         WindowStartupLocation="CenterOwner">
 
     <Window.Styles>
@@ -79,7 +79,7 @@
                  fixed (not Auto) so the empty header cells don't collapse and widen
                  the * column, and the Margin matches the row's ListBox-border +
                  WaypointRow-border + padding inset (1+1+6). -->
-            <Grid Grid.Row="2" ColumnDefinitions="32,*,150,132,50,50,50,50,132,30,30,30" ColumnSpacing="4"
+            <Grid Grid.Row="2" ColumnDefinitions="32,*,150,132,50,50,50,50,132,40,30,30,30" ColumnSpacing="4"
                   Margin="8,4,8,0">
                 <TextBlock Grid.Column="1" Text="Waypoints" FontSize="11"
                            Foreground="{StaticResource ChromeFgMutedBrush}"/>
@@ -100,6 +100,9 @@
                            HorizontalAlignment="Center"
                            Foreground="{StaticResource ChromeFgMutedBrush}"/>
                 <TextBlock Grid.Column="8" Text="Wait for lap (min / s)" FontSize="10"
+                           Foreground="{StaticResource ChromeFgMutedBrush}"/>
+                <TextBlock Grid.Column="9" Text="Start" FontSize="10"
+                           HorizontalAlignment="Center"
                            Foreground="{StaticResource ChromeFgMutedBrush}"/>
             </Grid>
 
@@ -122,7 +125,7 @@
                         <Border Classes="WaypointRow">
                             <!-- ColumnDefinitions must stay identical to the header grid
                                  above (fixed ↑↓✕ widths, not Auto) so headers line up. -->
-                            <Grid ColumnDefinitions="32,*,150,132,50,50,50,50,132,30,30,30" ColumnSpacing="4">
+                            <Grid ColumnDefinitions="32,*,150,132,50,50,50,50,132,40,30,30,30" ColumnSpacing="4">
                                 <TextBlock Grid.Column="0"
                                            Text="{Binding Index}"
                                            HorizontalAlignment="Right"
@@ -169,17 +172,21 @@
                                                      FontSize="10"
                                                      VerticalAlignment="Center"
                                                      ToolTip.Tip="Wait here until the current lap has run at least this long, counted from the lap's start (not from the command). 0 = off; skipped on a lap joined partway round."/>
-                                <Button Grid.Column="9"
+                                <CheckBox Grid.Column="9"
+                                          IsChecked="{Binding StartHere, Mode=TwoWay}"
+                                          HorizontalAlignment="Center" VerticalAlignment="Center"
+                                          ToolTip.Tip="When starting this loop, always go to this room first — a start walks here and opens the lap here, even from elsewhere on the loop. One room per loop; a loop picked back up after a detour, a recovery or a reconnect carries on where it was."/>
+                                <Button Grid.Column="10"
                                         Content="↑" FontSize="10" Padding="6,1"
                                         ToolTip.Tip="Move earlier in cycle"
                                         Command="{Binding $parent[ListBox].((vm:LoopEditorDialogViewModel)DataContext).MoveUpCommand}"
                                         CommandParameter="{Binding}"/>
-                                <Button Grid.Column="10"
+                                <Button Grid.Column="11"
                                         Content="↓" FontSize="10" Padding="6,1"
                                         ToolTip.Tip="Move later in cycle"
                                         Command="{Binding $parent[ListBox].((vm:LoopEditorDialogViewModel)DataContext).MoveDownCommand}"
                                         CommandParameter="{Binding}"/>
-                                <Button Grid.Column="11"
+                                <Button Grid.Column="12"
                                         Content="✕" FontSize="10" Padding="6,1"
                                         ToolTip.Tip="Remove waypoint"
                                         Foreground="{StaticResource AccentRedBrush}"

@@ -10331,6 +10331,7 @@ public sealed class AppServices
         AutoParty.SetRoomProbe(() => RoomTracker.State.CurrentRoom?.Key);
         // Players listed by a `look <direction>` peek stand in the next room.
         AutoParty.SetPeekProbe(() => RoomTracker.IsPeekSuppressed());
+        AutoParty.SetRoomRoster(RoomClassifier);
         // Settings → Other "Only auto-invite while navigation is running": a walk,
         // loop or auto-lair (running or paused), or a bank, sell, train,
         // train-funding or stash-transfer errand.

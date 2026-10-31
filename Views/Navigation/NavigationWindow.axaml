@@ -1625,6 +1625,10 @@
                                                                IsVisible="{Binding HasLapWait}"
                                                                Foreground="{StaticResource ChromeFgMutedBrush}"
                                                                ToolTip.Tip="{Binding LapWaitTip}"/>
+                                                    <TextBlock Text="▶" FontSize="11"
+                                                               IsVisible="{Binding HasStartHere}"
+                                                               Foreground="{StaticResource ChromeFgMutedBrush}"
+                                                               ToolTip.Tip="A start of the loop walks here first"/>
                                                 </StackPanel>
                                                 <Button Grid.Column="3"
                                                         Content="↑" FontSize="13" Padding="7,3" MinWidth="26"
@@ -1769,6 +1773,10 @@
                                                                IsVisible="{Binding HasLapWait}"
                                                                Foreground="{StaticResource ChromeFgMutedBrush}"
                                                                ToolTip.Tip="{Binding LapWaitTip}"/>
+                                                    <TextBlock Text="▶" FontSize="11"
+                                                               IsVisible="{Binding HasStartHere}"
+                                                               Foreground="{StaticResource ChromeFgMutedBrush}"
+                                                               ToolTip.Tip="A start of the loop walks here first"/>
                                                 </StackPanel>
                                             </Grid>
                                         </Border>

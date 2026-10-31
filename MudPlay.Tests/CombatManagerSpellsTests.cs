@@ -4139,6 +4139,38 @@ public sealed class CombatManagerSpellsTests
         Assert.Equal("pu tunnel horror", h.LastSent);
     }
 
+    // A room attack already hits the monster the leader names: following them onto it
+    // only switched us off the room attack onto one swing (user, 2026-10-31). Once the
+    // room no longer calls for the room attack, the follow goes ahead.
+    [Fact]
+    public void FollowLeader_WhileOurRoomAttackRuns_StaysOnTheRoomAttack()
+    {
+        using Harness h = new();
+        h.Settings.TargetPriority = TargetPriority.FollowLeader;
+        h.Settings.NormalAttackCommand = "pu";
+        h.Settings.MultiAttackSpell = new CombatSpellSlot { SpellName = "blast", MinEnemies = 2 };
+        h.Players.RecordObservation("Cidir", "Priest", null, null, null, null, null, DateTime.UtcNow);
+        AddParty(h, "MudPlay", "Cidir NineteenTr", "Thresh II");
+        h.Party.LeaderName = "Cidir NineteenTr";
+        h.AddMonster(635, "severed leg");
+        h.AddMonster(636, "giant skeleton");
+
+        h.Feed("Also here: severed leg, giant skeleton, large severed torso, Cidir.");
+        h.Tick();                                                             // a round, no announce
+        h.FireSettle();
+        Assert.Equal("blast", h.LastSent);
+
+        h.Feed("Cidir moves to attack large severed torso.");
+        h.FireSettle();
+        Assert.Equal("blast", h.LastSent);
+        Assert.DoesNotContain(h.AllSent, s => s.StartsWith("pu "));
+
+        h.Settings.MultiAttackSpell = new CombatSpellSlot { SpellName = "blast", MinEnemies = 3 };
+        h.Feed("Cidir moves to attack large severed torso.");
+        h.FireSettle();
+        Assert.Equal("pu large severed torso", h.LastSent);
+    }
+
     // ----- attack-not-last + follow-leader: one wait for both -----------
 
     // Leader Cidir stands in the room with two monsters, so both holds apply on entry.

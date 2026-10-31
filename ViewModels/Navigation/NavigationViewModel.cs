@@ -5171,7 +5171,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
             // when the click actually landed, so the row index stays aligned.
             if (builder.Clicks.Count > before)
                 builder.SetClickAction(builder.Clicks.Count - 1,
-                    w.Command, w.DelayMs, w.DoNotRest, w.DoNotAttack, w.RestHereHp, w.RestHereMana, w.LapWaitMs);
+                    w.Command, w.DelayMs, w.DoNotRest, w.DoNotAttack, w.RestHereHp, w.RestHereMana, w.LapWaitMs, w.StartHere);
         }
     }
 
@@ -5586,7 +5586,8 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
             doNotAttack: row.DoNotAttack,
             restHereHp: row.RestHereHp,
             restHereMana: row.RestHereMana,
-            lapWaitMs: row.LapWaitMs);
+            lapWaitMs: row.LapWaitMs,
+            startHere: row.StartHere);
         WaypointActionEditResult? result = await AppServices.Current.Dialogs
             .OpenWindowAsync<WaypointActionEditDialogViewModel, WaypointActionEditResult?>(vm);
         if (result is null) return;
@@ -5612,7 +5613,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
             return;
         }
         builder.SetClickAction(index, result.Command, result.DelayMs, result.DoNotRest, result.DoNotAttack,
-            result.RestHereHp, result.RestHereMana, result.LapWaitMs);
+            result.RestHereHp, result.RestHereMana, result.LapWaitMs, result.StartHere);
     }
 
     // Build the green running-loop rail from the loop's authored waypoints (fixed order
@@ -5632,7 +5633,8 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
                 Command: wp.Command, DelayMs: wp.DelayMs,
                 DoNotRest: wp.DoNotRest, DoNotAttack: wp.DoNotAttack,
                 IsCurrentRoom: here is { } h && h.Equals(wp.Key),
-                RestHereHp: wp.RestHereHp, RestHereMana: wp.RestHereMana, LapWaitMs: wp.LapWaitMs));
+                RestHereHp: wp.RestHereHp, RestHereMana: wp.RestHereMana, LapWaitMs: wp.LapWaitMs,
+                StartHere: wp.StartHere));
         }
     }
 
@@ -5663,7 +5665,8 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
             doNotAttack: row.DoNotAttack,
             restHereHp: row.RestHereHp,
             restHereMana: row.RestHereMana,
-            lapWaitMs: row.LapWaitMs);
+            lapWaitMs: row.LapWaitMs,
+            startHere: row.StartHere);
         WaypointActionEditResult? result = await AppServices.Current.Dialogs
             .OpenWindowAsync<WaypointActionEditDialogViewModel, WaypointActionEditResult?>(vm);
         if (result is null) return;
@@ -5702,6 +5705,10 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         wp.RestHereHp   = result.RestHereHp;
         wp.RestHereMana = result.RestHereMana;
         wp.LapWaitMs    = result.LapWaitMs;
+        // One start room per loop (LoopWaypoint.StartHere).
+        if (result.StartHere)
+            foreach (LoopWaypoint other in loop.Waypoints) other.StartHere = false;
+        wp.StartHere    = result.StartHere;
 
         if (ReferenceEquals(_services.LoopRunner.CurrentLoop, loop))
             _services.LoopRunner.ReconcileExpandedSteps();
@@ -5731,7 +5738,8 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
             $"loop live-edit: {label} → cmd='{result.Command ?? "(none)"}' " +
             $"delay={result.DelayMs}ms rest={(result.DoNotRest ? "no" : "ok")} attack={(result.DoNotAttack ? "no" : "ok")} "
             + $"rest-here={(result.RestHereHp ? "HP" : "")}{(result.RestHereMana ? "MA" : "")} "
-            + $"lap-wait={(result.LapWaitMs > 0 ? LoopDelay.Describe(result.LapWaitMs) : "off")}");
+            + $"lap-wait={(result.LapWaitMs > 0 ? LoopDelay.Describe(result.LapWaitMs) : "off")} "
+            + $"start-here={(result.StartHere ? "yes" : "no")}");
 
         RebuildCurrentNavRows();
     }

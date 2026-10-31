@@ -1014,7 +1014,7 @@ public sealed class LoopRunner : IRecoverableEngine
             _postToUi, _schedule,
             describe: l => $"loop '{l.Name}'",
             runningNow: () => State != LoopState.Idle ? $"loop '{_loop?.Name ?? "?"}'" : null,
-            start: l => Start(l));
+            start: RestartAfterReconnect);
         _tracker.CastCrossingStarted += OnCastCrossingStarted;
         _coordinator.PauseStateChanged += OnPauseChanged;
         if (_promptScanner is not null)
@@ -1181,6 +1181,14 @@ public sealed class LoopRunner : IRecoverableEngine
         finally { _startingForUser = false; }
     }
 
+    // The run a dropped link ended, picked back up: it joins the lap where it can,
+    // never walking back to the loop's start room.
+    private bool RestartAfterReconnect(Loop loop)
+    {
+        _userApproach = false;
+        return StartInternal(loop, isRecovery: false, gateFallback: true, fromStartRoom: false);
+    }
+
     // True only inside a Start the user asked for, so the Started event it raises
     // says so; a recovery re-plan, a resume or any other caller's start leaves it
     // false.
@@ -1270,12 +1278,16 @@ public sealed class LoopRunner : IRecoverableEngine
 
     // The room of the loop's cycle nearest to `from`, where a start from there would
     // join it: the destination of the walk-to a user's start makes first
-    // (LoopWalkHandoff). Null when `from` is already on the cycle, or nothing of it
-    // can be reached. Works nothing out about the run in progress.
+    // (LoopWalkHandoff). Null when a start from `from` needs no walk first, or nothing
+    // of the loop can be reached. Works nothing out about the run in progress.
     public RoomKey? NearestRoomOf(Loop loop, RoomKey from)
     {
         ArgumentNullException.ThrowIfNull(loop);
         if (_bfs is null || _graph is null || loop.Waypoints.Count < 2) return null;
+        // A loop with a start room is joined there, from on its track too
+        // (LoopWaypoint.StartHere).
+        if (loop.Waypoints.FirstOrDefault(w => w.StartHere) is { } start)
+            return start.Key.Equals(from) ? null : start.Key;
         List<RoomKey> rooms = LoopExpander.ResolveCycleRoomKeys(loop.Waypoints, _bfs, _graph, _filter, _legMemo)
             .Concat(loop.Waypoints.Select(w => w.Key)).Distinct().ToList();
         if (rooms.Contains(from)) return null;
@@ -1338,7 +1350,7 @@ public sealed class LoopRunner : IRecoverableEngine
     // through gates instead of failing. A resume or a recovery reroute keeps the
     // planning its caller asked for.
     private bool StartInternal(Loop loop, bool isRecovery, bool suppressFirstWaypointEvent = false,
-        bool throughGates = false, bool gateFallback = false)
+        bool throughGates = false, bool gateFallback = false, bool fromStartRoom = true)
     {
         ArgumentNullException.ThrowIfNull(loop);
         if (loop.Waypoints.Count < 2)
@@ -1469,6 +1481,14 @@ public sealed class LoopRunner : IRecoverableEngine
         // (Idle) shape and the approach-phase preview overlay would
         // render empty.
 
+        // The loop's own start room, on a fresh start (LoopWaypoint.StartHere). A resume,
+        // a recovery re-plan or a reconnect restart joins the lap wherever it can, as
+        // below.
+        if (fromStartRoom && !isRecovery && !suppressFirstWaypointEvent
+            && loop.Waypoints.FirstOrDefault(w => w.StartHere) is { } startRoom
+            && currentKey is { } standing && (standing.Equals(startRoom.Key) || (_walker is not null && _bfs is not null)))
+            return StartAtStartRoom(loop, startRoom, standing, throughGates, gateFallback);
+
         if (keepAnchor is null && currentKey is { } here && loop.Waypoints.Any(w => w.Key.Equals(here)))
         {
             _log?.Info("LoopRunner",
@@ -1545,6 +1565,47 @@ public sealed class LoopRunner : IRecoverableEngine
         JourneyFetch? fetch = throughGates ? _gatedApproachFetch?.Invoke(currentKey.Value, closest.Value) : null;
         CarryAbandonedDoorsToWalker();
         _walker.WalkTo(closest.Value, planThroughAcquirableGates: throughGates, preferTeleportFree: ApproachTeleportPreference,
+            fetch: fetch);
+        return true;
+    }
+
+    // A fresh start of a loop with a start room: the lap opens there, walked to from
+    // wherever the player is, the loop's own track included.
+    private bool StartAtStartRoom(Loop loop, LoopWaypoint start, RoomKey from, bool throughGates, bool gateFallback)
+    {
+        _circleStartRoom = start.Key;
+        if (from.Equals(start.Key))
+        {
+            _log?.Info("LoopRunner", $"Start branch=start-room: player already at the loop's start room {start.Key}");
+            ExpandSteps();
+            if (FailIfNothingToWalk()) return false;
+            Raise(new LoopEvent(LoopEventKind.Started, loop.Name, UserStarted: _startingForUser));
+            BeginCircle();
+            return true;
+        }
+
+        RoomKey? reach = PickClosestWaypoint(from, [start], throughGates);
+        if (reach is null && !throughGates && gateFallback)
+        {
+            reach = PickClosestWaypoint(from, [start], throughGates: true);
+            throughGates = reach is not null;
+        }
+        if (reach is null)
+        {
+            _log?.Warn("LoopRunner", $"Start failed: the loop's start room {start.Key} can't be reached from {from}");
+            RaiseAfterReset(new LoopEvent(LoopEventKind.Failed, $"the loop's start room {start.Key} can't be reached from {from}"));
+            return false;
+        }
+
+        _approachTarget = start.Key;
+        ExpandSteps();
+        if (FailIfNothingToWalk()) return false;
+        State = LoopState.Approaching;
+        Raise(new LoopEvent(LoopEventKind.Started, loop.Name, UserStarted: _startingForUser));
+        _log?.Info("LoopRunner", $"approach: walking from {from} → {start.Key} (the loop's start room)");
+        JourneyFetch? fetch = throughGates ? _gatedApproachFetch?.Invoke(from, start.Key) : null;
+        CarryAbandonedDoorsToWalker();
+        _walker!.WalkTo(start.Key, planThroughAcquirableGates: throughGates, preferTeleportFree: ApproachTeleportPreference,
             fetch: fetch);
         return true;
     }

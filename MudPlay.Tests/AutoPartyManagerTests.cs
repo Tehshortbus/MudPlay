@@ -35,6 +35,7 @@ public sealed class AutoPartyManagerTests
         PlayerDatabase players = new(new ProfileService(), () => null);
         PartyState party = new();
         AutoPartyManager engine = new(router, players, party, schedule: _partyTimers.Arm, now: () => _partyNow());
+        engine.SetRoomRoster(new RoomEntityClassifier(router, new MonsterMessageStore(), players));
         _partyNow = () => Now;
         // The wire-sender-null guard exists to prevent TTL burn during the
         // startup window where AutoPartyManager subscribes before
@@ -82,6 +83,74 @@ public sealed class AutoPartyManagerTests
 
         byte[] sent = Assert.Single(_sent);
         Assert.Equal("invite Raijin\r", Encoding.Latin1.GetString(sent));
+    }
+
+    private string[] SentLines() => _sent.Select(b => Encoding.Latin1.GetString(b)).ToArray();
+
+    // Report paradigm-20261031-093854: a party standing with monsters wraps the list
+    // onto a second row, and nobody in it was invited.
+    [Fact]
+    public void AlsoHere_ListWrappedOntoTwoRows_InvitesEveryFlaggedPlayer()
+    {
+        MessageRouter router = new();
+        DefaultPatterns.Seed(router);
+        PlayerDatabase players = new(new ProfileService(), () => null);
+        using AutoPartyManager engine = new(router, players, new PartyState(), schedule: _partyTimers.Arm, now: () => Now);
+        engine.SetWireSender(_sent.Add);
+        ServerFeed game = new(router);
+        RoomEntityClassifier roster = new(router, new MonsterMessageStore(), players);
+        roster.AttachLineExtractor(game.Lines);
+        engine.SetRoomRoster(roster);
+        foreach (string name in new[] { "Aunty", "Barter", "Masta" })
+            SeedPlayer(players, name, inviteOnSeen: true);
+
+        game.Line("Also here: Aunty, Barter, Thunder, Masta, Blasta, Master Thief Deathcow,");
+        game.Line("small townswoman, angry townswoman.");
+
+        Assert.Equal(new[] { "invite Aunty\r", "invite Barter\r", "invite Masta\r" }, SentLines());
+    }
+
+    // The server's roster names a player who logged in beside us, with no room shown.
+    [Fact]
+    public void ServerRoster_FlaggedPlayerArrives_SendsInvite()
+    {
+        var (engine, router, players, _) = Setup();
+        SeedPlayer(players, "Raijin", inviteOnSeen: true);
+        RoomEntityClassifier roster = new(router, new MonsterMessageStore(), players) { GmcpOwnsOccupants = () => true };
+        engine.SetRoomRoster(roster);
+
+        roster.ApplyGmcp(new[] { new RoomEntity("Raijin", "Raijin", EntityKind.Player, null) });
+
+        Assert.Equal(new[] { "invite Raijin\r" }, SentLines());
+    }
+
+    // A flagged player logging in beside us shows no room: we ask for it once, and its
+    // listing invites them. The server's roster needs no asking.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void RealmEntry_FlaggedPlayer_AsksForTheRoomUnlessTheServerOwnsTheRoster(bool serverRoster)
+    {
+        var (engine, router, players, _) = Setup();
+        SeedPlayer(players, "Raijin", inviteOnSeen: true);
+        SeedPlayer(players, "Stranger");
+        engine.SetRoomRoster(new RoomEntityClassifier(router, new MonsterMessageStore(), players)
+            { GmcpOwnsOccupants = () => serverRoster });
+
+        Dispatch(router, "Stranger just entered the Realm.");
+        _partyTimers.RunAll();
+        Assert.Empty(_sent);
+
+        Dispatch(router, "Raijin just entered the Realm.");
+        _partyTimers.RunAll();
+        if (serverRoster)
+        {
+            Assert.Empty(_sent);
+            return;
+        }
+        Assert.Equal(new[] { "\r" }, SentLines());
+        Dispatch(router, "Also here: Raijin.");
+        Assert.Equal(new[] { "\r", "invite Raijin\r" }, SentLines());
     }
 
     // Settings → Other "Only auto-invite while navigation is running": seen while idle,
@@ -372,6 +441,7 @@ public sealed class AutoPartyManagerTests
         PartyState party = new();
         _partyNow = () => Now;
         AutoPartyManager engine = new(router, players, party, schedule: _partyTimers.Arm, now: () => _partyNow());
+        engine.SetRoomRoster(new RoomEntityClassifier(router, new MonsterMessageStore(), players));
         // NOTE: no SetWireSender. The pre-fix path set
         // _recentlyInvited[given]=now before the send went nowhere — so
         // the next dispatch within 60 s would TTL-suppress even after
@@ -1444,6 +1514,7 @@ public sealed class AutoPartyManagerTests
         TrainerMenuTracker tracker = new(router, party, now: () => Now, schedule: _partyTimers.Arm);
         _partyNow = () => Now;
         AutoPartyManager engine = new(router, players, party, tracker, schedule: _partyTimers.Arm, now: () => _partyNow());
+        engine.SetRoomRoster(new RoomEntityClassifier(router, new MonsterMessageStore(), players));
         engine.SetWireSender(_sent.Add);
 
         // Snapshot the roster the menu captured at entry — simulates
@@ -1480,6 +1551,7 @@ public sealed class AutoPartyManagerTests
         TrainerMenuTracker tracker = new(router, party, now: () => Now, schedule: _partyTimers.Arm);
         _partyNow = () => Now;
         AutoPartyManager engine = new(router, players, party, tracker, schedule: _partyTimers.Arm, now: () => _partyNow());
+        engine.SetRoomRoster(new RoomEntityClassifier(router, new MonsterMessageStore(), players));
         engine.SetWireSender(_sent.Add);
 
         party.Members.Add(new PartyMember { Name = "Raijin WuzHere" });
@@ -1509,6 +1581,7 @@ public sealed class AutoPartyManagerTests
         TrainerMenuTracker tracker = new(router, party, now: () => Now, schedule: _partyTimers.Arm);
         _partyNow = () => Now;
         AutoPartyManager engine = new(router, players, party, tracker, schedule: _partyTimers.Arm, now: () => _partyNow());
+        engine.SetRoomRoster(new RoomEntityClassifier(router, new MonsterMessageStore(), players));
         engine.SetWireSender(_sent.Add);
 
         party.Members.Add(new PartyMember { Name = "Raijin WuzHere" });
@@ -1544,6 +1617,7 @@ public sealed class AutoPartyManagerTests
         TrainerMenuTracker tracker = new(router, party, now: () => Now, schedule: _partyTimers.Arm);
         _partyNow = () => Now;
         AutoPartyManager engine = new(router, players, party, tracker, schedule: _partyTimers.Arm, now: () => _partyNow());
+        engine.SetRoomRoster(new RoomEntityClassifier(router, new MonsterMessageStore(), players));
         engine.SetWireSender(_sent.Add);
 
         // Roster at menu entry holds our leader.

@@ -460,7 +460,7 @@ public sealed class CombatSpellChooser
     // NOT gated on this round's mana / cast cap (the user's rule is "don't backstab if
     // rooming", by monster count) — unlike MultiAttackWouldFire, which answers whether the
     // AoE actually fires THIS round.
-    private static bool MultiAttackRoomQualifies(CombatSettings settings, in CombatSpellContext ctx)
+    internal static bool MultiAttackRoomQualifies(CombatSettings settings, in CombatSpellContext ctx)
     {
         CombatSpellSlot multi = settings.MultiAttackSpell;
         return ctx.AllowNukes && IsConfigured(multi) && ctx.EnemyCount >= multi.MinEnemies;

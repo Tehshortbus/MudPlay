@@ -1,10 +1,12 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.194.3**
-> - A loop that gives up because the wifi died before the drop is counted now restarts after the reconnect
-> - So does a loop whose walk there failed that way; the Lost window it opened closes at the drop
-> - Recovery no longer takes the server's last room data as an answer while a move is still unanswered
+> **Version 3.195.0**
+> - A loop room can be marked as the loop's start: starting the loop always walks there first
+> - Auto-invite now invites players in a room list long enough to wrap onto two lines
+> - Auto-invite also reads the server's room list, and looks at the room when a flagged player logs in beside you
+> - A room attack keeps going when the followed leader names one monster, instead of switching to it
+> - With GMCP stats on Active, a `stat` no longer stops the CP plan checking its rows
 <!-- current-version:end -->
 
 A modern Telnet terminal client for **MajorMUD** and other BBS door games, built in C# / .NET 10 with [Avalonia](https://avaloniaui.net/). It renders a faithful CP437 cell grid with full VT100/ANSI parsing, and layers a MegaMUD-style automation suite (combat, party, navigation, healing, and more) on top — all in modeless, dockable windows so the terminal stays live while you configure anything.

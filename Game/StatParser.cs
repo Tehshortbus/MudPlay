@@ -607,11 +607,14 @@ public sealed partial class StatParser : IDisposable
 
     // The header opens a new screen. Until it has been read whole, the marks on
     // record belong to the last screen and say nothing about the values now landing.
+    // The server's stats keep their marks: the screen's close never sets them again,
+    // and the CP plan stopped checking rows after any `stat` (report
+    // paradigm-20261031-101847).
     private void BeginScreenMarks()
     {
         ResetArmMarks();
         _headerReadThisArm = true;
-        Stats.ModifiedMarksRead = false;
+        if (GmcpOwnsStats?.Invoke() != true) Stats.ModifiedMarksRead = false;
     }
 
     // Everything under the last stat row, up to the closing prompt, is the list of
