@@ -106,6 +106,36 @@ public sealed partial class GmcpIntegrationTests
         Assert.True(session.Tracker.HasQueuedMoves);
     }
 
+    // The server's room data comes only on a room change. Older than a move still
+    // unanswered, it can't say where that move left us (the link died with the
+    // answer on the way, report paradigm-20261031-051153), and the ask goes to the
+    // game; the room data the move brings answers it.
+    [Fact]
+    public void ShadowRoom_OlderThanAMoveStillUnanswered_LeavesTheAskToTheGame()
+    {
+        using Session session = new(active: false, rooms: TwinSquares);
+        session.Replay("01-handshake");
+        session.Tracker.SetLocated(new RoomKey(1, 1));
+        GmcpPositionLocator locator = new(session.Gmcp, session.Tracker,
+            new EngineRecoveryGate(session.Graph, session.Tracker), session.Timers.Arm);
+        session.Tracker.NoteMoveSent(Direction.N);
+
+        Assert.False(locator.TryLocate("stall"));
+        Assert.Equal(0, session.Timers.Pending);
+
+        session.Send("Anomaly.Session.Reset", new { scope = "room", room = "1,2" });
+        Dictionary<string, JsonElement> room = GmcpStateTests.Frames("01-handshake").First(f =>
+            f.TryGetProperty("pkg", out JsonElement package) && package.GetString() == "Anomaly.Room.Info")
+            .GetProperty("msg").EnumerateObject().ToDictionary(p => p.Name, p => p.Value);
+        room["room"] = JsonSerializer.SerializeToElement("1,2");
+        session.Send("Anomaly.Room.Info", room);
+        RoomKey? resolved = null;
+
+        Assert.True(locator.TryLocateOnce("stall", key => resolved = key, () => { }));
+        session.Timers.RunAll();
+        Assert.Equal(new RoomKey(1, 2), resolved);
+    }
+
     // With no engine driving, a display no single room fits would leave the map Lost.
     // The server's room is taken there, when it is the room the display names.
     [Theory]
