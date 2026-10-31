@@ -783,7 +783,7 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
     private void DiscardDraft()
     {
         if (Draft is null) return;
-        Draft.Clear();
+        Draft.Discard();
         _onDraftConsumed?.Invoke();
     }
 

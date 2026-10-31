@@ -480,6 +480,45 @@ public sealed class LoopBuilderSessionTests : IDisposable
         Assert.True(s.CanSave);
     }
 
+    // Discard throws away the loaded loop's name and notes with its rooms; Clear all
+    // keeps them for the rooms clicked again (user, 2026-10-31: Discard left the name).
+    [Fact]
+    public void Discard_DropsTheNameAndNotes_ClearKeepsThem()
+    {
+        (LoopBuilderSessionViewModel s, _) = NewSession();
+        s.ProposedName = "Cleared Fields";
+        s.Notes = "daily";
+        s.AddClick(new RoomKey(1, 1));
+        s.AddClick(new RoomKey(1, 3));
+
+        s.Clear();
+        Assert.Equal("Cleared Fields", s.ProposedName);
+        Assert.Equal("daily", s.Notes);
+
+        s.AddClick(new RoomKey(1, 1));
+        s.Discard();
+        Assert.False(s.HasClicks);
+        Assert.NotEqual("Cleared Fields", s.ProposedName);
+        Assert.Equal(string.Empty, s.Notes);
+    }
+
+    // A loop has one start room: setting it on a room takes it off the others, and
+    // the saved loop carries the one.
+    [Fact]
+    public void StartHere_OnOneRoom_TakesItOffTheOthers()
+    {
+        (LoopBuilderSessionViewModel s, _) = NewSession();
+        s.AddClick(new RoomKey(1, 1));
+        s.AddClick(new RoomKey(1, 2));
+        s.AddClick(new RoomKey(1, 3));
+
+        s.SetClickAction(0, null, 0, startHere: true);
+        s.SetClickAction(2, null, 0, startHere: true);
+
+        Assert.Equal(new[] { false, false, true }, s.Clicks.Select(c => c.StartHere));
+        Assert.Equal(new[] { false, false, true }, s.BuildTransient()!.Waypoints.Select(w => w.StartHere));
+    }
+
     [Fact]
     public void TheSameGameDataReadInAgain_KeepsTheLoopBeingBuilt()
     {

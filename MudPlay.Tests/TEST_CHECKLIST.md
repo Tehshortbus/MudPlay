@@ -2256,7 +2256,7 @@ How to keep it current:
 
 ### LoopBuilderSessionTests.cs
 - Covers: ViewModels/Navigation/LoopBuilderSessionViewModel
-- Checks: clicks expand to a closed cycle, per-waypoint actions and flags ride into the loop, remove/move clicks, unreachable legs block save, a set switch drops the build, a row's step is found again through edits, renumbers and moves, and never once it is removed, saved or cleared (even when an identical step takes its place).
+- Checks: clicks expand to a closed cycle, per-waypoint actions and flags ride into the loop, remove/move clicks, unreachable legs block save, a set switch drops the build, Discard drops the name and notes where Clear keeps them, one start room per loop, a row's step is found again through edits, renumbers and moves, and never once it is removed, saved or cleared (even when an identical step takes its place).
 - Why: building loops on the map; a step's action editor stays open while the build changes, and its result must land on that step or nowhere (report Crash-20261026-212906). The view-model's re-check after the editor closes (the same builder still open) runs behind a real Avalonia window, which isn't unit-tested.
 
 ### LoopCombatSuppressionTests.cs

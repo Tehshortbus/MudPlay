@@ -8,7 +8,7 @@
         x:Class="MudPlay.Views.Navigation.LoopEditorDialog"
         x:DataType="vm:LoopEditorDialogViewModel"
         Title="{Binding DialogTitle}"
-        Width="944" Height="560"
+        Width="996" Height="560"
         WindowStartupLocation="CenterOwner">
 
     <Window.Styles>
@@ -79,31 +79,30 @@
                  fixed (not Auto) so the empty header cells don't collapse and widen
                  the * column, and the Margin matches the row's ListBox-border +
                  WaypointRow-border + padding inset (1+1+6). -->
-            <Grid Grid.Row="2" ColumnDefinitions="32,*,150,132,50,50,50,50,132,40,30,30,30" ColumnSpacing="4"
-                  Margin="8,4,8,0">
-                <TextBlock Grid.Column="1" Text="Waypoints" FontSize="11"
-                           Foreground="{StaticResource ChromeFgMutedBrush}"/>
-                <TextBlock Grid.Column="2" Text="Command" FontSize="10"
-                           Foreground="{StaticResource ChromeFgMutedBrush}"/>
-                <TextBlock Grid.Column="3" Text="Delay (min / s)" FontSize="10"
-                           Foreground="{StaticResource ChromeFgMutedBrush}"/>
-                <TextBlock Grid.Column="4" Text="No rest" FontSize="10"
-                           HorizontalAlignment="Center"
-                           Foreground="{StaticResource ChromeFgMutedBrush}"/>
-                <TextBlock Grid.Column="5" Text="No atk" FontSize="10"
-                           HorizontalAlignment="Center"
-                           Foreground="{StaticResource ChromeFgMutedBrush}"/>
-                <TextBlock Grid.Column="6" Text="Rest HP" FontSize="10"
-                           HorizontalAlignment="Center"
-                           Foreground="{StaticResource ChromeFgMutedBrush}"/>
-                <TextBlock Grid.Column="7" Text="Rest MA" FontSize="10"
-                           HorizontalAlignment="Center"
-                           Foreground="{StaticResource ChromeFgMutedBrush}"/>
-                <TextBlock Grid.Column="8" Text="Wait for lap (min / s)" FontSize="10"
-                           Foreground="{StaticResource ChromeFgMutedBrush}"/>
-                <TextBlock Grid.Column="9" Text="Start" FontSize="10"
-                           HorizontalAlignment="Center"
-                           Foreground="{StaticResource ChromeFgMutedBrush}"/>
+            <Grid Grid.Row="2" ColumnDefinitions="32,*,150,132,50,50,50,50,132,92,30,30,30" ColumnSpacing="4"
+                  Margin="8,4,8,2">
+                <Grid.Styles>
+                    <!-- Each label sits over its cell as the cell sits in the row: text
+                         fields from their left edge, everything else centred. -->
+                    <Style Selector="TextBlock">
+                        <Setter Property="FontSize" Value="10"/>
+                        <Setter Property="VerticalAlignment" Value="Bottom"/>
+                        <Setter Property="HorizontalAlignment" Value="Center"/>
+                        <Setter Property="TextAlignment" Value="Center"/>
+                        <Setter Property="TextWrapping" Value="Wrap"/>
+                        <Setter Property="Foreground" Value="{StaticResource ChromeFgMutedBrush}"/>
+                    </Style>
+                </Grid.Styles>
+                <TextBlock Grid.Column="0" Text="#" HorizontalAlignment="Right"/>
+                <TextBlock Grid.Column="1" Text="Waypoint" HorizontalAlignment="Left"/>
+                <TextBlock Grid.Column="2" Text="Command" HorizontalAlignment="Left" Margin="4,0,0,0"/>
+                <TextBlock Grid.Column="3" Text="Delay (min / s)"/>
+                <TextBlock Grid.Column="4" Text="No rest"/>
+                <TextBlock Grid.Column="5" Text="No atk"/>
+                <TextBlock Grid.Column="6" Text="Rest HP"/>
+                <TextBlock Grid.Column="7" Text="Rest MA"/>
+                <TextBlock Grid.Column="8" Text="Wait for lap (min / s)"/>
+                <TextBlock Grid.Column="9" Text="Always Start Here"/>
             </Grid>
 
             <!-- Waypoint list -->
@@ -125,7 +124,7 @@
                         <Border Classes="WaypointRow">
                             <!-- ColumnDefinitions must stay identical to the header grid
                                  above (fixed ↑↓✕ widths, not Auto) so headers line up. -->
-                            <Grid ColumnDefinitions="32,*,150,132,50,50,50,50,132,40,30,30,30" ColumnSpacing="4">
+                            <Grid ColumnDefinitions="32,*,150,132,50,50,50,50,132,92,30,30,30" ColumnSpacing="4">
                                 <TextBlock Grid.Column="0"
                                            Text="{Binding Index}"
                                            HorizontalAlignment="Right"
@@ -142,6 +141,7 @@
                                          Text="{Binding Command, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                          FontSize="10" Padding="4,1"
                                          VerticalAlignment="Center"
+                                         VerticalContentAlignment="Center"
                                          PlaceholderText="cmd on arrival"
                                          ToolTip.Tip="Command sent when the loop reaches this waypoint (chain with ; or ^M). Blank = none."/>
                                 <ctl:LoopDelayEditor Grid.Column="3"
@@ -177,16 +177,19 @@
                                           HorizontalAlignment="Center" VerticalAlignment="Center"
                                           ToolTip.Tip="When starting this loop, always go to this room first — a start walks here and opens the lap here, even from elsewhere on the loop. One room per loop; a loop picked back up after a detour, a recovery or a reconnect carries on where it was."/>
                                 <Button Grid.Column="10"
+                                        HorizontalAlignment="Center" VerticalAlignment="Center"
                                         Content="↑" FontSize="10" Padding="6,1"
                                         ToolTip.Tip="Move earlier in cycle"
                                         Command="{Binding $parent[ListBox].((vm:LoopEditorDialogViewModel)DataContext).MoveUpCommand}"
                                         CommandParameter="{Binding}"/>
                                 <Button Grid.Column="11"
+                                        HorizontalAlignment="Center" VerticalAlignment="Center"
                                         Content="↓" FontSize="10" Padding="6,1"
                                         ToolTip.Tip="Move later in cycle"
                                         Command="{Binding $parent[ListBox].((vm:LoopEditorDialogViewModel)DataContext).MoveDownCommand}"
                                         CommandParameter="{Binding}"/>
                                 <Button Grid.Column="12"
+                                        HorizontalAlignment="Center" VerticalAlignment="Center"
                                         Content="✕" FontSize="10" Padding="6,1"
                                         ToolTip.Tip="Remove waypoint"
                                         Foreground="{StaticResource AccentRedBrush}"
