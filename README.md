@@ -1,8 +1,9 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.193.8**
+> **Version 3.193.9**
 > - Buff Watchdog: a buff only another player can take (renewal on Anomaly) shows member boxes and no Self, and is never cast on you
+> - Request healing (`@heal`) goes out on say by default, with a channel drop-down (Say / Gangpath / Broadcast) in Settings → Party, even if it ends a sneak
 <!-- current-version:end -->
 
 A modern Telnet terminal client for **MajorMUD** and other BBS door games, built in C# / .NET 10 with [Avalonia](https://avaloniaui.net/). It renders a faithful CP437 cell grid with full VT100/ANSI parsing, and layers a MegaMUD-style automation suite (combat, party, navigation, healing, and more) on top — all in modeless, dockable windows so the terminal stays live while you configure anything.

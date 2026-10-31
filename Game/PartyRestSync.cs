@@ -332,20 +332,32 @@ public sealed class PartyRestSync : IDisposable
     // True while any wait reason (a rest, a hold, a blinding…) still stands.
     public bool IsHoldingWait => _waitReasons.Count > 0;
 
-    // Broadcast @heal to the whole party (gangpath) — the flee-side signal a
-    // low-HP follower emits instead of running. A follower that ran off alone
-    // would break party formation and strand itself, so it asks the party
-    // healer(s) to top it up and stays put; the leader owns the party's run
-    // decision. Broadcasts rather than telepathing the leader (as RequestWait /
-    // RequestOk do) because the healer may be any party member, not just the
-    // leader. No-ops solo, as leader, or without a wire-sender.
+    // The channel @heal goes out on (Settings → Party); Say until wired.
+    public Func<Models.Profile.HealRequestChannel>? HealChannel { get; set; }
+
+    // Ask the party for a heal with @heal — the flee-side signal a low-HP follower
+    // emits instead of running. A follower that ran off alone would break party
+    // formation and strand itself, so it asks the party healer(s) to top it up and
+    // stays put; the leader owns the party's run decision. Said to the room rather
+    // than telepathed to the leader (as RequestWait / RequestOk are) because the
+    // healer may be any party member. It's a call for help now, so it goes out even
+    // when it ends a sneak (SneakBreakingCommands' must-send relays). No-ops solo, as
+    // leader, or without a wire-sender.
     public void RequestHeal()
     {
         if (!_party.IsInParty) return;
         if (_party.SelfIsLeader) return;
         if (_wireSender is null) return;
         if (MasterSwitchOff?.Invoke() == true) return;
-        _wireSender(Encoding.Latin1.GetBytes("bg @heal\r"));   // gang speak verb is `bg`
+        Models.Profile.HealRequestChannel channel = HealChannel?.Invoke() ?? Models.Profile.HealRequestChannel.Say;
+        string wire = channel switch
+        {
+            Models.Profile.HealRequestChannel.Gangpath  => "bg @heal",   // gang speak verb is `bg`
+            Models.Profile.HealRequestChannel.Broadcast => "br @heal",
+            _                                           => ".@heal",
+        };
+        _wireSender(Encoding.Latin1.GetBytes(wire + "\r"));
+        _log?.Info(LogCategory, $"asked the party for a heal on {channel}: {wire}");
     }
 
     public void Dispose()

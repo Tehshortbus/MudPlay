@@ -2054,7 +2054,7 @@ Asks a party healer to look at the party's health now and heal whoever is low.
 
 - **The cast is your healing engine's, not this command's.** `par` is sent and `healing` is answered whatever your toggles say; whether a heal is then cast follows Auto-Heal and your party heal thresholds.
 - **Master switch off:** ignored, no answer.
-- **The sending side:** a MudPlay follower at low HP asks the party with `@heal` in place of running off alone (see **Health: rest, heal, flee**).
+- **The sending side:** a MudPlay follower at low HP asks the party with `@heal` in place of running off alone, on the channel Settings → Party → Request healing picks (Say by default; see **Health: rest, heal, flee**).
 
 #### @hangup and @relog
 
@@ -6122,9 +6122,11 @@ Settings → Party. The **Combat profile** chips at the top switch profiles from
 **Available options:** 2–6
 **What it does:** How many hurt party members are needed at once before MudPlay switches from single-target healing to the AOE/group heal pick.
 
-### Request healing (@heal broadcast) — not functional
+### Request healing (@heal) — the threshold is not functional
 
-**Important notes:** The threshold box is a placeholder and is greyed out; it has no setting behind it. `@heal` itself does work: as a party follower, your client sends `@heal` on the gang channel when your HP reaches **Run if below** (Health tab), in place of fleeing. Party healers running MudPlay answer it.
+**Important notes:** The threshold box is a placeholder and is greyed out; it has no setting behind it. `@heal` itself does work: as a party follower, your client sends `@heal` when your HP reaches **Run if below** (Health tab), in place of fleeing. It is the emergency call, for when the party's healer hasn't already seen you drop. Party healers running MudPlay answer it.
+
+The drop-down to its right picks the channel it goes out on: **Say** (the default: `.@heal`, heard only in the room your party is in), **Gangpath** (`bg @heal`, your whole gang) or **Broadcast** (`br @heal`, everyone on your numbered channel). It goes out even if it ends your sneak: a follower that hurt is in the fight already.
 
 ### Party bless
 

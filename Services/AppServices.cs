@@ -3383,7 +3383,10 @@ public sealed class AppServices
         // Emit side of @wait/@ok. Observes our own
         // position transitions and telepaths the leader when we enter
         // / leave a rest state. Wire-sender hookup in MainWindowVM.
-        PartyRest = new Game.PartyRestSync(PartyState, Log);
+        PartyRest = new Game.PartyRestSync(PartyState, Log)
+        {
+            HealChannel = () => ReadSection<Models.Profile.PartySettings>(Profile.Current, "Party").RequestHealChannel,
+        };
         // One-to-many @-command sender: the @Reset on loop start (LoopRunner's
         // ReachedFirstWaypoint handler below) and the @have / @level / @wealth
         // party probes.

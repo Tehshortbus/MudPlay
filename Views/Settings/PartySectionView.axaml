@@ -168,7 +168,8 @@
                         <TextBlock Classes="FieldLabel" Text="or more members meet threshold (Minor + Major)"/>
                     </StackPanel>
 
-                    <!-- Request healing: just threshold, no spell. Stub — no DTO field yet. -->
+                    <!-- Request healing: the threshold is a placeholder (a follower asks at the
+                         Health tab's Run if below); the channel is wired. -->
                     <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,10,0,0">
                         <TextBlock Classes="FieldLabel" Text="Request healing"/>
                         <TextBlock Classes="FieldLabel" Text="(send @heal) at"
@@ -178,6 +179,11 @@
                                        Width="120" MinWidth="120"
                                        ToolTip.Tip="Broadcast @heal at this HP %. (@health is a different command — it requests party-member health status.)"/>
                         <TextBlock Classes="FieldLabel" Text="%"/>
+                        <TextBlock Classes="FieldLabel" Text="over" Margin="6,0,0,0"/>
+                        <ComboBox MinWidth="120" VerticalAlignment="Center"
+                                  ItemsSource="{Binding RequestHealChannels}"
+                                  SelectedItem="{Binding RequestHealChannel, Mode=TwoWay}"
+                                  ToolTip.Tip="The channel @heal goes out on. Say reaches only the room your party is in; Gangpath your whole gang; Broadcast everyone on your numbered channel. It goes out even if it ends your sneak."/>
                     </StackPanel>
                 </StackPanel>
             </Panel>

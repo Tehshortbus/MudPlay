@@ -1073,7 +1073,7 @@ How the game's talk modes and chat channels behave: say forms, the gang channel'
   - The table of command words agrees with the forms in this topic: `bg`, `gb` and `broadg`…`broadgang` are the gang verb and no spelling of `gang` is a command (*Wire, prompt & command output → Command words and abbreviations*).
 
 **Client use:**
-- Anything we emit on the gangpath channel (remote `@`-command replies, level-up announces, party `bg @heal`) must use `bg`.
+- Anything we emit on the gangpath channel (remote `@`-command replies, level-up announces, a party `bg @heal` when Settings → Party sends it there) must use `bg`.
 - The alias-collision table in `AliasEngine` already reserves `bg`/`gb`/`broadg…` as the gangpath forms.
 
 ### Telepath throttle and per-telepath acknowledgement
@@ -9041,7 +9041,7 @@ How MajorMUD parties form, move, lose and regain members, and how party clients 
   - **A sneaking follower keeps sneaking**: for a follow move with the sneak flag set, `_move_user` prints `Sneaking...` to the follower and makes the usual sneak roll (@0x417742–0x41776e, roll @0x417947).
   - **A follower can't drag**: on a follow move, a follower who is dragging someone sees `You may not drag someone while in a party!` and the drag is dropped (@0x41776f–0x4177ac).
 - **Client policy: a party follower never flees** *(user, 2026-10-10: "a party follower should not flee while in a party, ever.")*. A run of its own walks a follower out of the party (*A follower who can't move is left behind*, the own-move bullet), so no flee of any kind starts while the client is in a party and not its leader: the low-HP and low-mana runs, hit and run, a failed backstab's run, the PvP flee by rooms or to a Flee room, and the run from a `Flee` monster (*Monsters, lairs & spawns → Neutral monsters and kill-on-sight*).
-  - In the low-HP run's place the follower telepaths the party's healer through `@heal` when that is wired (`PartyRestSync.RequestHeal`); in the others' place nothing is sent. A hit-and-run character stands and fights. A PvP *Flee then hang up* hangs up at once, as when there is nowhere to run.
+  - In the low-HP run's place the follower asks the party for a heal with `@heal` when that is wired (`PartyRestSync.RequestHeal`), on the channel Settings → Party picks: say by default (`.@heal`), or `bg` / `br` (**Client policy**, user 2026-10-30: say, since the party is in one room; it goes out even if it ends the sneak, as a follower that hurt is already fighting — `SneakBreakingCommands` must-send relays); in the others' place nothing is sent. A hit-and-run character stands and fights. A PvP *Flee then hang up* hangs up at once, as when there is nowhere to run.
   - **The wimpy jump is not a flee** *(user, 2026-10-10, asked whether a follower's `sys goto <wimpy location>` in place of a hang-up counts as fleeing: "this is allowed, like a hangup.")*. A follower whose health rule would hang up, and whose Health tab has *Sys goto wimpy instead of hanging* set, still makes the jump (`HealthManager.ExecuteEscape`, unchanged), as it would still hang up.
   - (Before 2026-10-10 a follower with no party heal to ask for ran, and so did a follower's hit and run, failed backstab and PvP flee.)
   - **Client use:** `HealthManager.TryFlee` refuses the start of every run (`_isPartyFollower`), `HealthManager.CommitFleeReaction` holds a follower's low HP or mana, and `PvpResponder.StartFlee` refuses both PvP flees.

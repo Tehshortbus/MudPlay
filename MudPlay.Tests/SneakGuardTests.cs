@@ -172,6 +172,7 @@ public sealed class SneakGuardTests
     [InlineData(".@party vortex", false)]   // a teleport step's relay goes with the step
     [InlineData(".@trap north", false)]
     [InlineData(".@panic", false)]
+    [InlineData(".@heal", false)]           // a hurt follower's call for a heal can't wait
     [InlineData("wear plate mail", false)]  // gear re-derives; it isn't replayed
     public void CanWait_OnlyPlainCommands(string command, bool canWait) =>
         Assert.Equal(canWait, SneakBreakingCommands.CanWait(command));

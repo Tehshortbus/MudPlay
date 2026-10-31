@@ -2974,7 +2974,7 @@ How to keep it current:
 
 ### PartyRestSyncTests.cs
 - Covers: Game/PartyRestSync
-- Checks: a follower's @wait / @ok to the leader by given name (never solo or as leader); one @wait per held reason set and an @ok only when the last reason clears; reason notes (bare health unless a pool is named, explicit notes win); Resend; HeldReasons; a stuck reason suppresses later oks; a @wait asked while following a leader the client can't name is kept, warned once and sent when the leader is named, and not sent once released or after leaving the party; a restored leader is told a hold from before the loss and gets an @ok asked for meanwhile, another leader gets neither; a kept wait named with the master switch off goes out on its resync; the gang heal request; IsPaused and its Changed event.
+- Checks: a follower's @wait / @ok to the leader by given name (never solo or as leader); one @wait per held reason set and an @ok only when the last reason clears; reason notes (bare health unless a pool is named, explicit notes win); Resend; HeldReasons; a stuck reason suppresses later oks; a @wait asked while following a leader the client can't name is kept, warned once and sent when the leader is named, and not sent once released or after leaving the party; a restored leader is told a hold from before the loss and gets an @ok asked for meanwhile, another leader gets neither; a kept wait named with the master switch off goes out on its resync; the heal request on say by default, gangpath or broadcast as chosen; IsPaused and its Changed event.
 - Why: the party pause protocol: the leader must hold for every follower reason and resume only once all clear; paradigm-20261025-114837 (every @wait dropped silently while the leader's name was lost).
 
 ### PartyRestWatcherTests.cs
@@ -3898,7 +3898,7 @@ How to keep it current:
 
 ### SneakGuardTests.cs
 - Covers: Game/Stealth/SneakGuard, SneakBreakingCommands, Game/Inventory/EquipmentManager (held gear)
-- Checks: The hold kinds (until backstab, until clear room, move in flight, until rested by shadow rest) and when none applies. Held commands queue and release, and are kept while the master switch is off. Which commands end a sneak or may wait. A held gear swap re-runs on release.
+- Checks: The hold kinds (until backstab, until clear room, move in flight, until rested by shadow rest) and when none applies. Held commands queue and release, and are kept while the master switch is off. Which commands end a sneak or may wait (a hurt follower's `.@heal` never waits). A held gear swap re-runs on release.
 - Why: User, 2026-09-28/30; reports `paradigm-20260927-121050`, `paradigm-20260930-193005`.
 
 ### SoldiersQuartersGridLostRepro.cs

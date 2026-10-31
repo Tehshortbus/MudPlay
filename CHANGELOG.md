@@ -1,8 +1,9 @@
 # Version history
 
-## 3.193.8
+## 3.193.9
 
 - Buff Watchdog: a buff only another player can take (renewal on Anomaly) shows member boxes and no Self, and is never cast on you
+- Request healing (`@heal`) goes out on say by default, with a channel drop-down (Say / Gangpath / Broadcast) in Settings → Party, even if it ends a sneak
 
 ## 3.193.7
 
