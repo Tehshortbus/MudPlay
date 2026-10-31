@@ -43,6 +43,7 @@ public sealed partial class StatParser
         Stats.Exp = exp;
         Stats.ExpToNext = Math.Max(0, value.GetProperty("expNeeded").GetInt64() - Stats.Exp);
         HasParsed = true;
+        _serverVitalsRead = true;
         if (expGainCounts && gained > 0) ExperienceGained?.Invoke(Stats.Exp);
     }
 

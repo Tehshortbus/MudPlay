@@ -16,10 +16,15 @@ namespace MudPlay.Game.Remote;
 //     (L72, +2.14 lvls)  Rate: 14.3 m/hr  Will level in: 1d 14h 12m").
 //   - @level — current level, total accumulated experience, and experience still
 //     needed for the next level.
-// Both reply on the sender's channel and never touch the wire, so no wire-sender
-// is bound. Progression figures come from PlayerStats (the periodic stat / exp
-// snapshot); the rate + session total come from SessionActivityTracker. The
-// engine gates authorisation via RemoteCommandCatalog before the handler runs.
+// Both reply on the sender's channel. Progression figures come from PlayerStats
+// (the server's vitals, or the periodic stat / exp snapshot); the rate + session
+// total come from SessionActivityTracker. The engine gates authorisation via
+// RemoteCommandCatalog before the handler runs.
+//
+// Where the client reads the exp from the `exp` line rather than the server's
+// vitals, an @exp more than ExpLineStaleAfter since the last one (or with none
+// read yet) sends `exp` first and answers once it is read, or after ExpReadWait.
+// Every @exp heard while that is out is answered by the same read.
 public sealed class ExperienceQueryHandler : IDisposable
 {
     private static readonly string[] RegisteredCommands = { "@exp", "@level" };
@@ -28,13 +33,28 @@ public sealed class ExperienceQueryHandler : IDisposable
     private readonly PlayerStats _stats;
     private readonly SessionActivityTracker _activity;
     private readonly GameDataCache _gameData;
+    private readonly StatParser _parser;
+    private readonly Action<string> _send;
+    private readonly Action<TimeSpan, Action> _armTimer;
+    private readonly Func<DateTime> _now;
+    private readonly LogService? _log;
+    private readonly List<RemoteCommandContext> _awaitingExp = new();
+    private int _expRead;
     private bool _disposed;
+
+    public static readonly TimeSpan ExpLineStaleAfter = TimeSpan.FromHours(1);
+    public static readonly TimeSpan ExpReadWait = TimeSpan.FromSeconds(5);
 
     public ExperienceQueryHandler(
         RemoteCommandManager engine,
         PlayerStats stats,
         SessionActivityTracker activity,
-        GameDataCache gameData)
+        GameDataCache gameData,
+        StatParser parser,
+        Action<string> send,
+        Action<TimeSpan, Action> armTimer,
+        Func<DateTime>? now = null,
+        LogService? log = null)
     {
         ArgumentNullException.ThrowIfNull(engine);
         ArgumentNullException.ThrowIfNull(stats);
@@ -44,15 +64,22 @@ public sealed class ExperienceQueryHandler : IDisposable
         _stats = stats;
         _activity = activity;
         _gameData = gameData;
+        _parser = parser ?? throw new ArgumentNullException(nameof(parser));
+        _send = send ?? throw new ArgumentNullException(nameof(send));
+        _armTimer = armTimer ?? throw new ArgumentNullException(nameof(armTimer));
+        _now = now ?? (() => DateTime.UtcNow);
+        _log = log;
 
         Register("@exp", OnExp);
         Register("@level", OnLevel);
+        _parser.ExpLineRead += AnswerAwaitingExp;
     }
 
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
+        _parser.ExpLineRead -= AnswerAwaitingExp;
         foreach (string cmd in RegisteredCommands) _engine.UnregisterHandler(cmd);
     }
 
@@ -65,15 +92,14 @@ public sealed class ExperienceQueryHandler : IDisposable
     }
 
     // @level — "Level N, X exp, Y to next level". The exp-to-next figure comes
-    // from the game's exp line (PlayerStats.LevelExpSpan is 0 until that line is
-    // parsed), so we only advertise it once seen; before that we point the sender
-    // at exp.
+    // from the server's vitals or the game's exp line, so we only advertise it once
+    // one has given it; before that we point the sender at exp.
     private void OnLevel(RemoteCommandContext ctx)
     {
         // Protocol, not a refusal: a leader's PartyLevelProbe reads "level unknown"
         // as this member having answered, so it goes whatever the Warn setting says.
         if (_stats.Level <= 0) { ctx.Reply("level unknown - parse a stat screen first (type stat)"); return; }
-        string toNext = _stats.LevelExpSpan > 0
+        string toNext = _parser.ExpToNextKnown
             ? $"{_stats.ExpToNext:N0} to next level"
             : "exp-to-next unknown (type exp)";
         ctx.Reply($"Level {_stats.Level}, {_stats.Exp:N0} exp, {toNext}");
@@ -85,24 +111,53 @@ public sealed class ExperienceQueryHandler : IDisposable
     // Made is the running session total (SessionActivityTracker.ExperienceEarned,
     // zeroed by @reset / loop-start auto-reset) and is ALWAYS shown, even before a
     // stat/exp screen — it's the "how are we doing this session" figure. Needed /
-    // next-level / the ETA all come off the game's exp line (PlayerStats.LevelExpSpan
-    // stays 0 until it's parsed), so before that we report Made + rate and point the
-    // sender at `exp`. The ETA reuses CalcTimeToLevel with ExpToNext as the needed
+    // next-level / the ETA come off the server's vitals, or the game's exp line
+    // (StatParser.ExpToNextKnown), so before either we report Made + rate and point
+    // the sender at `exp`. The ETA reuses CalcTimeToLevel with ExpToNext as the needed
     // figure (current exp 0), so a zero/negative remaining reads "ready to level".
     // The (L<n>) tag is the level being worked toward — the current level + 1 — and
     // is dropped when the level isn't known yet.
     private void OnExp(RemoteCommandContext ctx)
+    {
+        if (_parser.ServerOwnsExp
+            || _parser.ExpLineReadAt is { } read && _now() - read <= ExpLineStaleAfter)
+        {
+            ctx.Reply(ExpLine());
+            return;
+        }
+        _awaitingExp.Add(ctx);
+        if (_awaitingExp.Count > 1) return;
+        int asked = _expRead;
+        _log?.Info("RemoteCommand", _parser.ExpLineReadAt is null
+            ? "@exp: no exp line read yet: sending exp before answering"
+            : "@exp: the exp line is over an hour old: sending exp before answering");
+        _send("exp");
+        _armTimer(ExpReadWait, () =>
+        {
+            if (asked != _expRead || _awaitingExp.Count == 0) return;
+            _log?.Info("RemoteCommand", $"@exp: no exp line within {ExpReadWait.TotalSeconds:0} s: answering with what is known");
+            AnswerAwaitingExp();
+        });
+    }
+
+    private void AnswerAwaitingExp()
+    {
+        _expRead++;
+        if (_awaitingExp.Count == 0) return;
+        RemoteCommandContext[] asked = _awaitingExp.ToArray();
+        _awaitingExp.Clear();
+        string line = ExpLine();
+        foreach (RemoteCommandContext ctx in asked) ctx.Reply(line);
+    }
+
+    private string ExpLine()
     {
         SessionActivityStats snap = _activity.Snapshot();
         double rate = snap.ExperiencePerHour;
         string made = $"Made: {snap.ExperienceEarned:N0}";
         string ratePart = rate > 0 ? $"Rate: {FormatExpRate(rate)}/hr" : "Rate: unknown";
 
-        if (_stats.LevelExpSpan <= 0)
-        {
-            ctx.Reply($"{made}  {ratePart} (type exp for needed + time to level)");
-            return;
-        }
+        if (!_parser.ExpToNextKnown) return $"{made}  {ratePart} (type exp for needed + time to level)";
 
         // Level tag: the next level, plus the banked-levels ratio the status-bar TNL
         // surfaces ("+N.NN") — how many levels' worth of exp the running total already
@@ -117,14 +172,14 @@ public sealed class ExperienceQueryHandler : IDisposable
                 : $" (L{_stats.Level + 1})";
         }
         string needed = $"Needed: {_stats.ExpToNext:N0}{levelTag}";
-        if (rate <= 0) { ctx.Reply($"{made}  {needed}  Rate: unknown"); return; }
+        if (rate <= 0) return $"{made}  {needed}  Rate: unknown";
 
         TimeSpan? eta = ExperienceTableCalculator.CalcTimeToLevel(_stats.ExpToNext, 0, (long)rate);
         string willLevel = eta is null || eta.Value <= TimeSpan.Zero
             ? "Will level in: ready to level"
             : $"Will level in: {ExperienceTableCalculator.FormatTimeToLevel(eta.Value)}";
 
-        ctx.Reply($"{made}  {needed}  {ratePart}  {willLevel}");
+        return $"{made}  {needed}  {ratePart}  {willLevel}";
     }
 
     // Compact exp/hr for the @exp reply: exact comma-grouped below 100k, whole

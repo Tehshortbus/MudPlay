@@ -127,6 +127,13 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     public IReadOnlyList<GmcpPackageOption> GmcpPackages { get; } =
         Game.Gmcp.GmcpIntegration.Packages.Select(p => new GmcpPackageOption(p)).ToArray();
 
+    // Every package to one mode at once, from the row above the list.
+    [RelayCommand]
+    private void SetAllGmcpModes(Game.Gmcp.GmcpMode mode)
+    {
+        foreach (GmcpPackageOption option in GmcpPackages) option.Mode = mode;
+    }
+
     // The server-data modes show only for a board whose server has completed a GMCP
     // handshake (BbsProfile.GmcpOffered); every other board would only be offered
     // settings that do nothing.

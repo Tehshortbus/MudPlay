@@ -383,7 +383,7 @@ How to keep it current:
 
 ### BbsSectionGmcpSectionTests.cs
 - Covers: ViewModels/Settings/BbsSectionViewModel (live server data section), Models/Settings/BbsProfile.GmcpOffered
-- Checks: a board whose server never completed a GMCP handshake hides the server-data modes; a handshake that marks the board while Settings is open survives the window's OK, and the modes show when it opens again.
+- Checks: a board whose server never completed a GMCP handshake hides the server-data modes; a handshake that marks the board while Settings is open survives the window's OK, and the modes show when it opens again; the All Off / All Active buttons set every package and OK saves them.
 - Why: the GMCP modes only do anything on a board that offers GMCP (user, 2026-10-29).
 
 ### BbsSectionLogonSetupTests.cs
@@ -984,6 +984,11 @@ How to keep it current:
 - Checks: the settle gate on a dark advance, its timeout clear, no gate on a lit arrival.
 - Why: the loop marching past a reveal in a dark room.
 
+### DarkRoomRedisplayTests.cs
+- Covers: Game/Map/RoomTracker (NoteDarkRoomEntered, ShownBeforeTheMove), over TrackerWireRig.
+- Checks: a dark room shown again in the same burst as an arrival, ahead of the next move's echo, isn't taken as that move's landing; each landing an engine steps on is where the character really is.
+- Why: report paradigm-20261030-213114, the pyramid solver run a room ahead of the game in the dark.
+
 ### DeathDetectorTests.cs
 - Covers: Game/DeathDetector + RoomTracker.NoteDeath.
 - Checks: both lives-readout phrasings register a death, set PendingRespawn, record DeathHistory, and drain recent steps.
@@ -1354,9 +1359,9 @@ How to keep it current:
 - Why: exit flavour text filled the Conversation window (user report 2026-10-19); the hold must not change which triggers a social fires. The exit texts are Stock's map and message tables' own (GAME_MECHANICS "Exit messages and socials on the wire").
 
 ### ExperienceQueryHandlerTests.cs
-- Covers: Game/Remote/ExperienceQueryHandler (@exp/@level)
-- Checks: before a stat parse; to-next/unknown; rate/ETA/ready lines; rate abbreviation tiers; permission gate.
-- Why: MegaMUD-style experience reply.
+- Covers: Game/Remote/ExperienceQueryHandler (@exp/@level), StatParser's exp line and server vitals.
+- Checks: before a stat parse; to-next/unknown; rate/ETA/ready lines from a real `exp` line; with no exp line or one over an hour old, @exp sends `exp` and answers on its line (or after the wait), once for every asker; with the server's vitals owned, both answer from them and send nothing; rate abbreviation tiers; permission gate.
+- Why: MegaMUD-style experience reply; report paradigm-20261030-221217 (replies stuck on "type exp" under server vitals).
 
 ### ExperienceTableCalculatorTests.cs
 - Covers: Game/Calculators/ExperienceTableCalculator

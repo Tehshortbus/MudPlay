@@ -8,8 +8,9 @@ using Xunit;
 namespace MudPlay.Tests;
 
 // The Settings BBS tab's live server data (GMCP) section shows only for a board
-// whose server has completed a GMCP handshake (BbsProfile.GmcpOffered). The board
-// is saved under the scratch data root and deleted in Dispose.
+// whose server has completed a GMCP handshake (BbsProfile.GmcpOffered), and its
+// row of "All" buttons sets every package's mode. The board is saved under the
+// scratch data root and deleted in Dispose.
 [Collection(BbsSectionCollection.Name)]
 public sealed class BbsSectionGmcpSectionTests : IDisposable
 {
@@ -62,5 +63,24 @@ public sealed class BbsSectionGmcpSectionTests : IDisposable
         Assert.True(new BbsProfileStore().Get(_board)!.GmcpOffered);
         using BbsSectionViewModel reopened = NewTab();
         Assert.True(reopened.GmcpOffered);
+    }
+
+    // The row above the package list sets every package's mode at once, and OK
+    // saves them with the board.
+    [Theory]
+    [InlineData(Game.Gmcp.GmcpMode.Off)]
+    [InlineData(Game.Gmcp.GmcpMode.Active)]
+    public void AllPackages_SetsEveryModeAtOnce_AndOkSavesThem(Game.Gmcp.GmcpMode mode)
+    {
+        using (BbsSectionViewModel vm = NewTab())
+        {
+            vm.SetAllGmcpModesCommand.Execute(mode);
+            Assert.All(vm.GmcpPackages, p => Assert.Equal(mode, p.Mode));
+            vm.Apply();
+        }
+
+        BbsProfile saved = new BbsProfileStore().Get(_board)!;
+        Assert.Equal(Game.Gmcp.GmcpIntegration.Packages.Length, saved.GmcpModes!.Count);
+        Assert.All(saved.GmcpModes, m => Assert.Equal(mode, m.Value));
     }
 }

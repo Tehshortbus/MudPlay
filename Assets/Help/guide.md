@@ -2463,6 +2463,8 @@ The `@` on `@help` itself is needed, like on every remote command: a plain `help
 
 Reports how the session is going: exp made, exp needed, the rate, and the time to the next level at that rate.
 
+With **Char.Vitals** on Active (see *Live server data (GMCP)*), exp needed comes from the server's data, which is always current, and nothing is sent. Otherwise it comes from the game's `exp` line: when your client hasn't read one in the last hour, it sends `exp` first and answers once the line is read (or after 5 seconds without one). Several `@exp` asked while that is out are answered by the one read. `@level` answers from the same figures and never sends anything.
+
 **Who may send it:** a player with **Query experience**, on any channel remote commands are read on.
 
 | Reply | When |
@@ -2470,7 +2472,7 @@ Reports how the session is going: exp made, exp needed, the rate, and the time t
 | `Made: 474,216,179  Needed: 545,045,125 (L72, +2.14 lvls)  Rate: 14.3 m/hr  Will level in: 1d 14h 12m` | Everything is known. `Made` is the exp earned since the session counters were last reset. `L72` is the level you are working toward, and `+2.14 lvls` is how many levels your exp already covers. |
 | the same, ending `Will level in: ready to level` | You already have the exp for the level. |
 | `Made: <n>  Needed: <n> (L<level>, +<x> lvls)  Rate: unknown` | There is no rate yet. |
-| `Made: <n>  Rate: <rate>/hr (type exp for needed + time to level)` | Your client has not read the game's `exp` line yet. The rate reads `unknown` when there is none. |
+| `Made: <n>  Rate: <rate>/hr (type exp for needed + time to level)` | Your client has no exp-needed figure: the `exp` it sent got no answer. The rate reads `unknown` when there is none. |
 | the Failure message | **Refusal:** the sender doesn't hold Query experience. |
 
 The rate is written exactly below 100,000 an hour, in thousands up to a million (`853 k`) and in millions above (`14.3 m`).
@@ -5178,7 +5180,7 @@ Every brand-new character profile starts with the numpad wired to compass moveme
 
 On servers that offer the Anomaly GMCP contract, MudPlay can receive character and room data alongside the normal terminal text. Other servers continue to use text parsing.
 
-In **Settings → BBS + Display → Live server data (GMCP)** choose a mode for each package. The section shows only for a board whose server has completed a GMCP handshake with MudPlay at least once, since on any other board the modes would do nothing. Its first line says whether you're connected to that server now and which contract it speaks. Changes apply on the next connection:
+In **Settings → BBS + Display → Live server data (GMCP)** choose a mode for each package. The **All Off**, **All Shadow** and **All Active** buttons above the list set every package at once. The section shows only for a board whose server has completed a GMCP handshake with MudPlay at least once, since on any other board the modes would do nothing. Its first line says whether you're connected to that server now and which contract it speaks. Changes apply on the next connection:
 
 - **Off:** use text for that package, with no comparisons and nothing taken from the server.
 - **Shadow** (default): the text is the source, and the server's data stands in only where the text hasn't answered yet or can't. The fields both sources carry are compared, and differences appear under **GMCP shadow** in the program log. Extra server information, such as hidden exits or exact monster HP, is not compared with text that never reports it. The server's data stands in:

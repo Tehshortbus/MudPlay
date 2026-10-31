@@ -125,6 +125,22 @@ public sealed partial class StatParser : IDisposable
     // True once any stat-screen line has been parsed this session.
     public bool HasParsed { get; private set; }
 
+    // When the `exp` line was last read (UTC); null until one has been this session.
+    public DateTime? ExpLineReadAt { get; private set; }
+
+    // An `exp` line was read, whether or not its numbers were taken.
+    public event Action? ExpLineRead;
+
+    // The server's vitals carry the exp and the next level's total, so while they
+    // own the exp the figures to the next level are current at every update and an
+    // `exp` line has nothing to add.
+    public bool ServerOwnsExp => _serverVitalsRead && GmcpOwnsVitals?.Invoke() == true;
+    private bool _serverVitalsRead;
+
+    // Whether the exp still to earn for the next level is known: from the server's
+    // vitals, or from an `exp` line (its span is 0 until one is read).
+    public bool ExpToNextKnown => ServerOwnsExp || Stats.LevelExpSpan > 0;
+
     // A stat screen is printing: its scan window is open and has captured a field, so
     // the lines until its closing prompt (the active-effect list among them) belong
     // to it.
@@ -215,6 +231,8 @@ public sealed partial class StatParser : IDisposable
             Stats.Spellcasting = 0;
             ForgetScreenMarks();
             HasParsed = false;
+            _serverVitalsRead = false;
+            ExpLineReadAt = null;
             return;
         }
 
@@ -229,6 +247,7 @@ public sealed partial class StatParser : IDisposable
         Stats.ExpToNext = snapshot.ExpToNext;
         Stats.LevelExpSpan = snapshot.LevelExpSpan;
         Stats.LevelPercent = snapshot.LevelPercent;
+        _serverVitalsRead = false;
         Stats.Hits = snapshot.Hits;
         Stats.MaxHits = snapshot.MaxHits;
         Stats.Mana = snapshot.Mana;
@@ -652,9 +671,16 @@ public sealed partial class StatParser : IDisposable
     // commit atomically on a successful match.
     private void TryExpLine(string text)
     {
-        if (GmcpOwnsVitals?.Invoke() == true) return;
         Match m = ExpLineRx().Match(text);
         if (!m.Success) return;
+        ExpLineReadAt = _now();
+        // The server's vitals keep these figures while they own them.
+        if (GmcpOwnsVitals?.Invoke() != true) TakeExpLine(m);
+        ExpLineRead?.Invoke();
+    }
+
+    private void TakeExpLine(Match m)
+    {
         System.Globalization.NumberStyles ns = System.Globalization.NumberStyles.Integer;
         System.Globalization.CultureInfo inv = System.Globalization.CultureInfo.InvariantCulture;
         // Exp / needed / span are long — Paradigm's values pass int32. Level and

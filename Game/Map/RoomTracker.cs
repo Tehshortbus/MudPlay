@@ -948,6 +948,7 @@ public sealed partial class RoomTracker
         if (State.Confidence != RoomConfidence.Pending) return;
         if (State.CurrentRoom is not { } source) return;
         if (!_pending.TryPeek(out PendingMove head)) return;
+        if (ShownBeforeTheMove(head, "dark line")) return;
         if (!TryResolvePendingExit(source, head, out RoomExit exit))
         {
             // We KNOW we moved (no bonk), but the edge isn't on the graph — a
@@ -1072,6 +1073,7 @@ public sealed partial class RoomTracker
                 "queue is empty — the move never registered; holding position.");
             return;
         }
+        if (ShownBeforeTheMove(head, "blind-move line")) return;
         if (!TryResolvePendingExit(source, head, out RoomExit exit))
         {
             _log?.Log(LogSeverity.Info, "RoomTracker",
@@ -3133,6 +3135,22 @@ public sealed partial class RoomTracker
             return TryResolveTextExit(source, command, out exit);
         exit = default;
         return false;
+    }
+
+    // A dark or blind line the game printed before it took the move in flight: the
+    // room being left shown again, not where the move went. The game echoes a move
+    // before it shows the room the move reaches; a redisplay can come in the same
+    // burst as the last arrival, ahead of that echo (report `paradigm-20261030-213114`:
+    // taken as the next move's landing, it put the pyramid solver a room ahead).
+    // A statline the echo can't be read on has nothing to tell them apart by, and
+    // takes the line as before.
+    private bool ShownBeforeTheMove(PendingMove head, string line)
+    {
+        bool early = _everReceivedEcho && !head.IsFollowDrag && !HeadMoveEchoed(head);
+        if (early)
+            _log?.Log(LogSeverity.Debug, "RoomTracker",
+                $"A {line} came before move '{DescribeMove(head)}' was taken: the room being left, shown again.");
+        return early;
     }
 
     // A display that also fits the room a move is leaving, with nothing to say the

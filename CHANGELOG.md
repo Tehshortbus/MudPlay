@@ -1,5 +1,13 @@
 # Version history
 
+## 3.193.6
+
+- In a dark room shown again before the next move's echo, the map no longer runs a room ahead (the pyramid solver walking off its route)
+- With server vitals on Active, `@exp` and `@level` give exp needed and time to level from the server's data instead of "type exp"
+- `@exp` sends `exp` first when the last `exp` line read is over an hour old, then answers
+- Settings → BBS: All Off / All Shadow / All Active buttons set every GMCP package at once
+- bug reports addressed: paradigm-20261030-213114, paradigm-20261030-221217
+
 ## 3.193.2
 
 - With server room data active, a door opened by a lever or room command (`lift portcullis` at 8/909) is opened that way again instead of being picked or bashed
