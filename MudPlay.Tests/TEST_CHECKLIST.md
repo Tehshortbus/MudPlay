@@ -4606,8 +4606,8 @@ How to keep it current:
 
 ### WindowLayoutStoreTests.cs
 - Covers: Services/WindowLayoutStore.BoundsToPersist
-- Checks: which window geometry is saved, across normal, minimized, maximized and collapsed sizes.
-- Why: report paradigm-20260827-081318 (minimized windows at -32000).
+- Checks: which window geometry is saved, across normal, minimized, maximized and collapsed sizes, and never a size that is no number (NaN, infinity).
+- Why: report paradigm-20260827-081318 (minimized windows at -32000); report Crash-20261031-145330 (a content-sized window's NaN size made every profile save throw).
 
 ### WindowPlacementTests.cs
 - Covers: Services/WindowPlacement (OntoScreen, CenteredOver, ClampInto)

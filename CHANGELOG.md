@@ -1,5 +1,10 @@
 # Version history
 
+## 3.195.6
+
+- Fixed a crash on saving the profile with the Round Totals window open
+- bug reports addressed: Crash-20261031-145330
+
 ## 3.195.5
 
 - The waypoint dialog sizes to fit, so nothing is cut off
