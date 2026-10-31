@@ -27,6 +27,10 @@ public sealed class HangReportTests
         // The process's memory as the probe reads it, in MB, moved by the test; and
         // the threads that read it.
         public long HeapMb = 200, AllocatedMb = 1000, WorkingSetMb = 300, PrivateMb = 350;
+        // The running totals the probe reads with the memory: CPU and GC pause in
+        // seconds, lock waits. CPU 0 reads as a platform that gives none.
+        public double CpuSeconds, GcPauseSeconds;
+        public long LockContentions;
         public Action? EachSecond { get; set; }
         public List<Thread> MemoryReaders { get; } = new();
         private const long Mb = 1024 * 1024;
@@ -35,20 +39,23 @@ public sealed class HangReportTests
         {
             lock (MemoryReaders) MemoryReaders.Add(Thread.CurrentThread);
             return new HangReport.Memory(HeapMb * Mb, AllocatedMb * Mb, WorkingSetMb * Mb, privateBytes,
-                HeapMb * Mb, (HeapMb + 50) * Mb, 3, 2, 1);
+                HeapMb * Mb, (HeapMb + 50) * Mb, 3, 2, 1,
+                TimeSpan.FromSeconds(CpuSeconds), TimeSpan.FromSeconds(GcPauseSeconds), LockContentions, 4, 7);
         }
 
         // writeAside / runAside: where the report's file work and the probe's log
         // lines go; by default each runs at once.
         public Rig(Func<bool>? onUiThread = null, Func<BugReportScrub.Scrubber>? scrubber = null, bool arm = true,
             Action<Action>? writeAside = null, Action<Action>? runAside = null,
-            Func<IReadOnlyList<(string Key, string Value)>>? resources = null)
+            Func<IReadOnlyList<(string Key, string Value)>>? resources = null,
+            Func<int, ThreadStacks.Capture>? readStacks = null)
         {
             // The Desktop is there already: the client never makes one.
             Directory.CreateDirectory(Folder);
             Monitor = new PerformanceMonitor(onUiThread ?? (() => true),
                 new PerformanceMonitor.ProbeHost(Posted.Add, Timers.Schedule, Clock.Timestamp, () => Clock.Now, () => Folder,
-                    writeAside ?? (work => work()), runAside ?? (work => work()), ReadMemory, () => PrivateMb * Mb));
+                    writeAside ?? (work => work()), runAside ?? (work => work()), ReadMemory, () => PrivateMb * Mb,
+                    readStacks));
             Monitor.HangSources = new HangReport.Sources(Log, Sent,
                 scrubber ?? (() => BugReportScrub.Build(
                     [new(BugReportScrub.LoginPasswordLabel, LoginPassword), new(BugReportScrub.CorpsePasswordLabel, CorpsePassword)],
@@ -95,6 +102,74 @@ public sealed class HangReportTests
         {
             if (Directory.Exists(Folder)) Directory.Delete(Folder, recursive: true);
         }
+    }
+
+    // With no measured scope open, the report leads with the UI thread's call stack,
+    // read for the thread that armed the watch, and lists the other threads' after.
+    [Fact]
+    public void An_unscoped_freeze_is_named_by_the_ui_threads_call_stack()
+    {
+        int askedFor = 0;
+        ThreadStacks.Capture Read(int ui)
+        {
+            askedFor = ui;
+            return new ThreadStacks.Capture(
+            [
+                new ThreadStacks.Stack(ui, 4242, IsUi: true, null,
+                    ["MudPlay.Views.Settings.BbsSectionView.MeasureOverride(Avalonia.Size)", "Avalonia.Layout.LayoutManager.ExecuteLayoutPass()"], 3),
+                new ThreadStacks.Stack(9, 5151, IsUi: false, null, ["MudPlay.Game.Map.BfsMapper.BuildLayout(MudPlay.Game.Map.RoomKey)"], 0),
+            ], null, TimeSpan.FromMilliseconds(420));
+        }
+        using Rig rig = new(readStacks: Read);
+
+        rig.Pass(6);
+
+        string report = rig.Report;
+        Assert.Equal(Environment.CurrentManagedThreadId, askedFor);
+        Assert.Contains("Its call stack when this was written, innermost first (read in 420.0 ms)", report);
+        Assert.Contains("```\nMudPlay.Views.Settings.BbsSectionView.MeasureOverride(Avalonia.Size)\nAvalonia.Layout.LayoutManager.ExecuteLayoutPass()\n… 3 more frame(s)\n```", report);
+        Assert.Contains("Its call stack above names the code.", report);
+        Assert.Contains("## Other threads", report);
+        Assert.Contains("**Thread 9** (OS 5151)", report);
+        Assert.Contains("MudPlay.Game.Map.BfsMapper.BuildLayout(MudPlay.Game.Map.RoomKey)", report);
+    }
+
+    // Stacks that couldn't be read say why, and the report stands without them.
+    [Fact]
+    public void Stacks_that_could_not_be_read_say_why()
+    {
+        using Rig rig = new(readStacks: _ => new ThreadStacks.Capture([], "call stacks are read on Windows only", TimeSpan.Zero));
+
+        rig.Pass(6);
+
+        string report = rig.Report;
+        Assert.Contains("_No call stack: call stacks are read on Windows only._", report);
+        Assert.Contains("No measured scope was open", report);
+        Assert.DoesNotContain("## Other threads", report);
+    }
+
+    // CPU, GC pause and lock waits over the freeze tell computing from waiting from collecting.
+    [Fact]
+    public void The_report_says_whether_the_client_was_busy_waiting_or_collecting()
+    {
+        using Rig rig = new();
+        rig.CpuSeconds = 100;
+        rig.GcPauseSeconds = 10;
+        rig.EachSecond = () =>
+        {
+            rig.CpuSeconds += 1;
+            rig.GcPauseSeconds += 0.5;
+            rig.LockContentions += 2;
+        };
+
+        rig.Pass(6);
+
+        string report = rig.Report;
+        Assert.Contains("## Busy, waiting or collecting", report);
+        Assert.Contains("- **CPU used**: 5.0 s in 5.0 s, about 1.0 cores' worth", report);
+        Assert.Contains("- **GC held every thread**: 2.50 s (50% of it)", report);
+        Assert.Contains("- **Waits for a lock another thread held**: 10", report);
+        Assert.Contains("- **Thread pool**: 7 thread(s), 4 work item(s) queued", report);
     }
 
     [Fact]

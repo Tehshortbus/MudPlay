@@ -62,6 +62,9 @@ public sealed class PerformanceMonitor : IAsyncDisposable
     // How long the report waits for the logs and the session's names, read on a
     // thread of their own: the frozen UI thread may hold a lock one of them takes.
     private static readonly TimeSpan GatherTimeout = TimeSpan.FromSeconds(2);
+    // A process snapshot is read in well under a second; a Desktop left waiting
+    // longer than this for one is worse than a report without stacks.
+    private static readonly TimeSpan StacksTimeout = TimeSpan.FromSeconds(10);
 
     // The UI thread's open scopes kept, and the finished ones remembered.
     private const int MaxDepth = 32;
@@ -122,6 +125,9 @@ public sealed class PerformanceMonitor : IAsyncDisposable
     // Nothing before this (a timestamp) counts toward a hang: the client's own
     // start, before its window is up, may keep the UI thread for seconds.
     private long _armedAt;
+    // The UI thread's managed id, taken on it as the main window opens: whose call
+    // stack a hang report leads with.
+    private int _uiThreadId;
     // When the last known long operation closed on the UI thread (a timestamp), 0
     // before any has.
     private long _lastLongEnd;
@@ -206,7 +212,8 @@ public sealed class PerformanceMonitor : IAsyncDisposable
         Action<Action> WriteAside,
         Action<Action> RunAside,
         Func<long?, HangReport.Memory> ReadMemory,
-        Func<long?> ReadPrivateBytes)
+        Func<long?> ReadPrivateBytes,
+        Func<int, ThreadStacks.Capture>? ReadStacks = null)
     {
         public static ProbeHost Client()
         {
@@ -223,7 +230,8 @@ public sealed class PerformanceMonitor : IAsyncDisposable
                 lane.Add,
                 RunOnOwnThread,
                 HangReport.Memory.Read,
-                () => PrivateBytesOf(self));
+                () => PrivateBytesOf(self),
+                uiThread => ThreadStacks.Read(uiThread, StacksTimeout));
         }
 
         private static void RunOnOwnThread(Action work) =>
@@ -272,11 +280,12 @@ public sealed class PerformanceMonitor : IAsyncDisposable
     // The freezes seen this session and the last one's file, for a bug report.
     public string FreezesThisSession => _freezesNote;
 
-    // From now on a UI thread silent for HangAfter is reported. Called once the
-    // main window has opened.
+    // From now on a UI thread silent for HangAfter is reported. Called on the UI
+    // thread once the main window has opened.
     public void ArmHangReports()
     {
         if (Interlocked.CompareExchange(ref _armedAt, Math.Max(1, _timestamp()), 0) != 0) return;
+        Volatile.Write(ref _uiThreadId, Environment.CurrentManagedThreadId);
         _hangSources?.Log.Info("Performance",
             $"Freeze watch armed: a UI thread silent {HangReport.Seconds(HangAfter)} or more "
             + $"({HangReport.Seconds(LongHangAfter)} inside a known long operation) is written to a Hang file on the Desktop");
@@ -805,6 +814,9 @@ public sealed class PerformanceMonitor : IAsyncDisposable
     private void WriteReport(ProbeHost probe, Hang hang, HangReport.Snapshot snapshot, HangReport.Sources? sources, long peak)
     {
         string name = $"{HangReport.FilePrefix}{snapshot.At:yyyyMMdd-HHmmss}.md";
+        // First, while the UI thread is still where it froze.
+        if (probe.ReadStacks is { } readStacks)
+            snapshot = snapshot with { Stacks = readStacks(Volatile.Read(ref _uiThreadId)) };
         HangReport.Gathered gathered = HangReport.Gather(sources, name, snapshot.Unresponsive, GatherTimeout,
             snapshot.Memory is { } memory ? HangReport.MemoryHeadline(memory) : null);
         try

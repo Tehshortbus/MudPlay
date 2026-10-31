@@ -26,6 +26,7 @@ public sealed partial class AboutWindowViewModel : ObservableObject
         ("MudPlay — MIT",                "avares://MudPlay/LICENSE"),
         ("Avalonia — MIT",              "avares://MudPlay/Assets/Licenses/Avalonia-LICENSE.txt"),
         ("JetDatabaseReader — MIT",     "avares://MudPlay/Assets/Licenses/JetDatabaseReader-LICENSE.txt"),
+        ("ClrMD — MIT",                 "avares://MudPlay/Assets/Licenses/ClrMD-LICENSE.txt"),
         ("JetBrains Mono — SIL OFL 1.1", "avares://MudPlay/Assets/Fonts/JetBrainsMono-LICENSE.txt"),
         ("IBM Plex Sans — SIL OFL 1.1", "avares://MudPlay/Assets/Fonts/IBMPlexSans-LICENSE.txt"),
         ("Px437 / Mx437 — CC BY-SA 4.0", "avares://MudPlay/Assets/Fonts/Px437-LICENSE.txt"),

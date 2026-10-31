@@ -1,11 +1,12 @@
 # Version history
 
-## 3.193.6
+## 3.193.7
 
 - In a dark room shown again before the next move's echo, the map no longer runs a room ahead (the pyramid solver walking off its route)
 - With server vitals on Active, `@exp` and `@level` give exp needed and time to level from the server's data instead of "type exp"
 - `@exp` sends `exp` first when the last `exp` line read is over an hour old, then answers
 - Settings → BBS: All Off / All Shadow / All Active buttons set every GMCP package at once
+- Hang reports name the frozen code from its call stack on Windows, and say on every system whether the client was computing, waiting or paused for memory clean-up
 - bug reports addressed: paradigm-20261030-213114, paradigm-20261030-221217
 
 ## 3.193.2
