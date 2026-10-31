@@ -2037,22 +2037,26 @@ Reports how many lives you have left.
 
 #### @heal
 
-Asks a party healer to look at the party's health now and heal whoever is low.
+Asks a healer for a heal now: the emergency call for when the healer hasn't seen you drop.
 
-**What it does.** A character with a party heal spell set up sends `par` at once and answers `healing`. The fresh `par` gives your healing engine everyone's current HP, and it then heals by your own thresholds, as it would have at the next poll. The command brings that poll forward; it does not force a cast, and it does not pick the sender as the target.
+**What it does.** A character with a party heal spell set up queues a heal on the sender, sends `par` at once and answers `healing`. The fresh `par` gives your healing engine everyone's current HP, so it also heals anyone below your own thresholds. The queued heal is your **Major** single-target party heal, or the **Minor** one when the Major is a whole-party spell (it can't be aimed). It goes out once, and stands for 30 seconds:
+
+- **From a member of your party** (any channel): it goes out in the Major party heal's turn, even if `par` doesn't show them low yet. Someone below your thresholds is still healed first.
+- **From a player outside your party, heard on gangpath or broadcast**: it goes out only when no one in your party, you included, is below your Minor party threshold, and only while they're in your room. No `par` is sent for them, since it can't show them. Untick **Answer @heal from outside the party** (Settings → Party, beside Request healing) to ignore these. A player outside your party asking by telepath or say gets the `par` and `healing` as before, and no heal.
 
 **Who may send it:** a player with **Execute commands**, on any channel remote commands are read on. Being in the party is not enough: a healer has to tick that box for the members who should be able to ask.
 
 | Reply | When |
 |---|---|
-| `healing` | You have a party heal spell set up and `par` was sent. |
+| `healing` | You have a party heal spell set up: a heal is queued on the sender (if they're in your party, or outside it on gangpath or broadcast) and `par` was sent (not for a player outside your party). |
+| nothing | The sender is outside your party, on gangpath or broadcast, and **Answer @heal from outside the party** is unticked. |
 | nothing | You have none of the four party heal spells set (Settings → Party: minor or major, single-target or party). Only healers answer, so a `@heal` said aloud doesn't draw a "can't" from everyone else. |
 | nothing | You are on a trainer's or character-creation screen, where a `par` would be typed into the form. |
 | the Failure message | **Refusal:** the sender doesn't hold Execute commands. |
 
 **Situations:**
 
-- **The cast is your healing engine's, not this command's.** `par` is sent and `healing` is answered whatever your toggles say; whether a heal is then cast follows Auto-Heal and your party heal thresholds.
+- **The cast is your healing engine's, not this command's.** `healing` is answered whatever your toggles say; whether a heal is then cast follows Auto-Heal, your mana and, for a player outside the party, your party's health. A queued heal that can't go out within 30 seconds is dropped, and the program log says so.
 - **Master switch off:** ignored, no answer.
 - **The sending side:** a MudPlay follower at low HP asks the party with `@heal` in place of running off alone, on the channel Settings → Party → Request healing picks (Say by default; see **Health: rest, heal, flee**).
 
@@ -6127,6 +6131,8 @@ Settings → Party. The **Combat profile** chips at the top switch profiles from
 **Important notes:** The threshold box is a placeholder and is greyed out; it has no setting behind it. `@heal` itself does work: as a party follower, your client sends `@heal` when your HP reaches **Run if below** (Health tab), in place of fleeing. It is the emergency call, for when the party's healer hasn't already seen you drop. Party healers running MudPlay answer it.
 
 The drop-down to its right picks the channel it goes out on: **Say** (the default: `.@heal`, heard only in the room your party is in), **Gangpath** (`bg @heal`, your whole gang) or **Broadcast** (`br @heal`, everyone on your numbered channel). It goes out even if it ends your sneak: a follower that hurt is in the fight already.
+
+**Answer @heal from outside the party** (beside it, ticked by default) is for your side as a healer: a player outside your party who asks with `@heal` on gangpath or broadcast gets your heal once your own party needs none and while they're in your room (see the `@heal` command). They still need **Execute commands** in your Players list, as any `@heal` does.
 
 ### Party bless
 

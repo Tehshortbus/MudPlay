@@ -6952,7 +6952,10 @@ public sealed class AppServices
         // MainWindowVM.
         Heal = new Game.Remote.HealCommandHandler(
             RemoteCommands,
-            readParty: () => ReadSection<Models.Profile.PartySettings>(Profile.Current, "Party"))
+            readParty: () => ReadSection<Models.Profile.PartySettings>(Profile.Current, "Party"),
+            queueHeal: (sender, member) => CastDirector.RequestHeal(sender, member),
+            isPartyMember: sender => PartyState.IsInParty && PartyState.Members.Any(m => !m.IsSelf
+                && string.Equals(m.Name.Split(' ')[0], sender.Split(' ')[0], StringComparison.OrdinalIgnoreCase)))
         {
             // Same trainer-screen suppression as the timed par poll — an @heal
             // that fires while parked on the stat form would corrupt the last name.

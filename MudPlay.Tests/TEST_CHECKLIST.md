@@ -636,7 +636,7 @@ How to keep it current:
 
 ### CastingDirectorTests.cs
 - Covers: Game/Spells/CastingDirector (+ CastCoordinator, ConditionTracker, TickEngine)
-- Checks: heal tiers and priorities; mana gates; cures; buff slot walk, timers and margins; burst-settle; pause/resume and restore; party heal, cure and bless; an others-only buff (Targets 0) with self ticked cast on the member only; negates; draw items; item casts; a between-round cast sent just ahead of a projected round leaves the slot doubted (BetweenRoundSlotMayBeSpent) until the next tick, on a real TickEngine; the rest-time heal goes out while resting, meditating or idle, and standing it is held only while our own walk or loop moves us (logged once, flagged RestHealHeldForMovement), never for a follower.
+- Checks: heal tiers and priorities; mana gates; cures; buff slot walk, timers and margins; burst-settle; pause/resume and restore; party heal, cure and bless; a requested heal: a party member's Major heal once whatever `par` shows, a stranger's only once the party (us included) needs none and they're in the room, the Minor when the Major is whole-party, dropped after its window; an others-only buff (Targets 0) with self ticked cast on the member only; negates; draw items; item casts; a between-round cast sent just ahead of a projected round leaves the slot doubted (BetweenRoundSlotMayBeSpent) until the next tick, on a real TickEngine; the rest-time heal goes out while resting, meditating or idle, and standing it is held only while our own walk or loop moves us (logged once, flagged RestHealHeldForMovement), never for a follower.
 - Why: dozens of reports cited inline (the doubted slot: paradigm-20261023-001124; the follower's standing heal: paradigm-20261027-094915, paradigm-20261027-123536); user rulings 2026-10-10 and 2026-10-17.
 
 ### CharacterCalculatorMatchupProfileTests.cs
@@ -1745,7 +1745,7 @@ How to keep it current:
 
 ### HealCommandHandlerTests.cs
 - Covers: Game/Remote/HealCommandHandler
-- Checks: @heal makes a configured healer poll `par` and acknowledge; stays silent with no heal configured, in the trainer menu, or for a denied sender; unregisters on dispose.
+- Checks: @heal makes a configured healer poll `par` and acknowledge; a party member's queues a heal on them; one from outside the party on gangpath or broadcast queues a heal (no `par`) unless Answer @heal from outside the party is off, and by telepath queues none; stays silent with no heal configured, in the trainer menu, or for a denied sender; unregisters on dispose.
 - Why: party healing on request; protects the stat-form last name
 
 ### HealLineReaderTests.cs

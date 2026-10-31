@@ -2575,6 +2575,8 @@ public sealed partial class CastingDirector : IDisposable
                 _lastSelfCureAt[cand.Spell] = _now();
             if (category == SpellCategory.Curing && cand.Target is { } cured)
                 NotePartyCureCast(cand.Spell, cured);
+            if (cand.AnswersHealRequest)
+                AnsweredHealRequest(cand.Target);
 
             // Buff cast sent — start the recast clock immediately. A party buff
             // (targeted) arms CasterMessage confirmation so the timer starts on
@@ -3046,6 +3048,102 @@ public sealed partial class CastingDirector : IDisposable
         return null;
     }
 
+    // ----- Requested heals (@heal) ------------------------------------
+
+    // A player who asked us for a heal with @heal (HealCommandHandler), by given name.
+    // A party member's request is a demand signal: it's answered in the Major party
+    // heal slot whether or not `par` shows them low yet. A player outside the party,
+    // heard on gangpath or the broadcast channel, is answered only while no one in
+    // the party needs a heal, and only while they're in our room. Each request is one
+    // heal, and stands for RequestedHealWindow.
+    private readonly record struct HealRequest(string Given, bool PartyMember, DateTime At);
+    private readonly List<HealRequest> _healRequests = new();
+    public static readonly TimeSpan RequestedHealWindow = TimeSpan.FromSeconds(30);
+
+    // A player's @heal. A second request from the same player replaces the first.
+    public void RequestHeal(string name, bool partyMember)
+    {
+        string given = GivenName(name);
+        if (given.Length == 0) return;
+        _healRequests.RemoveAll(r => string.Equals(r.Given, given, StringComparison.OrdinalIgnoreCase));
+        _healRequests.Add(new HealRequest(given, partyMember, _now()));
+        _log?.Info(LogCategory, $"@heal from {given} ({(partyMember ? "party member" : "outside the party")}): "
+            + $"a heal queued for up to {RequestedHealWindow.TotalSeconds:0} s");
+    }
+
+    // The requests still within their window, oldest first. Read-only: a bug report
+    // reads it from its own thread; the engine's pass drops the expired ones.
+    public IReadOnlyList<string> PendingHealRequests
+    {
+        get
+        {
+            DateTime now = _now();
+            return _healRequests.ToArray()
+                .Where(r => now - r.At <= RequestedHealWindow)
+                .Select(r => r.PartyMember ? r.Given : r.Given + " (outside the party)")
+                .ToList();
+        }
+    }
+
+    private void DropExpiredHealRequests()
+    {
+        DateTime now = _now();
+        foreach (HealRequest r in _healRequests.Where(r => now - r.At > RequestedHealWindow).ToList())
+        {
+            _healRequests.Remove(r);
+            _log?.Info(LogCategory, $"@heal from {r.Given} dropped: no heal could go out within {RequestedHealWindow.TotalSeconds:0} s");
+        }
+    }
+
+    // The heal a request gets: the Major single-target party heal, or the Minor one
+    // when the Major is a whole-party spell (it can't be aimed, and can't reach a
+    // player outside the party). Null when neither is a single-target spell.
+    private string? RequestedHealSpell(PartySettings? settings)
+    {
+        foreach (string? spell in new[] { settings?.MajorPartyHealSpell, settings?.MinorPartyHealSpell })
+            if (!string.IsNullOrWhiteSpace(spell) && _isPartyWideBuff?.Invoke(spell.Trim()) != true)
+                return spell.Trim();
+        return null;
+    }
+
+    private CastCandidate? PickRequestedHeal(PartySettings? settings, bool partyMember)
+    {
+        if (_healRequests.Count == 0) return null;
+        DropExpiredHealRequests();
+        if (RequestedHealSpell(settings) is not { } spell) return null;
+        foreach (HealRequest r in _healRequests)
+        {
+            if (r.PartyMember != partyMember) continue;
+            if (partyMember && !IsStillInParty(r.Given)) continue;
+            // A party is in one room; a player outside it is cast on only where we see them.
+            if (!partyMember && _isMemberInRoom?.Invoke(r.Given) != true) continue;
+            if (!partyMember && PartyNeedsHeal(settings)) return null;
+            return new CastCandidate(spell, r.Given, AnswersHealRequest: true);
+        }
+        return null;
+    }
+
+    // Anyone in the party, ourselves included, below the Minor party heal threshold.
+    // The party pickers never aim at us (our own dips are the self-heal slots'), so
+    // they alone can't say our party is whole.
+    private bool PartyNeedsHeal(PartySettings? settings)
+    {
+        int threshold = settings?.MinorHealMemberThresholdPercent ?? 70;
+        if (_state.MaxHp > 0 && _state.Hp * 100 < threshold * _state.MaxHp) return true;
+        return _party is { IsInParty: true } party
+            && party.Members.Any(m => !m.IsSelf && !m.IsInvited && m.HpPercent < threshold);
+    }
+
+    private bool IsStillInParty(string given) =>
+        _party is { IsInParty: true } party
+        && party.Members.Any(m => !m.IsSelf && string.Equals(GivenName(m.Name), given, StringComparison.OrdinalIgnoreCase));
+
+    private void AnsweredHealRequest(string? target)
+    {
+        if (target is null) return;
+        _healRequests.RemoveAll(r => string.Equals(r.Given, target, StringComparison.OrdinalIgnoreCase));
+    }
+
     // ----- Party heal -------------------------------------------------
 
     // Walk live party members; cast the minor party heal on whoever is below
@@ -3064,18 +3162,23 @@ public sealed partial class CastingDirector : IDisposable
         if (PickMajorPartyHeal(settings) is { } major && SpellAffordable(major.Spell))
             return null;
 
+        // A player outside the party who asked for a heal comes last: only when no
+        // one in the party is below a heal threshold or asking for one.
         return PickPartyHeal(settings,
-            threshold: settings?.MinorHealMemberThresholdPercent ?? 70,
-            singleSpell: settings?.MinorPartyHealSpell,
-            aoeSpell:    settings?.MinorPartyHealAoeSpell);
+                threshold: settings?.MinorHealMemberThresholdPercent ?? 70,
+                singleSpell: settings?.MinorPartyHealSpell,
+                aoeSpell:    settings?.MinorPartyHealAoeSpell)
+            ?? PickRequestedHeal(settings, partyMember: false);
     }
 
-    // Symmetric to PickMinorPartyHeal at the major / critical threshold.
+    // Symmetric to PickMinorPartyHeal at the major / critical threshold. A party
+    // member's @heal is answered here when no one is below it.
     private CastCandidate? PickMajorPartyHeal(PartySettings? settings) =>
         PickPartyHeal(settings,
             threshold: settings?.MajorHealMemberThresholdPercent ?? 40,
             singleSpell: settings?.MajorPartyHealSpell,
-            aoeSpell:    settings?.MajorPartyHealAoeSpell);
+            aoeSpell:    settings?.MajorPartyHealAoeSpell)
+        ?? PickRequestedHeal(settings, partyMember: true);
 
     private CastCandidate? PickPartyHeal(
         PartySettings? settings, int threshold, string? singleSpell, string? aoeSpell)
@@ -3770,7 +3873,8 @@ public sealed partial class CastingDirector : IDisposable
 public readonly record struct CastCandidate(
     string Spell, string? Target,
     int RecastMarginSec = SpellsSettings.DefaultBlessRecastMarginSec,
-    bool RestoresMana = false);
+    bool RestoresMana = false,
+    bool AnswersHealRequest = false);
 
 // Spell-decision categories. Order matches the user-facing Spells settings tab;
 // numeric position is the deterministic tiebreak when two priority slots share

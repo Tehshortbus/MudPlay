@@ -184,6 +184,10 @@
                                   ItemsSource="{Binding RequestHealChannels}"
                                   SelectedItem="{Binding RequestHealChannel, Mode=TwoWay}"
                                   ToolTip.Tip="The channel @heal goes out on. Say reaches only the room your party is in; Gangpath your whole gang; Broadcast everyone on your numbered channel. It goes out even if it ends your sneak."/>
+                        <CheckBox Content="Answer @heal from outside the party" Margin="10,0,0,0"
+                                  VerticalAlignment="Center"
+                                  IsChecked="{Binding AnswerOutsideHealRequests, Mode=TwoWay}"
+                                  ToolTip.Tip="As a healer, heal a player outside your party who asks with @heal on gangpath or broadcast, once no one in your party needs a heal and while they're in your room. They also need Execute commands in your Players list, as any @heal does."/>
                     </StackPanel>
                 </StackPanel>
             </Panel>

@@ -43,6 +43,7 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
         "Party", "Rank", "Front", "Mid", "Back",
         "Party heal", "Minor heal", "Major heal", "Single-target", "Party AOE",
         "Use AOE", "Request healing", "Request healing channel", "@heal",
+        "Answer @heal from outside the party",
         "Help leader open doors",
         "Auto-invite", "Auto-Exp-Reset", "par frequency", "par poll", "Send par",
         "after each combat round", "combat I only witness", "unknown damage",
@@ -122,6 +123,9 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
     // The channel a follower's @heal goes out on.
     [ObservableProperty] private HealRequestChannel _requestHealChannel = HealRequestChannel.Say;
     public IReadOnlyList<HealRequestChannel> RequestHealChannels { get; } = Enum.GetValues<HealRequestChannel>();
+
+    // Heal a player outside the party who asks with @heal on gangpath or broadcast.
+    [ObservableProperty] private bool _answerOutsideHealRequests = true;
 
     // ----- Capacity (consumed by CombatManager) ----------------------
     // Party-scoped max-monsters cap; overrides the Combat-tab upper bound while
@@ -302,6 +306,7 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
         MajorHealMemberThresholdPercent = Math.Clamp(MajorHealMemberThresholdPercent, 0, 100),
         AoeMinMembers          = Math.Clamp(AoeMinMembers, 2, 6),
         RequestHealChannel     = RequestHealChannel,
+        AnswerOutsideHealRequests = AnswerOutsideHealRequests,
         MaxMonstersWhenPartying = Math.Clamp(MaxMonstersWhenPartying, 1, 20),
         WaitIfMemberBelowPercent = Math.Clamp(WaitIfMemberBelowPercent, 0, 100),
         IgnoreWaitWhenLeading  = IgnoreWaitWhenLeading,
@@ -377,6 +382,7 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
         MajorHealMemberThresholdPercent = dto.MajorHealMemberThresholdPercent;
         AoeMinMembers          = dto.AoeMinMembers;
         RequestHealChannel     = dto.RequestHealChannel;
+        AnswerOutsideHealRequests = dto.AnswerOutsideHealRequests;
         MaxMonstersWhenPartying = dto.MaxMonstersWhenPartying;
         WaitIfMemberBelowPercent = dto.WaitIfMemberBelowPercent;
         IgnoreWaitWhenLeading  = dto.IgnoreWaitWhenLeading;
@@ -458,6 +464,7 @@ public sealed partial class PartySectionViewModel : SettingsSectionViewModel
     partial void OnMajorHealMemberThresholdPercentChanged(int value) => MarkDirty();
     partial void OnAoeMinMembersChanged(int value)              => MarkDirty();
     partial void OnRequestHealChannelChanged(HealRequestChannel value) => MarkDirty();
+    partial void OnAnswerOutsideHealRequestsChanged(bool value) => MarkDirty();
     partial void OnMaxMonstersWhenPartyingChanged(int value)    => MarkDirty();
     partial void OnWaitIfMemberBelowPercentChanged(int value)   => MarkDirty();
     partial void OnIgnoreWaitWhenLeadingChanged(bool value)     => MarkDirty();

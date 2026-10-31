@@ -4055,6 +4055,9 @@ public sealed class CastingDirectorTests
         public PartySettings PartySettings { get; set; } = new();
         // The director's clock: the real one unless a test sets its own.
         public Func<DateTime> Clock { get; set; } = () => DateTime.UtcNow;
+        // Players seen in the room, and whole-party spells, by cast code.
+        public HashSet<string> InRoom { get; } = new(StringComparer.OrdinalIgnoreCase);
+        public HashSet<string> WholeParty { get; } = new(StringComparer.OrdinalIgnoreCase);
 
         public PartyHarness()
         {
@@ -4070,6 +4073,8 @@ public sealed class CastingDirectorTests
                 isEnabled: () => true,
                 log: Log,
                 now: () => Clock());
+            Director.SetRoomPresenceCheck(InRoom.Contains);
+            Director.SetPartyWideBuffCheck(WholeParty.Contains);
             State.MaxHp = 200;
             State.Hp = 200;
             State.MaxMa = 100;
@@ -4097,6 +4102,87 @@ public sealed class CastingDirectorTests
             Director.Dispose();
             Cast.Dispose();
         }
+    }
+
+    // ----- @heal requests ---------------------------------------------
+
+    // A party member's @heal is a demand signal: the Major single-target heal goes on
+    // them though `par` shows them above every threshold, and only once.
+    [Fact]
+    public void HealRequest_FromAPartyMember_CastsTheMajorHealOnThemOnce()
+    {
+        using PartyHarness h = new();
+        h.PartySettings.MinorPartyHealSpell = "mihe";
+        h.PartySettings.MajorPartyHealSpell = "mahe";
+        h.AddMember("Tank", hpPercent: 95);
+
+        h.Director.RequestHeal("Tank", partyMember: true);
+        h.Director.Evaluate();
+        h.Cast.OnCombatTick();
+        h.Director.NotifyRoundComplete();
+        h.Director.Evaluate();
+
+        Assert.Equal(new[] { "mahe Tank" }, h.CastsSent);
+    }
+
+    // A player outside the party is healed only once no one in it needs a heal, and
+    // only while seen in the room; a Major that is a whole-party spell falls to the Minor.
+    [Fact]
+    public void HealRequest_FromOutsideTheParty_WaitsForThePartyAndTheRoom()
+    {
+        using PartyHarness h = new();
+        h.PartySettings.MinorPartyHealSpell = "mihe";
+        h.PartySettings.MajorPartyHealSpell = "grhe";
+        h.WholeParty.Add("grhe");
+        PartyMember tank = h.AddMember("Tank", hpPercent: 50);
+
+        h.Director.RequestHeal("Eddie", partyMember: false);
+        h.Director.Evaluate();
+        Assert.Equal(new[] { "mihe Tank" }, h.CastsSent);   // the party first
+
+        tank.HpPercent = 100;
+        h.Cast.OnCombatTick();
+        h.Director.NotifyRoundComplete();
+        h.Director.Evaluate();
+        Assert.Single(h.CastsSent);                          // Eddie isn't in the room
+
+        h.InRoom.Add("Eddie");
+        h.Cast.OnCombatTick();
+        h.Director.NotifyRoundComplete();
+        h.Director.Evaluate();
+        Assert.Equal(new[] { "mihe Tank", "mihe Eddie" }, h.CastsSent);
+    }
+
+    // Our own HP counts as the party's: low, we don't heal a stranger.
+    [Fact]
+    public void HealRequest_FromOutsideTheParty_WaitsWhileWeAreLow()
+    {
+        using PartyHarness h = new();
+        h.PartySettings.MajorPartyHealSpell = "mahe";
+        h.InRoom.Add("Eddie");
+        h.State.Hp = 100;   // 50%, under the Minor party threshold
+
+        h.Director.RequestHeal("Eddie", partyMember: false);
+        h.Director.Evaluate();
+
+        Assert.Empty(h.CastsSent);
+    }
+
+    [Fact]
+    public void HealRequest_IsDroppedAfterItsWindow()
+    {
+        using PartyHarness h = new();
+        DateTime now = new(2026, 10, 30, 12, 0, 0, DateTimeKind.Utc);
+        h.Clock = () => now;
+        h.PartySettings.MajorPartyHealSpell = "mahe";
+
+        h.Director.RequestHeal("Eddie", partyMember: false);
+        now += CastingDirector.RequestedHealWindow + TimeSpan.FromSeconds(1);
+        h.InRoom.Add("Eddie");
+        h.Director.Evaluate();
+
+        Assert.Empty(h.CastsSent);
+        Assert.Empty(h.Director.PendingHealRequests);
     }
 
     [Fact]

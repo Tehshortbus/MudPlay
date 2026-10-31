@@ -4,13 +4,17 @@ using MudPlay.Models.Profile;
 
 namespace MudPlay.Game.Remote;
 
-// Receive side of @heal — a party member's request "cast a heal on me". A
-// configured party-healer responds by polling party HP now (par), which
-// refreshes every PartyMember.HpPercent so CastingDirector re-evaluates its
-// party-heal thresholds on the next combat tick and casts toward whoever is
-// below — including the requester. @heal only accelerates the poll PartyPoller
-// already runs on a cadence; the actual cast decision stays owned by
-// CastingDirector + the character's PartySettings heal-spell config.
+// Receive side of @heal — "cast a heal on me", the emergency call a hurt party
+// follower makes when its healer hasn't seen it drop. A configured party-healer
+// queues a heal on the sender (CastingDirector.RequestHeal) and polls party HP now
+// (par), so the threshold heals see fresh figures too. The cast itself stays owned
+// by CastingDirector + the character's PartySettings heal-spell config.
+//
+// The sender in our party is answered on any channel. One outside it is answered
+// when heard on gangpath or the broadcast channel (it can't be in our `par`, so
+// those are where its call reaches us) and Settings → Party lets us
+// (PartySettings.AnswerOutsideHealRequests); the engine heals it only once no one
+// in our party needs a heal. With the box off such a request is ignored silently.
 //
 // A member with no party-heal spell configured has nothing to cast, so it stays
 // silent rather than answering every broadcast request with a "can't heal" line
@@ -28,6 +32,8 @@ public sealed class HealCommandHandler : IDisposable
 
     private readonly RemoteCommandManager _engine;
     private readonly Func<PartySettings> _readParty;
+    private readonly Action<string, bool> _queueHeal;
+    private readonly Func<string, bool> _isPartyMember;
     private Action<byte[]>? _wireSender;
     private bool _disposed;
 
@@ -41,12 +47,16 @@ public sealed class HealCommandHandler : IDisposable
     // Null = ungated (test / pre-wire default).
     public Func<bool>? IsInTrainerMenu { get; set; }
 
-    public HealCommandHandler(RemoteCommandManager engine, Func<PartySettings> readParty)
+    // queueHeal: (sender, is a party member) — the heal the engine is to cast.
+    public HealCommandHandler(RemoteCommandManager engine, Func<PartySettings> readParty,
+        Action<string, bool> queueHeal, Func<string, bool> isPartyMember)
     {
         ArgumentNullException.ThrowIfNull(engine);
         ArgumentNullException.ThrowIfNull(readParty);
         _engine = engine;
         _readParty = readParty;
+        _queueHeal = queueHeal ?? throw new ArgumentNullException(nameof(queueHeal));
+        _isPartyMember = isPartyMember ?? throw new ArgumentNullException(nameof(isPartyMember));
 
         if (!RemoteCommandCatalog.TryGetCategory(Command, out PlayerRemoteControls category))
             throw new InvalidOperationException(
@@ -74,13 +84,24 @@ public sealed class HealCommandHandler : IDisposable
         // Only a configured healer answers. No party-heal spell set → nothing
         // to cast → stay silent, so a broadcast @heal doesn't draw a
         // "can't heal" reply from every non-healer in the party.
-        if (!HasPartyHeal(_readParty())) return;
+        PartySettings party = _readParty();
+        if (!HasPartyHeal(party)) return;
 
         // Parked on the trainer screen → the par would land in the stat form and
         // corrupt the last name, and we can't cast from a menu anyway. Stay
         // silent, exactly as a non-healer does.
         if (IsInTrainerMenu is { } gate && gate()) return;
 
+        if (!_isPartyMember(ctx.Sender)
+            && ctx.Channel is RemoteChannel.Gangpath or RemoteChannel.Broadcast)
+        {
+            if (!party.AnswerOutsideHealRequests) return;
+            _queueHeal(ctx.Sender, false);
+            ctx.Reply("healing");
+            return;
+        }
+
+        if (_isPartyMember(ctx.Sender)) _queueHeal(ctx.Sender, true);
         // par now → CastingDirector sees fresh member HP% on its next combat
         // tick and heals whoever is below threshold. Same command PartyPoller
         // sends on cadence; @heal just brings the poll forward.
