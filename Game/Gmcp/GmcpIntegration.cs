@@ -105,11 +105,44 @@ public sealed partial class GmcpIntegration
 
     public void Receive(GmcpMessage message)
     {
+        NoteRecent(message);
         State.Receive(message);
         if (message.Package is "Anomaly.Items.List" or "Anomaly.Shop.List" or "Anomaly.Session.Reset") RequestMissingCards();
     }
 
     public void Disconnected() => State.Disconnected();
+
+    // ----- Recent messages, for the bug report ------------------------------
+
+    // Which of the server's messages came when, on the program log's clock: the
+    // client's decisions turn on their order against the text, and the GMCP
+    // monitor records only while its Record box is ticked (report
+    // paradigm-20261031-014901 couldn't show when the room's monster list came).
+    private const int RecentKept = 150;
+    private const int RecentBodyKept = 200;
+    private readonly object _recentLock = new();
+    private readonly Queue<string> _recent = new();
+
+    private void NoteRecent(GmcpMessage message)
+    {
+        // A chat line's text is someone's words, and the conversation log keeps it.
+        string body = message.Package == "Anomaly.Comm.Line" ? "" : message.Payload.GetRawText();
+        if (body.Length > RecentBodyKept) body = body[..RecentBodyKept] + "…";
+        string entry = $"{DateTime.Now:HH:mm:ss.fff}  {message.Package} {body}".TrimEnd();
+        lock (_recentLock)
+        {
+            _recent.Enqueue(entry);
+            while (_recent.Count > RecentKept) _recent.Dequeue();
+        }
+    }
+
+    public string DescribeRecent()
+    {
+        lock (_recentLock)
+            return _recent.Count == 0
+                ? "Last server messages: (none this session)"
+                : $"Last {_recent.Count} server messages (oldest first):\n```\n{string.Join("\n", _recent)}\n```";
+    }
 
     // The server's lair reading for a room: Known when it is the current room's and
     // the package is owned; EligibleAt null when the server gives no timer.

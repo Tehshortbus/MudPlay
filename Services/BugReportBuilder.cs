@@ -174,7 +174,7 @@ public static class BugReportBuilder
             new("Statline", SafeSection(() => BuildStatline(svc))),
             new("Party", SafeSection(() => BuildParty(svc))),
             new("Inventory", SafeSection(() => BuildInventory(svc))),
-            new("Server data (GMCP)", SafeSection(() => svc.Gmcp.Describe() + "\n" + svc.GmcpLocator.Describe())),
+            new("Server data (GMCP)", SafeSection(() => svc.Gmcp.Describe() + "\n" + svc.GmcpLocator.Describe() + "\n" + svc.Gmcp.DescribeRecent())),
             new("Movement engine", SafeSection(() => BuildMovement(svc))),
             new("Navigation engines", SafeSection(() => BuildNavigationEngines(svc))),
             new("Auto-mode", SafeSection(() => BuildAutoMode(svc))),

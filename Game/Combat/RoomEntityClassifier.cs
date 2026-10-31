@@ -319,12 +319,7 @@ public sealed class RoomEntityClassifier : IDisposable
         }
 
         RoomEntitiesObservation obs = new(rawFirst, entities, _now());
-        TextObserved?.Invoke(obs);
-        if (GmcpOwnsOccupants?.Invoke() == true) return;
-        Current = obs;
-        _lastAlsoHereAt = obs.At;
-        SetRosterWhole(true);
-        EntitiesObserved?.Invoke(obs);
+        TakeTextRoster(obs);
     }
 
     private void OnRoomAlsoHere(MatchResult match)
@@ -351,12 +346,49 @@ public sealed class RoomEntityClassifier : IDisposable
         }
 
         RoomEntitiesObservation obs = new(rawLine, entities, _now());
+        TakeTextRoster(obs);
+    }
+
+    private void TakeTextRoster(RoomEntitiesObservation obs)
+    {
         TextObserved?.Invoke(obs);
-        if (GmcpOwnsOccupants?.Invoke() == true) return;
+        if (GmcpOwnsOccupants?.Invoke() == true)
+        {
+            AddMonstersTheServerLacks(obs);
+            return;
+        }
         Current = obs;
         _lastAlsoHereAt = obs.At;
         SetRosterWhole(true);
         EntitiesObserved?.Invoke(obs);
+    }
+
+    // The server's list for the room we step into can leave out a monster its
+    // "Also here:" shows, one back in its lair while we were away, and name it a
+    // moment after the display (report paradigm-20261031-014901). Read without it,
+    // the room confirmed empty and the loop walked on past the troll it was there
+    // for. The display's monsters the list lacks are kept beside it until the
+    // server's next list, which replaces it. Mid-move the room's confirmation reads
+    // them; in place they are read now.
+    private void AddMonstersTheServerLacks(RoomEntitiesObservation shown)
+    {
+        IReadOnlyList<RoomEntity> listed = Current?.Entities ?? Array.Empty<RoomEntity>();
+        List<RoomEntity> unmatched = listed.Where(e => e.Kind == EntityKind.Monster).ToList();
+        List<RoomEntity> lacking = new();
+        foreach (RoomEntity e in shown.Entities)
+        {
+            if (e.Kind != EntityKind.Monster) continue;
+            int at = unmatched.FindIndex(m => m.RawName.Equals(e.RawName, StringComparison.OrdinalIgnoreCase));
+            if (at >= 0) unmatched.RemoveAt(at);
+            else lacking.Add(e);
+        }
+        if (lacking.Count == 0) return;
+        _log?.Info(LogCategory, $"the room display shows {string.Join(", ", lacking.Select(e => $"'{e.RawName}'"))}, "
+            + "which the server's room list lacks — counted from the display until the server lists it");
+        bool moving = _roomTracker is { HasQueuedMoves: true };
+        Current = new RoomEntitiesObservation(shown.RawAlsoHereLine, [.. listed, .. lacking], shown.At,
+            moving ? RoomObservationSource.Arrival : RoomObservationSource.AlsoHere);
+        if (!moving) EntitiesObserved?.Invoke(Current.Value);
     }
 
     // Public for direct callers (the fix dialog can re-classify a fixed-up name

@@ -1,5 +1,11 @@
 # Version history
 
+## 3.194.1
+
+- With GMCP Room.Occupants on Active, a loop no longer walks past a monster the room shows that the server's list hasn't named yet
+- Bug reports list the last 150 GMCP messages from the server with their times
+- bug reports addressed: paradigm-20261031-014901
+
 ## 3.194.0
 
 - Buff Watchdog: a buff only another player can take (renewal on Anomaly) shows member boxes and no Self, and is never cast on you
