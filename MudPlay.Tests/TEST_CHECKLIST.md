@@ -484,7 +484,7 @@ How to keep it current:
 
 ### BuffClassifierTests.cs
 - Covers: Game/Spells/BuffClassifier
-- Checks: whole-party targets; buff vs instant vs attack shapes; alignment eligibility.
+- Checks: whole-party targets; buff vs instant vs attack shapes; Targets 1 self, 0 another player only, and which scopes land on the caster; alignment eligibility.
 - Why: the "Add all blesses" report and the evil-priest picks.
 
 ### BuffCombatCalculatorTests.cs
@@ -524,7 +524,7 @@ How to keep it current:
 
 ### BuffSlotRowViewModelTests.cs
 - Covers: ViewModels/BuffSlotRowViewModel
-- Checks: name abbreviation and recast text; All/Self independence; member auto-assign; solo visibility; overwrite tooltip; self-activation hook; learned flag; negated marks.
+- Checks: name abbreviation and recast text; All/Self independence; member auto-assign; solo visibility; an others-only buff shows members and no Self; overwrite tooltip; self-activation hook; learned flag; negated marks.
 - Why: the "unchecking All cleared Self" bug; user 2026-10-17 (negates).
 
 ### BuffTimerKeeperTests.cs
@@ -636,7 +636,7 @@ How to keep it current:
 
 ### CastingDirectorTests.cs
 - Covers: Game/Spells/CastingDirector (+ CastCoordinator, ConditionTracker, TickEngine)
-- Checks: heal tiers and priorities; mana gates; cures; buff slot walk, timers and margins; burst-settle; pause/resume and restore; party heal, cure and bless; negates; draw items; item casts; a between-round cast sent just ahead of a projected round leaves the slot doubted (BetweenRoundSlotMayBeSpent) until the next tick, on a real TickEngine; the rest-time heal goes out while resting, meditating or idle, and standing it is held only while our own walk or loop moves us (logged once, flagged RestHealHeldForMovement), never for a follower.
+- Checks: heal tiers and priorities; mana gates; cures; buff slot walk, timers and margins; burst-settle; pause/resume and restore; party heal, cure and bless; an others-only buff (Targets 0) with self ticked cast on the member only; negates; draw items; item casts; a between-round cast sent just ahead of a projected round leaves the slot doubted (BetweenRoundSlotMayBeSpent) until the next tick, on a real TickEngine; the rest-time heal goes out while resting, meditating or idle, and standing it is held only while our own walk or loop moves us (logged once, flagged RestHealHeldForMovement), never for a follower.
 - Why: dozens of reports cited inline (the doubted slot: paradigm-20261023-001124; the follower's standing heal: paradigm-20261027-094915, paradigm-20261027-123536); user rulings 2026-10-10 and 2026-10-17.
 
 ### CharacterCalculatorMatchupProfileTests.cs

@@ -1,5 +1,9 @@
 # Version history
 
+## 3.193.8
+
+- Buff Watchdog: a buff only another player can take (renewal on Anomaly) shows member boxes and no Self, and is never cast on you
+
 ## 3.193.7
 
 - In a dark room shown again before the next move's echo, the map no longer runs a room ahead (the pyramid solver walking off its route)

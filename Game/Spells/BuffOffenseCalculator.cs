@@ -27,15 +27,11 @@ public static class BuffOffenseCalculator
     // moves at least one offense number.
     public static bool AffectsOffense(KnownSpell spell)
     {
-        if (!CanLandOnSelf(spell.Targets)) return false;
+        if (!BuffClassifier.CanLandOnSelf(spell.Targets)) return false;
         foreach (SpellAbility a in spell.Formula.Abilities)
             if (IsOffenseCode(a.Code)) return true;
         return false;
     }
-
-    // Self-only (0/1), a single target we can cast on ourselves (2), or a
-    // whole-party spell (10/13) — the same scopes BuffDefenseCalculator counts.
-    private static bool CanLandOnSelf(int targets) => targets is 0 or 1 or 2 or 10 or 13;
 
     private static bool IsOffenseCode(int code) =>
         code is StealthCode or MaxDamageCode or CritsCode

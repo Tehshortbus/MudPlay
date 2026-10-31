@@ -301,6 +301,7 @@ public sealed partial class CastingDirector : IDisposable
     // VICTIM rather than the just-cast survivor (bless & chant share the wear-off line).
     private Func<string, IReadOnlyCollection<string>>? _removesShortsFor;
     private Func<string, bool>? _isPartyWideBuff;
+    private Func<string, bool>? _isOthersOnlyBuff;
 
     // The due-queue text LogDueQueue last wrote, so an unchanged queue isn't re-logged.
     private string? _lastLoggedQueue;
@@ -1005,6 +1006,15 @@ public sealed partial class CastingDirector : IDisposable
     {
         ArgumentNullException.ThrowIfNull(isPartyWideBuff);
         _isPartyWideBuff = isPartyWideBuff;
+    }
+
+    // Wire a "can only another player take this buff?" check (Spells.Targets 0). Such
+    // a slot is cast on its members only: a self box saved on it before the scope was
+    // read so (or ticked in the profile file) never sends a cast at ourselves.
+    public void SetOthersOnlyBuffCheck(Func<string, bool> isOthersOnlyBuff)
+    {
+        ArgumentNullException.ThrowIfNull(isOthersOnlyBuff);
+        _isOthersOnlyBuff = isOthersOnlyBuff;
     }
 
     // Wire the self-buff coverage source: self-buff cast code → the party-wide party buff
@@ -3410,7 +3420,8 @@ public sealed partial class CastingDirector : IDisposable
             // always bless ourselves first.
             bool wantSelfCast = partyWide
                 ? slot.WholePartyOn && (inParty ? partyAllowed : slot.CastSolo && selfEligible)
-                : slot.CastOnSelf && selfEligible && (covered is null || !covered.ContainsKey(slot.Spell));
+                : slot.CastOnSelf && selfEligible && (covered is null || !covered.ContainsKey(slot.Spell))
+                  && _isOthersOnlyBuff?.Invoke(slot.Spell) != true;
             if (wantSelfCast
                 && (IsRecastDue("", slot.Spell) || (partyWide && inParty && CarriedBuffRanOutOnParty(slot.Spell)))
                 && CanPayFor(slot.Spell, priority, peek))

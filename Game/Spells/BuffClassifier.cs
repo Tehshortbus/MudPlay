@@ -10,8 +10,11 @@ namespace MudPlay.Game.Spells;
 //                     (frenzy, divine favour, blood ritual, regeneration…)
 //   Targets 10 / 13 = whole-party buff, one cast blankets the party
 //                     (chant, mass frenzy, unholy fanaticism, rejuvenating field…)
-// Self-only (0 / 1), enemy (4 / 8 / 9 / 12), item (7), and generic-area scopes
-// are excluded — they aren't beneficial party buffs.
+//   Targets 1       = self-only buff (bless, troll skin…)
+//   Targets 0       = "User": another player only, never the caster (renewal,
+//                     lifebloom on Anomaly, priestly benediction on Stock)
+// Enemy (4 / 8 / 9 / 12), item (7), and generic-area scopes are excluded — they
+// aren't beneficial party buffs.
 public static class BuffClassifier
 {
     // Whole-party scope codes (one cast, no target). Matches AppServices.IsPartyWideBuff.
@@ -22,7 +25,15 @@ public static class BuffClassifier
     public static bool IsSingleTargetBuff(int targets) => targets is 2;
 
     // A self-only beneficial buff (bless, troll skin, and kin) — only castable on us.
-    public static bool IsSelfBuff(int targets) => targets is 0 or 1;
+    public static bool IsSelfBuff(int targets) => targets is 1;
+
+    // A buff only another player can take (GAME_MECHANICS "Spell target scopes
+    // (`Targets`)"): cast on members, never on us.
+    public static bool IsOthersOnlyBuff(int targets) => targets is 0;
+
+    // Whether the spell can land on the caster at all: a cast on ourselves, or one
+    // over the whole party.
+    public static bool CanLandOnSelf(int targets) => targets is 1 or 2 or 10 or 13;
 
     // A hostile scope: cast at an enemy, one (4 Monster, 8 Monster or User) or the
     // room's (9 Divided Attack Area, 12 Full Attack Area). Every learnable curse,
@@ -69,10 +80,11 @@ public static class BuffClassifier
 
     // True when the spell belongs in the UNIFIED buff picker: a zero-energy,
     // maintained buff we can keep up on ourselves, a member, or the whole party
-    // (self / single-target / whole-party scopes). Attacks (energy > 0), enemy /
+    // (self / others-only / single-target / whole-party scopes). Attacks (energy > 0), enemy /
     // area / item-target scopes, and instant effects with nothing to maintain
     // (heals, cures, utility spells) are excluded.
     public static bool IsAnyBuff(in KnownSpell spell) =>
         spell.Formula.EnergyCost == 0 && HasDuration(spell.Formula)
-        && (IsSelfBuff(spell.Targets) || IsSingleTargetBuff(spell.Targets) || IsWholeParty(spell.Targets));
+        && (IsSelfBuff(spell.Targets) || IsOthersOnlyBuff(spell.Targets)
+            || IsSingleTargetBuff(spell.Targets) || IsWholeParty(spell.Targets));
 }

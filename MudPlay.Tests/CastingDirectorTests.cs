@@ -4749,6 +4749,9 @@ public sealed class CastingDirectorTests
         // Spell shorts that are whole-party (Targets 10/13).
         public HashSet<string> WholeParty { get; } = new(StringComparer.OrdinalIgnoreCase);
 
+        // Shorts of buffs only another player can take (Targets 0).
+        public HashSet<string> OthersOnly { get; } = new(StringComparer.OrdinalIgnoreCase);
+
         // When true the triggered-rest gate reports an active recovery
         // rest. A bare Position=Resting does NOT set this — idle resting still
         // buffs the party.
@@ -4796,6 +4799,7 @@ public sealed class CastingDirectorTests
             Director.SetPartyBuffSource(() => PartyBuffs);
             Director.SetRoomPresenceCheck(g => InRoom.Contains(g));
             Director.SetPartyWideBuffCheck(s => WholeParty.Contains(s));
+            Director.SetOthersOnlyBuffCheck(s => OthersOnly.Contains(s));
             Director.SetSpellNameLookup(code => SpellNames.TryGetValue(code, out string? n) ? n : null);
             // Healthy + full mana so survival categories never pre-empt buffs.
             State.MaxHp = 200; State.Hp = 200;
@@ -4873,6 +4877,25 @@ public sealed class CastingDirectorTests
 
         Assert.Single(h.CastsSent);
         Assert.Equal("bles Raijin", h.CastsSent[0]);
+    }
+
+    // A buff only another player can take (renewal on Anomaly, Targets 0) goes to its
+    // members only, even on a slot saved with self ticked: a cast at ourselves would
+    // never land.
+    [Fact]
+    public void PartyBless_OthersOnlyBuff_WithSelfTicked_CastsOnTheMemberOnly()
+    {
+        using PartyBlessHarness h = new();
+        h.ManaFloor = 0;
+        h.OthersOnly.Add("renw");
+        BuffSlot slot = h.AddAllMembersSlot("renw");
+        slot.CastOnSelf = true;
+        h.BuffInfo["renw"] = ("You cast {s} on {s}!", 300);
+        h.AddMember("Raijin");
+
+        h.Director.Evaluate();
+
+        Assert.Equal(new[] { "renw Raijin" }, h.CastsSent);
     }
 
     [Fact]

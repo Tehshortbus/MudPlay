@@ -17,7 +17,7 @@ public sealed class BuffDefenseCalculatorTests
     {
         List<KnownSpell> available = new()
         {
-            Spell("shld", targets: 0, new SpellAbility(2, 15)),   // self-only AC +15
+            Spell("shld", targets: 1, new SpellAbility(2, 15)),   // self-only AC +15
             Spell("gbls", targets: 10, new SpellAbility(7, 20)),  // whole-party DR +2.0 (stored 20)
             Spell("sbls", targets: 2, new SpellAbility(2, 8)),    // single-target AC — only if cast on self
         };
@@ -49,10 +49,10 @@ public sealed class BuffDefenseCalculatorTests
     {
         List<KnownSpell> available = new()
         {
-            Spell("blur", targets: 0, new SpellAbility(10, 5)),  // AC-Blur folds into AC
-            Spell("prot", targets: 0, new SpellAbility(24, 12)), // Prot-Evil ward
-            Spell("shad", targets: 0, new SpellAbility(9, 1)),   // shadow property
-            Spell("vile", targets: 0, new SpellAbility(1113, 1)),// vile ward
+            Spell("blur", targets: 1, new SpellAbility(10, 5)),  // AC-Blur folds into AC
+            Spell("prot", targets: 1, new SpellAbility(24, 12)), // Prot-Evil ward
+            Spell("shad", targets: 1, new SpellAbility(9, 1)),   // shadow property
+            Spell("vile", targets: 1, new SpellAbility(1113, 1)),// vile ward
         };
         BuffSettings buffs = new()
         {
@@ -75,7 +75,7 @@ public sealed class BuffDefenseCalculatorTests
     [Fact]
     public void Compute_ItemTokenAndUnknownCode_Skipped()
     {
-        List<KnownSpell> available = new() { Spell("shld", targets: 0, new SpellAbility(2, 15)) };
+        List<KnownSpell> available = new() { Spell("shld", targets: 1, new SpellAbility(2, 15)) };
         BuffSettings buffs = new()
         {
             Slots =
