@@ -1,5 +1,6 @@
 using System.Text;
 using MudPlay.Game;
+using MudPlay.Game.Combat;
 using MudPlay.Game.Map;
 using MudPlay.Models.GameData;
 using MudPlay.Models.Profile;
@@ -56,6 +57,7 @@ public sealed class PartyDeathRosterCleanupTests
                 UninvitedForDeath = given => Cleanup.UninvitedForDeath(given),
             };
             AutoParty.SetWireSender(b => Wire.Add(Encoding.Latin1.GetString(b)));
+            AutoParty.SetRoomRoster(new RoomEntityClassifier(Router, new MonsterMessageStore(), Players));
         }
 
         public void Line(string text) => _server.Line(text);

@@ -794,6 +794,36 @@ public sealed partial class GmcpIntegrationTests
         Assert.Equal(12, session.Stats.Level);
     }
 
+    // Report paradigm-20261031-101847: the server's stats say which stat sits off its
+    // base. Every reading the CP plan sees keeps that mark, a resend included, and a
+    // `stat` screen read beside them doesn't wipe it.
+    [Fact]
+    public void ActiveStats_KeepTheirModifiedMarksThroughAResendAndAStatScreen()
+    {
+        using Session session = new();
+        session.Replay("01-handshake");
+        System.Text.Json.Nodes.JsonNode stats = System.Text.Json.Nodes.JsonNode.Parse(
+            session.Gmcp.State.Snapshot("Anomaly.Char.Stats")!.Value.GetRawText())!;
+        stats["stats"]!["strength"] = new System.Text.Json.Nodes.JsonObject { ["base"] = 160, ["current"] = 170 };
+        session.Send("Anomaly.Char.Stats", stats);
+        Assert.Equal(StatSet.Strength, session.Stats.ModifiedStats);
+        List<StatSet> seen = new();
+        session.Stats.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(PlayerStats.ModifiedStats)) seen.Add(session.Stats.ModifiedStats);
+        };
+
+        stats["stats"]!["strength"] = new System.Text.Json.Nodes.JsonObject { ["base"] = 160, ["current"] = 170 };
+        session.Send("Anomaly.Char.Stats", stats);
+        session.StatParser.ObserveOutbound(Encoding.ASCII.GetBytes("stat\r"));
+        session.Text("Name: Test Hero                  Lives/CP:           8/15\r\n");
+        session.Text("Strength:   170     Agility:   4          Tracking:     0\r\n[HP=150]:\r\n");
+
+        Assert.Empty(seen);
+        Assert.True(session.Stats.ModifiedMarksRead);
+        Assert.Equal(StatSet.Strength, session.Stats.ModifiedStats);
+    }
+
     [Fact]
     public void ActiveRoster_ReachesCombatModelsAndDeathClearsTheGate()
     {

@@ -70,6 +70,7 @@ public sealed class LoopShareTests : IDisposable
     {
         Loop sent = SampleLoop();
         sent.Waypoints[1].LapWaitMs = 90_000;
+        sent.Waypoints[2].StartHere = true;
         Loop decoded = LoopShareCodec.Decode(LoopShareCodec.Encode(sent), out _);
 
         Assert.Equal("King's Road", decoded.Name);
@@ -84,6 +85,7 @@ public sealed class LoopShareTests : IDisposable
         Assert.True(decoded.Waypoints[1].DoNotRest);
         Assert.Equal(90_000, decoded.Waypoints[1].LapWaitMs);
         Assert.True(decoded.Waypoints[2].DoNotAttack);
+        Assert.Equal(new[] { false, false, true }, decoded.Waypoints.Select(w => w.StartHere));
     }
 
     [Fact]

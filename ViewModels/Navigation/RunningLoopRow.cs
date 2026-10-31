@@ -12,7 +12,7 @@ namespace MudPlay.ViewModels.Navigation;
 public sealed record RunningLoopRow(
     int Index, RoomKey Key, string Name, string? Command, long DelayMs,
     bool DoNotRest, bool DoNotAttack, bool IsCurrentRoom, bool RestHereHp = false, bool RestHereMana = false,
-    long LapWaitMs = 0)
+    long LapWaitMs = 0, bool StartHere = false)
 {
     public bool HasCommand => !string.IsNullOrWhiteSpace(Command);
     public bool HasDoNotRest => DoNotRest;
@@ -22,4 +22,5 @@ public sealed record RunningLoopRow(
         : RestHereHp ? "Rest up here (HP)" : "Rest up here (mana)";
     public bool HasLapWait => LapWaitMs > 0;
     public string LapWaitTip => $"Wait here until lap time {LoopDelay.Describe(LapWaitMs)}";
+    public bool HasStartHere => StartHere;
 }

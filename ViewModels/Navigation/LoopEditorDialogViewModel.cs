@@ -134,6 +134,7 @@ public sealed partial class LoopEditorDialogViewModel : ObservableObject, IDialo
         _onlyAttackInLairRooms = loop.OnlyAttackInLairRooms;
         _waitToDebuffBeforeLairs = LairEntryDebuffModes.IsOn(loop.LairEntryDebuff);
         _lairDebuffWaitChoice = LairEntryDebuffModes.ChoiceOf(loop.LairEntryDebuff);
+        Waypoints.CollectionChanged += OnRowsChanged;
         foreach (LoopWaypoint w in loop.Waypoints)
             Waypoints.Add(new LoopWaypointRowViewModel(w, graph));
         RenumberRows();
@@ -445,6 +446,7 @@ public sealed partial class LoopEditorDialogViewModel : ObservableObject, IDialo
                 RestHereHp = row.RestHereHp,
                 RestHereMana = row.RestHereMana,
                 LapWaitMs = Math.Max(0, row.LapWaitMs),
+                StartHere = row.StartHere,
             });
         }
 
@@ -583,6 +585,23 @@ public sealed partial class LoopEditorDialogViewModel : ObservableObject, IDialo
 
     // ----- internals -------------------------------------------------
 
+    // One start room per loop (LoopWaypoint.StartHere): ticking a row's clears the rest.
+    private void OnRowsChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+    {
+        foreach (LoopWaypointRowViewModel row in e.NewItems?.OfType<LoopWaypointRowViewModel>() ?? [])
+            row.PropertyChanged += OnRowChanged;
+        foreach (LoopWaypointRowViewModel row in e.OldItems?.OfType<LoopWaypointRowViewModel>() ?? [])
+            row.PropertyChanged -= OnRowChanged;
+    }
+
+    private void OnRowChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(LoopWaypointRowViewModel.StartHere)
+            || sender is not LoopWaypointRowViewModel { StartHere: true } ticked) return;
+        foreach (LoopWaypointRowViewModel row in Waypoints)
+            if (!ReferenceEquals(row, ticked)) row.StartHere = false;
+    }
+
     private void RenumberRows()
     {
         for (int i = 0; i < Waypoints.Count; i++)
@@ -592,7 +611,8 @@ public sealed partial class LoopEditorDialogViewModel : ObservableObject, IDialo
 
 // Per-row VM for the editor's Waypoints ListBox. Carries the resolved room
 // name (read-only) + the inline-editable command, delay, do-not-rest,
-// do-not-attack, rest-up-here and lap-wait fields (each a column in the table).
+// do-not-attack, rest-up-here, lap-wait and start-here fields (each a column in
+// the table).
 public sealed partial class LoopWaypointRowViewModel : ObservableObject
 {
     public RoomKey Key { get; }
@@ -605,6 +625,7 @@ public sealed partial class LoopWaypointRowViewModel : ObservableObject
     [ObservableProperty] private bool _restHereHp;
     [ObservableProperty] private bool _restHereMana;
     [ObservableProperty] private long _lapWaitMs;
+    [ObservableProperty] private bool _startHere;
 
     public LoopWaypointRowViewModel(LoopWaypoint source, RoomGraphManager graph)
     {
@@ -618,6 +639,7 @@ public sealed partial class LoopWaypointRowViewModel : ObservableObject
         _restHereHp = source.RestHereHp;
         _restHereMana = source.RestHereMana;
         _lapWaitMs = source.LapWaitMs;
+        _startHere = source.StartHere;
         RefreshDisplayFor(graph);
     }
 

@@ -63,6 +63,10 @@
                           Content="Rest up here (mana)"
                           FontSize="11"
                           ToolTip.Tip="On arriving, rest until mana is back to its rest-max before moving on — even above your 'rest if below' trigger. Skipped when mana is already there (loops only)."/>
+                <CheckBox IsChecked="{Binding StartHere, Mode=TwoWay}"
+                          Content="When starting this loop, always go to this room first"
+                          FontSize="11"
+                          ToolTip.Tip="Starting the loop walks here first and opens the lap in this room, even when you stand on the loop somewhere else. Without it, a start joins the loop at its nearest room. One room per loop: ticking it here clears it from the others. A loop picked back up after a detour, a recovery or a reconnect carries on where it was."/>
 
                 <!-- The lap wait reads the lap's clock, not the command's, so it sits in
                      a box of its own, apart from the Delay above. -->

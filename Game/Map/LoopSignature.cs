@@ -84,7 +84,7 @@ public static class LoopSignature
             }
             form.WriteByte((byte)((w.DoNotRest ? 1 : 0) | (w.DoNotAttack ? 2 : 0)
                                   | (w.RestHereHp ? 4 : 0) | (w.RestHereMana ? 8 : 0)
-                                  | (w.LapWaitMs > 0 ? 16 : 0)));
+                                  | (w.LapWaitMs > 0 ? 16 : 0) | (w.StartHere ? 32 : 0)));
             if (w.LapWaitMs > 0)
             {
                 WriteInt(form, (int)(w.LapWaitMs >> 32));

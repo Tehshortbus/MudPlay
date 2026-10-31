@@ -58,6 +58,13 @@ public sealed class LoopWaypoint
     // command, not from the lap's start.
     public long LapWaitMs { get; set; }
 
+    // "When starting this loop, always go to this room first": a fresh start walks
+    // here and begins the lap at this room, wherever it was started from, even
+    // standing on the loop elsewhere (a daily loop that has to open in its first
+    // room; user, 2026-10-31). A resume or a recovery joins where it always did. One
+    // per loop: the editors clear it from the others, and the first one counts.
+    public bool StartHere { get; set; }
+
     // Parsed RoomKey from Room. Default when malformed.
     [JsonIgnore]
     public RoomKey Key => RoomKey.TryParseWire(Room, out RoomKey k) ? k : default;

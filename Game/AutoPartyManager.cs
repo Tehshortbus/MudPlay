@@ -10,10 +10,11 @@ namespace MudPlay.Game;
 // customizations:
 //
 //   Invite-on-seen — when a player whose row carries InviteToPartyIfSeen
-//   appears in our current room (via the RoomAlsoHere "Also here: ..." line),
-//   send `invite <given>` on the wire. TTL-suppressed at InviteCooldown per
-//   recipient so subsequent room re-renders don't re-spam. Skipped when the
-//   player is already in PartyState.Members.
+//   appears in our current room (the room's roster as RoomEntityClassifier reads
+//   it: the "Also here: ..." list, or the server's), send `invite <given>` on the
+//   wire. TTL-suppressed at InviteCooldown per recipient so subsequent room
+//   re-renders don't re-spam. Skipped when the player is already in
+//   PartyState.Members.
 //
 //   Accept-invite — when another player sends us an in-game party invite
 //   (PartyInviteReceived, matching "X has invited you to follow him/her"), look
@@ -40,6 +41,7 @@ public sealed class AutoPartyManager : IDisposable
     private readonly IDisposable _youInvitedSub;
     private readonly IDisposable _teleportArrivalSub;
     private readonly IDisposable _departureSub;
+    private readonly IDisposable _realmEntrySub;
     private bool _disposed;
 
     // Per-recipient TTL on auto-invites. Subsequent room renders within this
@@ -343,6 +345,7 @@ public sealed class AutoPartyManager : IDisposable
         _teleportArrivalSub = _router.Subscribe(KnownPatterns.PlayerTeleportsIn, OnTeleportArrival);
         // Someone held back for navigation who walks off is no longer beside us.
         _departureSub = _router.Subscribe(KnownPatterns.RoomEntryDeparture, OnDeparture);
+        _realmEntrySub = _router.Subscribe(KnownPatterns.PlayerEnters, OnPlayerEntersRealm);
 
         // TTL housekeeping — drop the cooldown entry for any member that
         // leaves the roster (so a player who separates from us and then
@@ -551,6 +554,9 @@ public sealed class AutoPartyManager : IDisposable
         _youInvitedSub.Dispose();
         _teleportArrivalSub.Dispose();
         _departureSub.Dispose();
+        _realmEntrySub.Dispose();
+        if (_roster is not null) _roster.EntitiesObserved -= OnRoomRoster;
+        _realmEntryRedisplay?.Dispose();
         _party.Members.CollectionChanged -= OnPartyMembersChanged;
         _party.PropertyChanged           -= OnPartyPropertyChanged;
         foreach (PartyMember m in _watchedMembers) m.PropertyChanged -= OnMemberPropertyChanged;
@@ -564,48 +570,66 @@ public sealed class AutoPartyManager : IDisposable
 
     // ----- Handlers ------------------------------------------------------
 
-    private void OnRoomAlsoHere(MatchResult match)
+    // The room's occupants as RoomEntityClassifier reads them. The "Also here:"
+    // pattern alone only matches a list that fits one line: a party standing with
+    // monsters wraps it, and nobody listed was invited (report
+    // paradigm-20261031-093854). The classifier stitches the wrapped lines, and while
+    // the server owns the roster it reads the server's list, which comes whenever
+    // someone arrives, a player logging in beside us included.
+    private Combat.RoomEntityClassifier? _roster;
+
+    public void SetRoomRoster(Combat.RoomEntityClassifier roster)
     {
-        // Group 0 in the positional list = the (?<players>.+?) capture.
-        if (match.Groups.Count == 0) return;
-        string list = match.Groups[0];
-        if (string.IsNullOrWhiteSpace(list)) return;
+        ArgumentNullException.ThrowIfNull(roster);
+        if (_roster is not null) _roster.EntitiesObserved -= OnRoomRoster;
+        _roster = roster;
+        _roster.EntitiesObserved += OnRoomRoster;
+    }
 
-        // A `look <direction>` peek prints the next room's "Also here:". Whoever it
-        // lists stands a room away, where an invite can't reach: taking it as
-        // presence spent a reform's one invite on "You don't see X here!" (report
-        // paradigm-20260923-092317).
-        if (_isPeekedDisplay?.Invoke() == true)
+    // Only a read of the room as it stands: an arrival, departure or death edits the
+    // roster, and its own line is read for it.
+    private void OnRoomRoster(Combat.RoomEntitiesObservation room)
+    {
+        if (room.Source != Combat.RoomObservationSource.AlsoHere) return;
+        if (_isPeekedDisplay?.Invoke() == true) return;
+        foreach (Combat.RoomEntity occupant in room.Entities)
         {
-            if (_reformPendingInvite.Count == 0)
-            {
-                _log?.Log(LogSeverity.Debug, "AutoParty",
-                    "Players listed by a look into the next room aren't here — no invite.");
-                return;
-            }
-            // The listing passed over may have been the reform's own redisplay: a
-            // look the game answered with no room leaves the peek reading up for a
-            // few seconds, and the redisplay fires once. Ask for another, so the
-            // members still waited for are seen in a display of our own room.
-            _log?.Log(LogSeverity.Info, "AutoParty",
-                "Players listed by a look into the next room aren't here — no invite; the party reform will look "
-                + $"at our room again for {string.Join(", ", _reformPendingInvite)}.");
-            ScheduleReformRedisplay();
-            return;
-        }
-
-        foreach (string raw in SplitOccupantList(list))
-        {
-            string given = ExtractGiven(raw);
+            string given = ExtractGiven(occupant.RawName);
             if (string.IsNullOrEmpty(given)) continue;
             // A reform member already listed at room-render (they teleported in
             // ahead of the leader) never emits a flash line the leader can see,
-            // so the "Also here:" listing is their arrival signal — send the
-            // withheld invite. Returns early if they're not pending, so the
-            // normal auto-invite path below still runs for everyone else.
+            // so the listing is their arrival signal — send the withheld invite.
+            // Returns early if they're not pending, so the normal auto-invite path
+            // below still runs for everyone else.
             TrySendDeferredReformInvite(given);
             TryAutoInvite(given);
         }
+    }
+
+    // A `look <direction>` peek prints the next room's "Also here:". Whoever it lists
+    // stands a room away, where an invite can't reach: taking it as presence spent a
+    // reform's one invite on "You don't see X here!" (report
+    // paradigm-20260923-092317). The roster leaves a peek out; a reform still waiting
+    // on someone asks for our own room again.
+    private void OnRoomAlsoHere(MatchResult match)
+    {
+        if (_isPeekedDisplay?.Invoke() != true) return;
+        // Group 0 in the positional list = the (?<players>.+?) capture.
+        if (match.Groups.Count == 0 || string.IsNullOrWhiteSpace(match.Groups[0])) return;
+        if (_reformPendingInvite.Count == 0)
+        {
+            _log?.Log(LogSeverity.Debug, "AutoParty",
+                "Players listed by a look into the next room aren't here — no invite.");
+            return;
+        }
+        // The listing passed over may have been the reform's own redisplay: a
+        // look the game answered with no room leaves the peek reading up for a
+        // few seconds, and the redisplay fires once. Ask for another, so the
+        // members still waited for are seen in a display of our own room.
+        _log?.Log(LogSeverity.Info, "AutoParty",
+            "Players listed by a look into the next room aren't here — no invite; the party reform will look "
+            + $"at our room again for {string.Join(", ", _reformPendingInvite)}.");
+        ScheduleReformRedisplay();
     }
 
     private void OnPartyInviteReceived(MatchResult match)
@@ -1264,6 +1288,33 @@ public sealed class AutoPartyManager : IDisposable
         _seenWhileIdle.Remove(ExtractGiven(match.Groups[0]));
     }
 
+    // "X just entered the Realm." The game shows nobody the room again for it, so a
+    // flagged player who logs in beside an idle leader is never listed and never
+    // invited: the clients all coming back after an update (report
+    // paradigm-20261031-093854). Ask for the room once, a moment later, so a burst of
+    // logins is one look. A walk shows every room anyway, and the server's roster
+    // comes on its own.
+    private static readonly TimeSpan RealmEntryRedisplayDelay = TimeSpan.FromSeconds(1);
+    private IDisposable? _realmEntryRedisplay;
+
+    private void OnPlayerEntersRealm(MatchResult match)
+    {
+        if (match.Groups.Count == 0 || _realmEntryRedisplay is not null) return;
+        string given = ExtractGiven(match.Groups[0]);
+        if (given.Length == 0 || MasterOff || !_wire.IsBound) return;
+        if (_roster?.ServerOwnsRoster == true || _isNavigating?.Invoke() == true) return;
+        if (_party.IsInParty && !_party.SelfIsLeader) return;
+        if (!FindCustomization(given, out PlayerCustomization c) || !c.InviteToPartyIfSeen) return;
+        _realmEntryRedisplay = _schedule(RealmEntryRedisplayDelay, () =>
+        {
+            _realmEntryRedisplay = null;
+            if (MasterOff || !_wire.IsBound) return;
+            _log?.Log(LogSeverity.Info, "AutoParty",
+                $"{given} entered the Realm and is flagged to invite — looking at the room for them.");
+            _wire.Send("");
+        });
+    }
+
     // Drop the invite-wait for given (they joined, were uninvited, or the party
     // dissolved) and re-evaluate the gate.
     private void EndInviteWait(string given, string reason)
@@ -1384,24 +1435,6 @@ public sealed class AutoPartyManager : IDisposable
     }
 
     // ----- Parsing helpers ---------------------------------------------
-
-    // Split an "Also here:" list capture into individual names. Handles the
-    // three forms observed in MajorMUD: single ("Raijin"), comma ("Foo, Bar"),
-    // and Oxford-and ("Foo, Bar and Baz" / "Foo, Bar, and Baz"). The capture is
-    // already `.`-stripped by the regex.
-    private static IEnumerable<string> SplitOccupantList(string list)
-    {
-        // Normalise " and " → ", " so the comma split handles both forms
-        // uniformly. Word-boundary on either side so we don't mangle a
-        // name that happens to contain "and" (e.g. "Brandon").
-        string normalised = System.Text.RegularExpressions.Regex
-            .Replace(list, @"\s+and\s+", ", ");
-        foreach (string part in normalised.Split(','))
-        {
-            string trimmed = part.Trim();
-            if (trimmed.Length > 0) yield return trimmed;
-        }
-    }
 
     // Extract the given name from a list entry. The "Also here:" list can
     // include suffixes like "Raijin (sneaking)" or "Forged WuzHere" (full

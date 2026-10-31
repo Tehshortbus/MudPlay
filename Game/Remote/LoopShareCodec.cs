@@ -62,7 +62,8 @@ public static class LoopShareCodec
         // Added after the first share format; an older client just ignores them.
         [property: JsonPropertyName("rh")] bool RestHereHp = false,
         [property: JsonPropertyName("rm")] bool RestHereMana = false,
-        [property: JsonPropertyName("lw")] long LapWaitMs = 0);
+        [property: JsonPropertyName("lw")] long LapWaitMs = 0,
+        [property: JsonPropertyName("sh")] bool StartHere = false);
 
     public static IReadOnlyList<string> Encode(Loop loop)
     {
@@ -74,7 +75,7 @@ public static class LoopShareCodec
             loop.Waypoints.Select(w => new Waypoint(
                 w.Room,
                 string.IsNullOrEmpty(w.Command) ? null : w.Command,
-                w.DelayMs, w.DoNotRest, w.DoNotAttack, w.RestHereHp, w.RestHereMana, w.LapWaitMs)).ToList(),
+                w.DelayMs, w.DoNotRest, w.DoNotAttack, w.RestHereHp, w.RestHereMana, w.LapWaitMs, w.StartHere)).ToList(),
             (int)loop.LairEntryDebuff);
 
         byte[] json = JsonSerializer.SerializeToUtf8Bytes(payload, Json);
@@ -134,6 +135,7 @@ public static class LoopShareCodec
                 RestHereHp = w.RestHereHp,
                 RestHereMana = w.RestHereMana,
                 LapWaitMs = w.LapWaitMs,
+                StartHere = w.StartHere,
             });
         }
 

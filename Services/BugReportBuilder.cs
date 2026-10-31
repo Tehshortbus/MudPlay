@@ -793,6 +793,9 @@ public static class BugReportBuilder
         // A split-teleport regroup in flight: a "leader walked on alone after a
         // teleport" report needs whom it held for and whether the jump had landed.
         Kv(sb, "Split-teleport reform", svc.AutoParty.ReformSummary);
+        // A "they weren't invited" report needs to know who was flagged to be.
+        string[] flagged = svc.Players.Players.Where(p => p.InviteToPartyIfSeen).Select(p => p.GivenName).ToArray();
+        Kv(sb, "Auto-invite if seen (players flagged)", flagged.Length > 0 ? string.Join(", ", flagged) : "(nobody)");
         // "Only auto-invite while navigation is running": who a run started here invites.
         IReadOnlyCollection<string> heldInvites = svc.AutoParty.SeenWhileIdle;
         Kv(sb, "Auto-invite held until navigation starts",
@@ -2230,6 +2233,9 @@ public static class BugReportBuilder
                 .Select(w => $"{w.Key} until lap time {Game.Map.LoopDelay.Describe(w.LapWaitMs)}")
                 .ToArray();
             Kv(sb, "Loop lap waits", lapWaits.Length == 0 ? "(none)" : string.Join("; ", lapWaits));
+            // A "why did it start in that room" report needs whether a start room is set.
+            Kv(sb, "Loop start room (a fresh start walks here first)",
+                curLoop.Waypoints.FirstOrDefault(w => w.StartHere)?.Key.ToString() ?? "(none — joins at the nearest room)");
             // The lever actions the lap types on its detours to the lever exits it
             // crosses: a loop that stopped at, or walked round, such an exit.
             IReadOnlyList<string> leverActions = loop.ExitActionCommands;

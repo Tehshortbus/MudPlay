@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using MudPlay.Game;
+using MudPlay.Game.Combat;
 using MudPlay.Game.Map;
 using MudPlay.Game.Spells;
 using MudPlay.Services;
@@ -1095,7 +1096,9 @@ public sealed class CastWalkTeleportTests : IDisposable
         DefaultPatterns.Seed(router);
         PartyState partyState = new();
         using PartyManager party = new(router, partyState);
-        using AutoPartyManager autoParty = new(router, new PlayerDatabase(new ProfileService(), () => null), partyState);
+        PlayerDatabase players = new(new ProfileService(), () => null);
+        using AutoPartyManager autoParty = new(router, players, partyState);
+        autoParty.SetRoomRoster(new RoomEntityClassifier(router, new MonsterMessageStore(), players, h.Tracker, log: null));
         List<string> partySent = new();
         autoParty.SetWireSender(b => partySent.Add(Encoding.Latin1.GetString(b)));
         autoParty.SetMovementGate(h.Coordinator, isLooping: () => false);

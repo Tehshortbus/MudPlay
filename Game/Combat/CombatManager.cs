@@ -3516,6 +3516,14 @@ public sealed partial class CombatManager : IDisposable
                 return true;
             }
 
+            if (RoomAttackCovers(settings, liveObs, announcedTarget))
+            {
+                _log?.Combat(LogCategory,
+                    $"target-priority {settings.TargetPriority} follow={announcer} → {announcedTarget} "
+                    + $"is already hit by our room attack '{_roomChannelSpell}'; staying on it");
+                return true;
+            }
+
             // The announced monster is in our room view → dispatch through
             // the per-round chooser against that specific instance.
             if (TryBuildCandidate(liveObs, announcedTarget) is { } cand)
@@ -3731,6 +3739,17 @@ public sealed partial class CombatManager : IDisposable
 
         SendAttack(settings.NormalAttackCommand, target, refire: true,
                    refireReason: $"{settings.AttackTiming} announcer={announcer}");
+    }
+
+    // While a room attack of ours is running and the room still calls for one, it
+    // hits every monster here, the one a party member just named included: an attack
+    // on that monster only switches us off the room attack (user, 2026-10-31).
+    private bool RoomAttackCovers(CombatSettings settings, RoomEntitiesObservation obs, string target)
+    {
+        if (!CombatSpellsWired || _roomChannelSpell is null) return false;
+        CombatSpellContext ctx = BuildContext(settings, obs, target, CountEngageable(obs),
+            ResolveMonsterNumber(obs, target), logGateSkips: false);
+        return CombatSpellChooser.MultiAttackRoomQualifies(settings, ctx);
     }
 
     // Build an EngageableCandidate for the monster matching name (RawName or

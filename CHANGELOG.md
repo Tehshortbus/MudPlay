@@ -1,5 +1,14 @@
 # Version history
 
+## 3.195.0
+
+- A loop room can be marked as the loop's start: starting the loop always walks there first
+- Auto-invite now invites players in a room list long enough to wrap onto two lines
+- Auto-invite also reads the server's room list, and looks at the room when a flagged player logs in beside you
+- A room attack keeps going when the followed leader names one monster, instead of switching to it
+- With GMCP stats on Active, a `stat` no longer stops the CP plan checking its rows
+- bug reports addressed: paradigm-20261031-093854, paradigm-20261031-094159, paradigm-20261031-101847
+
 ## 3.194.3
 
 - A loop that gives up because the wifi died before the drop is counted now restarts after the reconnect

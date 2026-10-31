@@ -401,6 +401,23 @@ public sealed class LoopRunnerTests : IDisposable
         Assert.Equal(1, h.Runner.CurrentIndex);          // joins at B's step, the move on to C
     }
 
+    // A loop with a start room opens its lap there: a start walks to it even from a
+    // room of the loop, and the walk to the loop goes there too (user, 2026-10-31).
+    [Fact]
+    public void Start_WithAStartRoom_WalksThereFirst_EvenFromTheLoop()
+    {
+        Harness h = NewHarness(LegGraphJson, withWalker: true);
+        Loop loop = new("ac", new[] { new LoopWaypoint(new RoomKey(1, 1)), new LoopWaypoint(new RoomKey(1, 3)) { StartHere = true } });
+        h.Tracker.SetLocated(new RoomKey(1, 2));
+
+        Assert.True(h.Runner.Start(loop));
+
+        Assert.Equal(LoopState.Approaching, h.Runner.State);
+        Assert.Equal(new RoomKey(1, 3), h.Runner.ApproachTarget);
+        Assert.Equal(new RoomKey(1, 3), h.Runner.NearestRoomOf(loop, new RoomKey(1, 4)));
+        Assert.Null(h.Runner.NearestRoomOf(loop, new RoomKey(1, 3)));
+    }
+
     // Standing on the cycle off a waypoint, the loop starts right there with the step
     // out of this room, and that first part-lap isn't counted as a lap.
     [Fact]
