@@ -529,6 +529,53 @@ public sealed partial class GmcpIntegrationTests
         Assert.Equal(new RoomKey(1, 2), session.Tracker.State.CurrentRoom!.Key);
     }
 
+    // The server's list for the arriving room can lack a monster the display's
+    // "Also here:" shows, and name it a moment after (report
+    // paradigm-20261031-014901: a troll back in its lair). Read on the list alone,
+    // the room confirmed empty and the loop walked on past it. The display's
+    // monster counts, so the fight holds the walk; the server's next list replaces it.
+    [Fact]
+    public void ArrivingRoom_AMonsterTheServersListLacks_IsReadFromTheDisplay()
+    {
+        using Session session = new(monsterTable: """[{ "Number": 12, "Name": "giant rat" }]""");
+        session.Replay("01-handshake");
+        Dictionary<string, JsonElement> room = session.Gmcp.State.Snapshot("Anomaly.Room.Info")!.Value
+            .EnumerateObject().ToDictionary(p => p.Name, p => p.Value);
+        room["room"] = JsonSerializer.SerializeToElement("1,2");
+        bool? fightWhenConfirmed = null;
+        session.Tracker.MoveConfirmed += () => fightWhenConfirmed = session.Combat.HasEngageableHostiles;
+        session.Tracker.NoteMoveSent(Direction.N);
+
+        session.Send("Anomaly.Session.Reset", new { scope = "room", room = "1,2" });
+        session.Send("Anomaly.Room.Info", room);
+        session.Send("Anomaly.Room.Occupants", new { room = "1,2", mobs = Array.Empty<object>(), players = Array.Empty<object>() });
+        session.Text("Rat Den\r\nAlso here: large giant rat.\r\nObvious exits: south\r\n");
+
+        Assert.Equal(new RoomKey(1, 2), session.Tracker.State.CurrentRoom!.Key);
+        Assert.True(fightWhenConfirmed);
+        Assert.Contains(session.Classifier.Current!.Value.Entities, e => e.RawName == "large giant rat");
+
+        session.Send("Anomaly.Room.Occupants", new { room = "1,2", mobs = Array.Empty<object>(), players = Array.Empty<object>() });
+        Assert.Empty(session.Classifier.Current!.Value.Entities);
+    }
+
+    // The bug report shows which server messages came when, beside the program
+    // log's clock, but never a chat line's words.
+    [Fact]
+    public void RecentMessages_ForTheBugReport_KeepTheOrder_ButNoChatText()
+    {
+        using Session session = new();
+        session.Replay("01-handshake");
+        session.Send("Anomaly.Comm.Line", new { channel = "gossip", from = "Someone", text = "a private matter" });
+
+        string recent = session.Gmcp.DescribeRecent();
+
+        Assert.True(recent.IndexOf("Anomaly.Session.Reset", StringComparison.Ordinal)
+                    < recent.IndexOf("Anomaly.Room.Info", StringComparison.Ordinal));
+        Assert.Contains("Anomaly.Comm.Line", recent);
+        Assert.DoesNotContain("a private matter", recent);
+    }
+
     // A follower's drag: the server's room comes ahead of "-- Following your Party
     // leader <dir> --" and the display (export gmcp-20261029-070501). Applied at
     // once, the room took no move, and the drag line then queued one from the new
