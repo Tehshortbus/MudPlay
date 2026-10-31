@@ -3487,6 +3487,18 @@ public sealed class LoopRunner : IRecoverableEngine
         _restart.NoteDisconnected(State != LoopState.Idle ? _loop : null,
             () => Stop("disconnected — will resume on reconnect", willResume: true));
 
+    // The walk to a loop started from off it failed (LoopWalkHandoff): the loop is
+    // weighed for a restart after a reconnect as one that failed itself is.
+    public void NoteWalkThereFailed(Loop loop) => _restart.NoteFailed(loop);
+
+    // When the connection now up last sent a command and last read from the server,
+    // for a loop that failed on a link already dead (ReconnectRestart.NoteFailed).
+    public void SetLinkTimes(Func<DateTimeOffset?> lastCommandSent, Func<DateTimeOffset?> lastDataRead)
+    {
+        _restart.LastCommandSent = lastCommandSent;
+        _restart.LastDataRead = lastDataRead;
+    }
+
     // PartyReformCoordinator.PendingReform. Unset before wiring → no reform, so the
     // restarted loop steps at once.
     public void SetReconnectReformProbe(Func<bool> reformAwaitsRoom) => _restart.SetReformProbe(reformAwaitsRoom);
@@ -4162,7 +4174,9 @@ public sealed class LoopRunner : IRecoverableEngine
     private void RaiseAfterReset(LoopEvent evt)
     {
         _log?.Info("LoopRunner", $"Ended: loop='{_loop?.Name ?? "?"}' reason={evt.Detail}");
+        Loop? ended = _loop;
         Reset();
+        if (evt.Kind == LoopEventKind.Failed && ended is not null) _restart.NoteFailed(ended);
         Raise(evt);
     }
 }

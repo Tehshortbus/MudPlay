@@ -1,5 +1,12 @@
 # Version history
 
+## 3.194.3
+
+- A loop that gives up because the wifi died before the drop is counted now restarts after the reconnect
+- So does a loop whose walk there failed that way; the Lost window it opened closes at the drop
+- Recovery no longer takes the server's last room data as an answer while a move is still unanswered
+- bug reports addressed: paradigm-20261031-051153, paradigm-20261031-051327
+
 ## 3.194.1
 
 - With GMCP Room.Occupants on Active, a loop no longer walks past a monster the room shows that the server's list hasn't named yet

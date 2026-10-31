@@ -1,9 +1,10 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.194.1**
-> - With GMCP Room.Occupants on Active, a loop no longer walks past a monster the room shows that the server's list hasn't named yet
-> - Bug reports list the last 150 GMCP messages from the server with their times
+> **Version 3.194.3**
+> - A loop that gives up because the wifi died before the drop is counted now restarts after the reconnect
+> - So does a loop whose walk there failed that way; the Lost window it opened closes at the drop
+> - Recovery no longer takes the server's last room data as an answer while a move is still unanswered
 <!-- current-version:end -->
 
 A modern Telnet terminal client for **MajorMUD** and other BBS door games, built in C# / .NET 10 with [Avalonia](https://avaloniaui.net/). It renders a faithful CP437 cell grid with full VT100/ANSI parsing, and layers a MegaMUD-style automation suite (combat, party, navigation, healing, and more) on top — all in modeless, dockable windows so the terminal stays live while you configure anything.

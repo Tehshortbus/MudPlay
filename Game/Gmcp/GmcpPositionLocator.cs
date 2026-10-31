@@ -19,6 +19,9 @@ public sealed class GmcpPositionLocator
     private readonly Func<TimeSpan, Action, IDisposable> _schedule;
     private readonly LogService? _log;
 
+    // How many moves the tracker had counted when the server's room data last came.
+    private int _movesAtRoomData;
+
     // The last room the server's data placed us in, and why.
     public (RoomKey Room, string Reason, DateTimeOffset At)? LastLocate { get; private set; }
 
@@ -35,6 +38,11 @@ public sealed class GmcpPositionLocator
         _gate = gate;
         _schedule = schedule;
         _log = log;
+        _movesAtRoomData = tracker.MovesSentCount;
+        gmcp.State.Changed += package =>
+        {
+            if (package == "Anomaly.Room.Info") _movesAtRoomData = _tracker.MovesSentCount;
+        };
     }
 
     // The gate's own asks (TryResync, TryResyncForced), answered as an `rm` reply is.
@@ -57,6 +65,15 @@ public sealed class GmcpPositionLocator
     private bool Ask(string reason, Action<RoomKey?> answer)
     {
         if (_gmcp.ServerRoom() is null) return false;
+        // The server sends its room data only on a room change, so data older than a
+        // move still unanswered can't say whether that move landed: the link may have
+        // died with its answer on the way (report paradigm-20261031-051153). The game
+        // is asked instead, and its answer comes after the move's.
+        if (_tracker.MoveAwaitingAnswer && _tracker.MovesSentCount != _movesAtRoomData)
+        {
+            _log?.Info(LogSource, $"Server room data is older than a move still unanswered; asking the game ({reason}).");
+            return false;
+        }
         DateTimeOffset? moveBeforeAsk = _tracker.LastMoveSentAt;
         _schedule(TimeSpan.Zero, () => answer(Locate(reason, moveBeforeAsk)));
         return true;

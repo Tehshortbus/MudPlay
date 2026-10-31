@@ -8,7 +8,8 @@ namespace MudPlay.Game.Map;
 // meanwhile and hands it to the loop runner the moment the walk arrives at the loop
 // room it was heading for: from there the run is the loop engine's (user, 2026-10-07).
 //
-// It is dropped, and no loop starts, when the walk can't get there, the user stops,
+// It is dropped, and no loop starts, when the walk can't get there (unless it failed
+// on a link already dead: then the reconnect restarts the loop), the user stops,
 // picks a walk that ends somewhere else (running to a blocked room, a shop stop), or
 // starts something else first.
 public sealed class LoopWalkHandoff
@@ -77,6 +78,9 @@ public sealed class LoopWalkHandoff
                 _post(() => _loops.Start(loop, userStarted: true));
                 break;
             case WalkEventKind.Failed:
+                // A walk that failed on a link already dead still owes its loop
+                // (LoopRunner restarts it after the reconnect).
+                _loops.NoteWalkThereFailed(loop);
                 Cancel($"the walk there failed ({e.Detail})");
                 break;
         }

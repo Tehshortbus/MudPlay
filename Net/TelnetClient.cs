@@ -75,6 +75,12 @@ public sealed class TelnetClient : IAsyncDisposable
     // timeout — long quiet stretch + dead socket = no response.
     public DateTimeOffset LastDataReceived { get; private set; } = DateTimeOffset.MinValue;
 
+    // When game input last went out (SendAsync; not the protocol frames, which the
+    // game doesn't answer). Read on the UI thread while sends run on the pool, so
+    // kept as ticks a read can't tear.
+    private long _lastInputSentTicks = DateTimeOffset.MinValue.UtcTicks;
+    public DateTimeOffset LastInputSent => new(Interlocked.Read(ref _lastInputSentTicks), TimeSpan.Zero);
+
     // Why the read loop ended, set before Disconnected is raised: the server
     // closing the connection, or the socket error that ended it. A dropped link
     // is otherwise silent, and which of the two it was tells a server hang-up
@@ -176,6 +182,7 @@ public sealed class TelnetClient : IAsyncDisposable
         try
         {
             if (_stream is null) return;
+            Interlocked.Exchange(ref _lastInputSentTicks, DateTimeOffset.UtcNow.UtcTicks);
             if (data.Span.IndexOf(IAC) < 0)
             {
                 // Fast path: no escaping needed.

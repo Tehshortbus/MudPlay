@@ -52,6 +52,8 @@ public sealed class ReconnectRestart<TRun> where TRun : class
     private int _unsureChecks;
     private bool _locateTried;
     private int _waitId;
+    private TRun? _failed;
+    private DateTimeOffset _failedAfterSending;
 
     // owner: the engine, as its log lines and gate holds name it. occasion: what the
     // start follows, as a notice reads it ("reconnect", "login"). describe: the run
@@ -146,6 +148,25 @@ public sealed class ReconnectRestart<TRun> where TRun : class
         _reformAwaitsRoom = reformAwaitsRoom;
     }
 
+    // When the client last sent the game a command, and last read anything from the
+    // server, on the connection now up (the one just lost, at a drop). Null, or
+    // unset: no connection to judge by, and a failed run is never put down to it.
+    public Func<DateTimeOffset?>? LastCommandSent { get; set; }
+    public Func<DateTimeOffset?>? LastDataRead { get; set; }
+
+    // The run ended on its own, failed rather than stopped. A link going dead under
+    // it shows first as a move with no answer, and the run gives up on that long
+    // before the connection is counted as lost, so at the drop there's nothing going
+    // to set aside. Kept with when the last command went out, for NoteDisconnected
+    // to tell that failure from the game's own refusals.
+    public void NoteFailed(TRun run)
+    {
+        ArgumentNullException.ThrowIfNull(run);
+        if (LastCommandSent?.Invoke() is not { } sent) return;
+        _failed = run;
+        _failedAfterSending = sent;
+    }
+
     // A run to start on the next game prompt. For a restart, one an errand stopped (a
     // bank run's light buy) when the connection dropped, with the guards a run going
     // at the drop has.
@@ -160,6 +181,9 @@ public sealed class ReconnectRestart<TRun> where TRun : class
     // stop tears it down; null when nothing was running. A start held for the master
     // switch or the room goes back to waiting for the next stay's first prompt, which
     // asks both again.
+    //
+    // With nothing running, a run that failed on a link already dead is set aside
+    // the same way (ConnectionLoss.LeftUnanswered). One the game failed stays failed.
     public void NoteDisconnected(TRun? running, Action stop)
     {
         ArgumentNullException.ThrowIfNull(stop);
@@ -170,6 +194,21 @@ public sealed class ReconnectRestart<TRun> where TRun : class
             Pending = running;
             stop();
         }
+        else if (_failed is { } failed)
+        {
+            DateTimeOffset? read = LastDataRead?.Invoke();
+            if (read is { } last && ConnectionLoss.LeftUnanswered(last, _failedAfterSending))
+            {
+                Pending = failed;
+                _log?.Info(_owner,
+                    $"{_occasion}: {_describe(failed)} failed with the server already silent (nothing read after "
+                    + $"{_failedAfterSending.ToLocalTime():HH:mm:ss.fff}); it will start on the first in-game prompt");
+            }
+            else
+                _log?.Info(_owner, $"{_occasion}: {_describe(failed)} failed and is not restarted: "
+                    + (read is null ? "the link was closed on purpose" : "the server answered after its last command"));
+        }
+        _failed = null;
         // A reform hold belongs to the connection that just ended. Dropped after the
         // stop, which drops it too: lifting it first would let the held run step.
         EndReformHold("disconnected");
@@ -180,6 +219,7 @@ public sealed class ReconnectRestart<TRun> where TRun : class
     public void Clear()
     {
         Pending = null;
+        _failed = null;
         HeldForMasterSwitch = false;
         AwaitsAnyRoom = false;
         WaitingFor = null;
@@ -201,6 +241,7 @@ public sealed class ReconnectRestart<TRun> where TRun : class
     // That run is the one going now; started after it, this one would take its place.
     public void SupersededBy(string by)
     {
+        _failed = null;
         if (Pending is not { } run) return;
         _log?.Info(_owner, $"{_occasion}: {_describe(run)} will not be started: {by} was started");
         Notice?.Invoke($"[{Capitalised(_describe(run))} not restarted after the {_occasion}: {by} was started]");
