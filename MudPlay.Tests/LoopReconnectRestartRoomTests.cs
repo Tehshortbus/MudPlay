@@ -58,6 +58,7 @@ public sealed class LoopReconnectRestartRoomTests
                 new BfsMapper(Rig.Graph), Rig.Walker, postToUi: Rig.Post, schedule: Ticks.Arm);
             Runner.SetWireSender(Rig.Send);
             Runner.SetReconnectNotice(Notices.Add);
+            Runner.SetLinkTimes(() => Rig.LastSentAt, () => Rig.LastReadAt);
             ParadigmPositionResolver resolver = new(Rig.Router, Rig.Tracker, Rig.Gate, Rig.Cache, Rig.Log, schedule: Ticks.Arm);
             resolver.SetWireSender(Rig.Send);
             Rig.Gate.TryResyncOnce = resolver.RequestResyncOnce;
@@ -126,6 +127,50 @@ public sealed class LoopReconnectRestartRoomTests
         Assert.Null(w.Runner.PendingReconnectResumeName);
         w.Rig.Pump(limit: 1);
         Assert.Equal(Yard, w.Rig.Believed);
+    }
+
+    // The wifi goes first and the drop is counted later: the step goes unanswered,
+    // and recovery gives the loop up on it before the client calls the link lost.
+    // The server never answered its last command, so the failure was the link's: the
+    // loop restarts after the reconnect, as one still going at the drop does (report
+    // paradigm-20261031-051153).
+    [Fact]
+    public void LoopFailedOnALinkAlreadyDead_RestartsAfterTheReconnect()
+    {
+        using World w = new(Gate);
+        w.Rig.Clock.Advance(TimeSpan.FromSeconds(1));
+        Assert.True(w.Runner.Start(GateYard()));
+        w.Rig.Clock.Advance(TimeSpan.FromSeconds(30));
+        w.Runner.AbortFromRecoveryFailure("reverse move S got no answer in 20 s");
+        Assert.Equal(LoopState.Idle, w.Runner.State);
+        w.Rig.Clock.Advance(TimeSpan.FromSeconds(10));
+        w.Drop();
+        Assert.Equal("gy", w.Runner.PendingReconnectResumeName);
+        int mark = w.Mark();
+
+        w.Reconnect(Gate);
+
+        Assert.Equal(new[] { "n" }, w.SentSince(mark));
+        Assert.Equal(LoopState.Running, w.Runner.State);
+    }
+
+    // The game answered after the loop gave up: the link was up then, and the loop
+    // stays given up when the link drops later.
+    [Fact]
+    public void LoopFailedWhileTheGameStillAnswered_IsNotRestartedByALaterDrop()
+    {
+        using World w = new(Gate);
+        w.Rig.Clock.Advance(TimeSpan.FromSeconds(1));
+        Assert.True(w.Runner.Start(GateYard()));
+        w.Rig.Clock.Advance(TimeSpan.FromSeconds(30));
+        w.Runner.AbortFromRecoveryFailure("reverse move S got no answer in 20 s");
+        w.Rig.Do("look");
+        w.Rig.Clock.Advance(TimeSpan.FromMinutes(5));
+        w.Drop();
+
+        Assert.Null(w.Runner.PendingReconnectResumeName);
+        w.Reconnect(Gate);
+        Assert.Equal(LoopState.Idle, w.Runner.State);
     }
 
     // The realm puts the character back in another room. Nothing may be planned from

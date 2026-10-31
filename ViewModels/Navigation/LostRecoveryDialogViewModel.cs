@@ -49,4 +49,7 @@ public sealed partial class LostRecoveryDialogViewModel : ObservableObject, IDia
 
     [RelayCommand]
     private void Ok() => CloseRequested?.Invoke(true);
+
+    // The link drop explained the failure: the client wasn't lost after all.
+    public void Dismiss() => CloseRequested?.Invoke(false);
 }

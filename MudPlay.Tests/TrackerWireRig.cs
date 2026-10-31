@@ -163,6 +163,7 @@ internal sealed class TrackerWireRig : IDisposable
     // reads it as SendUserInput has it read, and the game answers on Pump.
     public void Send(byte[] bytes)
     {
+        LastSentAt = Clock.Now;
         string command = Encoding.Latin1.GetString(bytes).TrimEnd('\r', '\n');
         Sent.Add(command);
         _outbound.ObserveOutbound(bytes);
@@ -271,8 +272,14 @@ internal sealed class TrackerWireRig : IDisposable
         return $"\u001b[1;36m{room.Name}\u001b[0m\r\nObvious exits: {(exits.Length == 0 ? "NONE!" : exits)}\r\n";
     }
 
+    // When the client last put a command on the wire, and last read from the game,
+    // as the telnet client keeps them.
+    public DateTimeOffset LastSentAt { get; private set; } = DateTimeOffset.MinValue;
+    public DateTimeOffset LastReadAt { get; private set; } = DateTimeOffset.MinValue;
+
     private void Feed(string text)
     {
+        LastReadAt = Clock.Now;
         byte[] chunk = Encoding.Latin1.GetBytes(text);
         Prompts.Append(chunk);
         _emulator.Feed(chunk);

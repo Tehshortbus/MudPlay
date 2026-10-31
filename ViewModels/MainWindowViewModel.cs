@@ -1714,6 +1714,9 @@ public partial class MainWindowViewModel : ObservableObject
         AppServices.Current.PyramidSolver.RunThroughChanged += OnPyramidRunThrough;
         AppServices.Current.Walker.SetDoorEnqueuer(AppServices.Current.Door.Enqueue);
         AppServices.Current.Walker.SetDoorStopper(AppServices.Current.Door.StopAll);
+        // A deliberate disconnect drops the client before its Disconnected runs, so a
+        // loop failed beforehand isn't judged against it.
+        AppServices.Current.LoopRunner.SetLinkTimes(() => _telnet?.LastInputSent, () => _telnet?.LastDataReceived);
         // Loop runner shares the same door FSM so a closed door mid-circuit is
         // bashed/picked/keyed instead of detaching the whole lap.
         AppServices.Current.LoopRunner.SetDoorEnqueuer(AppServices.Current.Door.Enqueue);
@@ -2377,8 +2380,25 @@ public partial class MainWindowViewModel : ObservableObject
     private async void ShowLostRecoveryDialogAsync(Game.Map.RecoveryFailedEvent e)
     {
         var vm = new ViewModels.Navigation.LostRecoveryDialogViewModel(e.EngineName, e.Detail, e.LastGoodRoom);
+        if (_telnet is { } link) _lostShown = (vm, link.LastInputSent);
         await AppServices.Current.Dialogs
             .OpenWindowAsync<ViewModels.Navigation.LostRecoveryDialogViewModel, bool>(vm);
+        if (_lostShown?.Vm == vm) _lostShown = null;
+    }
+
+    // The Lost window open, and when the last command had gone out as it opened.
+    private (ViewModels.Navigation.LostRecoveryDialogViewModel Vm, DateTimeOffset SentBefore)? _lostShown;
+
+    // Recovery gives up long before a dead link is counted lost, and says Lost when
+    // it was the link that went (report paradigm-20261031-051327). A drop that shows
+    // the server never answered closes the window: the reconnect puts the room right.
+    private void CloseLostWindowTheDropExplains(DateTimeOffset lastRead)
+    {
+        if (_lostShown is not { } shown || !ConnectionLoss.LeftUnanswered(lastRead, shown.SentBefore)) return;
+        _lostShown = null;
+        AppServices.Current.Log.Info("Recovery",
+            "the Lost window was closed: the server had stopped answering before recovery gave up, so the link was lost, not the room");
+        shown.Vm.Dismiss();
     }
 
     private void OnRecoveryTierChanged(Game.Map.RecoveryTierChangedEvent _)
@@ -3801,6 +3821,7 @@ public partial class MainWindowViewModel : ObservableObject
                     _lastDisconnectCause = unasked.WentSilent ? DisconnectCause.NoResponse : DisconnectCause.CarrierLost;
                     AppServices.Current.Log.Warn("Telnet", unasked.LogLine);
                     WriteTerminalStatus(unasked.TerminalLine, TerminalStatusKind.Error);
+                    CloseLostWindowTheDropExplains(client.LastDataReceived);
                     // An involuntary host-side drop must auto-enter on its
                     // reconnect. Clear any stale suppress-entry intent left by
                     // an earlier deliberate hangup so it can't carry across the

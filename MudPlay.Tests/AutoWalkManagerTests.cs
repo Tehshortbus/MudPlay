@@ -3582,6 +3582,29 @@ public sealed class AutoWalkManagerTests : IDisposable
         Assert.Equal(LoopState.Idle, runner.State);
     }
 
+    // The walk there failed with its last command unanswered and then the link was
+    // counted lost: the wifi went first, so the loop is owed to the reconnect. A walk
+    // the game answered to the end failed on its own, and owes nothing (report
+    // paradigm-20261031-051327).
+    [Theory]
+    [InlineData(false, "arch")]
+    [InlineData(true, null)]
+    public void LoopHandoff_AWalkThereFailedOnADeadLink_LeavesTheLoopToTheReconnect(bool answeredLast, string? resumes)
+    {
+        var (runner, handoff, _, loop) = LoopHandoffAtTheGrove();
+        DateTimeOffset sent = new(2026, 10, 31, 5, 8, 33, TimeSpan.Zero);
+        DateTimeOffset read = answeredLast ? sent.AddSeconds(1) : sent.AddSeconds(-22);
+        runner.SetLinkTimes(() => sent, () => read);
+        RoomKey entry = new(7, 131);
+        handoff.Begin(loop, entry);
+
+        handoff.OnWalkerEvent(new WalkEvent(WalkEventKind.Failed, "tier3 recovery failed: reverse move S got no answer in 20 s", entry));
+        runner.NotifyDisconnected();
+
+        Assert.Null(handoff.Pending);
+        Assert.Equal(resumes, runner.PendingReconnectResumeName);
+    }
+
     // Another loop starting first supersedes the one that was waiting.
     [Fact]
     public void LoopHandoff_IsDropped_WhenAnotherLoopStarts()

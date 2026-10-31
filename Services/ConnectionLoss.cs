@@ -28,6 +28,14 @@ public sealed record ConnectionLoss(
         return (now - lastRead).TotalSeconds >= idleSeconds + 5;
     }
 
+    // Whether something that gave up on the game had in fact lost the link: nothing
+    // was read from the server after the last command sent before it gave up. The
+    // game answers every command, so a failure the game caused came after its
+    // answer, and one with the answer still owed came of a link already dead (the
+    // wifi going minutes before the keepalive counts the drop).
+    public static bool LeftUnanswered(DateTimeOffset lastRead, DateTimeOffset sentBeforeGivingUp)
+        => lastRead < sentBeforeGivingUp;
+
     public static ConnectionLoss Of(string host, int port, int idleSeconds,
         DateTimeOffset lastRead, string? endedBecause, DateTimeOffset now)
         => new(now, host, port, Silent(idleSeconds, lastRead, now),
