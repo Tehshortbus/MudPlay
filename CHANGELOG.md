@@ -1,5 +1,11 @@
 # Version history
 
+## 3.193.2
+
+- With server room data active, a door opened by a lever or room command (`lift portcullis` at 8/909) is opened that way again instead of being picked or bashed
+- A bug report masks a saved login or password of three letters or fewer only where it stands as a word of its own, not inside words like "Program"
+- bug reports addressed: paradigm-20261030-182928
+
 ## 3.193.0
 
 - Quests take the realm's own names when the server sends them (Anomaly GMCP 1.2.0 `Anomaly.Quests.Names`): no more `[Ability 3200 Quest is Now Available]`

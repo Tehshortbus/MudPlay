@@ -62,6 +62,9 @@ internal static class GmcpProjection
             "item" => RoomExitHint.Item,
             "toll" => RoomExitHint.Toll,
             "key" => RoomExitHint.KeyLocked,
+            // Nor that a lever or a room command opens a door or gate (`lift portcullis`
+            // at 8/909): the graph promoted it for that, and the door handler can't.
+            "door" or "gate" when prior is { Hint: RoomExitHint.MultiActionHidden, MultiAction: not null } => prior.Hint,
             "door" or "gate" => key > 0 ? RoomExitHint.KeyLocked : RoomExitHint.Door,
             _ => RoomExitHint.None,
         };

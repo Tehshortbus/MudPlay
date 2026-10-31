@@ -14,11 +14,13 @@ namespace MudPlay.Services;
 // A match is case-insensitive and may be broken by a line break (a row the
 // terminal wrapped, with the next row's time stamp in front of it).
 //
-// Two things are left alone, and the report says so for each:
-//   - a value shorter than MinLength, because masking every "ab" would shred the
-//     report;
-//   - a login name that is also the character's name in the game, which every
-//     player can see and which the report can't do without.
+// A value shorter than MinLength is masked only where it stands as a word of
+// its own: a saved "pro" masked inside every "Program" and "prompt" would
+// shred the report.
+//
+// A login name that is also the character's name in the game, which every
+// player can see and which the report can't do without, is left alone, and
+// the report says so.
 public static class BugReportScrub
 {
     public const string Mask = "[redacted]";
@@ -27,7 +29,7 @@ public static class BugReportScrub
     // the three.
     public const string OmittedDefinition = "[omitted: contains account details]";
 
-    public const int MinLength = 3;
+    public const int MinLength = 4;
 
     // One value to mask, and the name the report uses for it in a note.
     public readonly record struct Secret(string Label, string? Value);
@@ -278,12 +280,13 @@ public static class BugReportScrub
         }
 
         // Whether the text holds one of the values, for a definition that is left
-        // out whole rather than masked in part.
+        // out whole rather than masked in part. Found as Apply finds it, so a
+        // short value inside another word doesn't drop the definition.
         public bool Contains(string? text)
         {
             if (string.IsNullOrEmpty(text)) return false;
-            foreach (string value in _values)
-                if (text.Contains(value, StringComparison.OrdinalIgnoreCase)) return true;
+            foreach (Regex pattern in _patterns)
+                if (pattern.IsMatch(text)) return true;
             return false;
         }
 
@@ -331,18 +334,11 @@ public static class BugReportScrub
             }
             if (!seen.Add(value)) continue;
             values.Add(value);
-            // A value under MinLength is masked only where it stands as a word of
-            // its own: inside other words it is ordinary text, and masking every
-            // such pair of letters would blank the report. Nothing is said of it
-            // either way, since saying so would tell a reader how long it is.
-            string pattern = value.Length < MinLength
-                ? @"(?<![\p{L}\p{N}])" + Regex.Escape(value) + @"(?![\p{L}\p{N}])"
-                : SplitTolerant(value);
-            patterns.Add(new Regex(pattern, options));
+            patterns.Add(new Regex(Pattern(value), options));
             // The same value as the terminal shows it when its bytes are read as
             // CP437 rather than Latin-1 (what the scrollback holds).
-            if (value.Length >= MinLength && Cp437Rendering(value) is { } shownAs && seen.Add(shownAs))
-                patterns.Add(new Regex(SplitTolerant(shownAs), options));
+            if (Cp437Rendering(value) is { } shownAs && seen.Add(shownAs))
+                patterns.Add(new Regex(Pattern(shownAs), options));
         }
         return new Scrubber(patterns.ToArray(), values.ToArray(), notes) { UnreadableValues = unreadable };
     }
@@ -351,6 +347,18 @@ public static class BugReportScrub
     public const string LoginPasswordLabel = "login password";
     public const string SuicidePasswordLabel = "suicide password";
     public const string CorpsePasswordLabel = "corpse recovery password";
+
+    // A value under MinLength is matched only as a word of its own. Nothing in
+    // the report says which values were, since that would tell a reader how
+    // long they are.
+    private static string Pattern(string value) =>
+        value.Length < MinLength ? WordStart + SplitTolerant(value) + WordEnd : SplitTolerant(value);
+
+    // A word starts after anything but a letter or digit, or straight after a
+    // colour change or control in the raw wire's caret notation (`^[[1;37mpro`),
+    // whose last character is a letter.
+    private const string WordStart = @"(?:(?<=\^\[\[[0-9;?]*[A-Za-z]|\^[@A-Z\\\]^_])|(?<![\p{L}\p{N}]))";
+    private const string WordEnd = @"(?![\p{L}\p{N}])";
 
     private static string SplitTolerant(string value)
     {
