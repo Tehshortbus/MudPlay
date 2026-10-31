@@ -797,6 +797,41 @@ public sealed partial class GmcpIntegrationTests
         Assert.Equal(0u, projected.ExitMask & (1u << (int)Direction.Teleport));
     }
 
+    // The server sends a lever's or a room command's door as a plain door or gate.
+    // Taken as one, the walker sent the door handler at 8/909's portcullis (1000
+    // picklocks/strength) and gave up, where `lift portcullis` opens it (report
+    // paradigm-20261030-182928). A door the graph knows no lever for stays a door.
+    [Theory]
+    [InlineData("door", true, RoomExitHint.MultiActionHidden)]
+    [InlineData("gate", true, RoomExitHint.MultiActionHidden)]
+    [InlineData("door", false, RoomExitHint.Door)]
+    public void RoomProjection_KeepsADoorTheGraphOpensByAction(string kind, bool lever, RoomExitHint expected)
+    {
+        RoomKey pathway = new(8, 909), stronghold = new(8, 910);
+        MultiActionExitData lift = new(1, false, [new ExitAction(1, ["lift portcullis"], null, Rolled: true)]) { DoorOrGate = (pathway, Direction.W) };
+        RoomExit known = lever
+            ? new(stronghold, RoomExitHint.MultiActionHidden, "Door [1000 picklocks/strength]") { StatRequirement = 1000, MultiAction = lift }
+            : new(stronghold, RoomExitHint.Door, "Door [1000 picklocks/strength]") { StatRequirement = 1000 };
+        Room previous = new() { Key = pathway, Name = "Dragon's Teeth Hills, Pathway", Exits = new Dictionary<Direction, RoomExit> { [Direction.W] = known } };
+        object closed = new { state = "locked", key = (int?)null, bashable = true };
+        object shut = new { item = (int?)null, minLevel = (int?)null, maxLevel = (int?)null, @class = (int?)null, race = (int?)null };
+        JsonElement value = JsonSerializer.SerializeToElement(new
+        {
+            room = "8,909", name = "Dragon's Teeth Hills, Pathway", light = 0, spell = (int?)null,
+            exits = new object[]
+            {
+                new { dir = "w", to = "8,910", kind, hidden = false, found = true,
+                      door = kind == "door" ? closed : null, gate = kind == "gate" ? shut : null,
+                      toll = (object?)null, phrase = (string?)null },
+            },
+        });
+
+        RoomExit projected = GmcpProjection.Room(value, previous).Exits[Direction.W];
+
+        Assert.Equal(expected, projected.Hint);
+        Assert.Equal(lever ? lift : null, projected.MultiAction);
+    }
+
     // An exit taken by a command (`go path`, `go manhole`) is in the server's exits
     // with "kind":"text" but never in the display's "Obvious exits:" (exports
     // gmcp-20261029-150551 and gmcp-20261029-152626, five rooms). Read as shown, the

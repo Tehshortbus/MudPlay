@@ -5195,6 +5195,7 @@ Some things still come from the game's own lines with a package active, because 
 
 - **Char.Status:** the server's combat flag goes off for a mid-fight cast with the monster still standing, as `*Combat Off*` does. So it can start a fight but never ends one: a fight ends when the room is clear, as without server data.
 - **Group.Members:** the server's party list is the roster, but a member who stops following or is left behind is still read from the game's line. The leader still goes back for them, and they can still be re-invited on their return. The party check asks the server for its party list instead of sending `par`.
+- **Room.Info:** a door or gate the map knows a lever or a room command opens (`lift portcullis` at the Ancient Stronghold, a gatehouse wheel) is still opened that way. The server only says it is a door, so taken at its word the walk tried to pick or bash it.
 - **Items.List:** your carrying weight still comes from `i`. Coins you pick up, drop or deposit change it as they would without server data. An automatic deposit counts against your purse as soon as it's sent, so the walk home is planned on what you have left.
 
 **Refresh current server data** requests fresh snapshots and both static information and live baselines for monsters in the current room. If GMCP is disabled during active play, MudPlay requests a `look` to rebuild the text room state. The terminal continues to display the server's normal output in every mode.

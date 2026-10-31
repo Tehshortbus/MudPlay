@@ -1,11 +1,8 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.193.0**
-> - Quests take the realm's own names when the server sends them (Anomaly GMCP 1.2.0 `Anomaly.Quests.Names`): no more `[Ability 3200 Quest is Now Available]`
-> - A quest's name: the one you gave it, else the realm's, else the shipped guide's, else its flag's; in the announcements, the Quest Status journal, Game Data's Quest Flags and `@quest`
-> - The realm's names are never saved into your quest guides and go when the session ends
-> - Availability announcements no longer say "Quest Quest" for a name that already ends in Quest
+> **Version 3.193.1**
+> - With server room data active, a door opened by a lever or room command (`lift portcullis` at 8/909) is opened that way again instead of being picked or bashed
 <!-- current-version:end -->
 
 A modern Telnet terminal client for **MajorMUD** and other BBS door games, built in C# / .NET 10 with [Avalonia](https://avaloniaui.net/). It renders a faithful CP437 cell grid with full VT100/ANSI parsing, and layers a MegaMUD-style automation suite (combat, party, navigation, healing, and more) on top — all in modeless, dockable windows so the terminal stays live while you configure anything.
