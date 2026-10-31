@@ -165,12 +165,12 @@ public sealed class BugReportScrubTests
         BugReportScrub.Scrubber scrubber = BugReportScrub.Build(
         [
             new(BugReportScrub.LoginNameLabel, Login),
-            new(BugReportScrub.SuicidePasswordLabel, "act"),
+            new(BugReportScrub.SuicidePasswordLabel, "acte"),
         ], []);
 
-        string once = scrubber.Apply($"user {Login} did an action");
+        string once = scrubber.Apply($"user {Login} enacted it");
 
-        Assert.Equal($"user {BugReportScrub.Mask} did an {BugReportScrub.Mask}ion", once);
+        Assert.Equal($"user {BugReportScrub.Mask} en{BugReportScrub.Mask}d it", once);
         Assert.Equal(once, scrubber.Apply(once));
     }
 
@@ -319,7 +319,7 @@ public sealed class BugReportScrubTests
     }
 
     [Fact]
-    public void ValueShorterThanThreeCharacters_IsMaskedAsAWholeWordOnly_AndNothingSaysHowLongItIs()
+    public void ValueShorterThanFourCharacters_IsMaskedAsAWholeWordOnly_AndNothingSaysHowLongItIs()
     {
         BugReportScrub.Scrubber scrubber = BugReportScrub.Build(
             [new(BugReportScrub.SuicidePasswordLabel, "ab"), new(BugReportScrub.LoginPasswordLabel, Password)],
@@ -330,6 +330,34 @@ public sealed class BugReportScrubTests
         Assert.Equal("typed  sent  [redacted]", scrubber.Apply("typed  sent  AB"));
         Assert.Empty(scrubber.Notes);
         Assert.Equal(2, scrubber.MaskedValues);
+    }
+
+    // A saved three-letter value was masked inside every word holding it, and a
+    // report read "[redacted]gram log" (paradigm-20261030-190322). As a word of
+    // its own it is still masked, wherever the report shows it.
+    [Theory]
+    [InlineData("## Program log", "## Program log")]
+    [InlineData("12:00:01 [HP=10]:Probe stats, prompt", "12:00:01 [HP=10]:Probe stats, prompt")]
+    [InlineData("12:00:01 Enter your User-ID: pro", "12:00:01 Enter your User-ID: [redacted]")]
+    [InlineData("12:00:04.000  typed  sent  PRO", "12:00:04.000  typed  sent  [redacted]")]
+    [InlineData("^[[1;37mpro^M", "^[[1;37m[redacted]^M")]
+    [InlineData("^[[0;37mp^[[1mro^M", "^[[0;37m[redacted]^M")]
+    [InlineData("12:00:01 xxx p\n12:00:01 ro tail", "12:00:01 xxx [redacted]\n tail")]
+    public void AThreeLetterValue_IsMaskedOnlyAsAWordOfItsOwn(string text, string expected)
+    {
+        BugReportScrub.Scrubber scrubber = BugReportScrub.Build([new(BugReportScrub.LoginPasswordLabel, "pro")], []);
+
+        Assert.Equal(expected, scrubber.Apply(text));
+    }
+
+    // A trigger that only holds the value inside another word is listed as it is.
+    [Fact]
+    public void ADefinitionWithAShortValueInsideAWord_IsNotLeftOut()
+    {
+        BugReportScrub.Scrubber scrubber = BugReportScrub.Build([new(BugReportScrub.LoginPasswordLabel, "pro")], []);
+
+        Assert.False(scrubber.Contains("on `prompt` -> `rest`"));
+        Assert.True(scrubber.Contains("on `User-ID` -> `PRO`"));
     }
 
     [Fact]

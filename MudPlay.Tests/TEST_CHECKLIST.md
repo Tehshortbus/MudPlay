@@ -569,7 +569,7 @@ How to keep it current:
 
 ### BugReportScrubTests.cs
 - Covers: Services/BugReportScrub, BugReportBuilder render/prescrub
-- Checks: login/passwords masked in every section, including wrapped, colour-split, corrected and non-ASCII values; suicide-password star echoes; exemptions and notes.
+- Checks: login/passwords masked in every section, including wrapped, colour-split, corrected and non-ASCII values; a value under four characters masked (and a definition left out) only as a word of its own, including after a raw-wire colour code and across a wrapped row; suicide-password star echoes; exemptions and notes.
 - Why: account-detail privacy.
 
 ### BugReportWireAndContextTests.cs

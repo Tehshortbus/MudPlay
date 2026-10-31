@@ -1,8 +1,9 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.193.1**
+> **Version 3.193.2**
 > - With server room data active, a door opened by a lever or room command (`lift portcullis` at 8/909) is opened that way again instead of being picked or bashed
+> - A bug report masks a saved login or password of three letters or fewer only where it stands as a word of its own, not inside words like "Program"
 <!-- current-version:end -->
 
 A modern Telnet terminal client for **MajorMUD** and other BBS door games, built in C# / .NET 10 with [Avalonia](https://avaloniaui.net/). It renders a faithful CP437 cell grid with full VT100/ANSI parsing, and layers a MegaMUD-style automation suite (combat, party, navigation, healing, and more) on top — all in modeless, dockable windows so the terminal stays live while you configure anything.
