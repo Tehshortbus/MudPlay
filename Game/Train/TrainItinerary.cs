@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using MudPlay.Game.Calculators;
 using MudPlay.Game.GameData;
 using MudPlay.Game.Map;
+using MudPlay.Models.Profile;
 
 namespace MudPlay.Game.Train;
 
@@ -44,7 +45,8 @@ public static class TrainItineraryPlanner
         int classNumber,
         IReadOnlyCollection<string> disabled,
         RoomKey from,
-        Func<RoomKey, RoomKey, int?> distance)
+        Func<RoomKey, RoomKey, int?> distance,
+        TrainerChoice by)
     {
         ArgumentNullException.ThrowIfNull(trainers);
         ArgumentNullException.ThrowIfNull(disabled);
@@ -59,9 +61,9 @@ public static class TrainItineraryPlanner
         while (remaining > 0 && segments.Count < MaxSegments)
         {
             RoomKey at = cursor;
-            TrainerShop? pick = TrainerCatalog.SelectNearest(
+            TrainerShop? pick = TrainerCatalog.SelectTrainer(
                 trainers, level, classNumber, disabled,
-                t => distance(at, new RoomKey(t.Map, t.Room)));
+                t => distance(at, new RoomKey(t.Map, t.Room)), by);
 
             // No allowed trainer covers the next level — stop here rather than
             // pricing levels we have no way to buy. A partial itinerary is honest:
@@ -77,7 +79,7 @@ public static class TrainItineraryPlanner
                 remaining--;
             }
 
-            // Defensive: SelectNearest already filtered on ServesLevel(level), so
+            // Defensive: SelectTrainer already filtered on ServesLevel(level), so
             // the inner loop always advances at least once. If a future filter
             // change broke that, bail instead of spinning forever.
             if (level == segmentStart) break;
@@ -110,7 +112,8 @@ public static class TrainItineraryPlanner
         int classNumber,
         IReadOnlyCollection<string> disabled,
         RoomKey current,
-        Func<RoomKey, RoomKey, int?> distance)
+        Func<RoomKey, RoomKey, int?> distance,
+        TrainerChoice by)
     {
         ArgumentNullException.ThrowIfNull(trainers);
         ArgumentNullException.ThrowIfNull(disabled);
@@ -120,9 +123,9 @@ public static class TrainItineraryPlanner
         if (bankableAboveAttained <= Math.Max(0, keepLevels)) return null;
         if (ceiling > 0 && attainedLevel >= ceiling) return null;
 
-        TrainerShop? next = TrainerCatalog.SelectNearest(
+        TrainerShop? next = TrainerCatalog.SelectTrainer(
             trainers, attainedLevel, classNumber, disabled,
-            t => distance(current, new RoomKey(t.Map, t.Room)));
+            t => distance(current, new RoomKey(t.Map, t.Room)), by);
 
         if (next is not { } t) return null;
         return current.Equals(new RoomKey(t.Map, t.Room)) ? null : t;

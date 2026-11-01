@@ -327,7 +327,27 @@ public sealed class SeedDelta<T> where T : class
             return null;
         }
 
+        // Every record of ours has an Id. One without is a game table's row: a database
+        // table of the same name was imported over this file where file names ignore case
+        // (Crash-20261101-094634). It can't be addressed, and a diff over it throws, so
+        // it's dropped and the file written back without it.
+        int stray = delta is null
+            ? legacy!.RemoveAll(HasNoId)
+            : delta.Records.RemoveAll(HasNoId) + delta.Overrides.RemoveAll(HasNoId);
+        if (stray > 0)
+            log?.Log(LogSeverity.Warn, category,
+                $"'{path}': dropped {stray} record(s) with no Id — not records of this catalogue.");
+
         if (delta is null) return MigrateLegacy(path, legacy!, seed, log, category);
+        if (stray > 0)
+        {
+            try { JsonStore.Save(path, delta); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                log?.Log(LogSeverity.Warn, category,
+                    $"'{path}': couldn't write it back ({ex.Message}); written on the next save.");
+            }
+        }
 
         MergeResult merged = Merge(seed, delta);
         if (merged.OrphanedOverrides > 0)
@@ -402,6 +422,8 @@ public sealed class SeedDelta<T> where T : class
             slotOf[item] = slot;
         }
     }
+
+    private bool HasNoId(T r) => string.IsNullOrEmpty(_id(r));
 
     private bool SameContent(T a, T b)
         => EqualityComparer<T>.Default.Equals(_withoutLinks(a), _withoutLinks(b))

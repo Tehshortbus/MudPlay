@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using MudPlay.Game.GameData;
 using MudPlay.Game.Map;
+using MudPlay.Models.Profile;
 
 namespace MudPlay.Game.Train;
 
@@ -22,11 +23,13 @@ public readonly record struct PartyTrainStop(TrainerShop Trainer, IReadOnlyList<
 // at the final stop, where every member is standing and can be re-invited; it never
 // chains on to another trainer afterwards, or the members would be left behind.
 //
-// Member stops are greedy: the reachable, allowed trainer that serves the MOST
-// members still short of their target goes first (nearest breaks a tie), each served
-// member advances as far as that trainer's band takes it, and the next stop is chosen
-// from there — so members in different level bands chain across trainers the same
-// way a single character's itinerary does (TrainItineraryPlanner).
+// Member stops are greedy: by default the reachable, allowed trainer that serves the
+// MOST members still short of their target goes first (the trainer choice, closest or
+// cheapest, breaks a tie); with PartyStopChoice.ByTrainerChoice it's the closest or
+// cheapest trainer that serves any of them. Each served member advances as far as
+// that trainer's band takes it, and the next stop is chosen from there — so members
+// in different level bands chain across trainers the same way a single character's
+// itinerary does (TrainItineraryPlanner).
 //
 // Pure: the caller injects the distance metric, so it's testable without a map.
 public static class PartyTrainItineraryPlanner
@@ -41,7 +44,9 @@ public static class PartyTrainItineraryPlanner
         PartyTrainee? leader,
         IReadOnlyCollection<string> disabled,
         RoomKey from,
-        Func<RoomKey, RoomKey, int?> distance)
+        Func<RoomKey, RoomKey, int?> distance,
+        TrainerChoice by,
+        PartyStopChoice stopChoice)
     {
         ArgumentNullException.ThrowIfNull(trainers);
         ArgumentNullException.ThrowIfNull(members);
@@ -66,7 +71,9 @@ public static class PartyTrainItineraryPlanner
                 if (distance(cursor, Room(t)) is not { } dist) continue;
                 int count = pending.Count(m => Serves(t, projected[m.Name], m.ClassNumber));
                 if (count == 0) continue;
-                if (count > bestCount || (count == bestCount && dist < bestDist))
+                int order = stopChoice == PartyStopChoice.MostMembers ? bestCount.CompareTo(count) : 0;
+                if (order == 0 && best is { } held) order = TrainerCatalog.Prefer(t, dist, held, bestDist, by);
+                if (best is null || order < 0)
                 {
                     best = t;
                     bestCount = count;
@@ -98,8 +105,8 @@ public static class PartyTrainItineraryPlanner
         // Otherwise one more stop for the leader, and any member with levels left
         // that the leader's trainer also serves trains there too.
         RoomKey at = cursor;
-        if (TrainerCatalog.SelectNearest(trainers, l.Level, l.ClassNumber, disabled,
-                t => distance(at, Room(t))) is { } leaderStop
+        if (TrainerCatalog.SelectTrainer(trainers, l.Level, l.ClassNumber, disabled,
+                t => distance(at, Room(t)), by) is { } leaderStop
             && stops.Count < MaxStops)
         {
             List<string> extra = new();
@@ -113,6 +120,36 @@ public static class PartyTrainItineraryPlanner
             stops.Add(new PartyTrainStop(leaderStop, extra, LeaderTrains: true));
         }
         return stops;
+    }
+
+    // The plan for the program log and the bug report: the choice that ordered the
+    // stops, then who trains where, each with the level it set out at and the one it
+    // means to reach — e.g. "most members first, then closest: 1. Dwarven Trainer
+    // 3/1200 (markup 90%) trains Aunty L30→32; 2. Aged Titan 10/271 (markup 100%)
+    // trains Barter L48→50, leader Masta L32→33".
+    public static string Describe(IReadOnlyList<PartyTrainStop> stops, IReadOnlyList<PartyTrainee> members,
+        PartyTrainee? leader, TrainerChoice by, PartyStopChoice stopChoice)
+    {
+        ArgumentNullException.ThrowIfNull(stops);
+        ArgumentNullException.ThrowIfNull(members);
+        string order = stopChoice == PartyStopChoice.MostMembers
+            ? $"most members first, then {Word(by)}"
+            : Word(by);
+        if (stops.Count == 0) return $"{order}: no stop";
+        Dictionary<string, PartyTrainee> byName = members.ToDictionary(m => m.Name, StringComparer.OrdinalIgnoreCase);
+        List<string> parts = new(stops.Count);
+        for (int i = 0; i < stops.Count; i++)
+        {
+            PartyTrainStop stop = stops[i];
+            string where = $"{stop.Trainer.Name} {stop.Trainer.Map}/{stop.Trainer.Room} (markup {stop.Trainer.Markup}%)";
+            List<string> who = stop.Members.Select(n => byName.TryGetValue(n, out PartyTrainee m) ? Levels(m) : n).ToList();
+            if (stop.LeaderTrains && leader is { } l) who.Add($"leader {Levels(l)}");
+            parts.Add($"{i + 1}. {where} trains {(who.Count == 0 ? "nobody" : string.Join(", ", who))}");
+        }
+        return $"{order}: {string.Join("; ", parts)}";
+
+        static string Word(TrainerChoice c) => c == TrainerChoice.Cheapest ? "cheapest" : "closest";
+        static string Levels(PartyTrainee m) => $"{m.Name} L{m.Level}→{m.TargetLevel}";
     }
 
     private static bool Serves(TrainerShop t, int level, int classNumber) =>

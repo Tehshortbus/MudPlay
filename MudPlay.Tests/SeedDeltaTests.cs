@@ -214,6 +214,38 @@ public sealed class SeedDeltaTests : IDisposable
         Assert.False(File.Exists(File_ + ".pre-delta"));
     }
 
+    // Where file names ignore case, a database's own Messages table was imported over
+    // messages.json, and its rows were migrated as the user's records with no Id: the
+    // Spells tab's seed comparison then threw on opening (Crash-20261101-094634 / -094635,
+    // Crash-20261101-100406, Crash-20261101-100632).
+    private const string TableRows = """[{ "Number": 1, "Line1": "a table row" }, { "Number": 2, "Line1": "another" }]""";
+
+    [Fact]
+    public void TableRowsMigratedAsOwnRecords_AreDropped_AndTheFileWrittenBack()
+    {
+        MessageRecord a = Rec("alpha", "You cast alpha.", 1);
+        MessageRecord mine = Rec("uniform", "You cast uniform.", 21);
+        File.WriteAllText(File_, $$"""{ "Format": 2, "Removed": [], "Overrides": [], "Records": [ {{System.Text.Json.JsonSerializer.Serialize(mine, JsonStore.Options)}}, {{TableRows[1..^1]}} ] }""");
+
+        List<MessageRecord> loaded = Delta.Load(File_, new[] { a }, log: null, "Messages")!;
+
+        Assert.Equal(new[] { "alpha", "uniform" }, loaded.Select(r => r.Name));
+        Assert.Equal(SeedDifferenceKind.Added, Assert.Single(Delta.Compare(loaded, new[] { a })).Kind);
+        Assert.Equal(mine.Id, Assert.Single(JsonStore.Load<SeedDelta<MessageRecord>.DeltaFile>(File_)!.Records).Id);
+    }
+
+    [Fact]
+    public void ATableImportedOverTheFile_LoadsAsTheSeed()
+    {
+        MessageRecord a = Rec("alpha", "You cast alpha.", 1);
+        File.WriteAllText(File_, TableRows);
+
+        List<MessageRecord> loaded = Delta.Load(File_, new[] { a }, log: null, "Messages")!;
+
+        Assert.Equal(a, Assert.Single(loaded));
+        Assert.Empty(Delta.Compare(loaded, new[] { a }));
+    }
+
     [Fact]
     public void MissingOrCorruptFile_ReturnsNull()
     {

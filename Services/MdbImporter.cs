@@ -115,10 +115,19 @@ public sealed class MdbImporter
             _roomCommandItems = 0;
             List<string> imported = new();
             List<string> skipped = new();
+            List<string> leftOut = new();
 
             foreach (string tableName in tables)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                if (ClientFileFor(folderName, tableName) is { } clientFile)
+                {
+                    // Nothing reads such a table, and writing it would replace the
+                    // client's file, which then reads the table's rows as its own.
+                    OnStatusChanged?.Invoke($"Leaving out {tableName}: its file would replace the client's own {clientFile}");
+                    leftOut.Add(tableName);
+                    continue;
+                }
                 OnStatusChanged?.Invoke($"Importing {tableName}…");
 
                 try
@@ -172,6 +181,9 @@ public sealed class MdbImporter
             if (skipped.Count > 0)
                 message += $"\n\nSkipped {skipped.Count}:\n" +
                            string.Join("\n", skipped.Select(t => $"  ⚠ {t}"));
+            if (leftOut.Count > 0)
+                message += $"\n\nNot imported {leftOut.Count} (named like one of MudPlay's own files in the set):\n" +
+                           string.Join("\n", leftOut.Select(t => $"  – {t}"));
             bool hasLairs = imported.Any(t => t.StartsWith("Lairs (", StringComparison.OrdinalIgnoreCase));
             message += $"\n\nTotal rows imported: {totalRows:N0}"
                      + $"\nLairs table: {(hasLairs ? "yes" : "no")}"
@@ -288,7 +300,7 @@ public sealed class MdbImporter
                 && RoomCommandSourceParser.ParseCell(cell as string).Count > 0);
 
         string json = JsonSerializer.Serialize(rows, JsonOpts);
-        string fileName = MakeFilesystemSafe(tableName) + ".json";
+        string fileName = TableFileName(tableName);
         string filePath = Path.Combine(outputPath, fileName);
         await File.WriteAllTextAsync(filePath, json, cancellationToken);
 
@@ -344,6 +356,17 @@ public sealed class MdbImporter
         string safe = new(name.Select(c => invalid.Contains(c) ? '_' : c).ToArray());
         safe = safe.Trim();
         return string.IsNullOrEmpty(safe) ? "_unnamed" : safe;
+    }
+
+    private static string TableFileName(string tableName) => MakeFilesystemSafe(tableName) + ".json";
+
+    // The name of the client's own file in the set that tableName's file would land on,
+    // matched ignoring case as Windows and macOS do; null when it lands on none.
+    internal static string? ClientFileFor(string setName, string tableName)
+    {
+        string fileName = TableFileName(tableName);
+        return AppPaths.ClientSetFiles(setName).Select(Path.GetFileName)
+            .FirstOrDefault(f => string.Equals(f, fileName, StringComparison.OrdinalIgnoreCase));
     }
 
     // Delete a freshly-created output folder when the import wrote nothing into it,

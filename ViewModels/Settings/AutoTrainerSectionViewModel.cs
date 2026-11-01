@@ -93,6 +93,25 @@ public sealed partial class AutoTrainerSectionViewModel : SettingsSectionViewMod
     [ObservableProperty] private int _partyLevelGap;
     [ObservableProperty] private bool _partySkipLevel11;
 
+    // Which trainer a run goes to when several can teach the level, and how a party
+    // trip picks its next member stop.
+    private static readonly (TrainerChoice Choice, string Label)[] TrainerChoiceLabels =
+    {
+        (TrainerChoice.Closest, "Closest trainer"),
+        (TrainerChoice.Cheapest, "Cheapest trainer (lowest markup)"),
+    };
+    public IReadOnlyList<string> TrainerChoiceOptions { get; } =
+        TrainerChoiceLabels.Select(static c => c.Label).ToArray();
+    [ObservableProperty] private string _selectedTrainerChoice = TrainerChoiceLabels[0].Label;
+    private static readonly (PartyStopChoice Choice, string Label)[] PartyStopChoiceLabels =
+    {
+        (PartyStopChoice.MostMembers, "The trainer that trains the most members"),
+        (PartyStopChoice.ByTrainerChoice, "The trainer chosen above (closest / cheapest)"),
+    };
+    public IReadOnlyList<string> PartyStopChoiceOptions { get; } =
+        PartyStopChoiceLabels.Select(static c => c.Label).ToArray();
+    [ObservableProperty] private string _selectedPartyStopChoice = PartyStopChoiceLabels[0].Label;
+
     // When short on cash: where a run may fetch the difference, and optionally the
     // one bank / stash room to use. The first entry of each list means "any".
     public const string AnyBank = "(Any bank)";
@@ -229,6 +248,8 @@ public sealed partial class AutoTrainerSectionViewModel : SettingsSectionViewMod
             AnnounceChannel = AnnounceChannel,
             DisabledTrainers = disabled.Count == 0 ? null : disabled,
             FundingMode = SelectedMode,
+            TrainerChoice = TrainerChoiceLabels.FirstOrDefault(c => c.Label == SelectedTrainerChoice).Choice,
+            PartyStopChoice = PartyStopChoiceLabels.FirstOrDefault(c => c.Label == SelectedPartyStopChoice).Choice,
             FundingBankRoom = SelectedFundingBank is { } fb && _bankByLabel.TryGetValue(fb, out RoomRef? bankRoom)
                 ? new RoomRef(bankRoom.Map, bankRoom.Room)
                 : null,
@@ -279,6 +300,10 @@ public sealed partial class AutoTrainerSectionViewModel : SettingsSectionViewMod
         PartyMinReady = Math.Clamp(dto.PartyMinReady, 1, 6);
         PartyLevelGap = Math.Max(0, dto.PartyLevelGap);
         PartySkipLevel11 = dto.PartySkipLevel11;
+        SelectedTrainerChoice = TrainerChoiceLabels.FirstOrDefault(c => c.Choice == dto.TrainerChoice).Label
+                                ?? TrainerChoiceLabels[0].Label;
+        SelectedPartyStopChoice = PartyStopChoiceLabels.FirstOrDefault(c => c.Choice == dto.PartyStopChoice).Label
+                                  ?? PartyStopChoiceLabels[0].Label;
         LoadFunding(dto);
         RebuildTrainers(dto.DisabledTrainers);
         AutoObtainShopSpells = dto.AutoObtainShopSpells;
@@ -440,6 +465,8 @@ public sealed partial class AutoTrainerSectionViewModel : SettingsSectionViewMod
     partial void OnSelectedFundingStashChanged(string? value) => MarkDirty();
     partial void OnAnnounceChannelChanged(AnnounceChannel value) => MarkDirty();
     partial void OnPartySkipLevel11Changed(bool value) => MarkDirty();
+    partial void OnSelectedTrainerChoiceChanged(string value) => MarkDirty();
+    partial void OnSelectedPartyStopChoiceChanged(string value) => MarkDirty();
 
     partial void OnPartyMinReadyChanged(int value)
     {

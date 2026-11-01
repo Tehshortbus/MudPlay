@@ -5,6 +5,7 @@ using MudPlay.Game.GameData;
 using MudPlay.Game.Inventory;
 using MudPlay.Game.Map;
 using MudPlay.Game.Train;
+using MudPlay.Models.Profile;
 using Xunit;
 
 namespace MudPlay.Tests;
@@ -305,7 +306,7 @@ public sealed class PartyTrainPlanningTests
             [low],
             [new PartyTrainee("Ann", 5, 1, 6), new PartyTrainee("Bob", 6, 1, 7)],
             new PartyTrainee("Lead", 7, 1, 8),
-            [], new RoomKey(1, 1), Dist);
+            [], new RoomKey(1, 1), Dist, TrainerChoice.Closest, PartyStopChoice.MostMembers);
         PartyTrainStop stop = Assert.Single(stops);
         Assert.Equal(["Ann", "Bob"], stop.Members);
         Assert.True(stop.LeaderTrains);
@@ -319,7 +320,7 @@ public sealed class PartyTrainPlanningTests
         IReadOnlyList<PartyTrainStop> stops = PartyTrainItineraryPlanner.Plan(
             [low, high],
             [new PartyTrainee("Ann", 12, 1, 13), new PartyTrainee("Bob", 14, 1, 15), new PartyTrainee("Cid", 5, 1, 6)],
-            leader: null, [], new RoomKey(1, 1), Dist);
+            leader: null, [], new RoomKey(1, 1), Dist, TrainerChoice.Closest, PartyStopChoice.MostMembers);
         Assert.Equal(2, stops.Count);
         Assert.Equal(high, stops[0].Trainer);
         Assert.Equal(["Ann", "Bob"], stops[0].Members);
@@ -336,7 +337,7 @@ public sealed class PartyTrainPlanningTests
             [low, high],
             [new PartyTrainee("Ann", 5, 1, 6)],
             new PartyTrainee("Lead", 15, 1, 16),
-            [], new RoomKey(1, 1), Dist);
+            [], new RoomKey(1, 1), Dist, TrainerChoice.Closest, PartyStopChoice.MostMembers);
         Assert.Equal(2, stops.Count);
         Assert.False(stops[0].LeaderTrains);
         Assert.Equal(high, stops[1].Trainer);
@@ -351,7 +352,7 @@ public sealed class PartyTrainPlanningTests
         IReadOnlyList<PartyTrainStop> stops = PartyTrainItineraryPlanner.Plan(
             [low, high],
             [new PartyTrainee("Ann", 9, 1, 12)],
-            leader: null, [], new RoomKey(1, 1), Dist);
+            leader: null, [], new RoomKey(1, 1), Dist, TrainerChoice.Closest, PartyStopChoice.MostMembers);
         Assert.Equal([low, high], stops.Select(s => s.Trainer));
     }
 
@@ -364,8 +365,33 @@ public sealed class PartyTrainPlanningTests
         IReadOnlyList<PartyTrainStop> stops = PartyTrainItineraryPlanner.Plan(
             [disabled, wrongClass, ok],
             [new PartyTrainee("Ann", 5, 1, 6)],
-            leader: null, [disabled.RowKey], new RoomKey(1, 1), Dist);
+            leader: null, [disabled.RowKey], new RoomKey(1, 1), Dist, TrainerChoice.Closest, PartyStopChoice.MostMembers);
         Assert.Equal(ok, Assert.Single(stops).Trainer);
+    }
+
+    // Two trainers for one band, one near and dear, one far and cheap, and a third
+    // that trains both members but sits farthest: what the trip goes to first follows
+    // the two choices (user, 2026-11-01: a character in the Dwarven Mines was sent to
+    // the Aged Titan over the nearer Dwarven trainer). The plan says which choice
+    // ordered it.
+    [Theory]
+    [InlineData(PartyStopChoice.MostMembers, TrainerChoice.Closest, 3)]
+    [InlineData(PartyStopChoice.ByTrainerChoice, TrainerChoice.Closest, 1)]
+    [InlineData(PartyStopChoice.ByTrainerChoice, TrainerChoice.Cheapest, 2)]
+    public void Itinerary_TheFirstStopFollowsTheStopAndTrainerChoices(PartyStopChoice stopChoice, TrainerChoice by, int first)
+    {
+        TrainerShop near = T(1, 5, 1, 10) with { Markup = 150 };
+        TrainerShop cheap = T(2, 40, 1, 10) with { Markup = 50 };
+        TrainerShop wide = T(3, 60, 1, 20);
+        PartyTrainee ann = new("Ann", 5, 1, 6), bob = new("Bob", 14, 1, 15);
+
+        IReadOnlyList<PartyTrainStop> stops = PartyTrainItineraryPlanner.Plan(
+            [near, cheap, wide], [ann, bob], leader: null, [], new RoomKey(1, 1), Dist, by, stopChoice);
+
+        Assert.Equal(first, stops[0].Trainer.Number);
+        string plan = PartyTrainItineraryPlanner.Describe(stops, [ann, bob], leader: null, by, stopChoice);
+        Assert.StartsWith(stopChoice == PartyStopChoice.MostMembers ? "most members first, then closest: 1. Trainer 3" : $"{(by == TrainerChoice.Cheapest ? "cheapest" : "closest")}: 1. Trainer {first}", plan);
+        Assert.Contains("Ann L5→6", plan);
     }
 
     // ----- coin cover ---------------------------------------------------

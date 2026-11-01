@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text.Json;
+using MudPlay.Models.Profile;
 using MudPlay.Services;
 
 namespace MudPlay.Game.GameData;
@@ -102,16 +103,16 @@ public static class TrainerCatalog
         return trainers;
     }
 
-    // Pick the nearest trainer that can serve the character: serves level, is
-    // universal or matches classNumber, isn't in disabled (keyed by
+    // Pick the trainer that can serve the character, nearest or cheapest by `by`:
+    // serves level, is universal or matches classNumber, isn't in disabled (keyed by
     // TrainerShop.RowKey), has a resolvable room, and is reachable per distance
     // (which returns the path length to a trainer's room, or null when
     // unreachable). Returns null when nothing qualifies — e.g. a quest-gated level
     // with no matching trainer. Pure: the caller supplies the distance metric (BFS).
-    public static TrainerShop? SelectNearest(
+    public static TrainerShop? SelectTrainer(
         IReadOnlyList<TrainerShop> trainers, int level, int classNumber,
-        IReadOnlyCollection<string> disabled, Func<TrainerShop, int?> distance) =>
-        FirstUsable(RankCandidates(trainers, level, classNumber, disabled, distance));
+        IReadOnlyCollection<string> disabled, Func<TrainerShop, int?> distance, TrainerChoice by) =>
+        FirstUsable(RankCandidates(trainers, level, classNumber, disabled, distance, by));
 
     // Pick the nearest trainer for a `train stats` (CP allocation) action. Unlike a
     // level-up `train`, applying stat points is NOT level-band gated — any trainer that
@@ -122,17 +123,17 @@ public static class TrainerCatalog
     public static TrainerShop? SelectNearestForStats(
         IReadOnlyList<TrainerShop> trainers, int classNumber,
         IReadOnlyCollection<string> disabled, Func<TrainerShop, int?> distance) =>
-        FirstUsable(RankCandidates(trainers, level: null, classNumber, disabled, distance));
+        FirstUsable(RankCandidates(trainers, level: null, classNumber, disabled, distance, TrainerChoice.Closest));
 
     // Every trainer that could serve this level (null = any level, the `train stats`
-    // case) and class, ranked the way the selectors choose: usable ones nearest
-    // first — equal distance goes to the lower markup, the cheaper lesson — then
-    // the ruled-out ones with the reason. The selectors take the first usable entry,
-    // and the auto-trainer logs the same list, so a report shows exactly why one
-    // trainer beat another instead of just which one won.
+    // case) and class, ranked the way the selectors choose: usable ones first, in
+    // the order `by` asks for (see Prefer), then the ruled-out ones with the reason.
+    // The selectors take the first usable entry, and the auto-trainer logs the same
+    // list, so a report shows exactly why one trainer beat another instead of just
+    // which one won.
     public static IReadOnlyList<TrainerCandidate> RankCandidates(
         IReadOnlyList<TrainerShop> trainers, int? level, int classNumber,
-        IReadOnlyCollection<string> disabled, Func<TrainerShop, int?> distance)
+        IReadOnlyCollection<string> disabled, Func<TrainerShop, int?> distance, TrainerChoice by)
     {
         ArgumentNullException.ThrowIfNull(trainers);
         ArgumentNullException.ThrowIfNull(disabled);
@@ -156,17 +157,27 @@ public static class TrainerCatalog
         {
             int c = a.Skip.CompareTo(b.Skip);
             if (c != 0) return c;
-            c = (a.Distance ?? int.MaxValue).CompareTo(b.Distance ?? int.MaxValue);
-            if (c != 0) return c;
-            c = a.Trainer.Markup.CompareTo(b.Trainer.Markup);
+            c = Prefer(a.Trainer, a.Distance ?? int.MaxValue, b.Trainer, b.Distance ?? int.MaxValue, by);
             return c != 0 ? c : string.CompareOrdinal(a.Trainer.RowKey, b.Trainer.RowKey);
         });
         return candidates;
     }
 
+    // Which of two trainers comes first (negative: a): the nearer, or for Cheapest the
+    // lower markup (the fee scales with it, so it's the cheaper lesson at any level),
+    // the other measure breaking a tie.
+    public static int Prefer(TrainerShop a, int distanceA, TrainerShop b, int distanceB, TrainerChoice by)
+    {
+        int byDistance = distanceA.CompareTo(distanceB);
+        int byMarkup = a.Markup.CompareTo(b.Markup);
+        return by == TrainerChoice.Cheapest
+            ? byMarkup != 0 ? byMarkup : byDistance
+            : byDistance != 0 ? byDistance : byMarkup;
+    }
+
     // One-line rendering of a ranking for the program log and the bug report, e.g.
-    // "Training Room 1/1376 (25 steps), Gypsy Training Room 1/384 (30 steps),
-    // Training Room 1/2147 (disabled)".
+    // "Training Room 1/1376 (25 steps, markup 100%), Gypsy Training Room 1/384
+    // (30 steps, markup 90%), Training Room 1/2147 (disabled)".
     public static string DescribeCandidates(IReadOnlyList<TrainerCandidate> ranked)
     {
         ArgumentNullException.ThrowIfNull(ranked);
@@ -178,7 +189,7 @@ public static class TrainerCatalog
             {
                 TrainerSkip.Disabled => "disabled",
                 TrainerSkip.Unreachable => "no path",
-                _ => c.Distance == 1 ? "1 step" : $"{c.Distance} steps",
+                _ => (c.Distance == 1 ? "1 step" : $"{c.Distance} steps") + $", markup {c.Trainer.Markup}%",
             };
             parts.Add(string.Create(CultureInfo.InvariantCulture,
                 $"{c.Trainer.Name} {c.Trainer.Map}/{c.Trainer.Room} ({why})"));

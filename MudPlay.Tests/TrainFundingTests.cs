@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using MudPlay.Game.GameData;
 using MudPlay.Game.Map;
 using MudPlay.Game.Train;
+using MudPlay.Models.Profile;
 using Xunit;
 
 
@@ -34,7 +35,7 @@ public sealed class TrainFundingTests
 
         IReadOnlyList<TrainSegment> plan = TrainItineraryPlanner.Build(
             trainers, currentLevel: 9, levelsToTrain: 2, classNumber: 0,
-            NoneDisabled, new RoomKey(1, 1), Flat);
+            NoneDisabled, new RoomKey(1, 1), Flat, TrainerChoice.Closest);
 
         Assert.Equal(2, plan.Count);
 
@@ -55,7 +56,7 @@ public sealed class TrainFundingTests
 
         IReadOnlyList<TrainSegment> plan = TrainItineraryPlanner.Build(
             trainers, currentLevel: 9, levelsToTrain: 3, classNumber: 0,
-            NoneDisabled, new RoomKey(1, 1), Flat);
+            NoneDisabled, new RoomKey(1, 1), Flat, TrainerChoice.Closest);
 
         Assert.Single(plan);
         Assert.Equal(3, plan[0].Levels);
@@ -69,7 +70,7 @@ public sealed class TrainFundingTests
 
         IReadOnlyList<TrainSegment> plan = TrainItineraryPlanner.Build(
             trainers, currentLevel: 9, levelsToTrain: 5, classNumber: 0,
-            NoneDisabled, new RoomKey(1, 1), Flat);
+            NoneDisabled, new RoomKey(1, 1), Flat, TrainerChoice.Closest);
 
         Assert.Single(plan);
         Assert.Equal(10, plan[^1].ToLevel);
@@ -84,9 +85,9 @@ public sealed class TrainFundingTests
         var dear  = new[] { Trainer(1, 1, 100, 1, 20, markup: 100) };
 
         long cheapCost = TrainItineraryPlanner.TotalCost(TrainItineraryPlanner.Build(
-            cheap, 9, 1, 0, NoneDisabled, new RoomKey(1, 1), Flat));
+            cheap, 9, 1, 0, NoneDisabled, new RoomKey(1, 1), Flat, TrainerChoice.Closest));
         long dearCost = TrainItineraryPlanner.TotalCost(TrainItineraryPlanner.Build(
-            dear, 9, 1, 0, NoneDisabled, new RoomKey(1, 1), Flat));
+            dear, 9, 1, 0, NoneDisabled, new RoomKey(1, 1), Flat, TrainerChoice.Closest));
 
         Assert.True(dearCost > cheapCost, $"markup ignored: {dearCost} vs {cheapCost}");
     }
@@ -98,7 +99,7 @@ public sealed class TrainFundingTests
         var disabled = new HashSet<string> { trainers[0].RowKey };
 
         IReadOnlyList<TrainSegment> plan = TrainItineraryPlanner.Build(
-            trainers, 9, 1, 0, disabled, new RoomKey(1, 1), Flat);
+            trainers, 9, 1, 0, disabled, new RoomKey(1, 1), Flat, TrainerChoice.Closest);
 
         Assert.Single(plan);
         Assert.Equal(2, plan[0].Trainer.Number);
@@ -111,7 +112,7 @@ public sealed class TrainFundingTests
         int ceiling = 0, RoomKey? at = null)
         => TrainItineraryPlanner.NextTrainerInChain(
             trainers, attained, bankable, keep, ceiling, classNumber: 0,
-            NoneDisabled, at ?? new RoomKey(1, 1), Flat);
+            NoneDisabled, at ?? new RoomKey(1, 1), Flat, TrainerChoice.Closest);
 
     [Fact]
     public void Chain_WalksOnToTheTrainerCoveringTheNextLevel()

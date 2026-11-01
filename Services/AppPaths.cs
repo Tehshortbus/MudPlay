@@ -282,6 +282,17 @@ public static class AppPaths
         return copied;
     }
 
+    // The client's own files in a set's folder, beside its tables. An imported table
+    // named like one of them would land on it where file names ignore case (Windows,
+    // macOS), so MdbImporter leaves such a table out.
+    public static IReadOnlyList<string> ClientSetFiles(string setName) =>
+    [
+        MessagesFile(setName), MonsterMessagesFile(setName), LegacySetMessageCandidatesFile(setName),
+        FlavorPrefixesFile(setName), LegacySetTriggersFile(setName), LegacySetBossesFile(setName),
+        QuestsFile(setName), LearnedArrivalRoomsFile(setName), QuestsAdoptedRealmsFile(setName),
+        LegacySetBossTimersFile(setName), GameDataSetFavoritesFile(setName), NavSeedLedgerFile(setName),
+    ];
+
     // Per-set Messages catalogue file, scoped INSIDE the game-data set's folder
     // so the catalogue travels with the set. Replaces the older
     // Global/Messages/{set}.json location — pairing the file with the MDB
