@@ -235,6 +235,8 @@
                                         <StackPanel Orientation="Horizontal" Spacing="6">
                                             <TextBlock Text="{Binding Name}" VerticalAlignment="Center"
                                                        Foreground="{StaticResource ChromeFgMutedBrush}"/>
+                                            <Button Content="Drop" Command="{Binding DropCommand}"
+                                                    ToolTip.Tip="Drop this item's whole held stack — hidden in the room instead when Settings → Other → Hide items when discarding is ticked. The row updates when the game confirms the drop or the hide. A hide the room has no room for keeps the item and is tried again in the next room you enter."/>
                                             <Button Content="✕" Command="{Binding RemoveCommand}"
                                                     ToolTip.Tip="Take this item off the list — it stays in your pack"/>
                                         </StackPanel>

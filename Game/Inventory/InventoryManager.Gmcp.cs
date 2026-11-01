@@ -13,6 +13,10 @@ public sealed partial class InventoryManager
     public Func<int, bool>? ServerItemIsKey { get; set; }
     public event Action<InventorySnapshot>? TextInventoryObserved;
 
+    // True while Changed is raised for the server's inventory: the whole pack read
+    // anew, as a text `i` is, not one line's step.
+    public bool IsApplyingServerSnapshot { get; private set; }
+
     // fullSnapshot false re-lays the same snapshot (a new item card, a text read
     // supplying the light), which isn't a fresh inventory read.
     public void ApplyGmcpItems(JsonElement value, bool fullSnapshot = true)
@@ -58,7 +62,9 @@ public sealed partial class InventoryManager
             _lastUpdated = DateTimeOffset.Now;
         }
         _log?.Debug(LogCategory, $"server inventory: {carried.Count} carried, {worn.Count} worn, {keys.Count} keys");
-        RaiseChanged();
+        IsApplyingServerSnapshot = true;
+        try { RaiseChanged(); }
+        finally { IsApplyingServerSnapshot = false; }
         if (fullSnapshot) RaiseFullInventoryParsed();
     }
 
