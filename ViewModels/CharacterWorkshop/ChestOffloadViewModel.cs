@@ -343,7 +343,10 @@ public sealed partial class ChestOffloadViewModel : WorkshopSectionViewModel
         {
             if (_itemNames.FindByName(name) is not int number) continue;
             if (_itemNames.ItemTypeOf(number) == ChestOffloadPlanner.ContainerItemType) continue;   // don't sell chests
-            loot.Add(new LootItem(name, count, BaseCopperOf(number), _shops.ShopsSelling(number)));
+            // A shop no room of the map holds can't be walked to or sold at: an item
+            // only it buys is one no shop buys (report paradigm-20261101-080712).
+            loot.Add(new LootItem(name, count, BaseCopperOf(number),
+                _shops.ShopsSelling(number).Where(_shopRoom.ContainsKey).ToArray()));
         }
 
         IReadOnlyList<(int Shop, IReadOnlyList<LootItem> Items)> groups =
@@ -950,12 +953,11 @@ public sealed partial class ChestOffloadViewModel : WorkshopSectionViewModel
         => new(shop, ShopLabel(shop, room), ShopLocation(room), steps);
 
     // A shop by its own name in the game data, with the room it stands in by number
-    // and name. A shop no room of the map names (one the data leaves out of the
-    // game) was shown as a bare "Shop #N" with nothing to say where it was.
+    // and name.
     private string ShopLabel(int shop, Room? room) => _shops.ShopName(shop) ?? room?.Name ?? $"Shop #{shop}";
 
     private static string ShopLocation(Room? room)
-        => room is { } r ? $"{r.Key.Map}/{r.Key.Room} {r.Name}" : "in no room of the game data";
+        => room is { } r ? $"{r.Key.Map}/{r.Key.Room} {r.Name}" : "";
 
     // A group an item was moved into, for a shop the last trip didn't visit, gets its
     // steps from here when they come back.
