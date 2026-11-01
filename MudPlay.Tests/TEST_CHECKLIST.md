@@ -4239,6 +4239,11 @@ How to keep it current:
 - Checks: with no stored entry, automatic walks may use no teleports; stored teleports read back as the same places.
 - Why: automatic walks must not take a teleport the user hasn't allowed.
 
+### TelnetClientDroppedLinkTests.cs
+- Covers: Net/TelnetClient (over a loopback socket the test's board end resets)
+- Checks: a window size sent after the link dropped is logged as not sent, and doesn't throw.
+- Why: reports `Crash-20261030-095446` and `Crash-20261030-095447` (a profile load re-sent the window size to a dropped link; the failed write, waited on by nobody, faulted on the finalizer thread as a crash).
+
 ### TelnetClientTimeoutTests.cs
 - Covers: Net/TelnetClient.DeadConnectionCapMs
 - Checks: the TCP_USER_TIMEOUT calculation (idle time plus a 30 s tail, a 60 s fallback, a clamp to the maximum uint).

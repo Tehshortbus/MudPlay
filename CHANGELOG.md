@@ -1,5 +1,10 @@
 # Version history
 
+## 3.195.10
+
+- Fixed a crash when a profile load or resize sent the window size to a dropped connection
+- bug reports addressed: Crash-20261030-095446, Crash-20261030-095447
+
 ## 3.195.8
 
 - A party train waits at each trainer until everyone is back in the party, up to "If leading, wait only", then carries on
