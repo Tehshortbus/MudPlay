@@ -125,6 +125,14 @@ public sealed class PartyTrainCoordinator : IDisposable
     private HashSet<string>? _awaitingDone;
     private readonly HashSet<string> _seenGone = new(StringComparer.OrdinalIgnoreCase);
     private TaskCompletionSource<bool>? _doneTcs;
+    // The members a stop's party had when the trip got there, still to rejoin before
+    // the trip goes on (AwaitPartyWholeAsync).
+    private HashSet<string>? _awaitingRejoin;
+    private TaskCompletionSource<bool>? _rejoinTcs;
+
+    // How long a stop waits for its party to re-form (Settings → Party "If leading,
+    // wait only", mirrored by AppServices). Zero waits until everyone is back.
+    public TimeSpan RejoinWindow { get; set; } = TimeSpan.FromSeconds(90);
 
     // Member side. A trained follower's `done` waits until it's back in the party
     // (see FlushPendingDone); SawDrop records that we saw ourselves leave it.
@@ -223,6 +231,15 @@ public sealed class PartyTrainCoordinator : IDisposable
     public bool HasPartners => Leading && Settings.AutoTrainParty && Partners().Any();
     public string? ReportingTo => _reportTo;
 
+    // For the bug report: who the stop in hand is still waiting on to rejoin.
+    public IReadOnlyCollection<string> AwaitingRejoin => _awaitingRejoin ?? (IReadOnlyCollection<string>)[];
+
+    // Whether this member set out on the trip running: their return to the realm
+    // from a trainer screen is re-invited whatever Settings → Party "Re-invite lost
+    // members" says, since the trip is what turned them out of the party.
+    public bool TripCollects(string name) =>
+        _tripRunning && _roll.IsOpen && _roll.SetOut.Contains(GivenName(name), StringComparer.OrdinalIgnoreCase);
+
     public IReadOnlyList<(string Name, PartyTrainStatus Status, DateTimeOffset At)> Reports =>
         _reports.Select(kv => (kv.Key, kv.Value.Status, kv.Value.At)).ToList();
 
@@ -289,6 +306,7 @@ public sealed class PartyTrainCoordinator : IDisposable
     {
         if (_disposed) return;
         NoteAwaitedPresence();
+        NoteRejoined();
         FlushPendingDone();
         RefreshTrainInfo();
     }
@@ -514,6 +532,14 @@ public sealed class PartyTrainCoordinator : IDisposable
                 Settle(name);
             }
         }
+    }
+
+    private void NoteRejoined()
+    {
+        if (_awaitingRejoin is not { } awaiting) return;
+        foreach (string name in ActiveMemberGivens())
+            if (awaiting.Remove(name)) _log?.Info(LogCategory, $"{name} is back in the party.");
+        if (awaiting.Count == 0) _rejoinTcs?.TrySetResult(true);
     }
 
     private void LeaderTick()
@@ -837,6 +863,7 @@ public sealed class PartyTrainCoordinator : IDisposable
         _walkTcs = null;
         walk?.TrySetResult(false);
         _doneTcs?.TrySetResult(false);
+        _rejoinTcs?.TrySetResult(false);
         _selfTrainTcs?.TrySetResult((0, "the trip was called off"));
         return true;
     }
@@ -964,6 +991,9 @@ public sealed class PartyTrainCoordinator : IDisposable
                 }
                 List<string> atStop = stop.Members.ToList();
                 if (stop.LeaderTrains) atStop.Add(self);
+                // Who the training here turns out of the party, the leader's own train
+                // taking everyone: the trip goes on only once they're all back.
+                List<string> stopParty = ActiveMemberGivens().ToList();
                 _log?.Info(LogCategory, $"At {stop.Trainer.Name} — training {string.Join(", ", atStop)}.");
 
                 // Everyone at the stop trains at once. The leader used to wait out the
@@ -999,6 +1029,8 @@ public sealed class PartyTrainCoordinator : IDisposable
                     await AwaitMembersDoneAsync();
                     GoOnUnlessCalledOff();
                 }
+                await AwaitPartyWholeAsync(stopParty);
+                GoOnUnlessCalledOff();
             }
 
             EndTrip("all stops done.");
@@ -1026,6 +1058,8 @@ public sealed class PartyTrainCoordinator : IDisposable
             _walkTcs = null;
             _awaitingDone = null;
             _doneTcs = null;
+            _awaitingRejoin = null;
+            _rejoinTcs = null;
             _delayTcs = null;
             _selfTrainTcs = null;
             bool byItself = !_tripTakenOver;
@@ -1073,6 +1107,29 @@ public sealed class PartyTrainCoordinator : IDisposable
             _log?.Info(LogCategory, $"No word from {string.Join(", ", missing)} after {MemberTrainTimeout.TotalSeconds:0}s — moving on.");
         _awaitingDone = null;
         _doneTcs = null;
+    }
+
+    // The trip leaves a stop, or goes back to the engine, only with the party it
+    // arrived with back together: the reform's own hold ran out on "If leading, wait
+    // only" and the loop then walked off from members still coming back from their
+    // trainer screens (report paradigm-20261101-033147). Past that window, whoever
+    // isn't back is left to the reform's uninvite and the end-of-trip pickup.
+    private async Task AwaitPartyWholeAsync(IReadOnlyList<string> stopParty)
+    {
+        HashSet<string> present = new(ActiveMemberGivens(), StringComparer.OrdinalIgnoreCase);
+        HashSet<string> missing = new(stopParty.Where(n => !present.Contains(n)), StringComparer.OrdinalIgnoreCase);
+        if (missing.Count == 0) return;
+        TaskCompletionSource<bool> whole = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        _awaitingRejoin = missing;
+        _rejoinTcs = whole;
+        TimeSpan window = RejoinWindow;
+        _log?.Info(LogCategory, $"Waiting for {string.Join(", ", missing)} to rejoin the party"
+            + (window > TimeSpan.Zero ? $" (up to {window.TotalSeconds:0}s)." : "."));
+        if (window > TimeSpan.Zero) _armTimer(window, () => whole.TrySetResult(false));
+        if (!await whole.Task && _calledOff is null && missing.Count > 0)
+            _log?.Info(LogCategory, $"{string.Join(", ", missing)} didn't rejoin within {window.TotalSeconds:0}s — going on without them.");
+        _awaitingRejoin = null;
+        _rejoinTcs = null;
     }
 
     // The members' train orders are paced telepaths; wait until they've gone out and
@@ -1341,5 +1398,6 @@ public sealed class PartyTrainCoordinator : IDisposable
         _party.Members.CollectionChanged -= OnRosterChanged;
         _walkTcs?.TrySetResult(false);
         _doneTcs?.TrySetResult(false);
+        _rejoinTcs?.TrySetResult(false);
     }
 }

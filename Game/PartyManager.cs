@@ -1163,6 +1163,11 @@ public sealed partial class PartyManager : IDisposable
         if (result.Groups.Count == 0) return;
         string name = result.Groups[0];
         if (string.IsNullOrEmpty(name)) return;
+        if (TripCollects?.Invoke(name) == true)
+        {
+            InviteTripMember(name);
+            return;
+        }
         if (!_recentlyDisconnected.TryGetValue(name, out DateTimeOffset droppedAt)) return;
         _returnedAfterDrop[name] = droppedAt;
         if (_now() - droppedAt > DisconnectGraceWindow)
@@ -1187,6 +1192,23 @@ public sealed partial class PartyManager : IDisposable
         // family. "invite Raijin", not "invite Raijin WuzHere".
         byte[] bytes = System.Text.Encoding.Latin1.GetBytes($"invite {GivenNameOf(name)}\r");
         _wireSender(bytes);
+    }
+
+    // A party train trip's member back from a trainer screen. Their leave line may
+    // have come while our own train had already emptied the roster, so no drop was
+    // noted for them, and the trip invites them whatever "Re-invite lost members"
+    // says (PartyTrainCoordinator.TripCollects).
+    public Func<string, bool>? TripCollects { get; set; }
+
+    private void InviteTripMember(string name)
+    {
+        _recentlyDisconnected.Remove(name);
+        if (State.IsInParty && !State.SelfIsLeader) return;
+        if (State.Members.Any(m => !m.IsInvited
+                && GivenNameOf(m.Name).Equals(GivenNameOf(name), StringComparison.OrdinalIgnoreCase))) return;
+        if (MasterSwitchOff?.Invoke() == true || _wireSender is null) return;
+        _log?.Info("Party", $"{GivenNameOf(name)} is back in the Realm from training — re-inviting.");
+        _wireSender(System.Text.Encoding.Latin1.GetBytes($"invite {GivenNameOf(name)}\r"));
     }
 
     // Was sender a party member of ours who departed (got left behind / dropped
@@ -1261,7 +1283,9 @@ public sealed partial class PartyManager : IDisposable
     // (OnPlayerEnters) — then fire MemberDisconnected so PartyDisconnectMovementGate
     // holds the movement loop for the wait window, resuming when they re-party or
     // when the window elapses. Mirrors the grace snapshot OnPartyDissolved takes.
-    public void BeginLeaderReconnectReform(IReadOnlyList<string> followerGivens)
+    // inviteRegardless: a party train trip re-collects its party whatever Settings →
+    // Party "Re-invite lost members" says, since its own train broke the party up.
+    public void BeginLeaderReconnectReform(IReadOnlyList<string> followerGivens, bool inviteRegardless = false)
     {
         ArgumentNullException.ThrowIfNull(followerGivens);
         if (followerGivens.Count == 0) return;
@@ -1283,7 +1307,7 @@ public sealed partial class PartyManager : IDisposable
         // auto-invites a follower who RE-ENTERS the realm, but a leader-drop leaves them
         // standing in the room (they never left), so nothing would ever pull them back.
         // AutoPartyManager holds the `invite X` until each is observed present.
-        if (AutoInviteEnabled)
+        if (AutoInviteEnabled || inviteRegardless)
             LeaderReconnectReformInvites?.Invoke(followerGivens);
     }
 
