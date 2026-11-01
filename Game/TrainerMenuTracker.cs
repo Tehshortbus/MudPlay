@@ -7,11 +7,10 @@ namespace MudPlay.Game;
 
 // Detects the brief excursion into the in-game trainer stats menu so
 // downstream subscribers can react when the user returns to the realm —
-// specifically, AutoPartyManager uses MenuExited to refresh any party members
-// whose [Invited] slot is still open on our leader-side state but whose own
-// party view was dissolved by the brief absence.
+// specifically, AutoPartyManager uses MenuExited to re-collect the party a
+// leader's own train broke up.
 //
-// State machine, leader-side only:
+// State machine:
 //   1. User sends train stats (or just train) on the wire — ObserveOutbound
 //      arms ExpectingMenuWindow seconds of "expecting menu" time.
 //   2. Within that window, the anchored MenuTrainerStatsMarker line ("Point
@@ -78,6 +77,7 @@ public sealed class TrainerMenuTracker : IDisposable
     private DateTime? _expectingMenuSince;
     private bool _inMenu;
     private List<string> _rosterSnapshot = new();
+    private bool _ledAtMenuEntry;
 
     // Input-mode state, driven by the outbound `train stats` command rather
     // than the marker (see InputMenuEntered).
@@ -192,6 +192,10 @@ public sealed class TrainerMenuTracker : IDisposable
     // menu entry. Subscribers to MenuExited inspect this to decide who to
     // re-invite.
     public IReadOnlyList<string> RosterAtMenuEntry => _rosterSnapshot;
+
+    // Whether we led that party: by the menu's exit the server's party snapshot
+    // may already have dissolved it, so it's read at entry.
+    public bool LedAtMenuEntry => _ledAtMenuEntry;
 
     // Fires once when the trainer-stats marker confirms entry into the
     // full-screen menu. Lets subscribers (e.g. the terminal's character-mode
@@ -383,6 +387,7 @@ public sealed class TrainerMenuTracker : IDisposable
             .Where(m => !m.IsSelf && !string.IsNullOrEmpty(m.Name))
             .Select(m => m.Name)
             .ToList();
+        _ledAtMenuEntry = _party.IsInParty && _party.SelfIsLeader;
         _log?.Log(LogSeverity.Info, "TrainerMenu",
             $"Entered trainer menu ({(gateArmed ? "train-stats gate" : "character creation")}) — "
             + $"snapshot {_rosterSnapshot.Count} non-self member(s).");

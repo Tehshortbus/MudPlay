@@ -1,5 +1,9 @@
 # Version history
 
+## 3.195.15
+
+- A leader who trains by hand re-invites the party when it leaves the trainer screen
+
 ## 3.195.14
 
 - Chest Offload no longer plans sales at shops that aren't in any room

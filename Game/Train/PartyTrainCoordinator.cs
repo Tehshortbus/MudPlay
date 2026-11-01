@@ -231,6 +231,10 @@ public sealed class PartyTrainCoordinator : IDisposable
     public bool HasPartners => Leading && Settings.AutoTrainParty && Partners().Any();
     public string? ReportingTo => _reportTo;
 
+    // Whether the training run under way re-collects the party its leader's train
+    // breaks up: a trip does at each stop, a solo-fallback run once it's done.
+    public bool ReformsAfterTrain => _tripRunning || _soloReform.Count > 0;
+
     // For the bug report: who the stop in hand is still waiting on to rejoin.
     public IReadOnlyCollection<string> AwaitingRejoin => _awaitingRejoin ?? (IReadOnlyCollection<string>)[];
 

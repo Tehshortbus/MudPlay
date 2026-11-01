@@ -1543,108 +1543,99 @@ public sealed class AutoPartyManagerTests
 
     // ===== Trainer-menu exit re-invite =====
 
-    [Fact]
-    public void TrainerMenuExited_ReInvitesDroppedRosterMembers()
+    // A leader with Raijin and Forged following, wired as AppServices wires the
+    // trainer-menu exit to the reconnect reform; serverRoster: the server owns the
+    // room's occupant list.
+    private (AutoPartyManager Engine, MessageRouter Router, PartyState Party, PartyManager Manager,
+        TrainerMenuTracker Tracker, RoomEntityClassifier Roster) LeaderAtTheTrainer(bool serverRoster = false)
     {
-        // Simulate the full leader-side scenario: party of two, leader
-        // visits trainer-stats menu, comes back, follower's view has
-        // dissolved (so the row is gone from State.Members), but the
-        // [Invited] hold is still active server-side. AutoParty should
-        // see MenuExited and re-fire `invite Raijin` for the dropped
-        // roster name.
         MessageRouter router = new();
         DefaultPatterns.Seed(router);
         PlayerDatabase players = new(new ProfileService(), () => null);
-        SeedPlayer(players, "Raijin", inviteOnSeen: true);
         PartyState party = new();
-        party.SelfIsLeader = true;   // leader-side reform — only a leader re-invites its followers
+        PartyManager manager = new(router, party, now: () => DateTimeOffset.UtcNow) { AutoInviteEnabled = false };
         TrainerMenuTracker tracker = new(router, party, now: () => Now, schedule: _partyTimers.Arm);
         _partyNow = () => Now;
         AutoPartyManager engine = new(router, players, party, tracker, schedule: _partyTimers.Arm, now: () => _partyNow());
-        engine.SetRoomRoster(new RoomEntityClassifier(router, new MonsterMessageStore(), players));
+        RoomEntityClassifier roster = new(router, new MonsterMessageStore(), players) { GmcpOwnsOccupants = () => serverRoster };
+        engine.SetRoomRoster(roster);
         engine.SetWireSender(_sent.Add);
-
-        // Snapshot the roster the menu captured at entry — simulates
-        // "Raijin was in the party before we visited the trainer".
+        manager.LeaderReconnectReformInvites += engine.NoteLeaderReconnectReform;
+        engine.OwnTrainBrokeUpParty += givens => manager.BeginLeaderReconnectReform(givens, inviteRegardless: true);
+        party.IsInParty = true;
+        party.SelfIsLeader = true;
+        party.LeaderName = "MudPlay";
+        party.Members.Add(new PartyMember { Name = "MudPlay", IsSelf = true, IsLeader = true });
         party.Members.Add(new PartyMember { Name = "Raijin WuzHere" });
+        party.Members.Add(new PartyMember { Name = "Forged" });
+        return (engine, router, party, manager, tracker, roster);
+    }
+
+    private void TrainStatsAndBack(TrainerMenuTracker tracker, MessageRouter router)
+    {
         tracker.ObserveOutbound(Encoding.Latin1.GetBytes("train stats\r"));
         TheGameDrawsTheForm(tracker, router);
         Assert.True(tracker.IsInTrainerMenu);
-        Assert.Contains("Raijin WuzHere", tracker.RosterAtMenuEntry);
-
-        // Drop Raijin to model the follower-view dissolution that
-        // happened while we were in the menu.
-        party.Members.Clear();
         _sent.Clear();
-
-        // Exit the menu — next in-game prompt fires MenuExited.
-        Dispatch(router, "[HP=33]:");
-
-        byte[] sent = Assert.Single(_sent);
-        Assert.Equal("invite Raijin\r", Encoding.Latin1.GetString(sent));
+        Dispatch(router, "[HP=33]:");   // the prompt back in the world ends the form
     }
 
+    // A leader's own `train stats` breaks the party up, and the followers stand
+    // beside it. Our roster went on showing them all until a `par`, so the exit
+    // re-invited nobody: they're re-collected now as a reconnect re-collects them,
+    // invited once seen in the room, with "Re-invite lost party members" off too.
     [Fact]
-    public void TrainerMenuExited_StillInParty_DoesNotResendInvite()
+    public void TrainerMenuExited_AsLeader_ReCollectsThePartyItsTrainBrokeUp()
     {
-        // If the roster member never left State.Members across the
-        // menu trip, there's nothing to re-invite.
-        MessageRouter router = new();
-        DefaultPatterns.Seed(router);
-        PlayerDatabase players = new(new ProfileService(), () => null);
-        SeedPlayer(players, "Raijin", inviteOnSeen: true);
-        PartyState party = new();
-        party.SelfIsLeader = true;   // leader-side reform — only a leader re-invites its followers
-        TrainerMenuTracker tracker = new(router, party, now: () => Now, schedule: _partyTimers.Arm);
-        _partyNow = () => Now;
-        AutoPartyManager engine = new(router, players, party, tracker, schedule: _partyTimers.Arm, now: () => _partyNow());
-        engine.SetRoomRoster(new RoomEntityClassifier(router, new MonsterMessageStore(), players));
-        engine.SetWireSender(_sent.Add);
+        var rig = LeaderAtTheTrainer();
 
-        party.Members.Add(new PartyMember { Name = "Raijin WuzHere" });
-        tracker.ObserveOutbound(Encoding.Latin1.GetBytes("train stats\r"));
-        TheGameDrawsTheForm(tracker, router);
+        TrainStatsAndBack(rig.Tracker, rig.Router);
+
+        Assert.Empty(_sent);   // nobody invited until seen here
+        Assert.DoesNotContain(rig.Party.Members, m => m.Name == "Forged");
+        Dispatch(rig.Router, "Also here: Raijin, Forged.");
+        Assert.Equal(new[] { "invite Raijin\r", "invite Forged\r" }, SentLines());
+    }
+
+    // Report paradigm-20261101-033147: the server's party snapshot had already said
+    // there was no party when the form closed, so a leader check failed and nobody
+    // was invited. Who led is read as the form opened; the server's room list names
+    // the followers, and they're invited at once.
+    [Fact]
+    public void TrainerMenuExited_ServerDissolvedThePartyFirst_StillReCollectsIt()
+    {
+        var rig = LeaderAtTheTrainer(serverRoster: true);
+        rig.Tracker.ObserveOutbound(Encoding.Latin1.GetBytes("train stats\r"));
+        TheGameDrawsTheForm(rig.Tracker, rig.Router);
+        rig.Party.Members.Clear();
+        rig.Party.IsInParty = false;
+        rig.Party.SelfIsLeader = false;
+        rig.Party.LeaderName = null;
+        rig.Roster.ApplyGmcp(new[]
+        {
+            new RoomEntity("Raijin", "Raijin", EntityKind.Player, null),
+            new RoomEntity("Forged", "Forged", EntityKind.Player, null),
+        });
         _sent.Clear();
 
-        Dispatch(router, "[HP=33]:");
+        Dispatch(rig.Router, "[HP=33]:");
+
+        Assert.Equal(new[] { "invite Raijin\r", "invite Forged\r" }, SentLines());
+    }
+
+    // A party train trip (or the leader's solo-fallback run) re-collects the party
+    // itself once its train is done; the exit leaves it to that.
+    [Fact]
+    public void TrainerMenuExited_ATrainingRunThatReCollects_IsLeftToIt()
+    {
+        var rig = LeaderAtTheTrainer();
+        rig.Engine.TrainRunReforms = () => true;
+
+        TrainStatsAndBack(rig.Tracker, rig.Router);
+        Dispatch(rig.Router, "Also here: Raijin, Forged.");
 
         Assert.Empty(_sent);
-    }
-
-    [Fact]
-    public void TrainerMenuExited_InvitedPlaceholder_ReInvites()
-    {
-        // The reported stuck state: a joined follower at menu entry comes back
-        // as an [Invited] placeholder (their follower-side view dissolved during
-        // the trainer trip, leaving only the leader's hot invite slot). That
-        // placeholder must NOT count as "still joined" — AutoParty re-invites so
-        // the follower re-forms rather than sitting at [Invited] forever.
-        MessageRouter router = new();
-        DefaultPatterns.Seed(router);
-        PlayerDatabase players = new(new ProfileService(), () => null);
-        SeedPlayer(players, "Raijin", inviteOnSeen: true);
-        PartyState party = new();
-        party.SelfIsLeader = true;   // leader-side reform — only a leader re-invites its followers
-        TrainerMenuTracker tracker = new(router, party, now: () => Now, schedule: _partyTimers.Arm);
-        _partyNow = () => Now;
-        AutoPartyManager engine = new(router, players, party, tracker, schedule: _partyTimers.Arm, now: () => _partyNow());
-        engine.SetRoomRoster(new RoomEntityClassifier(router, new MonsterMessageStore(), players));
-        engine.SetWireSender(_sent.Add);
-
-        party.Members.Add(new PartyMember { Name = "Raijin WuzHere" });
-        tracker.ObserveOutbound(Encoding.Latin1.GetBytes("train stats\r"));
-        TheGameDrawsTheForm(tracker, router);
-        Assert.Contains("Raijin WuzHere", tracker.RosterAtMenuEntry);
-
-        // Follower view dissolved → row is now a bare [Invited] placeholder.
-        party.Members.Clear();
-        party.Members.Add(new PartyMember { Name = "Raijin WuzHere", IsInvited = true });
-        _sent.Clear();
-
-        Dispatch(router, "[HP=33]:");
-
-        byte[] sent = Assert.Single(_sent);
-        Assert.Equal("invite Raijin\r", Encoding.Latin1.GetString(sent));
+        Assert.Contains(rig.Party.Members, m => m.Name == "Forged");
     }
 
     [Fact]
@@ -1655,30 +1646,16 @@ public sealed class AutoPartyManagerTests
         // the follower, who auto-joins via JoinPartyIfInvited). Only a leader
         // reforms — before the fix a follower fired `invite <leader>` and tangled
         // the rejoin.
-        MessageRouter router = new();
-        DefaultPatterns.Seed(router);
-        PlayerDatabase players = new(new ProfileService(), () => null);
-        PartyState party = new();
-        party.SelfIsLeader = false;      // we're a follower
-        party.LeaderName = "MudPlay";
-        TrainerMenuTracker tracker = new(router, party, now: () => Now, schedule: _partyTimers.Arm);
-        _partyNow = () => Now;
-        AutoPartyManager engine = new(router, players, party, tracker, schedule: _partyTimers.Arm, now: () => _partyNow());
-        engine.SetRoomRoster(new RoomEntityClassifier(router, new MonsterMessageStore(), players));
-        engine.SetWireSender(_sent.Add);
+        var rig = LeaderAtTheTrainer();
+        rig.Party.SelfIsLeader = false;      // we follow Raijin
+        rig.Party.LeaderName = "Raijin WuzHere";
+        bool reformed = false;
+        rig.Engine.OwnTrainBrokeUpParty += _ => reformed = true;
 
-        // Roster at menu entry holds our leader.
-        party.Members.Add(new PartyMember { Name = "MudPlay" });
-        tracker.ObserveOutbound(Encoding.Latin1.GetBytes("train stats\r"));
-        TheGameDrawsTheForm(tracker, router);
-        Assert.Contains("MudPlay", tracker.RosterAtMenuEntry);
+        TrainStatsAndBack(rig.Tracker, rig.Router);
+        Dispatch(rig.Router, "Also here: Raijin, Forged.");
 
-        // Follower-side view dissolved during the trip.
-        party.Members.Clear();
-        _sent.Clear();
-
-        Dispatch(router, "[HP=33]:");
-
+        Assert.False(reformed);
         Assert.Empty(_sent);   // no invite — the leader reforms
     }
 
