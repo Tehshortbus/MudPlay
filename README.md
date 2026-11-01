@@ -1,11 +1,8 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.195.13**
-> - Fixed a crash when a profile load or resize sent the window size to a dropped connection
-> - Chest Offload lists what a chest gave again with the server's inventory (GMCP) on
-> - Chest Offload items no shop buys get a Drop button
-> - Chest Offload shop headers show the shop's name and its room's map/room and name
+> **Version 3.195.14**
+> - Chest Offload no longer plans sales at shops that aren't in any room
 <!-- current-version:end -->
 
 A modern Telnet terminal client for **MajorMUD** and other BBS door games, built in C# / .NET 10 with [Avalonia](https://avaloniaui.net/). It renders a faithful CP437 cell grid with full VT100/ANSI parsing, and layers a MegaMUD-style automation suite (combat, party, navigation, healing, and more) on top — all in modeless, dockable windows so the terminal stays live while you configure anything.

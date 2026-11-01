@@ -1,5 +1,10 @@
 # Version history
 
+## 3.195.14
+
+- Chest Offload no longer plans sales at shops that aren't in any room
+- bug reports addressed: paradigm-20261101-080712
+
 ## 3.195.13
 
 - Fixed a crash when a profile load or resize sent the window size to a dropped connection
