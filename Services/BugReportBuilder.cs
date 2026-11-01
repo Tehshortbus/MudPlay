@@ -861,6 +861,9 @@ public static class BugReportBuilder
         Kv(sb, "Party train — trip", ptrain.TripRunning
             ? "running" + (svc.TrainerWalk.PartyTripActive ? " (engine paused)" : "")
             : "idle");
+        Kv(sb, "Party train — stop waiting for these to rejoin", ptrain.AwaitingRejoin.Count == 0
+            ? "(nobody)"
+            : $"{string.Join(", ", ptrain.AwaitingRejoin)} (up to {(ptrain.RejoinWindow > TimeSpan.Zero ? $"{ptrain.RejoinWindow.TotalSeconds:0}s" : "no limit")})");
         Kv(sb, "Party train — last decision", ptrain.LastDecision.Length > 0 ? ptrain.LastDecision : "(none)");
         Kv(sb, "Party train — members needed ready", svc.TrainerWalk.CurrentSettings.PartyMinReady.ToString());
         Kv(sb, "Party train — cooldown until", ptrain.CooldownUntil is { } cd

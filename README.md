@@ -1,8 +1,9 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.195.7**
-> - After a party train, the leader re-invites the followers standing with it when the server lists the room's occupants
+> **Version 3.195.8**
+> - A party train waits at each trainer until everyone is back in the party, up to "If leading, wait only", then carries on
+> - A party train re-invites its members even with "Re-invite lost party members" off
 <!-- current-version:end -->
 
 A modern Telnet terminal client for **MajorMUD** and other BBS door games, built in C# / .NET 10 with [Avalonia](https://avaloniaui.net/). It renders a faithful CP437 cell grid with full VT100/ANSI parsing, and layers a MegaMUD-style automation suite (combat, party, navigation, healing, and more) on top — all in modeless, dockable windows so the terminal stays live while you configure anything.

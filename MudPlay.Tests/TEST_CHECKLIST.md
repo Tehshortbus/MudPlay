@@ -2944,8 +2944,8 @@ How to keep it current:
 
 ### PartyManagerTests.cs
 - Covers: Game/PartyManager, Game/PartyMember display props
-- Checks: Follow, join and leave lines; par parsing (rank, poison, kai, invited); reconciliation; self row; rank lines; the rest and meditate observation lines; the rank decision on joining (sent on every join, a re-invite the client still counted as the old party included; the game's refusal or move) recorded for the bug report; Stock "listed with" state; a `par` opening `You are following X.` gives back a lost leader (and a solo client its leader) only when its rows list them, and never changes a named one.
-- Why: Roster correctness; stock-20260801-002423; paradigm-20261025-114837 (the follower's @wait had no leader to go to); a cleric set to back rank found in the middle after being re-invited to a party of two (player report, 2026-10-27).
+- Checks: Follow, join and leave lines; par parsing (rank, poison, kai, invited); reconciliation; self row; rank lines; the rest and meditate observation lines; the rank decision on joining (sent on every join, a re-invite the client still counted as the old party included; the game's refusal or move) recorded for the bug report; Stock "listed with" state; a `par` opening `You are following X.` gives back a lost leader (and a solo client its leader) only when its rows list them, and never changes a named one; a party train's reform and a trip member's realm entry re-invite with *Re-invite lost party members* off.
+- Why: Roster correctness; stock-20260801-002423; paradigm-20261101-033147 (a party train re-collects its party whatever that setting says); paradigm-20261025-114837 (the follower's @wait had no leader to go to); a cleric set to back rank found in the middle after being re-invited to a party of two (player report, 2026-10-27).
 
 ### PartyPathItemGateTests.cs
 - Covers: Game/Map/PartyPathItemGate, PartyHandOverMemory
@@ -2996,6 +2996,12 @@ How to keep it current:
 - Covers: Game/Train/* (status codec, quorum, funding, itinerary), PartyTrainCoordinator helpers, TrainerWalkManager.PartyCeiling, CurrencyHoldings.PlanCover
 - Checks: The planning core of party auto-train.
 - Why: Party auto-train.
+
+### PartyTrainStopRejoinTests.cs
+- Covers: Game/Train/PartyTrainCoordinator (with Game/TrainerWalkManager on ErrandLightWorld's map and walker, as real collaborators)
+- Checks: a party train stop whose member trained and isn't back keeps the trip running and the engine paused until they rejoin, then ends the trip; past *If leading, wait only* it goes on without them; a member who set out is the trip's to re-invite only while it runs.
+- Why: report `paradigm-20261101-033147` (the reform's hold ran out and the loop walked off from members still coming back); GAME_MECHANICS "Training drops you from the party".
+- Named seam: PartyTrainCoordinator.RunTripAsync is internal, so the test starts a trip with a set decision, as GameDataChangeDropsHeldStartsTests does.
 
 ### PartyTrainTripRollTests.cs
 - Covers: Game/Train/PartyTrainTripRoll

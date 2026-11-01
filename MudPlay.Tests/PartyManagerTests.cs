@@ -69,6 +69,39 @@ public sealed class PartyManagerTests
         Assert.False(fired);
     }
 
+    // A party train trip re-collects the party its own train broke up, whatever
+    // Settings → Party "Re-invite lost members" says.
+    [Fact]
+    public void BeginLeaderReconnectReform_ForAPartyTrain_ReInvitesWithAutoInviteDisabled()
+    {
+        var (_, p) = Setup();
+        p.AutoInviteEnabled = false;
+        IReadOnlyList<string>? invited = null;
+        p.LeaderReconnectReformInvites += list => invited = list;
+
+        p.BeginLeaderReconnectReform(new[] { "Raijin" }, inviteRegardless: true);
+
+        Assert.Equal(new[] { "Raijin" }, invited);
+    }
+
+    // A trip member back from their trainer screen is invited on their realm entry,
+    // with "Re-invite lost members" off and no drop noted for them (their leave line
+    // came after our own train had emptied the roster). Anyone else's entry isn't.
+    [Fact]
+    public void TripMemberEntersTheRealm_IsInvited_WithAutoInviteDisabled()
+    {
+        var (_, p) = Setup();
+        p.AutoInviteEnabled = false;
+        List<string> sent = new();
+        p.SetWireSender(b => sent.Add(System.Text.Encoding.Latin1.GetString(b)));
+        p.TripCollects = name => name == "Raijin";
+
+        _feed.Line("Stranger just entered the Realm.");
+        _feed.Line("Raijin just entered the Realm.");
+
+        Assert.Equal(new[] { "invite Raijin\r" }, sent);
+    }
+
     // ===== Single-line membership signals =====
     // Real-BBS-verified phrasings (Playpen BBS):
     //   "X started to follow you."     — X joined our party (we lead)

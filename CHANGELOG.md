@@ -1,5 +1,11 @@
 # Version history
 
+## 3.195.8
+
+- A party train waits at each trainer until everyone is back in the party, up to "If leading, wait only", then carries on
+- A party train re-invites its members even with "Re-invite lost party members" off
+- bug reports addressed: paradigm-20261101-033147
+
 ## 3.195.7
 
 - After a party train, the leader re-invites the followers standing with it when the server lists the room's occupants

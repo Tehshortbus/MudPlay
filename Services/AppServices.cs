@@ -10164,7 +10164,7 @@ public sealed class AppServices
             // The leader's own train disbands the party; this is the same re-collect
             // a leader reconnect uses — re-invite the followers standing with us and
             // hold the resumed loop until they're back.
-            reformParty: givens => Party.BeginLeaderReconnectReform(givens),
+            reformParty: givens => Party.BeginLeaderReconnectReform(givens, inviteRegardless: true),
             armTimer: (delay, action) => _ = System.Threading.Tasks.Task.Delay(delay)
                 .ContinueWith(_ => Avalonia.Threading.Dispatcher.UIThread.Post(action),
                     System.Threading.Tasks.TaskScheduler.Default),
@@ -11585,6 +11585,7 @@ public sealed class AppServices
         ComebackRequest.MasterSwitchOff = MasterSwitchOff("Party upkeep");
         PartyDeathCleanup.MasterSwitchOff = MasterSwitchOff("Party upkeep");
         PartyTrain.MasterSwitchOff = MasterSwitchOff("Party training");
+        Party.TripCollects = PartyTrain.TripCollects;
         LeaderDoorAssist.MasterSwitchOff = MasterSwitchOff("Party upkeep");
         TrapDelegation.MasterSwitchOff = MasterSwitchOff("Party polls");
 
@@ -16383,6 +16384,8 @@ public sealed class AppServices
         PartyDisconnectMovement.GraceWindow = TimeSpan.FromSeconds(Math.Clamp(dto.IfLeadingWaitTotalSec, 0, 3600));
         // And how long a recovery waits for a re-invited follower to follow again.
         PartyComeback.FollowWaitWindow = TimeSpan.FromSeconds(Math.Clamp(dto.IfLeadingWaitTotalSec, 0, 3600));
+        // And how long a party train stop waits for its party to re-form.
+        PartyTrain.RejoinWindow = TimeSpan.FromSeconds(Math.Clamp(dto.IfLeadingWaitTotalSec, 0, 3600));
         // Leader-side recovery reach — the farthest we'll BFS-walk to re-collect a
         // returning member before declining via @forget.
         PartyComeback.ReturnDistanceRooms = Math.Clamp(dto.ReturnDistanceRooms, 1, 500);
@@ -16418,6 +16421,7 @@ public sealed class AppServices
         PartyWaitMovement.WaitWindow = TimeSpan.FromSeconds(defaults.IfLeadingWaitTotalSec);
         PartyDisconnectMovement.GraceWindow = TimeSpan.FromSeconds(defaults.IfLeadingWaitTotalSec);
         PartyComeback.FollowWaitWindow = TimeSpan.FromSeconds(defaults.IfLeadingWaitTotalSec);
+        PartyTrain.RejoinWindow = TimeSpan.FromSeconds(defaults.IfLeadingWaitTotalSec);
         PartyComeback.ReturnDistanceRooms = defaults.ReturnDistanceRooms;
         ApplyComebackWindow(defaults.AcceptComebackMinutes);
         Party.LocalRankPreference = defaults.Rank;
