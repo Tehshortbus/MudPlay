@@ -15,9 +15,9 @@ using MudPlay.Services.Patterns;
 
 namespace MudPlay.Game;
 
-// The manual / armed entry point for "go train". Resolves the nearest
-// allowed, level-appropriate trainer (TrainerCatalog.SelectNearest + BFS
-// distance), detours a running loop / auto-lair to it, sends train on arrival,
+// The manual / armed entry point for "go train". Resolves the closest (or, by the
+// trainer-choice setting, cheapest) allowed, level-appropriate trainer
+// (TrainerCatalog.SelectTrainer + BFS distance), detours a running loop / auto-lair to it, sends train on arrival,
 // and — once a train-success line confirms the level-up (stock "attain level N"
 // or the level-less Paradigm "train to the next level" wording) — refreshes
 // stats and hands off to AutoTrainManager to apply the CP plan, then resumes
@@ -574,7 +574,7 @@ public sealed class TrainerWalkManager : IDisposable
         if (_tracker.State.CurrentRoom is not { } cur) return 0;
         IReadOnlyList<Game.Train.TrainSegment> itinerary = Game.Train.TrainItineraryPlanner.Build(
             TrainerCatalog.Enumerate(_gameData), level, levels, classNumber,
-            ReadDisabledTrainers(), cur.Key, _bfs.DistanceMemo());
+            ReadDisabledTrainers(), cur.Key, _bfs.DistanceMemo(), ReadSettings().TrainerChoice);
         return Game.Train.TrainItineraryPlanner.TotalCost(itinerary);
     }
 
@@ -589,7 +589,7 @@ public sealed class TrainerWalkManager : IDisposable
             return;
         }
 
-        TrainerShop? target = SelectNearest(cur.Key);
+        TrainerShop? target = SelectTrainer(cur.Key);
         if (target is not { } t)
         {
             _log?.Info("AutoTrain",
@@ -723,7 +723,7 @@ public sealed class TrainerWalkManager : IDisposable
 
         IReadOnlyList<Game.Train.TrainSegment> itinerary = Game.Train.TrainItineraryPlanner.Build(
             TrainerCatalog.Enumerate(_gameData), RunLevel, levels, ResolveClassNumber(),
-            ReadDisabledTrainers(), from, _bfs.DistanceMemo());
+            ReadDisabledTrainers(), from, _bfs.DistanceMemo(), ReadSettings().TrainerChoice);
         long cost = Game.Train.TrainItineraryPlanner.TotalCost(itinerary);
         if (cost <= 0) return Game.Train.TrainFundingHandoff.Proceed;
         ReserveForTraining?.Invoke(cost);
@@ -798,7 +798,7 @@ public sealed class TrainerWalkManager : IDisposable
         if (levels <= 0) return _trainScrolls;
         IReadOnlyList<Game.Train.TrainSegment> itinerary = Game.Train.TrainItineraryPlanner.Build(
             TrainerCatalog.Enumerate(_gameData), RunLevel, levels, ResolveClassNumber(),
-            ReadDisabledTrainers(), from, _bfs.DistanceMemo());
+            ReadDisabledTrainers(), from, _bfs.DistanceMemo(), ReadSettings().TrainerChoice);
         return Game.Train.TrainItineraryPlanner.TotalCost(itinerary) + _trainScrolls
             + Math.Max(0, TripTolls(itinerary, from, null)?.CopperFrom(from) ?? 0);
     }
@@ -849,7 +849,7 @@ public sealed class TrainerWalkManager : IDisposable
             switch (FundTrainingAlone(at.Key, unfunded))
             {
                 case Game.Train.TrainFundingHandoff.Proceed:
-                    _target = SelectNearest(at.Key) ?? unfunded;
+                    _target = SelectTrainer(at.Key) ?? unfunded;
                     WalkToTrainer(_target.Value, at.Key);
                     break;
 
@@ -891,7 +891,7 @@ public sealed class TrainerWalkManager : IDisposable
         _fundingRetryAt = DateTimeOffset.MinValue;
         // Re-select from where the errand left us: the bank we withdrew at may sit
         // nearer a different branch of the same trainer.
-        _target = SelectNearest(cur.Key) ?? t;
+        _target = SelectTrainer(cur.Key) ?? t;
         // The tolls on the way to the bank are paid: what the trainer walk's light
         // stop leaves in hand is the bill from here.
         if (_trainBill > 0) _trainBill = BillFrom(cur.Key);
@@ -1147,7 +1147,7 @@ public sealed class TrainerWalkManager : IDisposable
         TrainerShop? pick = Game.Train.TrainItineraryPlanner.NextTrainerInChain(
             TrainerCatalog.Enumerate(_gameData), level, CountBankableAbove(level), _keepLevels,
             EffectiveCeiling(), ResolveClassNumber(), ReadDisabledTrainers(),
-            cur.Key, _bfs.DistanceMemo());
+            cur.Key, _bfs.DistanceMemo(), ReadSettings().TrainerChoice);
 
         if (pick is not { } next) return false;
         var room = new RoomKey(next.Map, next.Room);
@@ -1623,7 +1623,7 @@ public sealed class TrainerWalkManager : IDisposable
 
     // ----- resolution / detection ----------------------------------------
 
-    private TrainerShop? SelectNearest(RoomKey from) => SelectNearest(from, _stats.Level);
+    private TrainerShop? SelectTrainer(RoomKey from) => SelectTrainer(from, _stats.Level);
 
     // CP allocation (`train stats`) selector — class-only, no level band (stats aren't
     // band-gated, only `train` is). Standing in a class-valid trainer gives distance 0, so
@@ -1636,22 +1636,24 @@ public sealed class TrainerWalkManager : IDisposable
     // Level is explicit for the chain re-target: mid-run PlayerStats.Level lags the
     // level we've actually attained, and picking the next trainer against a stale
     // level would re-select the one that just refused us.
-    private TrainerShop? SelectNearest(RoomKey from, int level)
+    private TrainerShop? SelectTrainer(RoomKey from, int level)
     {
         IReadOnlyList<TrainerCandidate> ranked = RankTrainers(from, level);
         TrainerShop? pick = TrainerCatalog.FirstUsable(ranked);
         // Every candidate, not just the winner: a walk to a far trainer is only
         // diagnosable when the log shows what the nearer ones measured or why they
         // were ruled out (report paradigm-20260927-030929).
-        _log?.Info("AutoTrain",
-            $"Trainer choice for level {level} from {from.Map}/{from.Room}: {TrainerCatalog.DescribeCandidates(ranked)}.");
+        string choice = $"level {level} from {from.Map}/{from.Room}, {ChoiceWord(ReadSettings().TrainerChoice)} first: "
+            + TrainerCatalog.DescribeCandidates(ranked);
+        LastTrainerChoice = $"{DateTimeOffset.Now:HH:mm:ss} {choice}";
+        _log?.Info("AutoTrain", $"Trainer choice for {choice}.");
         return pick;
     }
 
-    private IReadOnlyList<TrainerCandidate> RankTrainers(RoomKey from, int level) =>
+    private IReadOnlyList<TrainerCandidate> RankTrainers(RoomKey from, int level, TrainerChoice? by = null) =>
         TrainerCatalog.RankCandidates(
             TrainerCatalog.Enumerate(_gameData), level, ResolveClassNumber(), ReadDisabledTrainers(),
-            DistancesFrom(from));
+            DistancesFrom(from), by ?? ReadSettings().TrainerChoice);
 
     // Distance from one room to each trainer, mapped once rather than searched per
     // trainer (BfsMapper.DistanceMemo).
@@ -1664,13 +1666,22 @@ public sealed class TrainerWalkManager : IDisposable
     // The ranking a level-up run would use if it started right now, for the bug
     // report — the capture lands after the walk began, so this shows whether the
     // choice still stands from where the character is.
-    public string DescribeTrainerChoiceFromHere()
+    // otherChoice ranks by the setting the user didn't pick, so a report shows whether
+    // the other one would have gone elsewhere.
+    public string DescribeTrainerChoiceFromHere(bool otherChoice = false)
     {
         if (_tracker.State.CurrentRoom is not { } cur) return "(current room unknown)";
         if (_stats.Level <= 0) return "(level unknown)";
-        return $"level {_stats.Level} from {cur.Key.Map}/{cur.Key.Room}: "
-            + TrainerCatalog.DescribeCandidates(RankTrainers(cur.Key, _stats.Level));
+        TrainerChoice by = ReadSettings().TrainerChoice;
+        if (otherChoice) by = by == TrainerChoice.Cheapest ? TrainerChoice.Closest : TrainerChoice.Cheapest;
+        return $"level {_stats.Level} from {cur.Key.Map}/{cur.Key.Room}, {ChoiceWord(by)} first: "
+            + TrainerCatalog.DescribeCandidates(RankTrainers(cur.Key, _stats.Level, by));
     }
+
+    // The last level-up trainer pick a run made, with every candidate it weighed.
+    public string? LastTrainerChoice { get; private set; }
+
+    private static string ChoiceWord(TrainerChoice by) => by == TrainerChoice.Cheapest ? "cheapest" : "closest";
 
     // True when banked exp can reach a level past the reserve — i.e. Train Now would
     // actually train something. Honours the LevelsToKeep buffer so a character sitting

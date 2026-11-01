@@ -874,6 +874,32 @@ public sealed partial class GmcpIntegrationTests
         Assert.Equal(0u, projected.ExitMask & (1u << (int)Direction.Teleport));
     }
 
+    // The server calls a `Hidden/Passable` exit "hidden" as it does one found by a
+    // search. Read as searchable, the walker sent `sea e` twenty times at 17/1792 and
+    // gave up, where `e` walks through (report paradigm-20261101-161309).
+    [Theory]
+    [InlineData("Hidden/Passable", RoomExitHint.None, RoomExitHint.None)]
+    [InlineData("Hidden", RoomExitHint.SearchableHidden, RoomExitHint.SearchableHidden)]
+    public void RoomProjection_KeepsAHiddenExitTheGameDataWalksThrough(string cell, RoomExitHint known, RoomExitHint expected)
+    {
+        RoomKey library = new(17, 1792), next = new(17, 1793);
+        Room previous = new() { Key = library, Name = "Library", Exits = new Dictionary<Direction, RoomExit>
+        {
+            [Direction.E] = new(next, known, cell),
+        } };
+        JsonElement value = JsonSerializer.SerializeToElement(new
+        {
+            room = "17,1792", name = "Library", light = 100, spell = (int?)null,
+            exits = new object[]
+            {
+                new { dir = "e", to = "17,1793", kind = "hidden", hidden = true, found = false,
+                      door = (object?)null, gate = (object?)null, toll = (object?)null, phrase = (string?)null },
+            },
+        });
+
+        Assert.Equal(expected, GmcpProjection.Room(value, previous).Exits[Direction.E].Hint);
+    }
+
     // The server sends a lever's or a room command's door as a plain door or gate.
     // Taken as one, the walker sent the door handler at 8/909's portcullis (1000
     // picklocks/strength) and gave up, where `lift portcullis` opens it (report

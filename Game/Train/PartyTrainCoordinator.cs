@@ -120,6 +120,8 @@ public sealed class PartyTrainCoordinator : IDisposable
     private DateTimeOffset _cooldownUntil = DateTimeOffset.MinValue;
     private bool _tripRunning;
     private string _lastReason = "";
+    // The last trip's stops as planned, with the choice that ordered them.
+    private string _lastPlan = "";
     private TaskCompletionSource<bool>? _walkTcs;
     private RoomKey _walkTarget;
     private HashSet<string>? _awaitingDone;
@@ -225,11 +227,16 @@ public sealed class PartyTrainCoordinator : IDisposable
 
     public bool TripRunning => _tripRunning;
     public string LastDecision => _lastReason;
+    public string LastTripPlan => _lastPlan;
     public DateTimeOffset? CooldownUntil => _cooldownUntil > _now() ? _cooldownUntil : null;
     public string? PendingDoneFor => _pendingDone?.Leader;
     public IReadOnlyList<string> AskedMembers => _asked.Keys.ToList();
     public bool HasPartners => Leading && Settings.AutoTrainParty && Partners().Any();
     public string? ReportingTo => _reportTo;
+
+    // Whether the training run under way re-collects the party its leader's train
+    // breaks up: a trip does at each stop, a solo-fallback run once it's done.
+    public bool ReformsAfterTrain => _tripRunning || _soloReform.Count > 0;
 
     // For the bug report: who the stop in hand is still waiting on to rejoin.
     public IReadOnlyCollection<string> AwaitingRejoin => _awaitingRejoin ?? (IReadOnlyCollection<string>)[];
@@ -923,9 +930,13 @@ public sealed class PartyTrainCoordinator : IDisposable
                     statuses[n].Level + statuses[n].LevelsToTrain))
                 .ToList();
 
+            AutoTrainerSettings choice = _trainer.CurrentSettings;
             IReadOnlyList<PartyTrainStop> stops = PartyTrainItineraryPlanner.Plan(
-                _trainers(), members, leader, _trainer.CurrentSettings.DisabledTrainers ?? [],
-                bankRoom ?? here, _distance);
+                _trainers(), members, leader, choice.DisabledTrainers ?? [],
+                bankRoom ?? here, _distance, choice.TrainerChoice, choice.PartyStopChoice);
+            string plan = PartyTrainItineraryPlanner.Describe(stops, members, leader, choice.TrainerChoice, choice.PartyStopChoice);
+            _lastPlan = $"{_now().ToLocalTime():HH:mm:ss} {plan}";
+            _log?.Info(LogCategory, $"Party train plan: {plan}");
             if (stops.Count == 0)
             {
                 _log?.Info(LogCategory, "Party train: no reachable, allowed trainer serves anyone ready — not going.");

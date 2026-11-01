@@ -778,76 +778,45 @@ public sealed class AutoPartyManager : IDisposable
         BeginInviteWait(given, now);
     }
 
-    // Trainer-menu exit hook — re-fire `invite` for every member who was in the
-    // party when the menu opened but is no longer in the roster (their
-    // follower-side view dissolved during our absence even though the
-    // leader-side [Invited] slot is still hot). Existing flows handle the rest:
-    // the follower's OnPartyInviteReceived auto-accepts if they have
-    // JoinPartyIfInvited set, and the @join nag escalation covers anyone who
-    // doesn't auto-accept within the initial-delay window.
+    // Leaving the trainer screen after a train of our own while we led: the game
+    // broke the party up (GAME_MECHANICS "Training drops you from the party"), and
+    // the followers are standing beside us. They're re-collected as a leader
+    // reconnect re-collects them: each invited once seen in the room, movement held
+    // and @join nags sent meanwhile (PartyManager.BeginLeaderReconnectReform, raised
+    // through OwnTrainBrokeUpParty). Until 2026-11-01 this re-invited only the
+    // members no longer in our roster, and that roster went on showing them all
+    // until a `par` (or under the server's party snapshot was empty, which failed a
+    // leader check), so a hand-typed `train stats` re-invited nobody (report
+    // paradigm-20261101-033147).
+    //
+    // A follower's train is its leader's to mend: re-inviting the leader tangled
+    // the rejoin (report stock-20260731-015726). A training run that re-collects
+    // the party itself (a party train trip, the leader's solo-fallback run) is left
+    // to do so (TrainRunReforms).
+    public event Action<IReadOnlyList<string>>? OwnTrainBrokeUpParty;
+    public Func<bool>? TrainRunReforms { get; set; }
+
     private void OnTrainerMenuExited()
     {
-        if (_trainerMenu is null) return;
-        if (!_wire.IsBound) return;
-        if (MasterOff) return;
-        // Only a leader reforms its group after a trainer trip. A follower's
-        // roster snapshot includes its LEADER, and re-inviting the leader is always
-        // wrong — the leader re-invites the follower, who auto-joins via
-        // JoinPartyIfInvited. Without this a follower coming out of the trainer menu
-        // fired `invite <leader>` (+ a @join nag AT the leader), tangling the
-        // reform (report stock-20260731-015726). Mirrors NotePartySplitTeleport's
-        // leader gate.
-        if (!_party.SelfIsLeader)
+        if (_trainerMenu is null || !_wire.IsBound || MasterOff) return;
+        if (!_trainerMenu.LedAtMenuEntry)
         {
             _log?.Log(LogSeverity.Debug, "AutoParty",
-                "Trainer-menu exit: not the leader — leaving the re-invite to the leader.");
+                "Trainer-menu exit: we weren't leading — leaving the re-invite to the leader.");
             return;
         }
-        IReadOnlyList<string> snapshot = _trainerMenu.RosterAtMenuEntry;
-        if (snapshot.Count == 0) return;
-
-        DateTime now = _now();
-        foreach (string fullName in snapshot)
+        List<string> followers = _trainerMenu.RosterAtMenuEntry.Select(ExtractGiven)
+            .Where(g => g.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        if (followers.Count == 0) return;
+        if (TrainRunReforms?.Invoke() == true)
         {
-            string given = ExtractGiven(fullName);
-            if (string.IsNullOrEmpty(given)) continue;
-
-            // Already a joined member? Nothing to do. An [Invited] placeholder
-            // does NOT count — that's exactly the stuck state a trainer trip
-            // leaves behind: the leader's roster still shows the follower as
-            // [Invited] while their follower-side view has dissolved, so we must
-            // re-invite (and nag) rather than treat the hot slot as live.
-            bool stillJoined = false;
-            foreach (PartyMember m in _party.Members)
-            {
-                if (!m.IsInvited
-                    && string.Equals(ExtractGiven(m.Name), given, StringComparison.OrdinalIgnoreCase))
-                { stillJoined = true; break; }
-            }
-            if (stillJoined) continue;
-
-            // Respect the uninvite-suppression map — if the user
-            // explicitly kicked them during the menu trip, don't
-            // re-add.
-            if (_recentlyUninvited.TryGetValue(given, out DateTime kickedAt)
-                && now - kickedAt < UninviteSuppression)
-                continue;
-
-            // Override the regular re-invite cooldown — the menu exit
-            // is a deliberate refresh signal, not the rapid room
-            // re-render the cooldown protects against — but not an invite
-            // that's already just gone out.
-            if (InvitedJustNow(given, now))
-            {
-                if (!_activeNags.ContainsKey(given)) StartNag(given, now);
-                continue;
-            }
-            _recentlyInvited[given] = now;
-            _wire.Send($"invite {given}");
-            _log?.Log(LogSeverity.Info, "AutoParty",
-                $"Re-invited {given} after trainer-menu exit.");
-            StartNag(given, now);
+            _log?.Log(LogSeverity.Debug, "AutoParty",
+                "Trainer-menu exit: the training run re-collects the party itself.");
+            return;
         }
+        _log?.Log(LogSeverity.Info, "AutoParty",
+            $"Our train broke up the party — re-collecting {string.Join(", ", followers)}.");
+        OwnTrainBrokeUpParty?.Invoke(followers);
     }
 
     private void TryAutoAccept(string sender)
@@ -1067,9 +1036,7 @@ public sealed class AutoPartyManager : IDisposable
     // must be re-invited to reform. Snapshot the roster NOW (before the server's
     // dissolve lines clear PartyState.Members), re-invite + @join-nag each former
     // member, and hold the movement gate until they rejoin so the leader doesn't
-    // walk off without the reforming group. Mirrors OnTrainerMenuExited (the
-    // other party-dissolving event we re-invite through) but adds the gate hold
-    // since a split happens mid-movement.
+    // walk off without the reforming group.
     // True while a party-splitting-teleport reform is in flight — members still
     // pending an arrival re-invite, still held for rejoin, or within a short
     // settle grace after the last member rejoined. TrapDelegationManager consults

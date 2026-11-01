@@ -93,6 +93,16 @@
                           IsEnabled="{Binding AnnounceLevelUps}"/>
             </StackPanel>
 
+            <!-- Which trainer a run walks to when more than one can teach the level. -->
+            <TextBlock Classes="SectionHeader" Text="WHICH TRAINER"/>
+            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                <TextBlock Text="When several trainers can teach the level, go to the" VerticalAlignment="Center"/>
+                <ComboBox MinWidth="300" VerticalAlignment="Center"
+                          ItemsSource="{Binding TrainerChoiceOptions}"
+                          SelectedItem="{Binding SelectedTrainerChoice, Mode=TwoWay}"
+                          ToolTip.Tip="Closest: the fewest steps away, the lower markup breaking a tie. Cheapest: the lowest markup (the fee scales with it), the nearer breaking a tie, however far it is. Only the trainers ticked Use? below are considered. Applying stat points alone always goes to the closest: it costs nothing."/>
+            </StackPanel>
+
             <!-- When short on cash: where a run may fetch the difference. Saved per
                  character like the rest of this tab; the bank / stash pickers only
                  apply while the chosen source includes them. -->
@@ -141,6 +151,13 @@
                                Value="{Binding PartyLevelGap, Mode=TwoWay}"
                                ToolTip.Tip="Leader only. A member who isn't ready and is more than this many levels above the rest of the party (a power-leveler, the leader included) is never waited for. 0 = no level-gap rule."/>
                 <TextBlock Text="levels above the party" VerticalAlignment="Center"/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0" VerticalAlignment="Center">
+                <TextBlock Text="Stop first at" VerticalAlignment="Center"/>
+                <ComboBox MinWidth="300" VerticalAlignment="Center"
+                          ItemsSource="{Binding PartyStopChoiceOptions}"
+                          SelectedItem="{Binding SelectedPartyStopChoice, Mode=TwoWay}"
+                          ToolTip.Tip="Leader only. How a party trip picks the trainer its members train at next. The one that trains the most of them makes the fewest stops, the trainer choice above breaking a tie. The other option goes by the trainer choice alone, to any trainer that trains at least one member."/>
             </StackPanel>
             <CheckBox Content="Leave the level 11 train to a solo trip" Margin="0,8,0,0"
                       IsChecked="{Binding PartySkipLevel11, Mode=TwoWay}"
@@ -194,6 +211,9 @@
                                                 FontFamily="{StaticResource FontMono}"/>
                             <DataGridTextColumn Header="Levels" Width="90"
                                                 Binding="{ReflectionBinding LevelRange}" IsReadOnly="True"
+                                                FontFamily="{StaticResource FontMono}"/>
+                            <DataGridTextColumn Header="Markup" Width="80"
+                                                Binding="{ReflectionBinding Markup}" IsReadOnly="True"
                                                 FontFamily="{StaticResource FontMono}"/>
                         </DataGrid.Columns>
                     </DataGrid>

@@ -94,6 +94,15 @@ public sealed class AutoTrainerSettings
     // default to allowed. null / empty = every discovered trainer is allowed.
     public List<string>? DisabledTrainers { get; set; }
 
+    // Which trainer a run goes to when several can teach the level: the closest, or
+    // the cheapest (lowest markup). `train stats` alone always takes the closest:
+    // applying CP costs nothing.
+    public TrainerChoice TrainerChoice { get; set; }
+
+    // How a party trip picks the trainer its members train at next: the one that
+    // trains the most of them, or the one TrainerChoice picks.
+    public PartyStopChoice PartyStopChoice { get; set; }
+
     // Where a run that's short on cash may fetch the difference from: stashes, a
     // bank, both, or nowhere (keep looping until the purse covers it).
     public TrainFundingMode FundingMode { get; set; }

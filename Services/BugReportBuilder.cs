@@ -865,6 +865,10 @@ public static class BugReportBuilder
             ? "(nobody)"
             : $"{string.Join(", ", ptrain.AwaitingRejoin)} (up to {(ptrain.RejoinWindow > TimeSpan.Zero ? $"{ptrain.RejoinWindow.TotalSeconds:0}s" : "no limit")})");
         Kv(sb, "Party train — last decision", ptrain.LastDecision.Length > 0 ? ptrain.LastDecision : "(none)");
+        Kv(sb, "Party train — last trip plan", ptrain.LastTripPlan.Length > 0 ? ptrain.LastTripPlan : "(no trip this session)");
+        Kv(sb, "Party train — stop choice", svc.TrainerWalk.CurrentSettings.PartyStopChoice == Models.Profile.PartyStopChoice.MostMembers
+            ? "the trainer that trains the most members, then the trainer choice"
+            : "the trainer choice alone");
         Kv(sb, "Party train — members needed ready", svc.TrainerWalk.CurrentSettings.PartyMinReady.ToString());
         Kv(sb, "Party train — cooldown until", ptrain.CooldownUntil is { } cd
             ? cd.ToLocalTime().ToString("HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture)
@@ -3145,7 +3149,12 @@ public static class BugReportBuilder
         Kv(sb, "Coin pickup ceiling (funding errand / stash transfer)", svc.Cash.CollectLimitCopper is { } cap
             ? $"{cap:N0} copper still to take; {svc.Cash.SurveyedCopperUnderLimit:N0} copper surveyed"
             : "(none)");
+        Kv(sb, "Trainer choice setting", svc.TrainerWalk.CurrentSettings.TrainerChoice == Models.Profile.TrainerChoice.Cheapest
+            ? "cheapest (lowest markup), then closest"
+            : "closest, then cheapest");
         Kv(sb, "Trainer choice (if a run started now)", svc.TrainerWalk.DescribeTrainerChoiceFromHere());
+        Kv(sb, "Trainer choice by the other setting", svc.TrainerWalk.DescribeTrainerChoiceFromHere(otherChoice: true));
+        Kv(sb, "Last trainer choice", svc.TrainerWalk.LastTrainerChoice ?? "(none this session)");
         Kv(sb, "Last train shortfall", svc.TrainerWalk.LastFundingShortfall > 0
             ? $"{svc.TrainerWalk.LastFundingShortfall:N0} copper"
             : "(none)");

@@ -1,10 +1,11 @@
 using System.Collections.Generic;
 using MudPlay.Game.GameData;
+using MudPlay.Models.Profile;
 using Xunit;
 
 namespace MudPlay.Tests;
 
-// TrainerCatalog.SelectNearest picks the trainer the
+// TrainerCatalog.SelectTrainer picks the trainer the
 // auto-train coordinator should walk to: serves the level (MMUD off-by-one
 // gate), class-ok, allowed, reachable, nearest by the injected distance metric.
 public sealed class TrainerCatalogSelectTests
@@ -23,8 +24,8 @@ public sealed class TrainerCatalogSelectTests
     {
         // Level 5: Silvermere serves (3–10); Newhaven + Aldreth don't; the Mage
         // Trainer is class-7 only.
-        TrainerShop? pick = TrainerCatalog.SelectNearest(
-            All, level: 5, classNumber: 0, disabled: new HashSet<string>(), distance: _ => 10);
+        TrainerShop? pick = TrainerCatalog.SelectTrainer(
+            All, level: 5, classNumber: 0, disabled: new HashSet<string>(), distance: _ => 10, by: TrainerChoice.Closest);
 
         Assert.Equal(Silver.Number, pick!.Value.Number);
     }
@@ -34,9 +35,9 @@ public sealed class TrainerCatalogSelectTests
     {
         // Level 2 serves Newhaven + Silvermere (+ Mage Trainer for class 7) — pick
         // the closest by the injected distance.
-        TrainerShop? pick = TrainerCatalog.SelectNearest(
+        TrainerShop? pick = TrainerCatalog.SelectTrainer(
             All, level: 2, classNumber: 7, disabled: new HashSet<string>(),
-            distance: t => t.Number == MageTrainer.Number ? 2 : 20);
+            distance: t => t.Number == MageTrainer.Number ? 2 : 20, by: TrainerChoice.Closest);
 
         Assert.Equal(MageTrainer.Number, pick!.Value.Number);
     }
@@ -46,9 +47,9 @@ public sealed class TrainerCatalogSelectTests
     {
         // Level 1: only Newhaven (universal) + Mage Trainer (class 7) serve it.
         // Newhaven disallowed, Mage Trainer unreachable → nothing qualifies.
-        TrainerShop? pick = TrainerCatalog.SelectNearest(
+        TrainerShop? pick = TrainerCatalog.SelectTrainer(
             All, level: 1, classNumber: 7, disabled: new HashSet<string> { Newhaven.RowKey },
-            distance: t => t.Number == MageTrainer.Number ? (int?)null : 5);
+            distance: t => t.Number == MageTrainer.Number ? (int?)null : 5, by: TrainerChoice.Closest);
 
         Assert.Null(pick);
     }
@@ -59,8 +60,8 @@ public sealed class TrainerCatalogSelectTests
         // Level 10 is the coverage gap: no universal trainer serves it, and the
         // only one that spans it (Mage Trainer) is class-7 — so a class-3 character
         // has no trainer (a quest-gated level).
-        TrainerShop? pick = TrainerCatalog.SelectNearest(
-            All, level: 10, classNumber: 3, disabled: new HashSet<string>(), distance: _ => 1);
+        TrainerShop? pick = TrainerCatalog.SelectTrainer(
+            All, level: 10, classNumber: 3, disabled: new HashSet<string>(), distance: _ => 1, by: TrainerChoice.Closest);
 
         Assert.Null(pick);
     }
@@ -114,11 +115,11 @@ public sealed class TrainerCatalogSelectTests
     [Fact]
     public void SelectNearestForStats_IgnoresLevelBand()
     {
-        // Level 10 is the deliberate gap — no trainer serves it, so SelectNearest
+        // Level 10 is the deliberate gap — no trainer serves it, so SelectTrainer
         // (level-band gated) returns null. CP allocation isn't band-gated, so
         // SelectNearestForStats still picks the nearest class-ok trainer to apply stats.
-        Assert.Null(TrainerCatalog.SelectNearest(
-            All, level: 10, classNumber: 0, disabled: new HashSet<string>(), distance: _ => 5));
+        Assert.Null(TrainerCatalog.SelectTrainer(
+            All, level: 10, classNumber: 0, disabled: new HashSet<string>(), distance: _ => 5, by: TrainerChoice.Closest));
 
         TrainerShop? pick = TrainerCatalog.SelectNearestForStats(
             All, classNumber: 0, disabled: new HashSet<string>(),
@@ -172,26 +173,44 @@ public sealed class TrainerCatalogSelectTests
         var ranked = TrainerCatalog.RankCandidates(
             new[] { GypsyRoom, UniSilver, UniNewhaven }, level: 1, classNumber: 10,
             disabled: new HashSet<string> { UniNewhaven.RowKey },
-            distance: t => t.Room switch { 384 => 30, 1376 => 25, _ => 2 });
+            distance: t => t.Room switch { 384 => 30, 1376 => 25, _ => 2 }, by: TrainerChoice.Closest);
 
         Assert.Equal(new[] { 1376, 384, 2147 }, ranked.Select(c => c.Trainer.Room));
         Assert.Equal(TrainerSkip.Disabled, ranked[2].Skip);
         Assert.Equal(UniSilver, TrainerCatalog.FirstUsable(ranked));
         Assert.Equal(
-            "Training Room 1/1376 (25 steps), Gypsy Training Room 1/384 (30 steps), Training Room 1/2147 (disabled)",
+            "Training Room 1/1376 (25 steps, markup 0%), Gypsy Training Room 1/384 (30 steps, markup 300%), Training Room 1/2147 (disabled)",
             TrainerCatalog.DescribeCandidates(ranked));
     }
 
     [Fact]
-    public void SelectNearest_EqualDistance_PrefersTheCheaperTrainer()
+    public void SelectTrainer_EqualDistance_PrefersTheCheaperTrainer()
     {
         // Same walk either way — the lower markup is the cheaper lesson, whatever
         // order the Shops table lists them in.
-        TrainerShop? pick = TrainerCatalog.SelectNearest(
+        TrainerShop? pick = TrainerCatalog.SelectTrainer(
             new[] { GypsyRoom, UniSilver }, level: 1, classNumber: 10,
-            disabled: new HashSet<string>(), distance: _ => 12);
+            disabled: new HashSet<string>(), distance: _ => 12, by: TrainerChoice.Closest);
 
         Assert.Equal(UniSilver, pick);
+    }
+
+    // A user in the Dwarven Mines could reach two trainers for their level and wanted
+    // a say in which (user, 2026-11-01): Cheapest takes the lower markup however far,
+    // Closest the nearer whatever it charges.
+    [Theory]
+    [InlineData(TrainerChoice.Closest, 1376)]
+    [InlineData(TrainerChoice.Cheapest, 2147)]
+    public void SelectTrainer_GoesByTheTrainerChoice(TrainerChoice by, int room)
+    {
+        TrainerShop near = UniSilver with { Markup = 120 };
+        TrainerShop cheap = UniNewhaven with { Markup = 80 };
+
+        TrainerShop? pick = TrainerCatalog.SelectTrainer(
+            new[] { near, cheap }, level: 1, classNumber: 10, disabled: new HashSet<string>(),
+            distance: t => t.Room == 1376 ? 5 : 90, by);
+
+        Assert.Equal(room, pick!.Value.Room);
     }
 
     [Fact]
@@ -199,7 +218,7 @@ public sealed class TrainerCatalogSelectTests
     {
         var ranked = TrainerCatalog.RankCandidates(
             new[] { GypsyRoom, UniNewhaven }, level: 1, classNumber: 10,
-            disabled: new HashSet<string> { UniNewhaven.RowKey }, distance: _ => null);
+            disabled: new HashSet<string> { UniNewhaven.RowKey }, distance: _ => null, by: TrainerChoice.Closest);
 
         Assert.Null(TrainerCatalog.FirstUsable(ranked));
         Assert.Equal("Gypsy Training Room 1/384 (no path), Training Room 1/2147 (disabled)",

@@ -38,6 +38,9 @@ public sealed partial class AutoTrainerRowViewModel : ObservableObject
     // Served level range as "min–max".
     public string LevelRange { get; }
 
+    // The trainer's Markup%, which scales its fee: what a Cheapest trainer choice ranks by.
+    public string Markup => $"{_shop.Markup}%";
+
     [ObservableProperty] private bool _allowed;
 
     public AutoTrainerRowViewModel(TrainerShop shop, string mapRoom, string levelRange,

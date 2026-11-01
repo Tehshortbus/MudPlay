@@ -56,8 +56,12 @@ internal static class GmcpProjection
         int key = hasDoor ? OptionalInt(door, "key") : 0;
         RoomExitHint hint = edge.GetProperty("kind").GetString() switch
         {
-            // The server can't say a hidden exit needs several actions; the graph can.
-            "hidden" => prior.Hint == RoomExitHint.MultiActionHidden ? prior.Hint : RoomExitHint.SearchableHidden,
+            // The server can't say a hidden exit needs several actions, or none: one the
+            // game data marks `Hidden/Passable` is walked through, and a search never
+            // shows it (17/1792 east, report paradigm-20261101-161309). The graph can.
+            "hidden" => prior.Hint == RoomExitHint.MultiActionHidden || prior.IsWalkableHidden
+                ? prior.Hint
+                : RoomExitHint.SearchableHidden,
             "text" => RoomExitHint.Text,
             "item" => RoomExitHint.Item,
             "toll" => RoomExitHint.Toll,

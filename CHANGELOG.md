@@ -1,5 +1,15 @@
 # Version history
 
+## 3.195.19
+
+- Game Data → Spells no longer crashes on a set imported from a newer Anomaly database
+- Importing skips a database table that would overwrite one of MudPlay's own files
+- Walks step straight through a hidden exit the game data marks walkable instead of searching it
+- Settings → Auto-Trainer: choose the closest or cheapest trainer, and how party trips pick stops
+- Bug report shows the trainer choice, both rankings, the last pick and the last party trip plan
+- A leader who trains by hand re-invites the party when it leaves the trainer screen
+- bug reports addressed: Crash-20261101-094634, Crash-20261101-094635, Crash-20261101-100406, Crash-20261101-100632, paradigm-20261101-161309
+
 ## 3.195.14
 
 - Chest Offload no longer plans sales at shops that aren't in any room

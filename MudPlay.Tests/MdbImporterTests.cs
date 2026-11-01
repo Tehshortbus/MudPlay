@@ -43,6 +43,18 @@ public sealed class MdbImporterTests
         Assert.Equal(expected, MdbImporter.MakeFilesystemSafe(input));
     }
 
+    // A database table named like one of the client's own files in the set is left
+    // out: on Windows an Anomaly MDB's Messages table landed on messages.json and was
+    // read as the user's message edits (Crash-20261101-094634).
+    [Theory]
+    [InlineData("Messages",  "messages.json")]
+    [InlineData("QUESTS",    "quests.json")]
+    [InlineData("Favorites", "Favorites.json")]
+    [InlineData("Monsters",  null)]
+    [InlineData("Spells",    null)]
+    public void ClientFileFor_NamesTheClientFileATableWouldReplace(string table, string? expected)
+        => Assert.Equal(expected, MdbImporter.ClientFileFor("some-set", table));
+
     // A zero-table import removes the freshly-created (empty) set folder so a broken
     // MDB never leaves an empty set to switch to.
     [Fact]

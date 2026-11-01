@@ -3450,6 +3450,9 @@ public sealed class AppServices
         // followers sitting in the room, so re-invite each once AutoParty observes them
         // present (they never "re-enter the Realm" to trip the grace-window auto-invite).
         Party.LeaderReconnectReformInvites += AutoParty.NoteLeaderReconnectReform;
+        // A leader's own train broke up the party: re-collected as a reconnect is,
+        // whatever "Re-invite lost party members" says, as a party train trip's is.
+        AutoParty.OwnTrainBrokeUpParty += givens => Party.BeginLeaderReconnectReform(givens, inviteRegardless: true);
         // A Stock member an exit left behind is on our list because they joined:
         // an invite wait that runs out for them doesn't end in an uninvite.
         AutoParty.LeftBehindOnOurList = Party.IsLeftBehindOnOurList;
@@ -11586,6 +11589,7 @@ public sealed class AppServices
         PartyDeathCleanup.MasterSwitchOff = MasterSwitchOff("Party upkeep");
         PartyTrain.MasterSwitchOff = MasterSwitchOff("Party training");
         Party.TripCollects = PartyTrain.TripCollects;
+        AutoParty.TrainRunReforms = () => PartyTrain.ReformsAfterTrain;
         LeaderDoorAssist.MasterSwitchOff = MasterSwitchOff("Party upkeep");
         TrapDelegation.MasterSwitchOff = MasterSwitchOff("Party polls");
 

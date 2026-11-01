@@ -139,6 +139,11 @@ public readonly partial record struct RoomExit(
     // cap, or both).
     public bool HasLevelGate => MinLevel > 0 || MaxLevel > 0;
 
+    // A hidden exit a plain step crosses (`Hidden/Passable`): it carries no hint of its
+    // own, and only the cell's text says it is hidden.
+    public bool IsWalkableHidden =>
+        Hint == RoomExitHint.None && RawHint?.StartsWith("Hidden", StringComparison.OrdinalIgnoreCase) == true;
+
     // True when an `Action [on the X exit of …]` cell can be attached to this exit: a
     // hidden exit that needs actions, or a door or key door a lever opens. Any other
     // exit that an action cell happens to name keeps its own rule.
