@@ -1,5 +1,10 @@
 # Version history
 
+## 3.195.7
+
+- After a party train, the leader re-invites the followers standing with it when the server lists the room's occupants
+- bug reports addressed: paradigm-20261101-033147
+
 ## 3.195.6
 
 - Fixed a crash on saving the profile with the Round Totals window open

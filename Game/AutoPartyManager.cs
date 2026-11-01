@@ -1162,7 +1162,20 @@ public sealed class AutoPartyManager : IDisposable
                 $"Awaiting {given}'s presence to re-invite after a leader-disconnect reform.");
         }
 
-        if (anyDeferred) ScheduleReformRedisplay();
+        if (!anyDeferred) return;
+        ReadServerRosterForReform();
+        if (_reformPendingInvite.Count > 0) ScheduleReformRedisplay();
+    }
+
+    // The server sends its room list only when someone comes or goes, so followers
+    // already standing with us when the reform arms (our own realm re-entry after
+    // `train stats`) are never sent again, and a redisplay doesn't send it either
+    // (report paradigm-20261101-033147). The list as it stands is read for them.
+    private bool ReadServerRosterForReform()
+    {
+        if (_roster is not { ServerOwnsRoster: true, Current: { } room }) return false;
+        OnRoomRoster(room);
+        return true;
     }
 
     // Schedule a single room redisplay ReformRedisplayDelay after a split-teleport
@@ -1203,6 +1216,13 @@ public sealed class AutoPartyManager : IDisposable
             _log?.Log(LogSeverity.Info, "AutoParty",
                 "Party reform: still in the room we teleported from (a delayed teleport) — waiting to land before looking for arrivals.");
             ScheduleReformRedisplay();
+            return;
+        }
+        if (ReadServerRosterForReform())
+        {
+            if (_reformPendingInvite.Count > 0)
+                _log?.Log(LogSeverity.Info, "AutoParty",
+                    $"The server's room list doesn't show {string.Join(", ", _reformPendingInvite)} yet — waiting for them to arrive.");
             return;
         }
         // Bare CR = Enter = redisplay the current room, surfacing an "Also here:"

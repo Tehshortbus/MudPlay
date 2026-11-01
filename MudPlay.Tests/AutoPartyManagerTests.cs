@@ -1208,6 +1208,53 @@ public sealed class AutoPartyManagerTests
         Assert.Equal("invite Raijin\r", Encoding.Latin1.GetString(sent));
     }
 
+    // Report paradigm-20261101-033147: the leader's `train stats` re-entered it into the
+    // Realm, dissolving the party, with the followers standing beside it. The server's
+    // room list had already named them and isn't sent again until someone comes or
+    // goes, nor for a redisplay, so the reform never invited them and the leader left
+    // alone. The list as it stands is read when the reform arms.
+    [Fact]
+    public void LeaderReconnectReform_ServerRoster_InvitesTheFollowersItAlreadyLists()
+    {
+        var (engine, router, players, _) = Setup();
+        RoomEntityClassifier roster = new(router, new MonsterMessageStore(), players) { GmcpOwnsOccupants = () => true };
+        engine.SetRoomRoster(roster);
+        roster.ApplyGmcp(new[]
+        {
+            new RoomEntity("Raijin", "Raijin", EntityKind.Player, null),
+            new RoomEntity("Forged", "Forged", EntityKind.Player, null),
+        });
+
+        engine.NoteLeaderReconnectReform(new[] { "Raijin", "Forged" });
+
+        Assert.Equal(new[] { "invite Raijin\r", "invite Forged\r" }, SentLines());
+        Assert.DoesNotContain(AutoPartyManager.ReformRedisplayDelay, _partyTimers.PendingDelays);
+    }
+
+    // One the server's list doesn't name yet is invited when a list names them; the
+    // backstop reads the list rather than asking for a room display it wouldn't change.
+    [Fact]
+    public void LeaderReconnectReform_ServerRoster_WaitsForTheListToNameAMember()
+    {
+        var (engine, router, players, _) = Setup();
+        RoomEntityClassifier roster = new(router, new MonsterMessageStore(), players) { GmcpOwnsOccupants = () => true };
+        engine.SetRoomRoster(roster);
+        roster.ApplyGmcp(new[] { new RoomEntity("Raijin", "Raijin", EntityKind.Player, null) });
+
+        engine.NoteLeaderReconnectReform(new[] { "Raijin", "Forged" });
+        _partyTimers.RunDue(AutoPartyManager.ReformRedisplayDelay);
+
+        Assert.Equal(new[] { "invite Raijin\r" }, SentLines());
+
+        roster.ApplyGmcp(new[]
+        {
+            new RoomEntity("Raijin", "Raijin", EntityKind.Player, null),
+            new RoomEntity("Forged", "Forged", EntityKind.Player, null),
+        });
+
+        Assert.Equal(new[] { "invite Raijin\r", "invite Forged\r" }, SentLines());
+    }
+
     // Report paradigm-20260923-092317: a `look <direction>` peek listed the followers
     // in the next room, the reform took that as their arrival and spent its invite
     // from the wrong room ("You don't see X here!"). A peek's listing is nobody
