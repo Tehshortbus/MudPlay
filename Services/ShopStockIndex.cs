@@ -31,6 +31,7 @@ public sealed class ShopStockIndex
     private readonly GameDataCache _cache;
     private readonly LogService? _log;
     private readonly Dictionary<int, HashSet<int>> _shopsByItem = new();
+    private readonly Dictionary<int, string> _nameByShop = new();
 
     // Set the index was last built from, or null if empty.
     public string? ActiveSet { get; private set; }
@@ -59,6 +60,9 @@ public sealed class ShopStockIndex
             ? shops
             : Array.Empty<int>();
 
+    // The shop's own name in the table, for a shop no room of the map names it by.
+    public string? ShopName(int shop) => _nameByShop.GetValueOrDefault(shop);
+
     // True when at least one shop in the active set stocks the item.
     public bool AnyShopSells(int itemId) => _shopsByItem.ContainsKey(itemId);
 
@@ -69,6 +73,7 @@ public sealed class ShopStockIndex
         GameDataCache.Load load = _cache.ActiveLoad;
         LoadedFor = GameDataCache.Load.None;
         _shopsByItem.Clear();
+        _nameByShop.Clear();
         ActiveSet = setName;
 
         if (string.IsNullOrWhiteSpace(setName))
@@ -91,6 +96,9 @@ public sealed class ShopStockIndex
         {
             if (!TryReadInt(row, "Number", out int shopNumber) || shopNumber <= 0)
                 continue;
+            if (row.TryGetProperty("Name", out GameValue name) && name.ValueKind == JsonValueKind.String
+                && name.GetString() is { Length: > 0 } shopName)
+                _nameByShop[shopNumber] = shopName;
 
             bool stockedAny = false;
             for (int slot = 0; slot < StockSlots; slot++)

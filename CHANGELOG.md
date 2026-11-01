@@ -1,5 +1,13 @@
 # Version history
 
+## 3.195.13
+
+- Fixed a crash when a profile load or resize sent the window size to a dropped connection
+- Chest Offload lists what a chest gave again with the server's inventory (GMCP) on
+- Chest Offload items no shop buys get a Drop button
+- Chest Offload shop headers show the shop's name and its room's map/room and name
+- bug reports addressed: Crash-20261030-095446, Crash-20261030-095447, paradigm-20261101-080712
+
 ## 3.195.8
 
 - A party train waits at each trainer until everyone is back in the party, up to "If leading, wait only", then carries on

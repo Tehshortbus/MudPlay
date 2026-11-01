@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.Json;
 using MudPlay.Game.Inventory;
 using MudPlay.Services;
 using Xunit;
@@ -448,4 +449,55 @@ public sealed class ChestOpenTrackerTests : IDisposable
     [Fact]
     public void AnnounceLines_NothingGiven_SaysNothing()
         => Assert.Empty(ChestOffloadPlanner.AnnounceLines("oak chest", Array.Empty<(string, int)>(), Array.Empty<string>(), 120));
+
+    // ----- the server's inventory (GMCP Items.List owned) ---------------------------
+
+    // The server's inventory as the client applies it, one entry per carried copy.
+    private void ServerInventory(int gold, params string[] carried)
+    {
+        string json = JsonSerializer.Serialize(new
+        {
+            coins = new { copper = 0, silver = 0, gold, platinum = 0, runic = 0 },
+            inv = carried.Select((name, i) => new { name, num = 100 + i }).ToArray(),
+            worn = Array.Empty<object>(),
+        });
+        _inv.ApplyGmcpItems(JsonDocument.Parse(json).RootElement);
+    }
+
+    // Report paradigm-20261101-080712: the server's list came the moment the chest
+    // spilled, ahead of the read after the open, and was taken as a line's step: the
+    // before moved by the whole of the loot and the chest gave nothing. The list
+    // without the chest is the open's result.
+    [Fact]
+    public void ServerInventory_TheListWithoutTheChestIsWhatTheOpenGave()
+    {
+        _inv.GmcpOwnsItems = () => true;
+        ServerInventory(10, "oak chest", "rusty dagger", "rusty dagger");
+        _tracker.Open("oak chest");
+        Inventory("oak chest, 2 rusty dagger", gold: 10);   // the before-read
+
+        ServerInventory(15, "rusty dagger", "rusty dagger", "moonstone", "moonstone", "ruby");
+
+        Assert.Equal(new[] { ("moonstone", 2), ("ruby", 1) }, _tracker.Loot(_inv.Snapshot.CarriedItems));
+        Assert.Equal(5, _tracker.Coin.Gold);
+        Assert.False(_tracker.IsOpening);
+        RunScheduled();   // the read the open would have asked for isn't needed
+        Assert.Equal(new[] { "i", "open oak chest", ".oak chest dropped: 2 moonstone, ruby, 5 gold" }, _sent);
+    }
+
+    // A list that still carries the chest is something else the pack took in (a
+    // pickup), and isn't counted as the chest's.
+    [Fact]
+    public void ServerInventory_APickupBeforeTheSpillIsNotTheChests()
+    {
+        _inv.GmcpOwnsItems = () => true;
+        ServerInventory(10, "oak chest");
+        _tracker.Open("oak chest");
+        Inventory("oak chest", gold: 10);
+
+        ServerInventory(10, "oak chest", "rusty dagger");
+        ServerInventory(10, "rusty dagger", "ruby");
+
+        Assert.Equal(new[] { ("ruby", 1) }, _tracker.Loot(_inv.Snapshot.CarriedItems));
+    }
 }

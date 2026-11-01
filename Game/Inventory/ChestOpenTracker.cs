@@ -439,12 +439,55 @@ public sealed class ChestOpenTracker : IDisposable
     // still, the before would list all of that as the chest's. A full read raises
     // Changed too, while the manager is still capturing it: that one is a read, not
     // a step, and moves nothing.
+    //
+    // The server's inventory, while it owns the pack, is a full read that comes by
+    // itself on every change, the chest's spill included. Taken as a step it moved
+    // the before by the whole of the loot, and every open gave nothing (report
+    // paradigm-20261101-080712). Every container has one use (GAME_MECHANICS
+    // "Chests and chest loot tables"), so the list without the opened containers is
+    // the open's result and is diffed at once; one still carrying them all is a
+    // pickup or a sale, and moves the before as a line would.
     private void OnInventoryChanged()
     {
         InventorySnapshot now = _inventory.Snapshot;
         if (_step == Step.AwaitingAfter && _afterRead is null && !_inventory.IsCapturing)
-            MoveBefore(_lastSeen, now);
+        {
+            if (!_inventory.IsApplyingServerSnapshot) MoveBefore(_lastSeen, now);
+            else
+            {
+                switch (OpenedContainersSpent(now))
+                {
+                    case Spent.None:
+                        MoveBefore(_lastSeen, now);
+                        break;
+                    case Spent.All:
+                        _afterRead = now;
+                        _post(() =>
+                        {
+                            if (_step == Step.AwaitingAfter && _afterRead is { } after) Settle(after);
+                        });
+                        break;
+                }
+            }
+        }
         _lastSeen = now;
+    }
+
+    private enum Spent { None, Some, All }
+
+    // How many of the containers this diff covers have left the pack since its before.
+    private Spent OpenedContainersSpent(InventorySnapshot now)
+    {
+        Dictionary<string, int> before = ChestOffloadPlanner.CountByName(_beforeCarried);
+        Dictionary<string, int> has = ChestOffloadPlanner.CountByName(now.CarriedItems);
+        bool any = false, all = true;
+        foreach (IGrouping<string, string> opened in _opened.GroupBy(n => n, StringComparer.OrdinalIgnoreCase))
+        {
+            int gone = before.GetValueOrDefault(opened.Key) - has.GetValueOrDefault(opened.Key);
+            if (gone > 0) any = true;
+            if (gone < opened.Count()) all = false;
+        }
+        return all && any ? Spent.All : any ? Spent.Some : Spent.None;
     }
 
     private void MoveBefore(InventorySnapshot was, InventorySnapshot now)

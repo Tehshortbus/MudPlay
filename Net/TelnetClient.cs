@@ -287,7 +287,23 @@ public sealed class TelnetClient : IAsyncDisposable
             if (r == IAC) buf[p++] = IAC;
         }
         buf[p++] = IAC; buf[p++] = SE;
-        await WriteRawAsync(buf.AsMemory(0, p), ct);
+        await WriteRawObservedAsync(buf.AsMemory(0, p), "NAWS", ct).ConfigureAwait(false);
+    }
+
+    // A protocol frame nobody waits on (a negotiation reply, a window size sent on a
+    // resize or a profile load): the link can be gone by the time it's written, and
+    // a write failing unawaited faulted on the finalizer thread as a crash
+    // (Crash-20261030-095446). The read loop reports the drop itself.
+    private async Task WriteRawObservedAsync(ReadOnlyMemory<byte> frame, string what, CancellationToken ct = default)
+    {
+        try
+        {
+            await WriteRawAsync(frame, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is IOException or ObjectDisposedException or SocketException)
+        {
+            Log?.Invoke($"{what} not sent: {ex.Message}");
+        }
     }
 
     // ----- Read loop -----------------------------------------------------
@@ -490,7 +506,7 @@ public sealed class TelnetClient : IAsyncDisposable
             Array.Copy(name, 0, buf, p, name.Length);
             p += name.Length;
             buf[p++] = IAC; buf[p++] = SE;
-            _ = WriteRawAsync(buf.AsMemory(0, p));
+            _ = WriteRawObservedAsync(buf.AsMemory(0, p), "TermType");
             Log?.Invoke($"TX: TermType IS {TerminalType}");
         }
     }
@@ -500,7 +516,7 @@ public sealed class TelnetClient : IAsyncDisposable
     {
         if (_stream is null) return;
         var buf = new byte[3] { IAC, cmd, opt };
-        _ = WriteRawAsync(buf);
+        _ = WriteRawObservedAsync(buf, $"{CmdName(cmd)} {OptName(opt)}");
         Log?.Invoke($"TX: {CmdName(cmd)} {OptName(opt)}");
     }
 

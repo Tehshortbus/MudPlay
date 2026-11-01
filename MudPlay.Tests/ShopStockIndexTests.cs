@@ -93,4 +93,19 @@ public sealed class ShopStockIndexTests : IDisposable
         Assert.False(s.AnyShopSells(176));
         Assert.Empty(s.ShopsSelling(176));
     }
+
+    // Chest Offload names a shop by its own name in the table: one no room of the map
+    // names (report paradigm-20261101-080712, the data's shop 321 in no room) was a
+    // bare "Shop #321".
+    [Fact]
+    public void ShopName_IsTheTablesName_AndGoesWithTheSet()
+    {
+        ShopStockIndex s = NewIndex();
+        Assert.Equal("Sword Shop", s.ShopName(5));
+        Assert.Null(s.ShopName(99));
+
+        s.OnActiveSetChanged(null);
+
+        Assert.Null(s.ShopName(5));
+    }
 }

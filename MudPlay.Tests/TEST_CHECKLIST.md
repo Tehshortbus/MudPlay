@@ -698,8 +698,8 @@ How to keep it current:
 
 ### ChestOpenTrackerTests.cs
 - Covers: Game/Inventory/ChestOpenTracker, OutboundOpenObserver
-- Checks: open flow reads only its own loot; room announce opt-in; persistence; sales/hides; queued, typed and abbreviated opens; master switch and refusal.
-- Why: user 2026-10-10 (stop the reads when the switch is off).
+- Checks: open flow reads only its own loot; room announce opt-in; persistence; sales/hides; queued, typed and abbreviated opens; master switch and refusal; with the server's inventory owned, the list without the chest is the open's result, and a list still carrying it (a pickup) isn't counted.
+- Why: user 2026-10-10 (stop the reads when the switch is off); report `paradigm-20261101-080712` (the server's list moved the before by the loot, so every open gave nothing).
 
 ### ChestSellTourGameDataTests.cs
 - Covers: Game/Inventory/ChestSellTour
@@ -3864,8 +3864,8 @@ How to keep it current:
 
 ### ShopStockIndexTests.cs
 - Covers: Services/ShopStockIndex
-- Checks: Item → shops that stock it (several shops per item), the empty-slot 0 sentinel skipped, and the index cleared when the set goes null.
-- Why: Auto-sell shop choice, sell detours and buy sources.
+- Checks: Item → shops that stock it (several shops per item), the empty-slot 0 sentinel skipped, the shop's own name, and the index cleared when the set goes null.
+- Why: Auto-sell shop choice, sell detours and buy sources; Chest Offload's shop headers (report `paradigm-20261101-080712`, a shop in no room shown as a bare number).
 
 ### ShortcutSourceCoordinatorTests.cs
 - Covers: Game/Map/ShortcutSourceCoordinator
@@ -4238,6 +4238,11 @@ How to keep it current:
 - Covers: ViewModels/Settings/TeleportsSectionViewModel.ReadOrDefault, Game/Map/TeleportCatalog
 - Checks: with no stored entry, automatic walks may use no teleports; stored teleports read back as the same places.
 - Why: automatic walks must not take a teleport the user hasn't allowed.
+
+### TelnetClientDroppedLinkTests.cs
+- Covers: Net/TelnetClient (over a loopback socket the test's board end resets)
+- Checks: a window size sent after the link dropped is logged as not sent, and doesn't throw.
+- Why: reports `Crash-20261030-095446` and `Crash-20261030-095447` (a profile load re-sent the window size to a dropped link; the failed write, waited on by nobody, faulted on the finalizer thread as a crash).
 
 ### TelnetClientTimeoutTests.cs
 - Covers: Net/TelnetClient.DeadConnectionCapMs

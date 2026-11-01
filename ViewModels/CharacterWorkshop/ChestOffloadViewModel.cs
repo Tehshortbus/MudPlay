@@ -360,10 +360,9 @@ public sealed partial class ChestOffloadViewModel : WorkshopSectionViewModel
                      .Select(t => t.Group))
         {
             _shopRoom.TryGetValue(shopNum, out Room? room);
-            string location = room is { } lr ? $"{lr.Key.Map}/{lr.Key.Room}" : "";
             string steps = _lastTrip.TryGetValue(shopNum, out (int _, string Steps) known) ? known.Steps : "";
             var group = new ChestOffloadShopGroup(
-                room?.Name ?? $"Shop #{shopNum}", shopNum, location, steps, room?.Key,
+                ShopLabel(shopNum, room), shopNum, ShopLocation(room), steps, room?.Key,
                 _queueWalk, SellGroup, DropAllGroup);
             foreach (LootItem li in items)
                 group.Items.Add(new ChestOffloadItemRow(li.Name, li.Count, li.BaseCopper,
@@ -377,7 +376,7 @@ public sealed partial class ChestOffloadViewModel : WorkshopSectionViewModel
         Unsellable.Clear();
         foreach (LootItem li in noShop)
             Unsellable.Add(new ChestOffloadItemRow(li.Name, li.Count, li.BaseCopper, li.Shops, 0, null,
-                onRemove: RemoveItem));
+                onDrop: DropItem, onRemove: RemoveItem));
 
         UpdateGrandTotal();
         OnPropertyChanged(nameof(HasLoot));
@@ -947,8 +946,16 @@ public sealed partial class ChestOffloadViewModel : WorkshopSectionViewModel
             .Select(shop => (shop, _shopRoom.TryGetValue(shop, out Room? room) ? room : null))
             .ToList();
 
-    private static ShopChoiceRow ChoiceRow(int shop, Room? room, string steps)
-        => new(shop, room?.Name ?? $"Shop #{shop}", room is { } lr ? $"{lr.Key.Map}/{lr.Key.Room}" : "", steps);
+    private ShopChoiceRow ChoiceRow(int shop, Room? room, string steps)
+        => new(shop, ShopLabel(shop, room), ShopLocation(room), steps);
+
+    // A shop by its own name in the game data, with the room it stands in by number
+    // and name. A shop no room of the map names (one the data leaves out of the
+    // game) was shown as a bare "Shop #N" with nothing to say where it was.
+    private string ShopLabel(int shop, Room? room) => _shops.ShopName(shop) ?? room?.Name ?? $"Shop #{shop}";
+
+    private static string ShopLocation(Room? room)
+        => room is { } r ? $"{r.Key.Map}/{r.Key.Room} {r.Name}" : "in no room of the game data";
 
     // A group an item was moved into, for a shop the last trip didn't visit, gets its
     // steps from here when they come back.
@@ -976,9 +983,8 @@ public sealed partial class ChestOffloadViewModel : WorkshopSectionViewModel
         if (target is null)
         {
             _shopRoom.TryGetValue(targetShop, out Room? room);
-            string location = room is { } lr ? $"{lr.Key.Map}/{lr.Key.Room}" : "";
             string steps = _lastTrip.TryGetValue(targetShop, out (int _, string Steps) known) ? known.Steps : "";
-            target = new ChestOffloadShopGroup(room?.Name ?? $"Shop #{targetShop}", targetShop, location,
+            target = new ChestOffloadShopGroup(ShopLabel(targetShop, room), targetShop, ShopLocation(room),
                 steps, room?.Key, _queueWalk, SellGroup, DropAllGroup);
             ShopGroups.Add(target);
             if (steps.Length == 0) _ = FillStepsAsync(target, room);
