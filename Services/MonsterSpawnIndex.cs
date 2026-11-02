@@ -50,9 +50,9 @@ public sealed class MonsterSpawnIndex
     private sealed class Snapshot
     {
         public required GameDataCache.Load Load { get; init; }
-        public required Dictionary<RoomKey, List<int>> SummonedAt { get; init; }
-        public required Dictionary<RoomKey, List<int>> PlacedAt { get; init; }
-        public required Dictionary<RoomKey, List<int>> AssignedAt { get; init; }
+        public required RoomLists<int> SummonedAt { get; init; }
+        public required RoomLists<int> PlacedAt { get; init; }
+        public required RoomLists<int> AssignedAt { get; init; }
     }
 
     // Serialises builders so two threads racing the same set build once, not twice.
@@ -76,30 +76,16 @@ public sealed class MonsterSpawnIndex
     // Monster ids whose Summoned By references the given room (ALL token kinds —
     // placed, assigned, and lair). Empty list when nothing spawns at the room (or
     // no Monsters table is loaded). This is the combat resolver's permissive
-    // candidate set. Live view — read, don't mutate.
-    public IReadOnlyList<int> MonsterIdsSummonedAt(RoomKey key)
-    {
-        Snapshot snap = EnsureBuilt();
-        return snap.SummonedAt.TryGetValue(key, out List<int>? list) ? list : Array.Empty<int>();
-    }
+    // candidate set.
+    public IReadOnlyList<int> MonsterIdsSummonedAt(RoomKey key) => EnsureBuilt().SummonedAt.ListOf(key);
 
     // Monster ids PLACED at the room — a "Room m/r" token (the room's NPC
     // fixture: bosses / uniques). Excludes lair and assigned/roam spawns.
-    // Live view — read, don't mutate.
-    public IReadOnlyList<int> PlacedMonsterIdsAt(RoomKey key)
-    {
-        Snapshot snap = EnsureBuilt();
-        return snap.PlacedAt.TryGetValue(key, out List<int>? list) ? list : Array.Empty<int>();
-    }
+    public IReadOnlyList<int> PlacedMonsterIdsAt(RoomKey key) => EnsureBuilt().PlacedAt.ListOf(key);
 
     // Monster ids ASSIGNED to roam / rare-randomly spawn at the room — a
     // non-lair "Group: m/r" token. Excludes placed fixtures and lair spawns.
-    // Live view — read, don't mutate.
-    public IReadOnlyList<int> AssignedMonsterIdsAt(RoomKey key)
-    {
-        Snapshot snap = EnsureBuilt();
-        return snap.AssignedAt.TryGetValue(key, out List<int>? list) ? list : Array.Empty<int>();
-    }
+    public IReadOnlyList<int> AssignedMonsterIdsAt(RoomKey key) => EnsureBuilt().AssignedAt.ListOf(key);
 
     // Build the index for the active set ahead of anyone asking for it. Safe to
     // call from a worker thread — the build touches only locals until it
@@ -227,9 +213,9 @@ public sealed class MonsterSpawnIndex
         return new Snapshot
         {
             Load = load,
-            SummonedAt = summonedAt,
-            PlacedAt = placedAt,
-            AssignedAt = assignedAt,
+            SummonedAt = RoomLists<int>.From(summonedAt),
+            PlacedAt = RoomLists<int>.From(placedAt),
+            AssignedAt = RoomLists<int>.From(assignedAt),
         };
     }
 

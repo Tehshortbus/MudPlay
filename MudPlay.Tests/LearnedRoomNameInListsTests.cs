@@ -131,7 +131,7 @@ public sealed class LearnedRoomNameInListsTests : IDisposable
 
         Assert.Equal(HouseName, RoomNameIndex.NameOf(_cache, House.Map, House.Room));
         // The index holds the table's names only, whatever was learned.
-        Assert.Equal(string.Empty, RoomNameIndex.For(_cache)[(House.Map, House.Room)]);
+        Assert.Equal(string.Empty, RoomNameIndex.For(_cache)[House]);
         // A learned name never stands in for one the table gives.
         _cache.RoomNameWhenDataHasNone = (_, _) => "Somewhere Else";
         Assert.Equal("Oak Street", RoomNameIndex.NameOf(_cache, Street.Map, Street.Room));

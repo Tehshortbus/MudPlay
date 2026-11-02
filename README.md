@@ -1,11 +1,8 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.195.26**
-> - A sneaked room opens with a backstab again when the server's status data is on, not a bash
-> - With Auto-Combat off, a monster that walks in without attacking is left alone and the rest goes on
-> - The Navigation window opens without freezing; a big map draws a moment after
-> - Loading a profile reads its game data and loops ahead, so the switch freezes the window far less
+> **Version 3.195.27**
+> - The room map and its indexes take about 23 MB less memory; room lookups are a straight array read
 <!-- current-version:end -->
 
 A modern Telnet terminal client for **MajorMUD** and other BBS door games, built in C# / .NET 10 with [Avalonia](https://avaloniaui.net/). It renders a faithful CP437 cell grid with full VT100/ANSI parsing, and layers a MegaMUD-style automation suite (combat, party, navigation, healing, and more) on top — all in modeless, dockable windows so the terminal stays live while you configure anything.

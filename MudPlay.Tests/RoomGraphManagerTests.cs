@@ -2056,6 +2056,43 @@ public sealed class RoomGraphManagerTests : IDisposable
             Assert.Equal(new RoomKey(1, 9), room.Exits[Direction.Teleport].Target);
     }
 
+    // The graph holds its rooms in one array laid out by map and number. A room
+    // numbered far past the rest of its map, one on a map numbered past any real one,
+    // and a number nothing holds in between are found (or not) as a dictionary found
+    // them; a row given twice is its later reading, and the rooms come back in the
+    // file's order whatever it is.
+    [Fact]
+    public void Rooms_AreFoundWhereverTheyAreNumbered_AndComeBackInTheFilesOrder()
+    {
+        static string Row(int map, int number, string name) =>
+            $"{{ \"Map Number\": {map}, \"Room Number\": {number}, \"Name\": \"{name}\", "
+            + "\"N\": \"0\", \"S\": \"0\", \"E\": \"0\", \"W\": \"0\", \"NE\": \"0\", \"NW\": \"0\", "
+            + "\"SE\": \"0\", \"SW\": \"0\", \"U\": \"0\", \"D\": \"0\" }";
+        SeedRooms("alpha", "[" + string.Join(",\n",
+            Row(2, 5, "Second Map"),
+            Row(1, 1, "First Reading"),
+            Row(1, 90000, "Far Room"),
+            Row(5000, 3, "Far Map"),
+            Row(1, 1, "Second Reading"),
+            Row(1, 3, "Past A Gap")) + "]");
+        GameDataCache cache = NewCache();
+        cache.SwitchSet("alpha");
+        RoomGraphManager graph = new(cache);
+
+        graph.OnActiveSetChanged("alpha");
+
+        RoomKey[] fileOrder = [new(2, 5), new(1, 1), new(1, 90000), new(5000, 3), new(1, 3)];
+        Assert.Equal(5, graph.RoomCount);
+        Assert.Equal(fileOrder, graph.Rooms.Select(r => r.Key));
+        Assert.Equal(fileOrder, graph.RoomKeys);
+        Assert.Equal("Far Room", graph.GetRoom(new RoomKey(1, 90000))?.Name);
+        Assert.Equal("Far Map", graph.GetRoom(new RoomKey(5000, 3))?.Name);
+        Assert.Equal("Second Reading", graph.GetRoom(new RoomKey(1, 1))?.Name);
+        Assert.Null(graph.GetRoom(new RoomKey(1, 2)));
+        Assert.Null(graph.GetRoom(new RoomKey(1, 4)));
+        Assert.Null(graph.GetRoom(new RoomKey(3, 1)));
+    }
+
     // A realm repeats a room name fifteen times over, and its lair tags and exit
     // hints as often: the graph keeps one string for each, and a room's exits in
     // the compact set, through the passes that replace an exit as well.

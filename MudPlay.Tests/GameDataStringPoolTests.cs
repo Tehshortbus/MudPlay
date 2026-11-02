@@ -80,12 +80,12 @@ public sealed class GameDataStringPoolTests : IDisposable
     [Fact]
     public void EveryTextReadsExactlyAsTheFileWroteIt()
     {
-        IReadOnlyDictionary<(int Map, int Room), string> names = RoomNameIndex.For(_cache);
+        RoomTable<string> names = RoomNameIndex.For(_cache);
         foreach (((int map, int room), JsonElement row) in FileRooms())
         {
             string expected = row.GetProperty("Name").GetString()!;
             Assert.Equal(expected, Room(map, room).Name, StringComparer.Ordinal);
-            Assert.Equal(expected, names[(map, room)], StringComparer.Ordinal);
+            Assert.Equal(expected, names[new RoomKey(map, room)], StringComparer.Ordinal);
             string lair = row.GetProperty("Lair").GetString()!;
             Assert.Equal(lair == "\0" ? null : lair, Room(map, room).RawLairTag);
         }
@@ -106,11 +106,11 @@ public sealed class GameDataStringPoolTests : IDisposable
     [Fact]
     public void ARepeatedTextIsOneString_AcrossRoomsAndIndexes_AndTextsThatDifferStayApart()
     {
-        IReadOnlyDictionary<(int Map, int Room), string> names = RoomNameIndex.For(_cache);
+        RoomTable<string> names = RoomNameIndex.For(_cache);
 
         Assert.Same(Room(1, 1).Name, Room(1, 2).Name);
-        Assert.Same(Room(1, 1).Name, names[(1, 2)]);
-        Assert.Same(Room(2, 1).Name, names[(2, 2)]);
+        Assert.Same(Room(1, 1).Name, names[new RoomKey(1, 2)]);
+        Assert.Same(Room(2, 1).Name, names[new RoomKey(2, 2)]);
         Assert.Same(Room(1, 1).RawLairTag, Room(1, 2).RawLairTag);
         Assert.Same(Room(1, 1).Exits[Direction.N].RawHint, Room(1, 2).Exits[Direction.N].RawHint);
         // Case and whitespace are part of the text.
@@ -136,6 +136,6 @@ public sealed class GameDataStringPoolTests : IDisposable
         Assert.NotSame(alpha, _cache.Strings);
         Assert.Equal(alphaName, Room(1, 1).Name);
         Assert.NotSame(alphaName, Room(1, 1).Name);
-        Assert.Same(Room(1, 1).Name, RoomNameIndex.For(_cache)[(1, 2)]);
+        Assert.Same(Room(1, 1).Name, RoomNameIndex.For(_cache)[new RoomKey(1, 2)]);
     }
 }

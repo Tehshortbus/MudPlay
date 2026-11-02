@@ -2654,8 +2654,8 @@ How to keep it current:
 
 ### MonsterSpawnIndexTests.cs
 - Covers: Services/MonsterSpawnIndex
-- Checks: Classifies placed, assigned and lair "Summoned By" tokens; dedups them, including across rows; handles 20k monsters in one room; Warm(); invalidates on a set switch.
-- Why: paradigm-20260911-231808, a 29 s UI stall.
+- Checks: Classifies placed, assigned and lair "Summoned By" tokens; dedups them, including across rows; handles 20k monsters in one room; rooms numbered far past their map, or on a map past any real one, keep their own lists in the flat layout; Warm(); invalidates on a set switch.
+- Why: paradigm-20260911-231808, a 29 s UI stall; the flat per-room layout (RoomLists, RoomSlots) that cut the index's memory.
 
 ### MonsterSpellEfficiencyTests.cs
 - Covers: Game/Calculators/MonsterMatchupCalculatorSpells, Game/Combat/ElementalResistIndex
@@ -3517,8 +3517,8 @@ How to keep it current:
 
 ### RoomGraphManagerTests.cs
 - Covers: Game/Map/RoomGraphManager, RoomKey and RoomExit parse, BfsMapper routing
-- Checks: seeding, reloads and eviction; name and candidate indexes; unreachable pruning; door-tolerant re-anchor; Cmd/Item teleport promotion; lever, guard and greet promotions (a lever door marked as the door or gate its actions open, a guard's ask door not); a room command the exit's action cell already lists, by any of its synonyms, stays one action and keeps its roll; synthesised teleport and gateway edges; Arena block; cast pockets; string sharing; circular textblocks.
-- Why: reports `paradigm-20260714-091000`, `paradigm-20260728-180730`, `paradigm-20260729-221044`, `paradigm-20261026-150710`.
+- Checks: seeding, reloads and eviction; name and candidate indexes; unreachable pruning; door-tolerant re-anchor; Cmd/Item teleport promotion; lever, guard and greet promotions (a lever door marked as the door or gate its actions open, a guard's ask door not); a room command the exit's action cell already lists, by any of its synonyms, stays one action and keeps its roll; synthesised teleport and gateway edges; Arena block; cast pockets; string sharing; circular textblocks; rooms found however they are numbered (far past their map, a map past any real one, a gap) and listed in file order, a twice-given row read as its later reading.
+- Why: the flat room table (RoomTable, RoomSlots) the graph holds its rooms in; reports `paradigm-20260714-091000`, `paradigm-20260728-180730`, `paradigm-20260729-221044`, `paradigm-20261026-150710`.
 
 ### RoomHazardIndexTests.cs
 - Covers: Services/RoomHazardIndex (RoomHazard, BuffCounter)

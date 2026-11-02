@@ -1,5 +1,9 @@
 # Version history
 
+## 3.195.27
+
+- The room map and its indexes take about 23 MB less memory; room lookups are a straight array read
+
 ## 3.195.26
 
 - A sneaked room opens with a backstab again when the server's status data is on, not a bash
