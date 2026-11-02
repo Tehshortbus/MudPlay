@@ -6266,6 +6266,18 @@ Among protectable hazards, a further split governs whether the navigator may off
 - `RouteChoicePlanner.HazardDetour` feeds the bug report's "Hazard rooms the direct route goes round".
 - `HealthManager.BuildFleeSteps` cuts a flee's route at the first step into a room `IRoomFilter.IsClosedToRoutes` keeps routes out of (`HealthManager.IsClosedToRoutes`, wired to `MovementFilter.IsClosedToRoutes`), and `HealthManager.AwayFromThePlan` / `AnotherWayOut` never pick an exit into one. A flee builds its own retreat, so the route filters do not reach it. The room the character already stands in does not count.
 
+### Island of Bones: reached through the library, never crossed
+*Status: CONFIRMED 2026-11-02 (user; report `paradigm-20261102-042424`) · Realm: both (the rooms carry the same numbers and names on Stock 1.11p, Paradigm 1.9.1 and Anomaly v0.65)*
+
+- **The way in is the library.** Its rooms, the jagged bone key door and the old man's `ask old man portal` onto `17/1759` are in *Crystal Lake: the sea room spells*; the isle is never walked to across the lake.
+- **The isle's rooms teleport a character under 50 and spawn deadly monsters for one of 50 or over** *([CONFIRMED] 2026-11-02, user: "each room walking there if sub 50, has a large teleport chance or if 50 or above, low teleport risk but deadly monster spawns")*. The `17/1752` west exit casts `1231` on the way in. The data's `island spell` teleports only at 49 and under (*Crystal Lake: the sea room spells*); the user's "low teleport risk" at 50 and over is not in it.
+- **`go portal` in `17/1753`, into the Bone Strewn Cavern, is for level 50 and over** *([CONFIRMED] 2026-11-02, user; `[OBSERVED]` the room command's `minlevel 50`, with `needmonster 945`)*.
+- **Past it: the wraith knights, the colossal midnight dragon and the dark mage, and the dark mage's portal puts you back in Arlysia** *([CONFIRMED] 2026-11-02, user)*. In the data: `17/1771` west (hidden) to the `Bone Room` `17/1772`, `enter tapestry` (`needmonster 1003`) to the `Bone Cavern` `17/1773`, `enter portal` (`roomitem 1749`) to the `Isle of Shadow` `17/785`, and `enter shadowy portal` (`nomonsters 1093:roomitem 1531`) to the `Graveyard` `17/2422`. The trip comes out a few rooms from where it went in.
+- **Client policy** (user, 2026-11-02): **the isle and the caverns behind it are never a shortcut.** A route may go to them (the midnight dragon) and out of them, but one that starts and ends elsewhere never goes through them: "there is no way ever, that moving 200+ rooms to move from a to b, is a shortcut".
+
+**Client use:**
+- `RoomsNoRouteCrosses` names the 23 rooms by name (`Island of Bones`, `Bone Strewn Cavern`, `Bone Room`, `Bone Cavern`, `Isle of Shadow`); `BfsMapper.FindPath` wraps the filter in `RoomsRefusedFilter` when neither end of the route is among them, so every pass refuses the exits into them, gates and avoids set aside included (report `paradigm-20261102-042424`: the route card offered the library and the isle portals as a shortcut "via item 1536").
+
 ### Room spells that teleport
 *Status: [OBSERVED] 2026-10-09 (game data: `data-v1.11p`, `data-Paradigm-1.9.1`); the colour rule is Client policy (user, 2026-10-09); the class filters CONFIRMED 2026-10-24 (user) · Realm: both*
 
