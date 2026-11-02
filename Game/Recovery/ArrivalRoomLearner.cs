@@ -167,13 +167,17 @@ public sealed class ArrivalRoomLearner
         if (transition.NewConfidence == RoomConfidence.Confirmed && transition.NewRoom?.Key == diedIn) return;
 
         _diedIn = null;
-        if (transition.NewConfidence != RoomConfidence.Confirmed || transition.NewRoom is not { } arrived)
+        // A room the map can't tell from a look-alike it doesn't place; the
+        // look-alike stands in, as Learn takes look-alikes for one another.
+        RoomKey? arrivedIn = transition.NewConfidence == RoomConfidence.Confirmed && transition.NewRoom is { } placed
+            ? placed.Key : _tracker.DisplayLookAlike;
+        if (arrivedIn is not { } arrived)
         {
             _log?.Debug(LearnedArrivalRoomStore.LogCategory,
                 $"nothing learned from the death in {diedIn}: the map couldn't place the room it arrived in");
             return;
         }
-        Learn(diedIn, arrived.Key);
+        Learn(diedIn, arrived);
     }
 
     private void Learn(RoomKey diedIn, RoomKey arrivedIn)

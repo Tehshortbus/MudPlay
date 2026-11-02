@@ -137,6 +137,7 @@ public sealed class HangupItemRecheck
     private readonly Func<bool>? _stockRealm;
     private readonly Func<string, bool>? _staysOnDeath;
     private readonly Func<RoomKey, RoomKey, Recovery.HangupEntryRoomReading>? _entryRoomSays;
+    private readonly Func<RoomKey?>? _displayLookAlike;
     private readonly Func<RoomKey, string>? _roomLabel;
     private readonly Func<string?>? _roomsGameData;
     private readonly Func<Recovery.UnwitnessedDeath, DeathRecord?>? _recordDeath;
@@ -246,6 +247,10 @@ public sealed class HangupItemRecheck
     //                      given the room the character hung up in and the first
     //                      room confirmed on the way back in.
     //   roomLabel        — a room's name with its number, for the wording.
+    //   displayLookAlike — RoomTracker.DisplayLookAlike: when the map can't place the
+    //                      room the character came back in because several rooms
+    //                      print its display, one of them. entryRoomSays takes
+    //                      look-alikes for one another, so it judges by any.
     public HangupItemRecheck(
         MovementCoordinator coordinator,
         Func<CharacterProfile?> profile,
@@ -276,7 +281,8 @@ public sealed class HangupItemRecheck
         Func<string, bool>? staysOnDeath = null,
         Func<RoomKey, RoomKey, Recovery.HangupEntryRoomReading>? entryRoomSays = null,
         Func<RoomKey, string>? roomLabel = null,
-        Func<string?>? roomsGameData = null)
+        Func<string?>? roomsGameData = null,
+        Func<RoomKey?>? displayLookAlike = null)
     {
         ArgumentNullException.ThrowIfNull(coordinator);
         ArgumentNullException.ThrowIfNull(profile);
@@ -320,6 +326,7 @@ public sealed class HangupItemRecheck
         _recordDeath = recordDeath;
         _staysOnDeath = staysOnDeath;
         _entryRoomSays = entryRoomSays;
+        _displayLookAlike = displayLookAlike;
         _roomLabel = roomLabel;
         _roomsGameData = roomsGameData;
     }
@@ -1599,7 +1606,7 @@ public sealed class HangupItemRecheck
         if (_linkUp && _entryRoom is null && !_moveSentSinceEntry)
             _post(() =>
             {
-                if (_entryRoom is null && !_moveSentSinceEntry) _entryRoom = _confirmedRoom();
+                if (_entryRoom is null && !_moveSentSinceEntry) _entryRoom = _confirmedRoom() ?? _displayLookAlike?.Invoke();
             });
         if (_phase != Phase.AwaitingRoom) return;
         _post(() =>

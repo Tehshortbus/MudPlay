@@ -36,6 +36,10 @@ public sealed class RoomTrackerTests : IDisposable
     // 3/1 "Darkwood Forest, Main Road" has a hidden `go path` text exit
     // (S → 3/2) plus visible {SE, W}; 3/2 + 3/3 are an ambiguous
     // "Darkwood Forest" {SW} pair that only the go-path edge disambiguates.
+    // 6/1 and 6/2 are two "Town Square"s whose displays both print {N, S, E, W}:
+    // 6/1 also has a `go manhole` text exit down, which no exits line shows.
+    // 6/5 "Great Hall" {S} ports to 6/1 by asking its lord, a command no exits
+    // line shows either.
     // 4/1–4/3 are an identically-named-and-exited "Cleared Fields" {N, S}
     // corridor (a 3-cycle) — the ambiguous case where a source re-look
     // display also matches the predicted move target.
@@ -104,7 +108,19 @@ public sealed class RoomTrackerTests : IDisposable
           { "Map Number": 5, "Room Number": 2, "Name": "Shadowed Vale",
             "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
             "N": "5/1", "S": "0", "E": "0", "W": "0",
-            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 6, "Room Number": 1, "Name": "Town Square",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "6/3", "S": "6/3", "E": "6/3", "W": "6/3",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "6/4 (Text: go manhole)" },
+          { "Map Number": 6, "Room Number": 2, "Name": "Town Square",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "6/3", "S": "6/3", "E": "6/3", "W": "6/3",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 6, "Room Number": 5, "Name": "Great Hall",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "0", "S": "6/3", "E": "0", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "6/1 (Text: ask lord teleport)", "D": "0" }
         ]
         """;
 
@@ -825,6 +841,37 @@ public sealed class RoomTrackerTests : IDisposable
 
         Assert.Equal(RoomConfidence.Confirmed, tracker.State.Confidence);
         Assert.Equal(new RoomKey(1, 5), tracker.State.CurrentRoom!.Key);
+    }
+
+    // Two towns each have a Town Square printing N, S, E and W; one also has a text
+    // exit down its manhole, which its exits line never shows. Landing in a Town
+    // Square unasked (a teleport) is not a 1-of-1 match for the other one: both
+    // could have shown that display (report paradigm-20261102-042424).
+    [Fact]
+    public void ConfirmedObservation_TwoRoomsPrintTheDisplay_OneThroughAHiddenTextExit_IsNotA1Of1()
+    {
+        RoomTracker tracker = NewTracker();
+        tracker.NoteRoomObserved(Obs("Town Gates", Direction.N, Direction.E));
+
+        tracker.NoteRoomObserved(Obs("Town Square", Direction.N, Direction.S, Direction.E, Direction.W));
+
+        Assert.NotEqual(new RoomKey(6, 2), tracker.State.CurrentRoom?.Key);
+        Assert.NotEqual(RoomConfidence.Confirmed, tracker.State.Confidence);
+    }
+
+    // The same two Town Squares, reached from a hall whose lord ports the asker to
+    // one of them: a display of either, straight after the hall, is the one the
+    // hall leads to (the Grey Lord's port, report paradigm-20261102-042424).
+    [Fact]
+    public void ConfirmedObservation_ALookAlikeTheCurrentRoomLeadsTo_IsThatRoom()
+    {
+        RoomTracker tracker = NewTracker();
+        tracker.NoteRoomObserved(Obs("Great Hall", Direction.S));
+
+        tracker.NoteRoomObserved(Obs("Town Square", Direction.N, Direction.S, Direction.E, Direction.W));
+
+        Assert.Equal(RoomConfidence.Confirmed, tracker.State.Confidence);
+        Assert.Equal(new RoomKey(6, 1), tracker.State.CurrentRoom!.Key);
     }
 
     [Fact]

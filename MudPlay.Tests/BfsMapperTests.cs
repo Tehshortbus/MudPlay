@@ -1080,6 +1080,76 @@ public sealed class BfsMapperTests : IDisposable
             bestPlaced: 100, bestStubs: 3));
     }
 
+    // ----- rooms no route crosses -----------------------------------
+    //
+    //  Library 2/1 ─E─ 2/2 ─E─ 2/3 ─E─ 2/4 ─E─ Graveyard 2/5
+    //     └ `ask old man portal` → Island of Bones 2/10 ─ `enter shadowy portal` → 2/5
+    // The way over the isle is two steps against four, the case of the library's
+    // "shortcut" through the Island of Bones (report paradigm-20261102-042424).
+    private const string IsleJson = """
+        [
+          { "Map Number": 2, "Room Number": 1, "Name": "Library",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "0", "S": "0", "E": "2/2", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "2/10 (Text: ask old man portal)", "D": "0" },
+          { "Map Number": 2, "Room Number": 2, "Name": "Graveyard",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "0", "S": "0", "E": "2/3", "W": "2/1",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 2, "Room Number": 3, "Name": "Graveyard",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "0", "S": "0", "E": "2/4", "W": "2/2",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 2, "Room Number": 4, "Name": "Graveyard",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "0", "S": "0", "E": "2/5", "W": "2/3",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 2, "Room Number": 5, "Name": "Graveyard",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "0", "S": "0", "E": "0", "W": "2/4",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 2, "Room Number": 10, "Name": "Island Of Bones",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "0", "S": "0", "E": "2/11", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "2/5 (Text: enter shadowy portal)" },
+          { "Map Number": 2, "Room Number": 11, "Name": "Island Of Bones",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "0", "S": "0", "E": "0", "W": "2/10 (Cast: pre-0, post-1231)",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+        ]
+        """;
+
+    // From the library to the graveyard the walk goes the long way, with every gate
+    // and avoid set aside too. To the isle, and from it, the portals are the way.
+    [Fact]
+    public void FindPath_NeverCrossesTheIsleOfBones_ButGoesToItAndFromIt()
+    {
+        var (bfs, _) = NewMapper(IsleJson);
+        RoomKey library = new(2, 1), graveyard = new(2, 5), isle = new(2, 10);
+
+        Direction[] longWay = [Direction.E, Direction.E, Direction.E, Direction.E];
+        Assert.Equal(longWay, bfs.FindPath(library, graveyard));
+        Assert.Equal(longWay, bfs.FindPath(library, graveyard, ignoreExitGates: true, ignoreAvoids: true));
+
+        Assert.Equal(new[] { Direction.U }, bfs.FindPath(library, isle));
+        Assert.Equal(new[] { Direction.D }, bfs.FindPath(isle, graveyard));
+    }
+
+    // The stairs room's cast-on-walk exit west never puts anyone on the isle, though
+    // the room it names is there: no route takes it, gates set aside or not, and
+    // the way from the stairs to the isle is none. The walk back east still goes.
+    [Fact]
+    public void FindPath_NeverTakesTheIslesCastExit_ThatNeverLandsOnIt()
+    {
+        var (bfs, graph) = NewMapper(IsleJson);
+        RoomKey stairs = new(2, 11), isle = new(2, 10);
+
+        Assert.True(graph.GetRoom(stairs)!.Exits[Direction.W].CastTeleportRandom);
+        Assert.Null(bfs.FindPath(stairs, isle));
+        Assert.Null(bfs.FindPath(stairs, isle, ignoreExitGates: true, ignoreAvoids: true));
+        Assert.Equal(new[] { Direction.E }, bfs.FindPath(isle, stairs));
+    }
+
     // ----- blacklist hook --------------------------------------------
 
     [Fact]

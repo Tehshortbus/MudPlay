@@ -554,14 +554,16 @@ public sealed class HangupDeathArrivalRoomsTests
             Graph.OnActiveSetChanged("alpha");
         }
 
-        // The room the map confirms when a character it last had in `last` comes
-        // back to a display of this name and these exits.
-        public RoomKey? ConfirmedAfter(RoomKey last, string name, HashSet<Direction> exits)
+        // The room the hang-up recheck takes a character it last had in `last` to
+        // come back in, shown a display of this name and these exits: the one the map
+        // confirms, or with look-alikes it can't tell apart, the one standing in.
+        public RoomKey? EnteredAfter(RoomKey last, string name, HashSet<Direction> exits)
         {
             RoomTracker tracker = new(Graph);
             tracker.SetLocated(last);
             tracker.NoteRoomObserved(new RoomObservation(name, exits));
-            return tracker.State.Confidence == RoomConfidence.Confirmed ? tracker.State.CurrentRoom?.Key : null;
+            return tracker.State.Confidence == RoomConfidence.Confirmed
+                ? tracker.State.CurrentRoom?.Key : tracker.DisplayLookAlike;
         }
 
         public HangupEntryRoomReading Read(RoomKey hungUpIn, RoomKey? enteredIn, HangupArrivalListTrust trust) =>
@@ -639,29 +641,30 @@ public sealed class HangupDeathArrivalRoomsTests
         """.Replace(" HINT", northHint.Length == 0 ? "" : " " + northHint);
 
     // Killed by a hang-up in the Crimson Passage, the character stands in 11/35.
-    // The map, shown `Portal Room` with a south exit, confirms 11/37: the one room
-    // whose exits are exactly that. Coming back there is coming back where the
-    // dead arrive, and the wording says which room that really is.
+    // The map, shown `Portal Room` with a south exit, can't say whether it is 11/35
+    // or 11/37, whose exits are exactly that: one of them stands in. Coming back in
+    // either is coming back where the dead arrive, and for the twin the wording says
+    // which room that really is.
     [Theory]
     [InlineData(Vanilla)]
     [InlineData(Paradigm)]
     [InlineData(Edited)]
-    public void ThePortalRoom_ConfirmedAsItsTwin_StillSaysADeath(HangupArrivalListTrust trust)
+    public void ThePortalRoom_TakenForItsTwin_StillSaysADeath(HangupArrivalListTrust trust)
     {
         using RealGraph g = new();
         Assert.Equal(new[] { PortalRoom }, HangupDeathArrivalRooms.For(CrimsonPassage));
-        RoomKey? confirmed = g.ConfirmedAfter(CrimsonPassage, "Portal Room", SouthOnly);
-        Assert.Equal(OtherPortalRoom, confirmed);
-
-        HangupEntryRoomReading reading = g.Read(CrimsonPassage, confirmed, trust);
+        RoomKey? entered = g.EnteredAfter(CrimsonPassage, "Portal Room", SouthOnly);
+        Assert.Contains(entered, new RoomKey?[] { PortalRoom, OtherPortalRoom });
+        Assert.True(g.Read(CrimsonPassage, PortalRoom, trust).Says);
+        HangupEntryRoomReading reading = g.Read(CrimsonPassage, OtherPortalRoom, trust);
 
         Assert.True(reading.Says);
         Assert.Equal(PortalRoom, reading.TakenFor);
         // An ordinary hang-up death in 11/44 (not an arena room) reads the same.
-        Assert.True(g.Read(new RoomKey(11, 44), confirmed, trust).Says);
+        Assert.True(g.Read(new RoomKey(11, 44), OtherPortalRoom, trust).Says);
         // Without the graph's word the twin is "some other room", which where the
         // list is trusted would say "no death": the regression this pins.
-        Assert.False(HangupDeathArrivalRooms.Read(CrimsonPassage, confirmed, Vanilla).Says);
+        Assert.False(HangupDeathArrivalRooms.Read(CrimsonPassage, OtherPortalRoom, Vanilla).Says);
     }
 
     // 15/2057's dead arrive in 15/2056, and both are `Dark Cave` with a south
@@ -675,7 +678,7 @@ public sealed class HangupDeathArrivalRoomsTests
     {
         using RealGraph g = new();
         Assert.Equal(new[] { DarkCaveGraveyard }, HangupDeathArrivalRooms.For(DarkCave));
-        RoomKey? confirmed = g.ConfirmedAfter(DarkCave, "Dark Cave", SouthOnly);
+        RoomKey? confirmed = g.EnteredAfter(DarkCave, "Dark Cave", SouthOnly);
         Assert.Equal(DarkCave, confirmed);
 
         Assert.Null(g.Read(DarkCave, confirmed, trust).Says);

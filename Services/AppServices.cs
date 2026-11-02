@@ -11038,7 +11038,8 @@ public sealed class AppServices
                 hungUpIn, enteredIn, HangupArrivalListTrust, RoomGraph.CouldBeTakenFor, InParadigmAlbion,
                 LearnedArrivalLands.For),
             roomLabel: room => RoomGraph.GetRoom(room)?.Name is { Length: > 0 } name ? $"{name} ({room})" : $"room {room}",
-            roomsGameData: () => RoomTracker.RoomsGameData);
+            roomsGameData: () => RoomTracker.RoomsGameData,
+            displayLookAlike: () => RoomTracker.DisplayLookAlike);
         Profile.ProfileSaving += HangupItems.StampForSave;
         Profile.ProfileLoaded += _ => HangupItems.OnProfileLoaded();
         // The lives a `stat` on this connection gave: the count carried over a

@@ -210,6 +210,10 @@ public sealed class BfsMapper
         if (source.Equals(destination))
             return returnEmptyWhenAtDestination ? Array.Empty<Direction>() : null;
 
+        IReadOnlySet<RoomKey> noCrossing = RoomsNoRouteCrosses.Of(_graph);
+        if (noCrossing.Count > 0 && !noCrossing.Contains(source) && !noCrossing.Contains(destination))
+            filter = new RoomsRefusedFilter(filter, noCrossing);
+
         using SearchScope search = OpenSearch(filter, "path");
 
         IReadOnlyList<Direction>? path = FindPathRoundClosedRooms(
