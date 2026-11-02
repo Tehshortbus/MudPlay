@@ -1243,8 +1243,8 @@ How to keep it current:
 
 ### EquipmentManagerTests.cs
 - Covers: Game/Inventory/EquipmentManager
-- Checks: wear/equip command building (availability, blocks, 2H/off-hand rems, paired-slot eviction per realm, fallback fill); apply by keyword/id/trigger; in-flight guard; SwapWeapon; backstab armour; slot blocks; UpdateSetFromWorn; manual-equip signal.
-- Why: reports paradigm-20260831-071637, -20260716-095547, -20260901-130100, -20260903-111522, -20260825-103537, -20260926-194514, -20260926-221353.
+- Checks: wear/equip command building (availability, blocks, 2H/off-hand rems, paired-slot eviction per realm, fallback fill); apply by keyword/id/trigger; in-flight guard; SwapWeapon; backstab armour; the Default and While Moving sets leaving the weapon to backstab while it is on; slot blocks; UpdateSetFromWorn; manual-equip signal.
+- Why: the weapon swapping on every sneak while walking (user, 2026-11-02); reports paradigm-20260831-071637, -20260716-095547, -20260901-130100, -20260903-111522, -20260825-103537, -20260926-194514, -20260926-221353.
 
 ### EquipmentMaxPoolSyncTests.cs
 - Covers: Game/Health/EquipmentMaxPoolSync

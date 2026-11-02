@@ -622,6 +622,31 @@ public sealed class EquipmentManagerTests
         Assert.Equal(EquipResult.NoChange, mgr.ApplyBySetId("set-1"));
     }
 
+    // Backstab on with its own weapon (nexus spear in hand): a Default or While Moving
+    // set put on by automation, a walk resuming, wears its armour and leaves the
+    // weapon; the pre-move prep would take the set's weapon off again before the next
+    // sneak, ending it twice a room. A rest set, or backstab off, still wields its own.
+    [Theory]
+    [InlineData(EquipTriggerType.Default, true, false)]
+    [InlineData(EquipTriggerType.WhileMoving, true, false)]
+    [InlineData(EquipTriggerType.PreRestHp, true, true)]
+    [InlineData(EquipTriggerType.Default, false, true)]
+    public void ApplyBySetId_BackstabWeaponArmed_TravelSetsLeaveTheWeapon(
+        EquipTriggerType trigger, bool backstabArmed, bool weaponSent)
+    {
+        EquipmentSet set = SetWithId("set-1", "Travel",
+            Entry(EquipmentSlot.Weapon, "heartseeker"), Entry(EquipmentSlot.Torso, "leather vest"));
+        set.Trigger = trigger;
+        EquipmentManager mgr = Manager(new EquipmentSettings { Sets = { set } },
+            SnapshotWithWorn("nexus spear"), new CombatSettings());
+        mgr.SetBackstabWeaponProbe(() => backstabArmed);
+
+        Assert.Equal(EquipResult.Applied, mgr.ApplyBySetId("set-1"));
+
+        Assert.Contains("wear leather vest", Wire());
+        Assert.Equal(weaponSent, Wire().Any(c => c.Contains("heartseeker", StringComparison.Ordinal)));
+    }
+
     // ===== SwapWeapon (immediate combat fast path) =====
 
     [Theory]

@@ -55,6 +55,7 @@ public sealed class EquipmentManager
     // Auto-fire gear-set applies consult it to leave the weapon/off-hand to combat
     // rather than clobbering its swap — see ApplySet.
     private Func<bool>? _combatOwnsWeaponSlot;
+    private Func<bool>? _backstabHoldsWeapon;
 
     // True on Paradigm (where a full-pair eq/wear evicts SLOT 1), false on Stock
     // (evicts SLOT 2) — see ComposePairedSlotCommands. Null before wiring
@@ -221,6 +222,9 @@ public sealed class EquipmentManager
     // Bind the combat weapon-ownership probe (CombatManager.IsWeaponOverrideActive).
     // Wired post-construction to break the manager ↔ combat-engine build cycle.
     public void SetCombatWeaponOwnershipProbe(Func<bool> probe) => _combatOwnsWeaponSlot = probe;
+
+    // Bind the backstab probe (CombatManager.BackstabWeaponArmed), wired the same way.
+    public void SetBackstabWeaponProbe(Func<bool> probe) => _backstabHoldsWeapon = probe;
 
     // ----- @equip <set> ----------------------------------------------------
 
@@ -771,6 +775,19 @@ public sealed class EquipmentManager
         // Manual gear-ups (Equip All / @equip, fill=true) carry explicit intent
         // and always control the weapon.
         bool deferWeaponToCombat = !fillFromInventory && _combatOwnsWeaponSlot?.Invoke() == true;
+        // Backstab on with a weapon of its own: the pre-move prep wields that weapon
+        // before every sneak and combat wields the attack weapon before every swing.
+        // An automatic Default or While Moving apply that put its own weapon on in
+        // between (a walk resuming, a loop starting) only had it taken off at the next
+        // step, ending the sneak twice a room: eq, sn, eq, sn. The rest sets and the
+        // Bossing set keep their weapons.
+        if (!fillFromInventory && !deferWeaponToCombat
+            && set.Trigger is EquipTriggerType.Default or EquipTriggerType.WhileMoving
+            && _backstabHoldsWeapon?.Invoke() == true)
+        {
+            deferWeaponToCombat = true;
+            _log?.Debug(LogCategory, $"'{set.Name}' applied without its weapon: backstab is on, so the weapon is the backstab approach's");
+        }
 
         List<string> cmds = BuildApplyCommands(set, _getSnapshot(), fillFromInventory, deferWeaponToCombat);
 
