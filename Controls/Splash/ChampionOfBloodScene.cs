@@ -4,9 +4,11 @@ using MudPlay.Terminal;
 namespace MudPlay.Controls.Splash;
 
 // The Dark Temple's Altar of Blood. We walk up the aisle between the black candles
-// toward the horned-skull altar, blood pouring from its mouth into the basin; the
-// Champion of Blood turns before it and screams to his god, and a rain of blood
-// (his own attack) sheets down the lens and drains away.
+// toward the great stone altar, a horned skull carved into its top, blood pouring
+// from the skull's mouth down the altar's face into the basin; the Champion of Blood
+// is there from the first, and comes down the aisle to meet us. Face to face, he
+// screams to his god, and a rain of blood (his own attack) sheets down the lens and
+// drains away.
 //
 // The room is the temple's altar chamber (7/1285: a city of black candles, the
 // horned skull, the stream of blood and its basin); his cry, in a bubble, is the one
@@ -16,8 +18,7 @@ public sealed class ChampionOfBloodScene : SplashScene
     public override int LoopFrames => 150;
 
     private const int FadeInEnd  = 10;
-    private const int WalkEnd    = 44;    // we've reached the altar
-    private const int TurnAt     = 50;    // the Champion faces us
+    private const int WalkEnd    = 52;    // we've met halfway up the aisle
     private const int ScreamAt   = 56;
     private const int RainStart  = 92;    // blood begins to fall
     private const int RainFull   = 112;   // the lens is red
@@ -28,75 +29,99 @@ public sealed class ChampionOfBloodScene : SplashScene
 
     private static readonly (byte, byte, byte) Wall = (26, 10, 12), WallDk = (16, 6, 8), Mural = (64, 26, 30),
         FloorC = (34, 16, 16), FloorLine = (58, 30, 28), Candle = (20, 18, 20), Flame = (255, 170, 60),
-        FlameHot = (255, 230, 140), Skull = (196, 186, 164), SkullDk = (110, 100, 86), BloodC = (170, 14, 22),
-        BloodDk = (100, 6, 12), Armour = (70, 70, 78), ArmourLt = (120, 120, 130), Cape = (120, 16, 24),
-        Eye = (255, 40, 40), Blade = (200, 200, 210), Text = (230, 70, 70), BubbleFill = (20, 6, 8),
-        BubbleRim = (150, 60, 60);
+        FlameHot = (255, 230, 140), Skull = (196, 186, 164), SkullDk = (110, 100, 86), AltarStone = (78, 52, 50),
+        AltarPanel = (52, 32, 32), BloodC = (170, 14, 22), BloodDk = (100, 6, 12), Armour = (70, 70, 78),
+        ArmourLt = (120, 120, 130), Cape = (120, 16, 24), Eye = (255, 40, 40), Blade = (200, 200, 210),
+        Text = (230, 70, 70), BubbleFill = (20, 6, 8), BubbleRim = (150, 60, 60);
 
+    // A broad stone altar on a step, the horned skull carved into its top, a channel
+    // down its face for the blood, the basin in front.
     private static readonly string[] Altar =
     {
-        "▄▀               ▀▄",
-        "█▄   ▄███████▄   ▄█",
-        " ▀▀▄█████████████▀▀",
-        "    ███▀▀███▀▀███  ",
-        "    ███▄▄█▀█▄▄███  ",
-        "     ▀███▄▄▄███▀   ",
-        "        ▐ ▌        ",
-        "    ▄▄▄▄▄▄▄▄▄▄▄    ",
-        "    ▀█████████▀    ",
+        "           ▄▀  ▄███▄  ▀▄           ",
+        "            ▀▄▄█▀█▀█▄▄▀            ",
+        "▗▄▄▄▄▄▄▄▄▄▄▄▄▄▄▀███▀▄▄▄▄▄▄▄▄▄▄▄▄▄▄▖",
+        "▐███████████████▌ ▐███████████████▌",
+        "▐██▓▓▓▓▓▓▓▓▓▓▓▓▓▌ ▐▓▓▓▓▓▓▓▓▓▓▓▓▓██▌",
+        "▐███████████████▌ ▐███████████████▌",
+        "▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀",
+        "         ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄         ",
+        "         ▀███████████████▀         ",
     };
     private static readonly string[] AltarPaint =
     {
-        "ss               ss",
-        "ss   sssssssss   ss",
-        " ssssssssssssssssss",
-        "    sssddsssddsss  ",
-        "    sssdddddddsss  ",
-        "     sssssssssss   ",
-        "        b b        ",
-        "    ddddddddddd    ",
-        "    dbbbbbbbbbd    ",
+        "           ss  sssss  ss           ",
+        "            ssssdsdssss            ",
+        "aaaaaaaaaaaaaaasssssaaaaaaaaaaaaaaa",
+        "aaaaaaaaaaaaaaaaa aaaaaaaaaaaaaaaaa",
+        "aaapppppppppppppa apppppppppppppaaa",
+        "aaaaaaaaaaaaaaaaa aaaaaaaaaaaaaaaaa",
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "         aaaaaaaaaaaaaaaaa         ",
+        "         bbbbbbbbbbbbbbbbb         ",
+    };
+    // The altar from the far end of the aisle.
+    private static readonly string[] FarAltar =
+    {
+        "   ▄▀▄   ",
+        "▄▄▄▄█▄▄▄▄",
+        "█████████",
+    };
+    private static readonly string[] FarAltarPaint =
+    {
+        "   sss   ",
+        "aaaasaaaa",
+        "aaaaaaaaa",
+    };
+    // The Champion, coming toward us: far, nearer, then face to face. Each size has
+    // its legs mid-stride; the stride swaps as he walks.
+    private static readonly string[] ChampionFar =
+    {
+        "▄█▄",
+        "███",
+        "▌ ▐",
+    };
+    private static readonly string[] ChampionFarPaint =
+    {
+        "aAa",
+        "cac",
+        "a a",
+    };
+    private static readonly string[] ChampionMid =
+    {
+        " ▄█▄  ",
+        "▐●█●▌╱",
+        "▄███▄ ",
+        " █ █  ",
+        " ▀ ▀  ",
+    };
+    private static readonly string[] ChampionMidPaint =
+    {
+        " aAa  ",
+        "aeAeaw",
+        "caaac ",
+        " a a  ",
+        " a a  ",
     };
     private static readonly string[] Champion =
     {
         " ▗▄█▄▖  ",
         " ▐●█●▌ ╱",
-        "▄██████╱ ",
-        "█▐████▌▌ ",
-        "▐ ████ ▐ ",
-        "  █▌▐█   ",
-        " ▀▀  ▀▀  ",
+        "▄██████╱",
+        "█▐████▌▌",
+        "▐ ████ ▐",
+        "  █▌▐█  ",
+        " ▀▀  ▀▀ ",
     };
     private static readonly string[] ChampionPaint =
     {
         " aAAAa  ",
         " aeAea w",
-        "caaAaaww ",
-        "caAAAaaa ",
-        "c aaaa c ",
-        "  aaaaa  ",
-        " aa  aa  ",
-    };
-    // From behind, walking up to him: his back and cape.
-    private static readonly string[] ChampionBack =
-    {
-        " ▗▄█▄▖ ",
-        " ▐███▌ ",
-        "▄█████▄",
-        "▐█████▌",
-        "▐█████▌",
-        "  █▌▐█ ",
-        " ▀▀  ▀▀",
-    };
-    private static readonly string[] ChampionBackPaint =
-    {
-        " aAAAa ",
-        " aaaaa ",
-        "ccccccc",
-        "ccccccc",
-        "ccccccc",
-        "  aaaaa",
-        " aa  aa",
+        "caaAaaww",
+        "caAAAaaa",
+        "c aaaa c",
+        "  aaaaa ",
+        " aa  aa ",
     };
 
     public override void Render(SplashCanvas c, int f)
@@ -160,45 +185,56 @@ public sealed class ChampionOfBloodScene : SplashScene
             }
         }
 
-        // The altar: far and small at the start of the walk, filling the back wall as
-        // we arrive. Two sizes: a hint of it, then the full horned skull.
-        int altarY = floorTop - Altar.Length + 2;
-        if (walk < 0.55)
+        // The altar: small at the far end of the aisle, then broad across the back wall
+        // as we come up it.
+        CellAttributes AltarPaints(char k) => k switch
         {
-            c.Str(cx - 2, floorTop - 3, "▄▀▀▄", SplashCanvas.Fg(Skull, light * 0.7));
-            c.Str(cx - 1, floorTop - 2, "██", SplashCanvas.Fg(Skull, light * 0.7));
-            c.Put(cx, floorTop - 1, '▌', SplashCanvas.Fg(BloodC, light * 0.7));
+            's' => SplashCanvas.Fg(Skull, light), 'd' => SplashCanvas.Fg(SkullDk, light),
+            'p' => SplashCanvas.Fg(AltarPanel, light), 'b' => SplashCanvas.Fg(BloodC, light),
+            _ => SplashCanvas.Fg(AltarStone, light),
+        };
+        int altarY = floorTop - Altar.Length + 2;
+        if (walk < 0.45)
+        {
+            c.Sprite(cx - FarAltar[0].Length / 2, floorTop - FarAltar.Length + 1, FarAltar, FarAltarPaint, AltarPaints);
+            c.Put(cx, floorTop, '▌', SplashCanvas.Fg(BloodC, light));
         }
         else
         {
-            double near = SplashCanvas.Smooth((walk - 0.55) / 0.45);
-            c.Sprite(cx - Altar[0].Length / 2, altarY, Altar, AltarPaint, k => k == 'b'
-                ? SplashCanvas.Fg(BloodC, light * near) : SplashCanvas.Fg(k == 'd' ? SkullDk : Skull, light * near));
-            // The stream of blood gushing from the skull's mouth into the basin.
-            for (int y = altarY + 6; y < altarY + 8; y++)
-                c.Put(cx - 1 + (f + y) % 2, y, (f + y) % 3 == 0 ? '║' : '│', SplashCanvas.Fg(BloodC, light * near));
+            c.Sprite(cx - Altar[0].Length / 2, altarY, Altar, AltarPaint, AltarPaints);
+            // The stream of blood out of the skull's mouth, down the channel to the basin.
+            for (int y = altarY + 3; y < altarY + 8; y++)
+                c.Put(cx, y, (f + y) % 3 == 0 ? '║' : '│', SplashCanvas.Fg(BloodC, light));
         }
 
-        // The Champion, before the altar: his back as we come up, then he turns and
-        // screams, shaking with it.
+        // The Champion: there from the start, coming down the aisle to meet us, larger
+        // as the gap closes, then screaming, shaking with it.
         CellAttributes ChampionPaints(char k) => k switch
         {
             'A' => SplashCanvas.Fg(ArmourLt, light), 'e' => SplashCanvas.Fg(Eye, light),
             'w' => SplashCanvas.Fg(Blade, light), 'c' => SplashCanvas.Fg(Cape, light),
             _ => SplashCanvas.Fg(Armour, light),
         };
-        if (walk >= 0.55)
+        int champY = c.Rows - 1 - Champion.Length + 1;
+        double meet = SplashCanvas.Smooth(f / (double)WalkEnd);
+        bool walking = f < WalkEnd;
+        bool stride = walking && (f / 3) % 2 == 1;
+        int feet = (int)Math.Round(SplashCanvas.Lerp(floorTop + 1, c.Rows - 1, meet));
+        string[] body = meet < 0.35 ? ChampionFar : meet < 0.7 ? ChampionMid : Champion;
+        string[] paint = meet < 0.35 ? ChampionFarPaint : meet < 0.7 ? ChampionMidPaint : ChampionPaint;
+        if (stride)
         {
-            int shake = f >= ScreamAt && f < ScreamAt + 16 && (f & 1) == 1 ? 1 : 0;
-            int champY = c.Rows - 3 - Champion.Length + 1;
-            if (f < TurnAt) c.Sprite(cx - 3, champY, ChampionBack, ChampionBackPaint, ChampionPaints);
-            else c.Sprite(cx - 4 + shake, champY, Champion, ChampionPaint, ChampionPaints);
+            // The other leg forward: the legs' two rows shift a cell toward each other.
+            body = (string[])body.Clone();
+            int legs = body.Length - (body == ChampionFar ? 1 : 2);
+            for (int r = legs; r < body.Length; r++) body[r] = " " + body[r][..^1];
         }
+        int shake = f >= ScreamAt && f < ScreamAt + 16 && (f & 1) == 1 ? 1 : 0;
+        c.Sprite(cx - body[0].Length / 2 + shake, feet - body.Length + 1, body, paint, ChampionPaints);
 
         if (f >= ScreamAt && f < RainFull)
         {
-            int champY = c.Rows - 3 - Champion.Length + 1;
-            // Beside him, level with his chest, clear of the altar behind.
+            // Beside him, level with his chest.
             int left = Math.Min(cx + 7, Math.Max(1, c.Cols - Scream.Length - 5));
             c.SpeechBubble(left, champY + 1, Scream.Length + 4, Scream, (f - ScreamAt) * 2,
                 SplashCanvas.Fg(BubbleRim, light), SplashCanvas.Fg(Text, light), SplashCanvas.Bg(BubbleFill, light),

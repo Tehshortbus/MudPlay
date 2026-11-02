@@ -141,10 +141,10 @@ public sealed class ZanthusScene : SplashScene
             int lichTop = islandTop - Lich.Length + 2;
             int left = Math.Min(cx + 8, Math.Max(1, c.Cols - 24));
             bool prophecy = f >= BloodStart;
-            c.SpeechBubble(left, lichTop - 3, Math.Min(36, c.Cols - left - 1),
+            c.SpeechBubble(left, lichTop - 1, Math.Min(36, c.Cols - left - 1),
                 prophecy ? Prophecy : Greeting, (f - (prophecy ? BloodStart : SpeakAt)) * 3,
                 SplashCanvas.Fg(BubbleRim, light), SplashCanvas.Fg(Quote, light), SplashCanvas.Bg(BubbleFill, light),
-                (cx + 3, lichTop + 2));
+                (cx + 4, lichTop + 1));
         }
     }
 }

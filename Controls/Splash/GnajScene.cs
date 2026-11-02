@@ -7,10 +7,11 @@ namespace MudPlay.Controls.Splash;
 // wall with his half-made creatures floating in them; beside him stands his
 // interdimensional portal device, a great ring wound with coils. He throws up his
 // arms and rants, the device crackles up to full power, the things in the vats open
-// their eyes, and the portal drags the whole room into itself (his sphere of
-// implosion) and closes.
+// their eyes, and he casts eldritch storm (esto, the spell he casts in the game): he
+// glows bright red and points a finger at us, and the storm bursts out of it across
+// the whole lens, then dies away.
 //
-// His words, in a bubble, are from his greeting.
+// His words, in a bubble, are from his greeting; the cast is as the game tells it.
 public sealed class GnajScene : SplashScene
 {
     public override int LoopFrames => 160;
@@ -19,9 +20,11 @@ public sealed class GnajScene : SplashScene
     private const int ShriekAt   = 30;
     private const int PowerAt    = 84;    // the device starts to crackle
     private const int WakeAt     = 104;   // the specimens open their eyes
-    private const int ImplodeAt  = 126;
-    private const int ImplodeEnd = 152;
-    // 152..159: clear.
+    private const int CastAt     = 116;   // he glows bright red and points at us
+    private const int StormAt    = 124;   // the storm leaves his finger
+    private const int StormFull  = 136;   // it fills the lens
+    private const int StormEnd   = 154;   // and has died away
+    // 154..159: clear.
 
     private const string Shriek = "Gnaj is the end of you, behold the furious wrath of the beginner of all things!";
 
@@ -31,7 +34,8 @@ public sealed class GnajScene : SplashScene
         FlaskB = (90, 180, 240), Ring = (120, 124, 136), RingLt = (180, 184, 196), Coil = (190, 130, 60),
         Spark = (210, 230, 255), Energy = (150, 80, 220), EnergyHot = (120, 230, 200), Robe = (88, 70, 50),
         RobeDk = (60, 46, 32), Skin = (206, 178, 150), Hair = (226, 226, 232), Eye = (255, 250, 120),
-        Quote = (60, 200, 90), BubbleFill = (10, 10, 14), BubbleRim = (130, 130, 140);
+        Quote = (60, 200, 90), BubbleFill = (10, 10, 14), BubbleRim = (130, 130, 140), Glow = (255, 50, 40),
+        StormRed = (230, 40, 60), StormViolet = (170, 60, 230), StormWhite = (255, 220, 240);
 
     private static readonly string[] Gnaj =
     {
@@ -49,6 +53,27 @@ public sealed class GnajScene : SplashScene
         " shehehs ",
         "  hhhhh  ",
         "  rRRRr  ",
+        " rRRRRRr ",
+        " rRRRRRr ",
+        " rrrrrrr ",
+    };
+    // Casting: one arm thrust straight at us, finger pointing, the other raised.
+    private static readonly string[] Pointing =
+    {
+        "╲  ▄▄▄   ",
+        " ╲▐◉▀◉▌  ",
+        "  ▐▓▓▓▌● ",
+        "  ▓███▓▀ ",
+        " ▓█████▓ ",
+        " ▓█████▓ ",
+        " ▀▀▀▀▀▀▀ ",
+    };
+    private static readonly string[] PointingPaint =
+    {
+        "s  hhh   ",
+        " sheheh  ",
+        "  hhhhhs ",
+        "  rRRRrs ",
         " rRRRRRr ",
         " rRRRRRr ",
         " rrrrrrr ",
@@ -73,24 +98,24 @@ public sealed class GnajScene : SplashScene
 
     public override void Render(SplashCanvas c, int f)
     {
-        if (f <= 0 || f >= ImplodeEnd) return;
+        if (f <= 0 || f >= StormEnd) return;
         int top = SplashCanvas.TitleRows;
         int floor = c.Rows - 2;
         double light = SplashCanvas.FadeInOut(f, FadeInEnd, int.MaxValue - 1, int.MaxValue);
 
-        // The portal device stands at the right; everything falls into it at the end.
+        // The portal device stands at the right.
         int ringR = Math.Max(3, Math.Min((floor - top) / 2 - 1, c.Cols / 9));
         int px = c.Cols - ringR * 2 - 4, py = top + (floor - top) / 2;
-        double keep = double.MaxValue;
-        if (f >= ImplodeAt)
-            keep = (1 - SplashCanvas.Smooth((f - ImplodeAt) / (double)(ImplodeEnd - 2 - ImplodeAt))) * c.MaxRadius() * 1.4;
-        bool Kept(int x, int y)
+        void Bg(int x, int y, (byte, byte, byte) col, double l) => c.PutBg(x, y, SplashCanvas.Bg(col, l));
+        void Glyph(int x, int y, char ch, (byte, byte, byte) col, double l) => c.Put(x, y, ch, SplashCanvas.Fg(col, l));
+
+        if (f >= StormFull)
         {
-            double dx = x - px, dy = (y - py) * 2.0;
-            return Math.Sqrt(dx * dx + dy * dy) <= keep;
+            // The storm fills the lens, then dies away from the edges in.
+            double p = SplashCanvas.Smooth((f - StormFull) / (double)(StormEnd - 2 - StormFull));
+            StormCells(c, f, c.Cols / 2, (top + c.Rows) / 2, c.MaxRadius() * 1.5 * (1 - p), 1 - p * 0.5);
+            return;
         }
-        void Bg(int x, int y, (byte, byte, byte) col, double l) { if (Kept(x, y)) c.PutBg(x, y, SplashCanvas.Bg(col, l)); }
-        void Glyph(int x, int y, char ch, (byte, byte, byte) col, double l) { if (Kept(x, y)) c.Put(x, y, ch, SplashCanvas.Fg(col, l)); }
 
         // Stone walls and the floor.
         for (int y = top; y < c.Rows; y++)
@@ -132,20 +157,25 @@ public sealed class GnajScene : SplashScene
                     }
         }
 
-        // The workbench, and Gnaj behind it with his arms flung up.
+        // The workbench, and Gnaj behind it: arms flung up as he rants, then glowing
+        // bright red and pointing a finger at us as he casts.
         int benchY = floor - 2;
         int gx = Math.Max(20, Math.Min(26, px - ringR * 2 - 16)), gy = benchY - Gnaj.Length + 2;
-        int sway = f >= ShriekAt ? (f / 6) % 2 : 0;
-        for (int r = 0; r < Gnaj.Length; r++)
-            for (int i = 0; i < Gnaj[r].Length; i++)
+        bool casting = f >= CastAt;
+        int sway = f >= ShriekAt && !casting ? (f / 6) % 2 : 0;
+        string[] pose = casting ? Pointing : Gnaj;
+        string[] posePaint = casting ? PointingPaint : GnajPaint;
+        double glow = casting ? 0.5 + 0.5 * Math.Sin(f * 0.9) : 0;
+        for (int r = 0; r < pose.Length; r++)
+            for (int i = 0; i < pose[r].Length; i++)
             {
-                char ch = Gnaj[r][i];
+                char ch = pose[r][i];
                 if (ch == ' ' || gy + r >= benchY) continue;
-                (byte, byte, byte) col = GnajPaint[r][i] switch
+                (byte, byte, byte) col = posePaint[r][i] switch
                 {
                     's' => Skin, 'h' => Hair, 'e' => Eye, 'R' => Robe, _ => RobeDk,
                 };
-                Glyph(gx + sway + i, gy + r, ch, col, light);
+                Glyph(gx + sway + i, gy + r, ch, casting ? SplashCanvas.Mix(col, Glow, 0.55 + 0.35 * glow) : col, light);
             }
         for (int x = gx - 4; x < gx + Gnaj[0].Length + 4; x++) Bg(x, benchY, Bench, light);
         Glyph(gx - 4, benchY + 1, '║', Bench, light);
@@ -180,15 +210,11 @@ public sealed class GnajScene : SplashScene
                     side < 0 ? '╲' : '╱', SplashCanvas.Fg(Spark, light));
         }
 
-        if (f >= ImplodeAt)
+        if (f >= StormAt)
         {
-            // The rim of the pull, crackling as it closes on the portal.
-            for (int k = 0; k < 48; k++)
-            {
-                double a = k * (Math.PI * 2 / 48);
-                c.Put(px + (int)Math.Round(Math.Cos(a) * keep), py + (int)Math.Round(Math.Sin(a) * keep * 0.5),
-                    (k + f) % 2 == 0 ? '✦' : '·', SplashCanvas.Fg(EnergyHot));
-            }
+            // Eldritch storm: out of his pointing finger, swelling toward us.
+            double p = SplashCanvas.EaseIn((f - StormAt) / (double)(StormFull - StormAt));
+            StormCells(c, f, gx + 4, gy + 1, 2 + p * c.MaxRadius() * 1.5, 1);
             return;
         }
 
@@ -199,5 +225,24 @@ public sealed class GnajScene : SplashScene
                 (f - ShriekAt) * 3, SplashCanvas.Fg(BubbleRim, light), SplashCanvas.Fg(Quote, light),
                 SplashCanvas.Bg(BubbleFill, light), (gx + 4 + sway, gy - 1));
         }
+    }
+
+    // The storm's cells within radius r of (sx, sy): crackling red and violet arcs
+    // wheeling out from the middle, at `strength` of their brightness.
+    private static void StormCells(SplashCanvas c, int f, int sx, int sy, double r, double strength)
+    {
+        for (int y = SplashCanvas.TitleRows; y < c.Rows; y++)
+            for (int x = 0; x < c.Cols; x++)
+            {
+                double dx = x - sx, dy = (y - sy) * 2.0;
+                double d = Math.Sqrt(dx * dx + dy * dy);
+                if (d > r) continue;
+                double swirl = Math.Sin(Math.Atan2(dy, dx) * 5 - d * 0.35 + f * 0.6);
+                double n = SplashCanvas.Noise(x + f, y);
+                if (swirl > 0.7 && n > 0.4)
+                    c.Put(x, y, n > 0.8 ? '✦' : n > 0.6 ? '*' : '·', SplashCanvas.Fg(StormWhite, strength));
+                else
+                    c.PutBg(x, y, SplashCanvas.Bg(swirl > 0 ? StormRed : StormViolet, strength * (0.35 + 0.4 * Math.Abs(swirl))));
+            }
     }
 }

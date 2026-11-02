@@ -6,13 +6,14 @@ namespace MudPlay.Controls.Splash;
 // The desert, through our own eyes from the Dusty Village. It opens in the village
 // street, nekojin padding past the mud-brick houses; then the view shoots up over the
 // rooftops and we look out over the Scorching Desert, turning our head slowly across
-// it: the blue dragons' roost in the sandstone cliffs to the south, a dragon wheeling
-// over it, round to the Great Pyramid at the desert's heart, on to the Ancient
-// Fortress in the northeast, and back past north to the Bountiful Oasis, where the
-// view fades.
+// it: the blue dragons' roost in the sandstone cliffs to the south with dragons
+// wheeling over it, the canyon east of it and the Saracen raiders' fortress beyond,
+// the Great Pyramid due east at the desert's heart, the Ancient Fortress far off in
+// the northeast corner, and round to the two oases in the north, where the view fades.
 //
-// The village sits at the desert's western edge, so the places stand at the bearings
-// they'd be seen at from there.
+// The village sits at the desert's western edge; each place stands at the bearing and
+// rough distance the desert map puts it from there (user, 2026-11-02), nearer ones
+// lower in the view, the farthest small on the skyline.
 public sealed class DesertPanoramaScene : SplashScene
 {
     public override int LoopFrames => 220;
@@ -20,21 +21,23 @@ public sealed class DesertPanoramaScene : SplashScene
     private const int FadeInEnd  = 10;
     private const int StreetEnd  = 50;    // the view starts to rise
     private const int RiseEnd    = 64;    // up over the rooftops, looking out
-    private const int PanEnd     = 196;   // facing the oasis
+    private const int PanEnd     = 196;   // facing the oases
     private const int FadeOutEnd = 214;
     // 214..219: clear.
 
     private const double FieldOfView = 100;   // degrees across the lens
 
     // Compass bearings from the village (north 0, east 90), in the order the view turns.
-    private const double RoostBearing = 145, PyramidBearing = 95, FortressBearing = 45, OasisBearing = -12;
+    private const double RoostBearing = 150, CanyonBearing = 130, RaiderBearing = 109, PyramidBearing = 83,
+        FortressBearing = 67, NorthOasisBearing = 4, EastOasisBearing = 32;
 
     private static readonly (byte, byte, byte) SkyC = (120, 164, 206), SkyHot = (232, 216, 172), Sun = (255, 248, 210),
         Sand = (206, 168, 104), SandLt = (226, 192, 128), SandDk = (176, 138, 82), Ridge = (186, 146, 92),
         Wall = (180, 132, 84), WallDk = (130, 92, 56), Door = (60, 40, 26), Fur = (226, 168, 92), FurDk = (170, 112, 56),
         Cloth = (90, 120, 170), CatEye = (90, 200, 90), Stone = (210, 176, 118), StoneDk = (160, 124, 76),
         Cliff = (176, 106, 62), CliffDk = (122, 70, 40), Cave = (50, 30, 22), Dragon = (60, 120, 230),
-        Fort = (168, 128, 88), FortDk = (112, 82, 54), Water = (60, 130, 190), Palm = (60, 140, 60), Trunk = (110, 80, 50);
+        Fort = (168, 128, 88), FortDk = (112, 82, 54), Water = (60, 130, 190), Palm = (60, 140, 60), Trunk = (110, 80, 50),
+        Gorge = (120, 76, 44), GorgeDk = (70, 40, 24), Tent = (214, 196, 160), Banner = (180, 40, 40), Stockade = (124, 92, 60);
 
     private static readonly string[] Cat =
     {
@@ -84,19 +87,44 @@ public sealed class DesertPanoramaScene : SplashScene
         "ccccccckkcccccccc ",
         "CCCCCCCCCCCCCCCCCC",
     };
+    // The Ancient Fortress, far off: small on the skyline.
     private static readonly string[] FortressArt =
     {
-        "▙▄▟       ▙▄▟",
-        "███▙▄▟▙▄▟▙███",
-        "█████▛▀▜█████",
-        "█████▌ ▐█████",
+        "▙▟   ▙▟",
+        "██▙▄▟██",
+        "███▀███",
     };
     private static readonly string[] FortressArtPaint =
     {
-        "fff       fff",
-        "fffffffffffff",
-        "fffffDDDfffff",
-        "fffffD Dfffff",
+        "ff   ff",
+        "fffffff",
+        "fffDfff",
+    };
+    // The canyon: a gorge cut down into the sand, its walls falling away to shadow.
+    private static readonly string[] CanyonArt =
+    {
+        "▄▄▄▄▄▖     ▗▄▄▄▄▄",
+        "██████▙▖ ▗▟██████",
+        "████████▙▟███████",
+    };
+    private static readonly string[] CanyonArtPaint =
+    {
+        "gggggg     gggggg",
+        "ggggggGG GGgggggg",
+        "ggggggGGGGGgggggg",
+    };
+    // The Saracen raiders' fortress: a stockade with their tents and banners in it.
+    private static readonly string[] RaiderArt =
+    {
+        " ▲  ▲  ▲  ▲ ",
+        "▐█▄▟█▙▟█▙▄█▌",
+        "████████████",
+    };
+    private static readonly string[] RaiderArtPaint =
+    {
+        " r  r  r  r ",
+        "TTTTTTTTTTTT",
+        "kkkkkkkkkkkk",
     };
     private static readonly string[] OasisArt =
     {
@@ -215,7 +243,9 @@ public sealed class DesertPanoramaScene : SplashScene
             'k' => SplashCanvas.Fg(Cave, light), 'f' => SplashCanvas.Fg(Fort, light),
             'D' => SplashCanvas.Fg(FortDk, light), 'p' => SplashCanvas.Fg(Palm, light),
             't' => SplashCanvas.Fg(Trunk, light), 'w' => SplashCanvas.Fg(Water, light),
-            _ => SplashCanvas.Fg(Sand, light),
+            'g' => SplashCanvas.Fg(Gorge, light), 'G' => SplashCanvas.Fg(GorgeDk, light),
+            'T' => SplashCanvas.Fg(Tent, light), 'r' => SplashCanvas.Fg(Banner, light),
+            'K' or 'k' => SplashCanvas.Fg(Stockade, light), _ => SplashCanvas.Fg(Sand, light),
         };
         void Landmark(double bearing, string[] art, string[] paint, int sink)
         {
@@ -223,25 +253,32 @@ public sealed class DesertPanoramaScene : SplashScene
             if (x + art[0].Length < 0 || x >= c.Cols) return;
             c.Sprite(x, horizon - art.Length + sink, art, paint, Paints);
         }
-        Landmark(RoostBearing, RoostArt, RoostArtPaint, 1);
+        Landmark(FortressBearing, FortressArt, FortressArtPaint, 0);
+        Landmark(RaiderBearing, RaiderArt, RaiderArtPaint, 0);
         Landmark(PyramidBearing, PyramidArt, PyramidArtPaint, 1);
-        Landmark(FortressBearing, FortressArt, FortressArtPaint, 1);
+        Landmark(CanyonBearing, CanyonArt, CanyonArtPaint, 1);
+        Landmark(RoostBearing, RoostArt, RoostArtPaint, 2);
 
-        // A blue dragon wheeling over its roost.
-        double a = f * 0.22;
-        int rx = ColumnOf(RoostBearing) + (int)Math.Round(Math.Cos(a) * 8);
-        int ry = horizon - 6 + (int)Math.Round(Math.Sin(a) * 1.5);
-        c.Str(rx, ry, Math.Sin(a) > 0 ? "▀▄▀" : "▄▀▄", SplashCanvas.Fg(Dragon, light));
+        // Blue dragons wheeling over their roost, each on its own circle.
+        for (int d = 0; d < 3; d++)
+        {
+            double a = f * (0.2 + d * 0.05) + d * 2.1;
+            int rx = ColumnOf(RoostBearing) + (int)Math.Round(Math.Cos(a) * (6 + d * 3));
+            int ry = horizon - 5 - d + (int)Math.Round(Math.Sin(a) * 1.5);
+            c.Str(rx, ry, Math.Sin(a) > 0 ? "▀▄▀" : "▄▀▄", SplashCanvas.Fg(Dragon, light));
+        }
 
-        // The oasis lies nearer, just below the skyline.
-        Landmark(OasisBearing, OasisArt, OasisArtPaint, 3);
+        // The two oases to the north lie nearest, below the skyline.
+        Landmark(EastOasisBearing, OasisArt, OasisArtPaint, 3);
+        Landmark(NorthOasisBearing, OasisArt, OasisArtPaint, 4);
     }
 
-    // The view's compass heading at p (0..1) of the turn: roost, pyramid, fortress,
-    // then back past north to the oasis, each leg eased so it lingers on every place.
+    // The view's compass heading at p (0..1) of the turn, from the roost round to the
+    // oases: each leg eased so the view lingers on every stop.
     private static double HeadingAt(double p)
     {
-        double[] stops = { RoostBearing, PyramidBearing, FortressBearing, OasisBearing };
+        double[] stops = { RoostBearing, RaiderBearing, PyramidBearing, FortressBearing,
+            (NorthOasisBearing + EastOasisBearing) / 2 };
         double t = Math.Clamp(p, 0, 1) * (stops.Length - 1);
         int leg = Math.Min((int)t, stops.Length - 2);
         return SplashCanvas.Lerp(stops[leg], stops[leg + 1], SplashCanvas.Smooth(t - leg));

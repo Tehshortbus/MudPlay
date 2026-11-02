@@ -217,33 +217,36 @@ public sealed class SplashCanvas
         }
 
         // The tail: out of the top or bottom edge toward a speaker above or below the
-        // bubble, otherwise out of the side, level with the speaker.
+        // bubble (straight out, then across to the speaker), otherwise out of the side,
+        // level with the speaker.
         if (speaker.Y < top || speaker.Y > bottom)
         {
             bool above = speaker.Y < top;
-            int tx = Math.Clamp(speaker.X, left + 2, right - 2), edge = above ? top : bottom;
-            Put(tx, edge, above ? '┴' : '┬', frame);
-            Tail(tx, above ? top - 1 : bottom + 1, speaker.X, above ? speaker.Y + 1 : speaker.Y - 1, frame, upright: true);
+            int tx = Math.Clamp(speaker.X, left + 2, right - 2);
+            Put(tx, above ? top : bottom, above ? '┴' : '┬', frame);
+            int step = above ? -1 : 1;
+            if (tx == speaker.X)
+            {
+                for (int y = (above ? top : bottom) + step; y != speaker.Y; y += step) Put(tx, y, '│', frame);
+            }
+            else
+            {
+                for (int y = (above ? top : bottom) + step; y != speaker.Y; y += step) Put(tx, y, '│', frame);
+                bool toRight = speaker.X > tx;
+                Put(tx, speaker.Y, above ? (toRight ? '╭' : '╮') : (toRight ? '╰' : '╯'), frame);
+                for (int x = tx + (toRight ? 1 : -1); x != speaker.X; x += toRight ? 1 : -1) Put(x, speaker.Y, '─', frame);
+            }
         }
         else if (speaker.X < left)
         {
             Put(left, speaker.Y, '┤', frame);
-            Tail(left - 1, speaker.Y, speaker.X + 1, speaker.Y, frame);
+            for (int x = speaker.X + 1; x < left; x++) Put(x, speaker.Y, '─', frame);
         }
         else if (speaker.X > right)
         {
             Put(right, speaker.Y, '├', frame);
-            Tail(right + 1, speaker.Y, speaker.X - 1, speaker.Y, frame);
+            for (int x = right + 1; x < speaker.X; x++) Put(x, speaker.Y, '─', frame);
         }
-    }
-
-    // A bubble's tail from (x0, y0) toward (x1, y1), drawn with the stroke its slope takes.
-    // An upright tail (out of the top or bottom edge) one row long stands straight up.
-    private void Tail(int x0, int y0, int x1, int y1, CellAttributes attr, bool upright = false)
-    {
-        int dx = x1 - x0, dy = y1 - y0;
-        char stroke = dy == 0 ? (upright ? '│' : '─') : dx == 0 ? '│' : (dx > 0) == (dy < 0) ? '╱' : '╲';
-        Line(x0, y0, x1, y1, stroke, attr);
     }
 
     // A rough integer line (Bresenham) for limbs and other thin strokes.

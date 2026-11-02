@@ -6,8 +6,8 @@ namespace MudPlay.Controls.Splash;
 // A diamond mine tunnel: heavy timber frames down a low passage of brownish-red rock,
 // diamonds clustered thick in the walls and glinting. Out of the black at its far end
 // the Devil Fiend Malivek comes stalking up the tunnel, a wisp of smoke trailing from
-// its mouth, and hellfire (its own attack) roars up from the floor to fill the lens,
-// then the fire dies and the smoke thins away. No words: the picture is the scene.
+// its mouth; it growls (in a bubble), and hellfire (its own attack) roars up from the
+// floor to fill the lens, then the fire dies and the smoke thins away.
 //
 // The tunnel is the Diamond Vein the fiend roams (map 15).
 public sealed class MalivekScene : SplashScene
@@ -16,39 +16,51 @@ public sealed class MalivekScene : SplashScene
 
     private const int FadeInEnd  = 10;
     private const int StalkEnd   = 44;    // it has come up the tunnel to us
+    private const int GrowlAt    = 48;
     private const int FireStart  = 96;
     private const int FireFull   = 110;
     private const int SmokeEnd   = 144;
     // 144..149: clear.
 
+    // Its greeting is a growl with no words in it, so the bubble holds the growl.
+    private const string Growl = "Grrrrrr...";
+
     private static readonly (byte, byte, byte) RockC = (96, 50, 36), RockDk = (66, 34, 24), Dark = (12, 8, 8),
         Beam = (88, 58, 30), BeamDk = (58, 38, 20), Diamond = (200, 240, 255), DiamondHot = (255, 255, 255),
         Hide = (150, 24, 20), HideDk = (92, 12, 12), Horn = (220, 210, 180), Eye = (255, 230, 60),
-        SmokeC = (120, 116, 112), FireOuter = (200, 50, 10), FireMid = (245, 130, 20), FireCore = (255, 230, 120);
+        SmokeC = (120, 116, 112), FireOuter = (200, 50, 10), FireMid = (245, 130, 20), FireCore = (255, 230, 120),
+        Snarl = (230, 120, 60), BubbleFill = (16, 8, 6), BubbleRim = (140, 90, 70);
 
+    // Up close: a hulking, horned fiend, all shoulders and arms, claws at its fists.
     private static readonly string[] Near =
     {
-        "▄▀           ▀▄ ",
-        "█▄  ▄█████▄  ▄█ ",
-        " ▀▀██●███●██▀▀  ",
-        "   ███▀▄▄▀███   ",
-        "  ▄▀▀█▄▄▄▄█▀▀▄  ",
-        " ▐█  ███████  █▌",
-        " ▐▌ █████████ ▐▌",
-        "    ███▀▀▀███   ",
-        "   ▄██▀   ▀██▄  ",
+        "  ▄▀                     ▀▄  ",
+        "  █▄      ▄▄▄███▄▄▄      ▄█  ",
+        "   ▀▀▄▄▄▄██▀●███●▀██▄▄▄▄▀▀   ",
+        "         ███▄▀▀▀▄███         ",
+        " ▄▄██▄▄▄▄████▀▀▀████▄▄▄▄██▄▄ ",
+        "▐███████████████████████████▌",
+        "████▀ ▐████▀▀███▀▀████▌ ▀████",
+        "███▌  ▐███▀▀█████▀▀███▌  ▐███",
+        "▀██▄  ▐█████▄▄▀▄▄█████▌  ▄██▀",
+        " ▀▀▀▀  ▐█████████████▌  ▀▀▀▀ ",
+        "        ▐████▌ ▐████▌        ",
+        "       ▄████▀   ▀████▄       ",
     };
     private static readonly string[] NearPaint =
     {
-        "hh           hh ",
-        "hh  HHHHHHH  hh ",
-        " hhHHeHHHeHHhh  ",
-        "   HHHdddHHHH   ",
-        "  ddHHHHHHHHdd  ",
-        " dd  HHHHHHH  dd",
-        " dd HHHHHHHHH dd",
-        "    HHHdddHHH   ",
-        "   dHHd   dHHd  ",
+        "  hh                     hh  ",
+        "  hh      HHHHHHHHH      hh  ",
+        "   hhhHHHHHHeHHHeHHHHHHhhh   ",
+        "         HHHHdddHHHH         ",
+        " HHHHHHHHHHHHdddHHHHHHHHHHHH ",
+        "HHHHHHHHHHHHHHHHHHHHHHHHHHHHH",
+        "HHHHH HHHHHddHHHddHHHHH HHHHH",
+        "HHHH  HHHHddHHHHHddHHHH  HHHH",
+        "HHHH  HHHHHHHHdHHHHHHHH  HHHH",
+        " HHHH  HHHHHHHHHHHHHHH  HHHH ",
+        "        HHHHHH HHHHHH        ",
+        "       hhhhhh   hhhhhh       ",
     };
     private static readonly string[] Far =
     {
@@ -139,13 +151,21 @@ public sealed class MalivekScene : SplashScene
         {
             int bottom = (int)Math.Round(SplashCanvas.Lerp(mouthBot + 2, floor - 1, (stalk - 0.5) * 2));
             headY = bottom - Near.Length + 1;
-            (mouthDy, mouthDx) = (3, 5);
+            (mouthDy, mouthDx) = (3, 3);
             c.Sprite(cx - Near[0].Length / 2, headY, Near, NearPaint, Paints);
         }
         // The wisp of smoke trailing from the corner of its mouth, up and away.
         for (int k = 0; k < 4; k++)
             c.Put(cx + mouthDx + k + (int)Math.Round(Math.Sin((f + k * 3) * 0.4)), headY + mouthDy - k,
                 k % 2 == 0 ? '~' : '∙', SplashCanvas.Fg(SmokeC, light * (1 - k * 0.2)));
+
+        if (f >= GrowlAt && f < FireStart)
+        {
+            int left = Math.Min(cx + Near[0].Length / 2 + 2, Math.Max(1, c.Cols - Growl.Length - 5));
+            c.SpeechBubble(left, headY + 1, Growl.Length + 4, Growl, (f - GrowlAt) * 2,
+                SplashCanvas.Fg(BubbleRim, light), SplashCanvas.Fg(Snarl, light), SplashCanvas.Bg(BubbleFill, light),
+                (cx + Near[0].Length / 2 - 1, headY + 2));
+        }
 
         // Hellfire: a wall of flame climbing from the floor to the top of the lens.
         if (f >= FireStart)
