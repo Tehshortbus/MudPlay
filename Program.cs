@@ -92,10 +92,16 @@ internal static class Program
     // The CPU unless Settings → General asks for the graphics card: the graphics
     // driver alone costs a client about 120 MB, for a window that is mostly text.
     // Asked for, the card is left to each platform's own choice of renderer.
+    //
+    // X11 keeps each window's framebuffer between frames. Without that it frees the
+    // buffer after every frame and allocates the next, telling the GC of several MB
+    // of native memory each time, and that pressure forced a full collection more
+    // than once a second while the startup splash played: half the CPU an idle
+    // client spent. One kept buffer per window costs a few MB.
     private static AppBuilder DrawWith(AppBuilder builder) => ClientEnvironment.DrawsWithGraphicsCard
         ? builder
         : builder
-            .With(new X11PlatformOptions { RenderingMode = [X11RenderingMode.Software] })
+            .With(new X11PlatformOptions { RenderingMode = [X11RenderingMode.Software], UseRetainedFramebuffer = true })
             .With(new Win32PlatformOptions { RenderingMode = [Win32RenderingMode.Software] })
             .With(new AvaloniaNativePlatformOptions { RenderingMode = [AvaloniaNativeRenderingMode.Software] });
 }

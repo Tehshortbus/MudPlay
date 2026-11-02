@@ -1,5 +1,9 @@
 # Version history
 
+## 3.195.29
+
+- Drawing with the CPU on Linux keeps each window's frame, halving the idle client's CPU and its GC pauses
+
 ## 3.195.28
 
 - Windows are drawn with the CPU by default, saving about 120 MB per client
