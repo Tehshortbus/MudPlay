@@ -4106,8 +4106,8 @@ How to keep it current:
 
 ### StatParserTests.cs
 - Covers: Game/StatParser
-- Checks: stat-screen field capture; outbound stat/exp/health prefix gates and their windows; always-on lives / exp / CP / train lines; prompt-close and settle-close; chat-line guards; self-arm on the header; IsStatScreenLine; LastCaptureRead* flags
-- Why: reports paradigm-20260906-090057, -20260916-081052, -20260924-132158, -20260928-223148, -20260928-231447
+- Checks: stat-screen field capture, Anomaly's pairs with no space after the colon included; outbound stat/exp/health prefix gates and their windows; always-on lives / exp / CP / train lines; prompt-close and settle-close; chat-line guards; self-arm on the header; IsStatScreenLine; LastCaptureRead* flags
+- Why: reports paradigm-20260906-090057, -20260916-081052, -20260924-132158, -20260928-223148, -20260928-231447, -20261102-134506
 
 ### StatScreenMarksTests.cs
 - Covers: Game/StatParser (modified-stat marks, effect list)

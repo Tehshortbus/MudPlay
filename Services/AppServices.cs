@@ -12610,16 +12610,28 @@ public sealed class AppServices
     // even while stale until a fresh one lands; before the first one, estimated from
     // the live max and the gear bonuses (DefaultSetMaxPool).
     private int DefaultBasisMaxHp()
-        => PoolBaseline.Current is { MaxHp: > 0 } b ? b.MaxHp
+        => !DefaultSetInUse() ? 0
+            : PoolBaseline.Current is { MaxHp: > 0 } b ? b.MaxHp
             : DefaultSetMaxPool(static t => t.PlusMaxHp, PlayerState.MaxHp);
     private int DefaultBasisMaxMa()
-        => PoolBaseline.Current is { MaxMa: > 0 } b ? b.MaxMa
+        => !DefaultSetInUse() ? 0
+            : PoolBaseline.Current is { MaxMa: > 0 } b ? b.MaxMa
             : DefaultSetMaxPool(static t => t.PlusMaxMana, PlayerState.MaxMa);
 
+    // A disabled Default set is never put on by automation, so the gear worn is
+    // whatever the user put on and the maxima it would give are no basis: the rest
+    // figures go by the live maxima, and no `stat` is asked for to keep its baseline.
+    // A baseline read levels ago otherwise stood in for good (report
+    // paradigm-20261102-134506: 433/80 from level 37 against a level-59 915/164).
+    private bool DefaultSetInUse() =>
+        Profile.Current?.Equipment?.Sets.FirstOrDefault(s => s.Trigger == Models.Profile.EquipTriggerType.Default)
+            is { Enabled: true };
+
     // The Default set's summed +MaxHP / +MaxMana item bonus (owned items only, like
-    // DefaultSetMaxPool), or null when no Default set is configured.
+    // DefaultSetMaxPool), or null when no Default set is configured or it's disabled.
     private (int Hp, int Ma)? DefaultGearPoolBonus()
     {
+        if (!DefaultSetInUse()) return null;
         IReadOnlyList<Game.Inventory.EquippedItem> items = DefaultSetEquippedItems();
         if (items.Count == 0) return null;
         Game.Calculators.EquipmentStatSummary t = Game.Calculators.CharacterCalculator

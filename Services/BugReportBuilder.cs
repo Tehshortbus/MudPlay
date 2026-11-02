@@ -2344,7 +2344,8 @@ public static class BugReportBuilder
         Kv(sb, "Sell detour", svc.SellDetour.Status);
         Kv(sb, "Default-gear pool baseline", svc.PoolBaseline.Current is { } pb
             ? $"HP {pb.MaxHp}, pool {pb.MaxMa} at level {pb.Level} (gear +{pb.DefaultGearHp}/+{pb.DefaultGearMa}, {pb.RecordedAt.ToLocalTime():yyyy-MM-dd HH:mm:ss})"
-              + (svc.PoolBaseline.IsStale ? " — stale, re-reading `stat` in Default gear" : "")
+              + (!svc.RestPreviewMaxHp().FromDefaultSet ? " — not in use: the Default set is disabled or none of it is owned, so rest goes by the live maxima"
+                 : svc.PoolBaseline.IsStale ? " — stale, re-reading `stat` in Default gear" : "")
             : "none yet — using the gear estimate");
         Kv(sb, "Party @ok held for gear", svc.Health.IsPartyOkHeldForGear.ToString());
         Kv(sb, "Auto-sell", svc.AutoSell.IsSelling ? "selling here" : "idle");

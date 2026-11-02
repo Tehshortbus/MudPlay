@@ -6028,6 +6028,7 @@ The percentage is read against your **Default gear set's** max HP / mana — so 
 - **Before the first one:** until a `stat` has been seen in Default gear, the max is worked out from your current max and your gear's bonuses.
 - **When it's dropped:** if the recorded figures were read at a different level and you now own none of the Default set's items (a profile whose gear sets belong to another character, a reroll), they can't be re-read, so they're discarded and the live max is used.
 - **Copied profiles:** a copy starts with nothing recorded. See *Profile Management* → **Copy**.
+- **With the Default set disabled:** MudPlay never puts it on, so your thresholds go by your **live** max instead, and nothing is re-read for it. The recorded figures come back into use if you enable the set again.
 
 Only Default-set items you actually **have** (worn or carried) count — an item lost to a deathpile, sold, or never obtained is left out, and when you have none of them (or before your first inventory check) the **live** max is used instead. The figure beside each threshold says which basis it's using: **(def)** for the Default-set max, **(live)** for your current max.
 

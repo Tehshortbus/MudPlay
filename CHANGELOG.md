@@ -1,9 +1,12 @@
 # Version history
 
-## 3.196.6
+## 3.196.7
 
 - Walking with backstab on keeps the Backstab set's armour on too; the travel sets dress only the other places
 - A friend's corpse recovered with `recover corpse of <name> <password>` is recorded for hand-back, its password masked
+- Anomaly's `stat` sheet: max mana and AC are read when no space follows the colon
+- Rest and heal thresholds follow the live max HP / mana while the Default gear set is disabled
+- bug reports addressed: paradigm-20261102-134506
 
 ## 3.196.4
 
