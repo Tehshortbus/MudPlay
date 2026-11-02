@@ -81,11 +81,21 @@ internal static class Program
     // Builds the Avalonia configuration. The XAML previewer in IDEs also
     // calls this method by reflection, so its signature must stay stable.
     public static AppBuilder BuildAvaloniaApp() =>
-        AppBuilder.Configure<App>()
+        DrawWith(AppBuilder.Configure<App>()
             .UsePlatformDetect()       // Pick the right backend (X11, Win32, ...).
 #if DEBUG
             .WithDeveloperTools()      // F12 inspector in debug builds.
 #endif
             .WithInterFont()           // Fall-back UI font for chrome/text boxes.
-            .LogToTrace();             // Route Avalonia diagnostics to the trace listener.
+            .LogToTrace());            // Route Avalonia diagnostics to the trace listener.
+
+    // The CPU unless Settings → General asks for the graphics card: the graphics
+    // driver alone costs a client about 120 MB, for a window that is mostly text.
+    // Asked for, the card is left to each platform's own choice of renderer.
+    private static AppBuilder DrawWith(AppBuilder builder) => ClientEnvironment.DrawsWithGraphicsCard
+        ? builder
+        : builder
+            .With(new X11PlatformOptions { RenderingMode = [X11RenderingMode.Software] })
+            .With(new Win32PlatformOptions { RenderingMode = [Win32RenderingMode.Software] })
+            .With(new AvaloniaNativePlatformOptions { RenderingMode = [AvaloniaNativeRenderingMode.Software] });
 }

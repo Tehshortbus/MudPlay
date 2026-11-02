@@ -105,6 +105,9 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private bool _showStartupMudAnimation = true;
     // Install-global (GlobalSettings.SnapWindows), read live by WindowSnapManager.
     [ObservableProperty] private bool _snapWindows = true;
+    // Install-global (GlobalSettings.DrawWithGraphicsCard), read from the file at
+    // launch: a change waits for the next one.
+    [ObservableProperty] private bool _drawWithGraphicsCard;
     // Install-global (GlobalSettings.AutoCheckForUpdates): a background check against
     // GitHub Releases on launch and twice a day after, flagging a newer build (splash
     // banner, title-bar crawl, Help / Tools → Update the Client). Never installs on
@@ -495,6 +498,7 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
         // Window snapping is install-global too; WindowSnapManager reads it live off
         // the same GlobalSettings, so this is all the wiring the toggle needs.
         _globalSettings.Current.SnapWindows = SnapWindows;
+        _globalSettings.Current.DrawWithGraphicsCard = DrawWithGraphicsCard;
         // Startup update check is install-global; AppServices reads it once at launch.
         _globalSettings.Current.AutoCheckForUpdates = AutoCheckForUpdates;
         // The API server subscribes to GlobalSettingsChanged, so Save() below is
@@ -584,6 +588,7 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
 
         // Window snapping is Global-tier — reflect the live GlobalSettings value.
         SnapWindows = _globalSettings.Current.SnapWindows;
+        DrawWithGraphicsCard = _globalSettings.Current.DrawWithGraphicsCard;
         AutoCheckForUpdates = _globalSettings.Current.AutoCheckForUpdates;
         LocalApiEnabled = _globalSettings.Current.LocalApiEnabled;
         LocalApiPort = _globalSettings.Current.LocalApiPort;
@@ -730,6 +735,7 @@ public sealed partial class GeneralSectionViewModel : SettingsSectionViewModel
     partial void OnInventoryTabCompleteEnabledChanged(bool value) => Dirty();
     partial void OnShowStartupMudAnimationChanged(bool value)        => Dirty();
     partial void OnSnapWindowsChanged(bool value)                    => Dirty();
+    partial void OnDrawWithGraphicsCardChanged(bool value)           => Dirty();
     partial void OnAutoCheckForUpdatesChanged(bool value)       => Dirty();
     partial void OnLocalApiEnabledChanged(bool value)                => Dirty();
     partial void OnLocalApiPortChanged(int value)                    => Dirty();

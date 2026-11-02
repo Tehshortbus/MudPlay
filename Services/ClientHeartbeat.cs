@@ -37,7 +37,7 @@ public sealed class ClientHeartbeat
     public static IReadOnlyList<string> ClientLines() =>
     [
         $"MudPlay {ClientEnvironment.Build}",
-        $"{ClientEnvironment.Os} ({ClientEnvironment.Architecture}); {ClientEnvironment.Desktop}; {ClientEnvironment.Runtime}",
+        $"{ClientEnvironment.Os} ({ClientEnvironment.Architecture}); {ClientEnvironment.Desktop}; drawn with {ClientEnvironment.Drawing}; {ClientEnvironment.Runtime}",
         $"process {ClientEnvironment.ProcessId} started {ClientEnvironment.ProcessStart:yyyy-MM-dd HH:mm:ss zzz}",
     ];
 

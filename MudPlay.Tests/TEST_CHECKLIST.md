@@ -1622,9 +1622,9 @@ How to keep it current:
 - Why: every SettingsService reads that file; another test's would read the values written into it.
 
 ### GlobalSettingsTests.cs
-- Covers: Models/Settings/GlobalSettings.StartupProfile
-- Checks: auto-load last profile only when on and one exists; default off.
-- Why: the startup profile decision.
+- Covers: Models/Settings/GlobalSettings.StartupProfile, ClientEnvironment.ReadDrawWithGraphicsCard
+- Checks: auto-load last profile only when on and one exists; default off. The launch's read of the drawing choice sees what a settings save wrote, and a missing, unparseable or silent file means the CPU.
+- Why: the startup profile decision; the renderer is chosen from the file before the settings load (user, 2026-11-02: the CPU by default).
 
 ### GlobeOfDarknessSeedTests.cs
 - Covers: Game/Conditions/ConditionTracker with shipped Messages seeds

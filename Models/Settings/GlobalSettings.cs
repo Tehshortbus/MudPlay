@@ -170,6 +170,14 @@ public sealed class GlobalSettings
     // per-character); read live by WindowSnapManager. Surfaced in Settings → General.
     public bool SnapWindows { get; set; } = true;
 
+    // Draw the windows on the graphics card rather than with the CPU. Off by
+    // default: the graphics driver costs a client about 120 MB, and a text client
+    // draws with the CPU for a few percent of one core (user, 2026-11-02). The
+    // renderer is picked once, before the settings load, so ClientEnvironment
+    // reads this from the file at launch and a change takes effect on the next.
+    // Install-wide (Global tier). Surfaced in Settings → General.
+    public bool DrawWithGraphicsCard { get; set; }
+
     // Local control API — a loopback-only HTTP endpoint exposing live client
     // state, the program log, scrollback, and a bug-report-equivalent dump, so a
     // wedge can be inspected while it is happening instead of reconstructed from
