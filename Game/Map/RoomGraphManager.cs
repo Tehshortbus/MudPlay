@@ -45,7 +45,8 @@ public sealed class RoomGraphManager
     // become routable edges.
     private readonly KnownSpellCatalog? _spellCatalog;
 
-    private readonly Dictionary<RoomKey, Room> _rooms = new();
+    // Replaced whole by each build, laid out for the rooms its rows hold.
+    private RoomTable<Room> _rooms = RoomTable<Room>.Empty;
     private readonly Dictionary<string, List<Room>> _byName = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<(string Name, uint ExitMask), List<RoomKey>> _byNameAndExits = new();
 
@@ -677,6 +678,7 @@ public sealed class RoomGraphManager
                 return exits;
             },
             static _ => { });
+        _rooms = new RoomTable<Room>(RoomSlots.For(read.Where(r => r.Room is not null).Select(r => r.Room!.Key)));
         foreach (RowRead row in read)
         {
             if (row.Room is not { } room)
@@ -975,7 +977,7 @@ public sealed class RoomGraphManager
     private void Clear()
     {
         ForgetDerived();
-        _rooms.Clear();
+        _rooms = RoomTable<Room>.Empty;
         _unnamedInData.Clear();
         _namedFromStore.Clear();
         _learnedThisSession.Clear();

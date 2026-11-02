@@ -54,7 +54,7 @@ public sealed class BfsMapper
     // but sitting on different floors — and stub it instead of dragging the
     // far floor's rooms onto the current plane. Rebuilt lazily; dropped by
     // OnGraphReloaded (blacklist changes don't affect vertical structure).
-    private Dictionary<RoomKey, (int Component, int Floor)>? _planeIndex;
+    private RoomTable<(int Component, int Floor)>? _planeIndex;
 
     // Memoized directed walk-reachability over NON-text exits, keyed by
     // (source, target). Refines the cross-plane test: a text exit whose
@@ -633,11 +633,10 @@ public sealed class BfsMapper
         RoomKey destination, IReadOnlyCollection<RoomKey> sources, IRoomFilter? filter = null)
     {
         ArgumentNullException.ThrowIfNull(sources);
-        IReadOnlyDictionary<RoomKey, (RoomKey From, Direction Dir)[]> into = ExitsInto();
+        RoomLists<(RoomKey From, Direction Dir)> into = ExitsInto();
         return HopFloors(destination, sources, filter, (here, seen, visit) =>
         {
-            if (!into.TryGetValue(here, out (RoomKey From, Direction Dir)[]? ways)) return;
-            foreach ((RoomKey from, Direction dir) in ways)
+            foreach ((RoomKey from, Direction dir) in into.Of(here))
                 if (!seen(from) && _graph.GetRoom(from) is { } room && room.Exits.TryGetValue(dir, out RoomExit exit)
                     && FloorMayCross(from, in exit, filter))
                     visit(from);
@@ -688,19 +687,18 @@ public sealed class BfsMapper
 
     // Every exit in the graph by the room it leads into. Exits are fixed once the
     // graph has loaded, so it is built once per load.
-    private IReadOnlyDictionary<RoomKey, (RoomKey From, Direction Dir)[]> ExitsInto() =>
+    private RoomLists<(RoomKey From, Direction Dir)> ExitsInto() =>
         _graph.Derived("exits into", () =>
         {
-            Dictionary<RoomKey, List<(RoomKey, Direction)>> into = new();
+            Dictionary<RoomKey, List<(RoomKey From, Direction Dir)>> into = new();
             foreach (Room room in _graph.Rooms)
                 foreach ((Direction dir, RoomExit exit) in room.Exits)
                 {
-                    if (!into.TryGetValue(exit.Target, out List<(RoomKey, Direction)>? list))
+                    if (!into.TryGetValue(exit.Target, out List<(RoomKey From, Direction Dir)>? list))
                         into[exit.Target] = list = new();
                     list.Add((room.Key, dir));
                 }
-            return (IReadOnlyDictionary<RoomKey, (RoomKey From, Direction Dir)[]>)
-                into.ToDictionary(kv => kv.Key, kv => kv.Value.ToArray());
+            return RoomLists<(RoomKey From, Direction Dir)>.From(into);
         });
 
     // FindPath's hop counts for many rooms at once, its way round a poor-odds door
@@ -1775,14 +1773,15 @@ public sealed class BfsMapper
     // Lazily assign every room a (component, floor) over the NON-text exit
     // graph. One BFS per component; U/D shift the floor, cardinals keep it,
     // text exits are skipped so they can't fuse two vertical levels. Result
-    // is cached until the graph reloads.
-    private Dictionary<RoomKey, (int Component, int Floor)> PlaneIndex()
+    // is cached until the graph reloads. A room the active set doesn't hold (one
+    // only GMCP has shown) has no plane.
+    private RoomTable<(int Component, int Floor)> PlaneIndex()
     {
         lock (_cacheLock)
         {
             if (_planeIndex is not null) return _planeIndex;
 
-            var index = new Dictionary<RoomKey, (int Component, int Floor)>();
+            var index = new RoomTable<(int Component, int Floor)>(RoomSlots.For(_graph.RoomKeys));
             int component = 0;
             var queue = new Queue<RoomKey>();
             foreach (Room seed in _graph.Rooms)
@@ -1803,7 +1802,7 @@ public sealed class BfsMapper
                         if (index.ContainsKey(t)) continue;
                         if (_graph.GetRoom(t) is null) continue;
                         int df = dir == Direction.U ? 1 : dir == Direction.D ? -1 : 0;
-                        index[t] = (component, curFloor + df);
+                        if (!index.Set(t, (component, curFloor + df))) continue;
                         queue.Enqueue(t);
                     }
                 }
@@ -1828,7 +1827,7 @@ public sealed class BfsMapper
     // stub it to keep the foreign floor off this plane).
     private bool IsCrossPlaneTextExit(RoomKey source, RoomKey target)
     {
-        Dictionary<RoomKey, (int Component, int Floor)> idx = PlaneIndex();
+        RoomTable<(int Component, int Floor)> idx = PlaneIndex();
         if (!idx.TryGetValue(source, out (int Component, int Floor) a)) return false;
         if (!idx.TryGetValue(target, out (int Component, int Floor) b)) return false;
         if (a.Component != b.Component || a.Floor == b.Floor) return false;

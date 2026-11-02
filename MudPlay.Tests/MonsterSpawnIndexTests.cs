@@ -62,6 +62,30 @@ public sealed class MonsterSpawnIndexTests : IDisposable
         Assert.Empty(spawns.AssignedMonsterIdsAt(room1));
     }
 
+    // The lists sit in one array laid out by map and room number: a room numbered
+    // far past the rest of its map, or on a map numbered past any real one, keeps
+    // its own list, and one between them that nothing names has none.
+    [Fact]
+    public void RoomsNumberedFarApart_EachKeepTheirOwnList()
+    {
+        const string json = """
+            [
+              { "Number": 1, "Name": "orc", "Summoned By": "Room 1/1" },
+              { "Number": 2, "Name": "wolf", "Summoned By": "Room 1/70000, Group: 9999/4" },
+              { "Number": 3, "Name": "bandit", "Summoned By": "Room 1/70000, Room 1/3" }
+            ]
+            """;
+        GameDataCache cache = NewCache("alpha", json);
+        MonsterSpawnIndex spawns = new(cache);
+
+        Assert.Equal(new[] { 1 }, spawns.PlacedMonsterIdsAt(new RoomKey(1, 1)));
+        Assert.Equal(new[] { 2, 3 }, spawns.PlacedMonsterIdsAt(new RoomKey(1, 70000)));
+        Assert.Equal(new[] { 2 }, spawns.AssignedMonsterIdsAt(new RoomKey(9999, 4)));
+        Assert.Equal(new[] { 3 }, spawns.MonsterIdsSummonedAt(new RoomKey(1, 3)));
+        Assert.Empty(spawns.MonsterIdsSummonedAt(new RoomKey(1, 2)));
+        Assert.Empty(spawns.MonsterIdsSummonedAt(new RoomKey(1, 69999)));
+    }
+
     [Fact]
     public void DedupsRepeatedTokensForTheSameRoom()
     {
