@@ -7,30 +7,31 @@ namespace MudPlay.Controls.Splash;
 // toward the great stone altar, a horned skull carved into its top, blood pouring
 // from the skull's mouth down the altar's face into the basin; the Champion of Blood
 // is there from the first, and comes down the aisle to meet us. Face to face, he
-// screams to his god, and a rain of blood (his own attack) sheets down the lens and
-// drains away.
+// screams to his god, then raises his skull sword and charges, looming until he fills
+// the lens, and the blow lands in a red flash.
 //
 // The room is the temple's altar chamber (7/1285: a city of black candles, the
 // horned skull, the stream of blood and its basin); his cry, in a bubble, is the one
 // the temple's cultists greet a visitor with.
 public sealed class ChampionOfBloodScene : SplashScene
 {
-    public override int LoopFrames => 150;
+    public override int LoopFrames => 130;
 
     private const int FadeInEnd  = 10;
     private const int WalkEnd    = 52;    // we've met halfway up the aisle
     private const int ScreamAt   = 56;
-    private const int RainStart  = 92;    // blood begins to fall
-    private const int RainFull   = 112;   // the lens is red
-    private const int DrainEnd   = 144;   // and drained clear
-    // 144..149: clear.
+    private const int ChargeAt   = 80;    // he raises the skull sword and runs at us
+    private const int LoomAt     = 92;    // close enough to fill the view
+    private const int SlashAt    = 102;   // the blow lands
+    private const int FlashEnd   = 122;   // the flash has faded
+    // 122..129: clear.
 
     private const string Scream = "Glory to the Blood God!";
 
     private static readonly (byte, byte, byte) Wall = (26, 10, 12), WallDk = (16, 6, 8), Mural = (64, 26, 30),
         FloorC = (34, 16, 16), FloorLine = (58, 30, 28), Candle = (20, 18, 20), Flame = (255, 170, 60),
         FlameHot = (255, 230, 140), Skull = (196, 186, 164), SkullDk = (110, 100, 86), AltarStone = (78, 52, 50),
-        AltarPanel = (52, 32, 32), BloodC = (170, 14, 22), BloodDk = (100, 6, 12), Armour = (70, 70, 78),
+        AltarPanel = (52, 32, 32), BloodC = (170, 14, 22), Armour = (70, 70, 78),
         ArmourLt = (120, 120, 130), Cape = (120, 16, 24), Eye = (255, 40, 40), Blade = (200, 200, 210),
         Text = (230, 70, 70), BubbleFill = (20, 6, 8), BubbleRim = (150, 60, 60);
 
@@ -124,26 +125,43 @@ public sealed class ChampionOfBloodScene : SplashScene
         " aa  aa ",
     };
 
+    // Charging with the skull sword raised, its skull at the guard.
+    private static readonly string[] Raised =
+    {
+        "      ║  ",
+        "     ▄█▄ ",
+        " ▗▄█▄▖█▀ ",
+        " ▐●█●▌█  ",
+        "▄██████  ",
+        "█▐████▌  ",
+        "  █▌▐█   ",
+        " ▀▀  ▀▀  ",
+    };
+    private static readonly string[] RaisedPaint =
+    {
+        "      w  ",
+        "     kkk ",
+        " aAAAaak ",
+        " aeAeaa  ",
+        "caaaaaa  ",
+        "caAAAaa  ",
+        "  aaaa   ",
+        " aa  aa  ",
+    };
+
     public override void Render(SplashCanvas c, int f)
     {
-        if (f <= 0 || f >= DrainEnd) return;
+        if (f <= 0 || f >= FlashEnd) return;
         int top = SplashCanvas.TitleRows;
 
-        if (f >= RainFull)
+        if (f >= SlashAt)
         {
-            // The rain has sheeted the lens; it drains down and off, each column at
-            // its own pace, leaving streaks that thin out.
-            double p = (f - RainFull) / (double)(DrainEnd - RainFull);
-            for (int x = 0; x < c.Cols; x++)
-            {
-                double speed = 0.6 + 0.9 * SplashCanvas.Noise(x, 77);
-                int edge = top + (int)Math.Round(SplashCanvas.EaseIn(p) * (c.Rows - top) * 1.6 * speed);
-                for (int y = edge; y < c.Rows; y++)
-                    c.PutBg(x, y, SplashCanvas.Bg(SplashCanvas.Noise(x, y) > 0.7 ? BloodDk : BloodC));
-                if (edge > top && edge < c.Rows && SplashCanvas.Noise(x, 5) > 0.6)
-                    for (int y = Math.Max(top, edge - 3); y < edge; y++)
-                        c.Put(x, y, '│', SplashCanvas.Fg(BloodC, 1 - p));
-            }
+            // The blow: the sword's cut across the lens, in a red flash fading to black.
+            double t = (f - SlashAt) / (double)(FlashEnd - SlashAt);
+            c.FillBg(0, top, c.Cols - 1, c.Rows - 1, SplashCanvas.Bg(BloodC, 1 - SplashCanvas.Smooth(t)));
+            if (t < 0.4)
+                for (int k = -1; k <= 1; k++)
+                    c.Line(c.Cols - 1 + k * 3, top, k * 3, c.Rows - 1, '╱', SplashCanvas.Fg((255, 230, 230), 1 - t * 2));
             return;
         }
 
@@ -213,7 +231,7 @@ public sealed class ChampionOfBloodScene : SplashScene
         {
             'A' => SplashCanvas.Fg(ArmourLt, light), 'e' => SplashCanvas.Fg(Eye, light),
             'w' => SplashCanvas.Fg(Blade, light), 'c' => SplashCanvas.Fg(Cape, light),
-            _ => SplashCanvas.Fg(Armour, light),
+            'k' => SplashCanvas.Fg(Skull, light), _ => SplashCanvas.Fg(Armour, light),
         };
         int champY = c.Rows - 1 - Champion.Length + 1;
         double meet = SplashCanvas.Smooth(f / (double)WalkEnd);
@@ -230,29 +248,28 @@ public sealed class ChampionOfBloodScene : SplashScene
             for (int r = legs; r < body.Length; r++) body[r] = " " + body[r][..^1];
         }
         int shake = f >= ScreamAt && f < ScreamAt + 16 && (f & 1) == 1 ? 1 : 0;
-        c.Sprite(cx - body[0].Length / 2 + shake, feet - body.Length + 1, body, paint, ChampionPaints);
+        if (f >= LoomAt)
+        {
+            // Right on us: twice the size, the sword high, his feet below the lens.
+            c.SpriteDoubled(cx - Raised[0].Length, c.Rows - Raised.Length * 2 + 2, Raised, RaisedPaint, ChampionPaints);
+        }
+        else if (f >= ChargeAt)
+        {
+            // The charge: the skull sword up, bobbing as he runs.
+            c.Sprite(cx - Raised[0].Length / 2, c.Rows - Raised.Length - (f / 2) % 2, Raised, RaisedPaint, ChampionPaints);
+        }
+        else
+        {
+            c.Sprite(cx - body[0].Length / 2 + shake, feet - body.Length + 1, body, paint, ChampionPaints);
+        }
 
-        if (f >= ScreamAt && f < RainFull)
+        if (f >= ScreamAt && f < ChargeAt)
         {
             // Beside him, level with his chest.
             int left = Math.Min(cx + 7, Math.Max(1, c.Cols - Scream.Length - 5));
             c.SpeechBubble(left, champY + 1, Scream.Length + 4, Scream, (f - ScreamAt) * 2,
                 SplashCanvas.Fg(BubbleRim, light), SplashCanvas.Fg(Text, light), SplashCanvas.Bg(BubbleFill, light),
                 (cx + 4, champY + 2));
-        }
-
-        // His rain of blood: drops falling, thickening into a sheet from the top.
-        if (f >= RainStart)
-        {
-            double p = (f - RainStart) / (double)(RainFull - RainStart);
-            for (int x = 0; x < c.Cols; x++)
-            {
-                int edge = top + (int)Math.Round(SplashCanvas.EaseIn(p) * (c.Rows - top) * (0.8 + 0.5 * SplashCanvas.Noise(x, 31)));
-                for (int y = top; y < Math.Min(edge, c.Rows); y++)
-                    c.PutBg(x, y, SplashCanvas.Bg(SplashCanvas.Noise(x, y) > 0.7 ? BloodDk : BloodC));
-                if (SplashCanvas.Noise(x, f) > 0.82)
-                    c.Put(x, Math.Min(c.Rows - 1, edge + (int)(SplashCanvas.Noise(x, f + 1) * 6)), '¦', SplashCanvas.Fg(BloodC));
-            }
         }
     }
 }

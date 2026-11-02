@@ -4,10 +4,11 @@ using MudPlay.Terminal;
 namespace MudPlay.Controls.Splash;
 
 // The Volcanic Chamber: a lake of bubbling lava strewn with rocky islands, and on the
-// great island at its centre the pulsing ruby the adult red dragon guards. She rises
-// up behind it, side-on with her head turned to us, roars her warning, and breathes:
-// dragonfire pours out of her open jaws and swells until it fills the lens, then
-// gutters out cell by cell back to black.
+// great island at its centre the pulsing ruby the adult red dragon guards. She lies
+// curled round it asleep; she wakes, her eyes open, and she gets to her feet, side-on
+// with her head turned to us, roars her warning, and breathes: dragonfire pours out
+// of her open jaws and swells until it fills the lens, then gutters out cell by cell
+// back to black.
 //
 // The chamber is the dragon's own room (7/1358: obsidian walls, lava, the islands,
 // the lair and its ruby); her words, in a bubble, open her greeting.
@@ -16,9 +17,10 @@ public sealed class RedDragonScene : SplashScene
     public override int LoopFrames => 150;
 
     private const int FadeInEnd   = 10;
-    private const int RiseStart   = 14;
-    private const int RiseEnd     = 40;
-    private const int RoarAt      = 42;
+    private const int WakeAt      = 38;    // her eyes open
+    private const int StandStart  = 46;    // she gets up
+    private const int StandEnd    = 58;
+    private const int RoarAt      = 60;
     private const int BreathStart = 96;    // the fire leaves her jaws
     private const int BreathFull  = 108;   // the lens is aflame
     private const int BurnOutEnd  = 144;   // every flame out
@@ -30,7 +32,7 @@ public sealed class RedDragonScene : SplashScene
         Lava = (190, 52, 10), LavaHot = (250, 140, 30), LavaDk = (120, 26, 6), Rock = (54, 44, 40),
         RockLt = (84, 70, 62), Ruby = (230, 20, 50), RubyHot = (255, 120, 140), Scale = (168, 28, 20),
         ScaleLt = (214, 66, 40), ScaleDk = (96, 16, 12), Wing = (120, 22, 18), Eye = (255, 220, 60),
-        Fang = (240, 232, 210), Maw = (70, 12, 8), FireOuter = (230, 70, 10), FireMid = (250, 150, 30), FireCore = (255, 236, 150),
+        Fang = (240, 232, 210), Maw = (70, 12, 8), Snore = (200, 190, 170), FireOuter = (230, 70, 10), FireMid = (250, 150, 30), FireCore = (255, 236, 150),
         Text = (230, 200, 120), BubbleFill = (20, 10, 10), BubbleRim = (170, 90, 60);
 
     // Her body side-on, wings raised and tail curling away to the right; her head
@@ -60,6 +62,29 @@ public sealed class RedDragonScene : SplashScene
         "                   dddddddddddddddss  ss  ",
         "                    ddd  ddd ddd      dd  ",
         "                    ddd  ddd ddd          ",
+    };
+
+    // Asleep: lying curled round the ruby, wings folded, head on her forelegs, eyes shut.
+    private static readonly string[] Curled =
+    {
+        "          ▄▄▄▄▄▄▄▄▄▄           ",
+        " ▲▄     ▄█▀▀▀▀▀▀▀▀▀▀█▄▄        ",
+        "▐█─█▄▄▄████████████████▄▄▄     ",
+        " ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▄ ",
+    };
+    private static readonly string[] CurledAwake =
+    {
+        "          ▄▄▄▄▄▄▄▄▄▄           ",
+        " ▲▄     ▄█▀▀▀▀▀▀▀▀▀▀█▄▄        ",
+        "▐█●█▄▄▄████████████████▄▄▄     ",
+        " ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▄ ",
+    };
+    private static readonly string[] CurledPaint =
+    {
+        "          wwwwwwwwww           ",
+        " fS     wwwwwwwwwwwwwwww       ",
+        "SSeSssssssssssssssssssssssss   ",
+        " ddddddddddddddddddddddddddddd ",
     };
 
     public override void Render(SplashCanvas c, int f)
@@ -110,34 +135,46 @@ public sealed class RedDragonScene : SplashScene
             if (Math.Abs(ix - cx) < 12) continue;
             c.Str(ix, iy, "▄██▄", SplashCanvas.Fg(Rock, light));
         }
-        // The great island at the centre, and the ruby pulsing on it.
-        for (int dx = -9; dx <= 9; dx++)
+        // The great island at the centre, wide enough for her to lie on.
+        for (int dx = -17; dx <= 17; dx++)
         {
             c.PutBg(cx + dx, lavaTop, SplashCanvas.Bg(Rock, light));
-            if (Math.Abs(dx) <= 7) c.PutBg(cx + dx, lavaTop + 1, SplashCanvas.Bg(RockLt, light));
+            if (Math.Abs(dx) <= 15) c.PutBg(cx + dx, lavaTop + 1, SplashCanvas.Bg(RockLt, light));
+        }
+
+        CellAttributes Paints(char k) => k switch
+        {
+            'w' => SplashCanvas.Fg(Wing, light), 'S' => SplashCanvas.Fg(ScaleLt, light),
+            'd' => SplashCanvas.Fg(ScaleDk, light), 'e' => SplashCanvas.Fg(Eye, light),
+            'f' => SplashCanvas.Fg(Fang, light), 'm' => SplashCanvas.Fg(f >= BreathStart ? FireCore : Maw, light),
+            _ => SplashCanvas.Fg(Scale, light),
+        };
+
+        // Asleep, curled round the ruby; then awake; then up on her feet, rising out of
+        // her crouch onto the island.
+        int dragonX = cx - Dragon[0].Length / 2;
+        double stand = SplashCanvas.Smooth((f - StandStart) / (double)(StandEnd - StandStart));
+        int dragonY = lavaTop - Dragon.Length + (int)Math.Round((1 - stand) * 5);
+        (int X, int Y) mouth = (dragonX + 4, dragonY + 5);
+        if (f < StandStart)
+        {
+            int curlX = cx - Curled[0].Length / 2, curlY = lavaTop - Curled.Length;
+            c.Sprite(curlX, curlY, f < WakeAt ? Curled : CurledAwake, CurledPaint, Paints);
+            if (f < WakeAt)
+                for (int z = 0; z < 3; z++)
+                {
+                    int age = (f + z * 7) % 21;
+                    c.Put(curlX + 2 + age / 4, curlY - 1 - age / 5, age < 10 ? 'z' : 'Z', SplashCanvas.Fg(Snore, light * (1 - age / 24.0)));
+                }
+        }
+        else
+        {
+            for (int r = 0; r < Dragon.Length; r++)
+                if (dragonY + r < lavaTop)   // whatever is still crouched below the island's top stays hidden
+                    c.Sprite(dragonX, dragonY + r, [Dragon[r]], [DragonPaint[r]], Paints);
         }
         double pulse = 0.5 + 0.5 * Math.Sin(f * 0.45);
         c.Put(cx, lavaTop - 1, '◆', SplashCanvas.Fg(SplashCanvas.Mix(Ruby, RubyHot, pulse), light));
-
-        // She rises up from behind the island.
-        double rise = SplashCanvas.Smooth((f - RiseStart) / (double)(RiseEnd - RiseStart));
-        int dragonY = lavaTop - 1 - (int)Math.Round(rise * (Dragon.Length + 1));
-        int dragonX = cx - Dragon[0].Length / 2;
-        (int X, int Y) mouth = (dragonX + 4, dragonY + 5);
-        bool breathing = f >= BreathStart;
-        if (rise > 0)
-        {
-            CellAttributes Paints(char k) => k switch
-            {
-                'w' => SplashCanvas.Fg(Wing, light), 'S' => SplashCanvas.Fg(ScaleLt, light),
-                'd' => SplashCanvas.Fg(ScaleDk, light), 'e' => SplashCanvas.Fg(Eye, light),
-                'f' => SplashCanvas.Fg(Fang, light), 'm' => SplashCanvas.Fg(breathing ? FireCore : Maw, light),
-                _ => SplashCanvas.Fg(Scale, light),
-            };
-            for (int r = 0; r < Dragon.Length; r++)
-                if (dragonY + r < lavaTop - 1)   // still behind the island below that
-                    c.Sprite(dragonX, dragonY + r, [Dragon[r]], [DragonPaint[r]], Paints);
-        }
 
         if (f >= RoarAt && f < BreathStart)
         {
@@ -150,7 +187,7 @@ public sealed class RedDragonScene : SplashScene
 
         // Dragonfire: out of her open jaws, swelling toward us until it fills the lens,
         // hottest at her mouth.
-        if (breathing)
+        if (f >= BreathStart)
         {
             double p = SplashCanvas.EaseIn((f - BreathStart) / (double)(BreathFull - BreathStart));
             double reach = SplashCanvas.Lerp(1.5, c.MaxRadius() * 1.6, p);

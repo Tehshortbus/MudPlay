@@ -155,6 +155,51 @@ public sealed class SplashCanvas
         }
     }
 
+    // Sprite at twice the size: each cell becomes two by two, a block glyph drawn as the
+    // blocks that fill the same quarters, so a figure rushing at the viewer can loom
+    // without a second drawing of it. Other glyphs keep their top-left corner.
+    public void SpriteDoubled(int x, int y, string[] rows, string[] paint, Func<char, CellAttributes> palette)
+    {
+        for (int r = 0; r < rows.Length; r++)
+        {
+            string row = rows[r], keys = paint[r];
+            for (int i = 0; i < row.Length && i < keys.Length; i++)
+            {
+                if (keys[i] == ' ' || row[i] == ' ') continue;
+                (string upper, string lower) = Quarters(row[i]);
+                CellAttributes attr = palette(keys[i]);
+                for (int k = 0; k < 2; k++)
+                {
+                    Put(x + i * 2 + k, y + r * 2, upper[k], attr);
+                    Put(x + i * 2 + k, y + r * 2 + 1, lower[k], attr);
+                }
+            }
+        }
+    }
+
+    // A glyph at double size, as its top and bottom pairs of cells.
+    private static (string Upper, string Lower) Quarters(char ch) => ch switch
+    {
+        '█' => ("██", "██"),
+        '▀' => ("██", "  "),
+        '▄' => ("  ", "██"),
+        '▌' => ("█ ", "█ "),
+        '▐' => (" █", " █"),
+        '▖' => ("  ", "█ "),
+        '▗' => ("  ", " █"),
+        '▘' => ("█ ", "  "),
+        '▝' => (" █", "  "),
+        '▙' => ("█ ", "██"),
+        '▟' => (" █", "██"),
+        '▛' => ("██", "█ "),
+        '▜' => ("██", " █"),
+        '●' => ("▄▄", "▀▀"),
+        '╱' => (" ╱", "╱ "),
+        '╲' => ("╲ ", " ╲"),
+        '║' => ("▐▌", "▐▌"),
+        _ => (ch + " ", "  "),
+    };
+
     // The first `shown` characters of text from (x, y): a line being typed out. Spaces
     // stay transparent, as in Str.
     public void Typed(int x, int y, string text, int shown, CellAttributes attr)

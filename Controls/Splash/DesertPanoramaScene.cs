@@ -5,31 +5,36 @@ namespace MudPlay.Controls.Splash;
 
 // The desert, through our own eyes from the Dusty Village. It opens in the village
 // street, nekojin padding past the mud-brick houses; then the view shoots up over the
-// rooftops and we look out over the Scorching Desert, turning our head slowly across
-// it: the blue dragons' roost in the sandstone cliffs to the south with dragons
-// wheeling over it, the canyon east of it and the Saracen raiders' fortress beyond,
-// the Great Pyramid due east at the desert's heart, the Ancient Fortress far off in
-// the northeast corner, and round to the two oases in the north, where the view fades.
+// rooftops and we look out east over the Scorching Desert to the Great Pyramid at its
+// heart, then turn our head across it: right past the Saracen raiders' fortress and
+// the canyon to the blue dragons' roost in the sandstone cliffs, dragons wheeling over
+// it; back left past the pyramid to the Ancient Fortress far off in the northeast
+// corner; and round to the two oases in the north, the Golden Palace behind them,
+// where the view fades. Dust devils
+// spin over the sand, raiders ride out, and a giant roc flies between us and the
+// pyramid.
 //
 // The village sits at the desert's western edge; each place stands at the bearing and
 // rough distance the desert map puts it from there (user, 2026-11-02), nearer ones
 // lower in the view, the farthest small on the skyline.
 public sealed class DesertPanoramaScene : SplashScene
 {
-    public override int LoopFrames => 220;
+    public override int LoopFrames => 360;
 
     private const int FadeInEnd  = 10;
     private const int StreetEnd  = 50;    // the view starts to rise
     private const int RiseEnd    = 64;    // up over the rooftops, looking out
-    private const int PanEnd     = 196;   // facing the oases
-    private const int FadeOutEnd = 214;
-    // 214..219: clear.
+    private const int PanEnd     = 336;   // facing the oases
+    private const int FadeOutEnd = 354;
+    // 354..359: clear.
 
-    private const double FieldOfView = 100;   // degrees across the lens
+    // Degrees across the lens: narrow, as an eye fixed on the horizon is, so places a
+    // few degrees apart on the map stand well apart in the view.
+    private const double FieldOfView = 40;
 
     // Compass bearings from the village (north 0, east 90), in the order the view turns.
-    private const double RoostBearing = 150, CanyonBearing = 130, RaiderBearing = 109, PyramidBearing = 83,
-        FortressBearing = 67, NorthOasisBearing = 4, EastOasisBearing = 32;
+    private const double RoostBearing = 149, CanyonBearing = 129, RaiderBearing = 109, PyramidBearing = 89,
+        FortressBearing = 68, EastOasisBearing = 34, PalaceBearing = 5, WestOasisBearing = 5;
 
     private static readonly (byte, byte, byte) SkyC = (120, 164, 206), SkyHot = (232, 216, 172), Sun = (255, 248, 210),
         Sand = (206, 168, 104), SandLt = (226, 192, 128), SandDk = (176, 138, 82), Ridge = (186, 146, 92),
@@ -37,7 +42,8 @@ public sealed class DesertPanoramaScene : SplashScene
         Cloth = (90, 120, 170), CatEye = (90, 200, 90), Stone = (210, 176, 118), StoneDk = (160, 124, 76),
         Cliff = (176, 106, 62), CliffDk = (122, 70, 40), Cave = (50, 30, 22), Dragon = (60, 120, 230),
         Fort = (168, 128, 88), FortDk = (112, 82, 54), Water = (60, 130, 190), Palm = (60, 140, 60), Trunk = (110, 80, 50),
-        Gorge = (120, 76, 44), GorgeDk = (70, 40, 24), Tent = (214, 196, 160), Banner = (180, 40, 40), Stockade = (124, 92, 60);
+        Gorge = (120, 76, 44), GorgeDk = (70, 40, 24), Tent = (214, 196, 160), Banner = (180, 40, 40), Stockade = (124, 92, 60),
+        Gold = (226, 184, 64), GoldDk = (164, 122, 34), Dust = (196, 160, 110), Turban = (232, 228, 214), Horse = (118, 78, 48), Roc = (104, 70, 40), RocLt = (150, 108, 64);
 
     private static readonly string[] Cat =
     {
@@ -100,6 +106,21 @@ public sealed class DesertPanoramaScene : SplashScene
         "fffffff",
         "fffDfff",
     };
+    // The Golden Palace: gilded domes over a colonnade.
+    private static readonly string[] PalaceArt =
+    {
+        "  ▲    ▲    ▲  ",
+        " ▟█▙  ▟█▙  ▟█▙ ",
+        "▐█████████████▌",
+        "█▌▐█▌▐█▌▐█▌▐█▌█",
+    };
+    private static readonly string[] PalaceArtPaint =
+    {
+        "  Y    Y    Y  ",
+        " YYY  YYY  YYY ",
+        "YYYYYYYYYYYYYYY",
+        "YyYYyYYyYYyYYyY",
+    };
     // The canyon: a gorge cut down into the sand, its walls falling away to shadow.
     private static readonly string[] CanyonArt =
     {
@@ -145,11 +166,14 @@ public sealed class DesertPanoramaScene : SplashScene
     {
         double light = SplashCanvas.FadeInOut(f, FadeInEnd, PanEnd, FadeOutEnd);
         if (light <= 0) return;
+        // The desert is out there from the first frame: down in the street its far
+        // landmarks show over the rooftops, and rising up uncovers the rest.
+        Panorama(c, f, light);
         if (f < RiseEnd) Street(c, f, light);
-        else Panorama(c, f, light);
     }
 
-    // The village street, and the view rising up off it.
+    // The village street in front of the desert view, and the view rising up off it:
+    // the street and its houses sink out of the bottom of the lens.
     private static void Street(SplashCanvas c, int f, double light)
     {
         int top = SplashCanvas.TitleRows;
@@ -157,11 +181,7 @@ public sealed class DesertPanoramaScene : SplashScene
         int lift = (int)Math.Round(rise * (c.Rows - top));     // the street sinks out of view
         int ground = top + (int)Math.Round((c.Rows - top) * 0.55) + lift;
 
-        for (int y = top; y < c.Rows; y++)
-        {
-            double h = (y - top) / (double)Math.Max(1, ground - top);
-            c.FillBg(0, y, c.Cols - 1, y, SplashCanvas.Bg(y < ground ? SplashCanvas.Mix(SkyC, SkyHot, h) : Sand, light));
-        }
+        c.FillBg(0, ground, c.Cols - 1, c.Rows - 1, SplashCanvas.Bg(Sand, light));
         for (int x = 0; x < c.Cols; x++)
             if (SplashCanvas.Noise(x, 9) > 0.8) c.Put(x, ground + 1 + (int)(SplashCanvas.Noise(x, 4) * 3), '·', SplashCanvas.Fg(SandDk, light));
 
@@ -245,7 +265,8 @@ public sealed class DesertPanoramaScene : SplashScene
             't' => SplashCanvas.Fg(Trunk, light), 'w' => SplashCanvas.Fg(Water, light),
             'g' => SplashCanvas.Fg(Gorge, light), 'G' => SplashCanvas.Fg(GorgeDk, light),
             'T' => SplashCanvas.Fg(Tent, light), 'r' => SplashCanvas.Fg(Banner, light),
-            'K' or 'k' => SplashCanvas.Fg(Stockade, light), _ => SplashCanvas.Fg(Sand, light),
+            'K' or 'k' => SplashCanvas.Fg(Stockade, light), 'Y' => SplashCanvas.Fg(Gold, light),
+            'y' => SplashCanvas.Fg(GoldDk, light), _ => SplashCanvas.Fg(Sand, light),
         };
         void Landmark(double bearing, string[] art, string[] paint, int sink)
         {
@@ -268,17 +289,53 @@ public sealed class DesertPanoramaScene : SplashScene
             c.Str(rx, ry, Math.Sin(a) > 0 ? "▀▄▀" : "▄▀▄", SplashCanvas.Fg(Dragon, light));
         }
 
-        // The two oases to the north lie nearest, below the skyline.
+        // Dust devils spinning over the sand, drifting as they go.
+        for (int d = 0; d < 2; d++)
+        {
+            double bearing = (d == 0 ? 120 : 52) + Math.Sin(f * 0.03 + d) * 5;
+            int bx = ColumnOf(bearing), by = horizon + 3 + d;
+            for (int k = 0; k < 6; k++)
+            {
+                int w = k / 2, sway = (int)Math.Round(Math.Sin(f * 0.5 + k) * 0.8) + k / 3;
+                for (int i = -w; i <= w; i++)
+                    c.Put(bx + i + sway, by - k, (f + k + i) % 2 == 0 ? '(' : ')', SplashCanvas.Fg(Dust, light * (1 - k * 0.1)));
+            }
+        }
+
+        // Saracen raiders riding out from their fortress, small with the distance.
+        for (int r = 0; r < 3; r++)
+        {
+            double bearing = RaiderBearing - 3 - (f * 0.05 + r * 3) % 14;
+            int rx = ColumnOf(bearing), ry = horizon + 1;
+            c.Put(rx, ry - 1, '▲', SplashCanvas.Fg(Turban, light));
+            c.Str(rx - 1, ry, "▄█▀", SplashCanvas.Fg(Horse, light));
+            c.Str(rx - 1, ry + 1, (f / 2 + r) % 2 == 0 ? "▌ ▐" : " ▌▐", SplashCanvas.Fg(Horse, light));
+        }
+
+        // A giant roc, wings beating, out over the sand between us and the pyramid.
+        {
+            double bearing = PyramidBearing + 9 * Math.Sin(f * 0.02);
+            int rx = ColumnOf(bearing) - 5, ry = horizon - 10 + (int)Math.Round(Math.Sin(f * 0.07));
+            bool up = (f / 3) % 2 == 0;
+            if (up) c.Str(rx, ry, "▀▄▄     ▄▄▀", SplashCanvas.Fg(RocLt, light));
+            c.Str(rx, ry + 1, up ? "   ▀▄█▄▀   " : "▀▀▀▀▄█▄▀▀▀▀", SplashCanvas.Fg(Roc, light));
+        }
+
+        // The Golden Palace to the north, and the two oases nearer, in front of it.
+        Landmark(PalaceBearing, PalaceArt, PalaceArtPaint, 1);
         Landmark(EastOasisBearing, OasisArt, OasisArtPaint, 3);
-        Landmark(NorthOasisBearing, OasisArt, OasisArtPaint, 4);
+        Landmark(WestOasisBearing, OasisArt, OasisArtPaint, 5);
     }
 
-    // The view's compass heading at p (0..1) of the turn, from the roost round to the
-    // oases: each leg eased so the view lingers on every stop.
+    // The view's compass heading at p (0..1) of the look round. Rising up facing east,
+    // the pyramid is the first thing seen; the view pans right past the raiders'
+    // fortress to the dragons' roost, back left past the pyramid to the Ancient
+    // Fortress, and on round to the oases in the north (user, 2026-11-02). Each leg is
+    // eased so the view lingers on every stop.
     private static double HeadingAt(double p)
     {
-        double[] stops = { RoostBearing, RaiderBearing, PyramidBearing, FortressBearing,
-            (NorthOasisBearing + EastOasisBearing) / 2 };
+        double[] stops = { PyramidBearing, RaiderBearing, RoostBearing, FortressBearing,
+            (EastOasisBearing + WestOasisBearing) / 2 };
         double t = Math.Clamp(p, 0, 1) * (stops.Length - 1);
         int leg = Math.Min((int)t, stops.Length - 2);
         return SplashCanvas.Lerp(stops[leg], stops[leg + 1], SplashCanvas.Smooth(t - leg));

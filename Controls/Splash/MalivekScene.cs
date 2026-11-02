@@ -6,8 +6,9 @@ namespace MudPlay.Controls.Splash;
 // A diamond mine tunnel: heavy timber frames down a low passage of brownish-red rock,
 // diamonds clustered thick in the walls and glinting. Out of the black at its far end
 // the Devil Fiend Malivek comes stalking up the tunnel, a wisp of smoke trailing from
-// its mouth; it growls (in a bubble), and hellfire (its own attack) roars up from the
-// floor to fill the lens, then the fire dies and the smoke thins away.
+// its mouth; it growls (in a bubble), throws up its arms, and hellfire (its own
+// attack) roars up from the floor to fill the lens, then the fire dies and the smoke
+// thins away.
 //
 // The tunnel is the Diamond Vein the fiend roams (map 15).
 public sealed class MalivekScene : SplashScene
@@ -59,6 +60,37 @@ public sealed class MalivekScene : SplashScene
         "HHHH  HHHHddHHHHHddHHHH  HHHH",
         "HHHH  HHHHHHHHdHHHHHHHH  HHHH",
         " HHHH  HHHHHHHHHHHHHHH  HHHH ",
+        "        HHHHHH HHHHHH        ",
+        "       hhhhhh   hhhhhh       ",
+    };
+    // Calling up the hellfire: both arms flung up, fists beside its horns.
+    private static readonly string[] Raised =
+    {
+        "▄█▄  ▄▀               ▀▄  ▄█▄",
+        "███  █▄   ▄▄▄███▄▄▄   ▄█  ███",
+        "▐█▌ ▀▀▄▄▄██▀●███●▀██▄▄▄▀▀ ▐█▌",
+        " ██▌     ███▄▀▀▀▄███     ▐██ ",
+        " ▐██▄▄▄▄▄████▀▀▀████▄▄▄▄▄██▌ ",
+        "▐███████████████████████████▌",
+        " ▐█████████▀▀███▀▀█████████▌ ",
+        "      ▐███▀▀█████▀▀███▌      ",
+        "      ▐█████▄▄▀▄▄█████▌      ",
+        "       ▐█████████████▌       ",
+        "        ▐████▌ ▐████▌        ",
+        "       ▄████▀   ▀████▄       ",
+    };
+    private static readonly string[] RaisedPaint =
+    {
+        "HHH  hh               hh  HHH",
+        "HHH  hh   HHHHHHHHH   hh  HHH",
+        "HHH hhhhHHHHeHHHeHHHHhhhh HHH",
+        " HHH     HHHHdddHHHH     HHH ",
+        " HHHHHHHHHHHHdddHHHHHHHHHHHH ",
+        "HHHHHHHHHHHHHHHHHHHHHHHHHHHHH",
+        " HHHHHHHHHHddHHHddHHHHHHHHHH ",
+        "      HHHHddHHHHHddHHHH      ",
+        "      HHHHHHHHdHHHHHHHH      ",
+        "       HHHHHHHHHHHHHHH       ",
         "        HHHHHH HHHHHH        ",
         "       hhhhhh   hhhhhh       ",
     };
@@ -152,7 +184,9 @@ public sealed class MalivekScene : SplashScene
             int bottom = (int)Math.Round(SplashCanvas.Lerp(mouthBot + 2, floor - 1, (stalk - 0.5) * 2));
             headY = bottom - Near.Length + 1;
             (mouthDy, mouthDx) = (3, 3);
-            c.Sprite(cx - Near[0].Length / 2, headY, Near, NearPaint, Paints);
+            // It throws its arms up as the hellfire comes.
+            bool raised = f >= FireStart - 4;
+            c.Sprite(cx - Near[0].Length / 2, headY, raised ? Raised : Near, raised ? RaisedPaint : NearPaint, Paints);
         }
         // The wisp of smoke trailing from the corner of its mouth, up and away.
         for (int k = 0; k < 4; k++)

@@ -33,45 +33,49 @@ public sealed class ZanthusScene : SplashScene
         Hood = (40, 20, 56), LichEye = (120, 255, 140), BubbleFill = (10, 12, 26), BubbleRim = (150, 160, 200),
         Quote = (60, 200, 90);
 
+    // The fortress of bones: a great skull gatehouse between two bone towers, walls of
+    // bone either side of its gate.
     private static readonly string[] Fortress =
     {
-        "      ▄███▄      ",
-        "     █▀▄█▄▀█     ",
-        "  ▄   ▀█▀█▀   ▄  ",
-        " ╫█╫   ███   ╫█╫ ",
-        " ╫█╫▄▄▄███▄▄▄╫█╫ ",
-        " ╫█╫╬╬╬╬╬╬╬╬╬╫█╫ ",
-        "▄╫█╫╬╬╬▄▄▄╬╬╬╫█╫▄",
+        " ▄█▄          ▄▄▄▄▄          ▄█▄ ",
+        " ███        ▄███████▄        ███ ",
+        " ╫█╫       ███████████       ╫█╫ ",
+        " ╫█╫      ███▀▀▀█▀▀▀███      ╫█╫ ",
+        " ╫█╫  ▄▄  ███▄▄▄█▄▄▄███  ▄▄  ╫█╫ ",
+        " ╫█╫ ▐██▌  ▀████▀████▀  ▐██▌ ╫█╫ ",
+        " ╫█╫ ▐╫╫▌   ██▀▄▀▄▀██   ▐╫╫▌ ╫█╫ ",
+        "▄╫█╫▄▐╫╫▌▄▄▄██▄▀▄▀▄██▄▄▄▐╫╫▌▄╫█╫▄",
+        "█╬╬╬╬╬╬╬╬╬╬╬╬█▌   ▐█╬╬╬╬╬╬╬╬╬╬╬╬█",
+        "█╬╬╬╬╬╬╬╬╬╬╬╬█▌   ▐█╬╬╬╬╬╬╬╬╬╬╬╬█",
     };
     private static readonly string[] FortressPaint =
     {
-        "      bbbbb      ",
-        "     bdbbbdb     ",
-        "  b   bdbdb   b  ",
-        " bbb   bbb   bbb ",
-        " bbbbbbbbbbbbbbb ",
-        " bbbdddddddddbbb ",
-        "bbbbddddddddbbbbb",
+        " bbb          bbbbb          bbb ",
+        " bbb        bbbbbbbbb        bbb ",
+        " bbb       bbbbbbbbbbb       bbb ",
+        " bbb      bbbdddbdddbbb      bbb ",
+        " bbb  bb  bbbbbbbbbbbbb  bb  bbb ",
+        " bbb bbbb  bbbbbbbbbbb  bbbb bbb ",
+        " bbb bbbb   bbdddddbb   bbbb bbb ",
+        "bbbbbbbbbbbbbbdddddbbbbbbbbbbbbbb",
+        "bddddddddddddbb   bbddddddddddddb",
+        "bddddddddddddbb   bbddddddddddddb",
     };
     private static readonly string[] Lich =
     {
-        "  ▄▄▄  ",
-        " ▐◉ ◉▌ ",
-        " ▐▄▀▄▌ ",
-        "▄▓▓▓▓▓▄",
-        "▓▓▓▓▓▓▓",
-        " ▓▓▓▓▓ ",
-        "▄▓▓▓▓▓▄",
+        " ▄▄▄ ",
+        "▐◉▀◉▌",
+        "▄▓▓▓▄",
+        "▓▓▓▓▓",
+        "▀▓▓▓▀",
     };
     private static readonly string[] LichPaint =
     {
-        "  hhh  ",
-        " hehhe ",
-        " hbbbh ",
-        "rrrrrrr",
-        "rrrrrrr",
-        " rrrrr ",
-        "rrrrrrr",
+        " hhh ",
+        "hehbe",
+        "rrrrr",
+        "rrrrr",
+        "rrrrr",
     };
 
     public override void Render(SplashCanvas c, int f)
@@ -80,7 +84,7 @@ public sealed class ZanthusScene : SplashScene
         if (light <= 0) return;
 
         int top = SplashCanvas.TitleRows;
-        int horizon = top + (int)Math.Round((c.Rows - top) * 0.5);
+        int horizon = top + (int)Math.Round((c.Rows - top) * 0.62);
         double blood = SplashCanvas.Smooth((f - BloodStart) / (double)(BloodEnd - BloodStart));
 
         // Night sky, lighter toward the water line, and its stars.
@@ -111,7 +115,7 @@ public sealed class ZanthusScene : SplashScene
         int islandTop = horizon + 1 + (int)Math.Round((1 - rise) * (Fortress.Length + 2));
         for (int y = islandTop; y < horizon + 3 && y < c.Rows; y++)
         {
-            int half = 6 + (y - islandTop) * 4;
+            int half = Fortress[0].Length / 2 + 2 + (y - islandTop) * 4;
             for (int x = cx - half; x <= cx + half; x++) c.PutBg(x, y, SplashCanvas.Bg(Land, light));
         }
         int fortressY = islandTop - Fortress.Length;
@@ -132,19 +136,19 @@ public sealed class ZanthusScene : SplashScene
                 'b' => SplashCanvas.Fg(Bone, lichLight),
                 _ => SplashCanvas.Fg(Robe, lichLight),
             };
-            c.Sprite(cx - Lich[0].Length / 2, islandTop - Lich.Length + 2, Lich, LichPaint, LichPaints);
+            c.Sprite(cx - Lich[0].Length / 2, islandTop - Lich.Length + 1, Lich, LichPaint, LichPaints);
         }
 
         // He speaks: his greeting, then the prophecy as the water turns.
         if (f >= SpeakAt && f < FadeOutAt)
         {
-            int lichTop = islandTop - Lich.Length + 2;
-            int left = Math.Min(cx + 8, Math.Max(1, c.Cols - 24));
+            int lichTop = islandTop - Lich.Length + 1;
+            int left = Math.Min(cx + Fortress[0].Length / 2 + 2, Math.Max(1, c.Cols - 22));
             bool prophecy = f >= BloodStart;
-            c.SpeechBubble(left, lichTop - 1, Math.Min(36, c.Cols - left - 1),
+            c.SpeechBubble(left, lichTop - 4, Math.Min(32, c.Cols - left - 1),
                 prophecy ? Prophecy : Greeting, (f - (prophecy ? BloodStart : SpeakAt)) * 3,
                 SplashCanvas.Fg(BubbleRim, light), SplashCanvas.Fg(Quote, light), SplashCanvas.Bg(BubbleFill, light),
-                (cx + 4, lichTop + 1));
+                (cx + 3, lichTop + 1));
         }
     }
 }

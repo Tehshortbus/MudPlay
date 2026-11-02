@@ -6,8 +6,9 @@ namespace MudPlay.Controls.Splash;
 // The Throne Room of Lightning: a carpet up the steps to the dais, and a massive
 // throne whose arms are carved as lightning strikes and whose back is shaped like
 // storm clouds, a pattern that seems to shift whenever you look away. The storm giant
-// king rises from it, forked lightning cracks down out of the carved clouds, and a
-// blizzard (both his attacks) blows in across the lens and away.
+// king sits on it; he stands up from it and throws up his arms, forked lightning
+// cracks down out of the carved clouds, and a blizzard (both his attacks) blows in
+// across the lens and away.
 //
 // The room is his (16/1184).
 public sealed class StormGiantKingScene : SplashScene
@@ -15,8 +16,9 @@ public sealed class StormGiantKingScene : SplashScene
     public override int LoopFrames => 150;
 
     private const int FadeInEnd   = 12;
-    private const int RiseStart   = 60;
-    private const int RiseEnd     = 74;
+    private const int StandStart  = 50;    // he gets up off the throne
+    private const int StandEnd    = 62;
+    private const int CastAt      = 72;    // his arms go up
     private const int StrikeStart = 78;
     private const int StrikeEnd   = 98;
     private const int SnowStart   = 96;
@@ -28,8 +30,34 @@ public sealed class StormGiantKingScene : SplashScene
         CarpetDk = (76, 14, 26), Step = (70, 72, 86), StepLt = (100, 102, 118), Cloud = (14, 18, 40),
         CloudLt = (40, 52, 96), Bolt = (210, 230, 255), Carve = (190, 214, 240), Giant = (150, 170, 200),
         GiantDk = (100, 116, 146), Beard = (230, 236, 248), Crown = (230, 200, 90), Eye = (180, 240, 255),
-        Snow = (236, 242, 255);
+        Snow = (236, 242, 255), ThroneStone = (58, 64, 92), ThroneDk = (38, 42, 64);
 
+    // Sitting on the throne: arms on its arms, knees bent, feet on the dais.
+    private static readonly string[] Seated =
+    {
+        "    ▄▲▲▲▄    ",
+        "   ▐█●█●█▌   ",
+        "   ▐▓▓▓▓▓▌   ",
+        " ▄███▓▓▓███▄ ",
+        "▐█▌██▓▓▓██▐█▌",
+        "   ███████   ",
+        "  ▄██▀ ▀██▄  ",
+        "  ██     ██  ",
+        "  ▀▀     ▀▀  ",
+    };
+    private static readonly string[] SeatedPaint =
+    {
+        "    ccccc    ",
+        "   gGeGeGg   ",
+        "   gbbbbbg   ",
+        " GGGGbbbGGGG ",
+        "gGgGGbbbGGgGg",
+        "   GGGGGGG   ",
+        "  GGGg gGGG  ",
+        "  GG     GG  ",
+        "  gg     gg  ",
+    };
+    // On his feet.
     private static readonly string[] King =
     {
         "    ▄▲▲▲▄    ",
@@ -37,22 +65,55 @@ public sealed class StormGiantKingScene : SplashScene
         "   ▐▓▓▓▓▓▌   ",
         " ▄███▓▓▓███▄ ",
         "▐████▓▓▓████▌",
-        "▐▌ ████████ ▐▌",
-        "▀  ████████  ▀",
-        "   ███  ███   ",
-        "  ▄██▀  ▀██▄  ",
+        "▐▌ ███████ ▐▌",
+        "▀  ███████  ▀",
+        "   ███ ███   ",
+        "   ███ ███   ",
+        "   ███ ███   ",
+        "  ▄██▀ ▀██▄  ",
     };
     private static readonly string[] KingPaint =
     {
         "    ccccc    ",
         "   gGeGeGg   ",
         "   gbbbbbg   ",
-        " gGGGbbbGGGg ",
+        " GGGGbbbGGGG ",
         "gGGGGbbbGGGGg",
-        "gg GGGGGGGG gg",
-        "g  GGGGGGGG  g",
-        "   ggg  ggg   ",
-        "  gggg  gggg  ",
+        "gg GGGGGGG gg",
+        "g  GGGGGGG  g",
+        "   GGG GGG   ",
+        "   GGG GGG   ",
+        "   GGG GGG   ",
+        "  GGGg gGGG  ",
+    };
+    // Casting: both arms flung up to call the storm down.
+    private static readonly string[] Casting =
+    {
+        "▗▖  ▄▲▲▲▄  ▗▖",
+        "▐█ ▐█●█●█▌ █▌",
+        " ██▐▓▓▓▓▓▌██ ",
+        "  ███▓▓▓███  ",
+        "   ███▓███   ",
+        "   ███████   ",
+        "   ███████   ",
+        "   ███ ███   ",
+        "   ███ ███   ",
+        "   ███ ███   ",
+        "  ▄██▀ ▀██▄  ",
+    };
+    private static readonly string[] CastingPaint =
+    {
+        "gg  GcccG  gg",
+        "gG gGeGeGg Gg",
+        " GGgbbbbbgGG ",
+        "  GGGbbbGGG  ",
+        "   GGGbGGG   ",
+        "   GGGGGGG   ",
+        "   GGGGGGG   ",
+        "   GGG GGG   ",
+        "   GGG GGG   ",
+        "   GGG GGG   ",
+        "  GGGg gGGG  ",
     };
 
     public override void Render(SplashCanvas c, int f)
@@ -102,26 +163,39 @@ public sealed class StormGiantKingScene : SplashScene
                 double n = SplashCanvas.Noise((x + f / 6) / 3, (y + f / 9) / 2);
                 c.PutBg(x, y, SplashCanvas.Bg(n > 0.6 ? CloudLt : Cloud, light));
             }
-        // The arms, carved as lightning strikes.
+        // The seat in front of the clouds, and its arms carved as lightning strikes.
+        int seatTop = daisY - 4, seatHalf = 8;
+        c.FillBg(cx - seatHalf, seatTop, cx + seatHalf, daisY - 1, SplashCanvas.Bg(ThroneStone, light));
+        c.FillBg(cx - seatHalf, seatTop, cx + seatHalf, seatTop, SplashCanvas.Bg(ThroneDk, light));
         foreach (int side in new[] { -1, 1 })
         {
-            int ax = cx + side * (backHalf - 2);
+            int ax = cx + side * (seatHalf + 2);
+            c.FillBg(ax - 1, seatTop - 2, ax + 1, daisY - 1, SplashCanvas.Bg(ThroneDk, light));
             for (int k = 0; k < 4; k++)
-                c.Put(ax + side * (k % 2), backBot - 3 + k, k % 2 == 0 ? '╲' : '╱', SplashCanvas.Fg(Carve, light));
+                c.Put(ax + (k % 2 == 0 ? -side : side) * 0, seatTop - 2 + k, k % 2 == 0 ? '╲' : '╱', SplashCanvas.Fg(Carve, light));
         }
 
-        // The king: seated (only head and shoulders over the dais), then standing.
-        double rise = SplashCanvas.Smooth((f - RiseStart) / (double)(RiseEnd - RiseStart));
-        int kingY = daisY - King.Length + 3 - (int)Math.Round(rise * 3);
+        // The king: seated, then getting up, then his arms up to cast.
         CellAttributes Paints(char k) => k switch
         {
             'c' => SplashCanvas.Fg(Crown, light), 'e' => SplashCanvas.Fg(Eye, light),
             'b' => SplashCanvas.Fg(Beard, light), 'g' => SplashCanvas.Fg(GiantDk, light),
             _ => SplashCanvas.Fg(Giant, light),
         };
-        for (int r = 0; r < King.Length; r++)
-            if (kingY + r < daisY)
-                c.Sprite(cx - King[0].Length / 2, kingY + r, [King[r]], [KingPaint[r]], Paints);
+        int kx = cx - King[0].Length / 2;
+        if (f < StandStart)
+        {
+            c.Sprite(kx, daisY - Seated.Length + 1, Seated, SeatedPaint, Paints);
+        }
+        else
+        {
+            double stand = SplashCanvas.Smooth((f - StandStart) / (double)(StandEnd - StandStart));
+            int kingY = daisY - King.Length + 1 + (int)Math.Round((1 - stand) * 2);
+            string[] pose = f >= CastAt ? Casting : King, posePaint = f >= CastAt ? CastingPaint : KingPaint;
+            for (int r = 0; r < pose.Length; r++)
+                if (kingY + r <= daisY)   // still rising: what is below the dais step stays out of view
+                    c.Sprite(kx, kingY + r, [pose[r]], [posePaint[r]], Paints);
+        }
 
         // Forked lightning out of the carved clouds, down to the hall floor.
         if (f >= StrikeStart && f < StrikeEnd && (f - StrikeStart) % 4 < 2)
