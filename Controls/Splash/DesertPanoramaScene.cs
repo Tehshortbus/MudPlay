@@ -45,19 +45,28 @@ public sealed class DesertPanoramaScene : SplashScene
         Gorge = (120, 76, 44), GorgeDk = (70, 40, 24), Tent = (214, 196, 160), Banner = (180, 40, 40), Stockade = (124, 92, 60),
         Gold = (226, 184, 64), GoldDk = (164, 122, 34), Dust = (196, 160, 110), Turban = (232, 228, 214), Horse = (118, 78, 48), Roc = (104, 70, 40), RocLt = (150, 108, 64);
 
+    // A nekojin close by in the street, walking right: cat ears, whiskered face, a robe,
+    // the tail trailing behind. Mirrored for one walking left; the last row is the legs,
+    // swapped each stride.
     private static readonly string[] Cat =
     {
-        " ▲▲ ",
-        "▐••▌",
-        " ▓▓ ",
-        " ▌▐~",
+        "  ▲   ▲ ",
+        " ▐█▄▄▄█▌",
+        " █ ●▄● █",
+        " ▐▄▄▀▄▄▌",
+        "~▐▓▓▓▓▓▌",
+        " ▐▓▓▓▓▓▌",
+        "  ▐▌ ▐▌ ",
     };
     private static readonly string[] CatPaint =
     {
-        " ff ",
-        "feef",
-        " cc ",
-        " ddt",
+        "  f   f ",
+        " fffffff",
+        " f eFe f",
+        " fffdfff",
+        "tccccccc",
+        " ccccccc",
+        "  dd dd ",
     };
     private static readonly string[] PyramidArt =
     {
@@ -195,26 +204,42 @@ public sealed class DesertPanoramaScene : SplashScene
             x += w + 3;
         }
 
-        // Nekojin padding along the street, each its own way and pace.
+        // Nekojin padding along the street in front of the houses, each its own way and
+        // pace, the nearer ones lower.
         CellAttributes Paints(char k) => k switch
         {
             'e' => SplashCanvas.Fg(CatEye, light), 'c' => SplashCanvas.Fg(Cloth, light),
-            'd' => SplashCanvas.Fg(FurDk, light), _ => SplashCanvas.Fg(Fur, light),
+            'd' => SplashCanvas.Fg(FurDk, light), 'F' => SplashCanvas.Fg(FurDk, light),
+            _ => SplashCanvas.Fg(Fur, light),
         };
+        int width = Cat[0].Length;
         for (int i = 0; i < 4; i++)
         {
             int dir = i % 2 == 0 ? 1 : -1;
             int start = (int)(SplashCanvas.Noise(i, 13) * c.Cols);
-            int x = ((start + dir * f / (2 + i % 2)) % (c.Cols + 8) + c.Cols + 8) % (c.Cols + 8) - 4;
-            int y = ground + 1 + (i % 2) * 2;
-            string[] rows = (string[])Cat.Clone();
-            bool stride = (f / 3 + i) % 2 == 0;
-            rows[3] = dir > 0 ? (stride ? " ▐▌~" : " ▌▐~") : (stride ? "~▐▌ " : "~▌▐ ");
-            string[] paint = (string[])CatPaint.Clone();
-            paint[3] = dir > 0 ? " ddt" : "tdd ";
-            c.Sprite(x, y, rows, paint, Paints);
+            int span = c.Cols + width * 2;
+            int x = ((start + dir * f / (2 + i % 2)) % span + span) % span - width;
+            int feet = ground + 2 + (i % 2) * 2;
+            string[] rows = (string[])Cat.Clone(), paint = (string[])CatPaint.Clone();
+            if ((f / 3 + i) % 2 == 0) rows[^1] = "  ▐▌▐▌  ";
+            if (dir < 0)
+                for (int r = 0; r < rows.Length; r++)
+                {
+                    rows[r] = Mirror(rows[r]);
+                    paint[r] = new string(paint[r].Reverse().ToArray());
+                }
+            c.Sprite(x, feet - rows.Length + 1, rows, paint, Paints);
         }
     }
+
+    // A row of a sprite facing the other way.
+    private static string Mirror(string row) =>
+        new string(row.Reverse().Select(ch => ch switch
+        {
+            '▌' => '▐', '▐' => '▌', '▖' => '▗', '▗' => '▖', '▘' => '▝', '▝' => '▘',
+            '▙' => '▟', '▟' => '▙', '▛' => '▜', '▜' => '▛', '╱' => '╲', '╲' => '╱',
+            _ => ch,
+        }).ToArray());
 
     // Looking out over the desert from up high, turning slowly.
     private static void Panorama(SplashCanvas c, int f, double light)
