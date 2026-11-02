@@ -1,8 +1,8 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.196.4**
-> - Walking with backstab on keeps the backstab weapon in hand, a failed sneak included; the attack weapon goes on only to fight
+> **Version 3.196.5**
+> - Walking with backstab on keeps the Backstab set's armour on too; the travel sets dress only the other places
 <!-- current-version:end -->
 
 A modern Telnet terminal client for **MajorMUD** and other BBS door games, built in C# / .NET 10 with [Avalonia](https://avaloniaui.net/). It renders a faithful CP437 cell grid with full VT100/ANSI parsing, and layers a MegaMUD-style automation suite (combat, party, navigation, healing, and more) on top — all in modeless, dockable windows so the terminal stays live while you configure anything.

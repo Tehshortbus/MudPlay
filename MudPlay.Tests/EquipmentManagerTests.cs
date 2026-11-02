@@ -639,12 +639,43 @@ public sealed class EquipmentManagerTests
         set.Trigger = trigger;
         EquipmentManager mgr = Manager(new EquipmentSettings { Sets = { set } },
             SnapshotWithWorn("nexus spear"), new CombatSettings());
-        mgr.SetBackstabWeaponProbe(() => backstabArmed);
+        mgr.SetBackstabProbes(() => backstabArmed, () => false);
 
         Assert.Equal(EquipResult.Applied, mgr.ApplyBySetId("set-1"));
 
         Assert.Contains("wear leather vest", Wire());
         Assert.Equal(weaponSent, Wire().Any(c => c.Contains("heartseeker", StringComparison.Ordinal)));
+    }
+
+    // The same for the armour: the Backstab set's cloak and ring are worn before every
+    // sneak, so a travel set put on between sneaks leaves those places, and the whole
+    // ring pair, alone and dresses the rest. A Default fired for a fight, a disabled
+    // Backstab set, or backstab off dresses every place.
+    [Theory]
+    [InlineData(true, false, true, false)]
+    [InlineData(true, true, true, true)]
+    [InlineData(true, false, false, true)]
+    [InlineData(false, false, true, true)]
+    public void ApplyBySetId_BackstabWeaponArmed_TravelSetsLeaveTheBackstabArmour(
+        bool backstabArmed, bool fighting, bool backstabSetEnabled, bool armourSent)
+    {
+        EquipmentSet travel = SetWithId("set-1", "Default",
+            Entry(EquipmentSlot.Torso, "leather vest"), Entry(EquipmentSlot.Finger1, "silver ring"),
+            Entry(EquipmentSlot.Legs, "leather leggings"));
+        travel.Trigger = EquipTriggerType.Default;
+        EquipmentSet backstab = SetWithId("set-2", "Backstab",
+            Entry(EquipmentSlot.Torso, "shadow cloak"), Entry(EquipmentSlot.Finger2, "ring of stealth"));
+        backstab.Trigger = EquipTriggerType.Backstab;
+        backstab.Enabled = backstabSetEnabled;
+        EquipmentManager mgr = Manager(new EquipmentSettings { Sets = { travel, backstab } },
+            SnapshotWithWorn("shadow cloak", "ring of stealth"), new CombatSettings());
+        mgr.SetBackstabProbes(() => backstabArmed, () => fighting);
+
+        Assert.Equal(EquipResult.Applied, mgr.ApplyBySetId("set-1"));
+
+        Assert.Contains("wear leather leggings", Wire());
+        Assert.Equal(armourSent, Wire().Contains("wear leather vest"));
+        Assert.Equal(armourSent, Wire().Any(c => c.Contains("silver ring", StringComparison.Ordinal)));
     }
 
     // ===== SwapWeapon (immediate combat fast path) =====
@@ -953,7 +984,7 @@ public sealed class EquipmentManagerTests
         // would auto-evict the slot-1 pearl the set keeps, so free slot 2 first.
         EquipmentSet set = Set("prerest-mana", "Pre-rest Mana",
             Entry(EquipmentSlot.Finger1, "pearl ring"),
-            Entry(EquipmentSlot.Finger2, "silver ring"));
+            Entry(EquipmentSlot.Finger1, "silver ring"));
         IReadOnlyList<EquippedItem> worn = WornList(
             ("pearl ring", "Finger"), ("gold jeweled ring", "Finger"));
         var wears = new List<string> { "wear silver ring" };
@@ -969,7 +1000,7 @@ public sealed class EquipmentManagerTests
         // Only pearl worn — a finger is free, so `wear silver` fills it; nothing to rem.
         EquipmentSet set = Set("prerest-mana", "Pre-rest Mana",
             Entry(EquipmentSlot.Finger1, "pearl ring"),
-            Entry(EquipmentSlot.Finger2, "silver ring"));
+            Entry(EquipmentSlot.Finger1, "silver ring"));
         IReadOnlyList<EquippedItem> worn = WornList(("pearl ring", "Finger"));
         var wears = new List<string> { "wear silver ring" };
 
@@ -1075,7 +1106,7 @@ public sealed class EquipmentManagerTests
         // while keeping slot 1 (pearl) needs just the eq — no rem.
         EquipmentSet set = Set("default", "Default",
             Entry(EquipmentSlot.Finger1, "pearl ring"),
-            Entry(EquipmentSlot.Finger2, "silver ring"));
+            Entry(EquipmentSlot.Finger1, "silver ring"));
         IReadOnlyList<EquippedItem> worn = WornList(
             ("pearl ring", "Finger"),           // slot 1 (kept)
             ("gold jeweled ring", "Finger"));   // slot 2 (odd-out — Stock's eq evicts it)
@@ -1145,7 +1176,7 @@ public sealed class EquipmentManagerTests
         // Set wants pearl (F1) + silver (F2); worn is pearl + gold jeweled; carrying silver.
         EquipmentSet set = Set("default", "Default",
             Entry(EquipmentSlot.Finger1, "pearl ring"),
-            Entry(EquipmentSlot.Finger2, "silver ring"));
+            Entry(EquipmentSlot.Finger1, "silver ring"));
         var carried = new[] { "silver ring" };
         IReadOnlyList<EquippedItem> worn = WornList(
             ("pearl ring", "Finger"), ("gold jeweled ring", "Finger"));

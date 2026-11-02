@@ -7409,7 +7409,7 @@ public sealed class AppServices
         // holds a per-monster alternate-weapon override, so the Default set's
         // combat-entry trigger can't clobber the swap (the weapon-flap report).
         Equipment.SetCombatWeaponOwnershipProbe(() => Combat.IsWeaponOverrideActive);
-        Equipment.SetBackstabWeaponProbe(() => Combat.BackstabWeaponArmed);
+        Equipment.SetBackstabProbes(() => Combat.BackstabWeaponArmed, () => PlayerState.InCombat);
 
         // Confusion-fumble retry: a fumble consumes the just-sent command without it
         // executing, so the client re-sends it. Combat re-sends a weapon swing first

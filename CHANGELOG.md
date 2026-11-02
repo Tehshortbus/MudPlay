@@ -1,5 +1,9 @@
 # Version history
 
+## 3.196.5
+
+- Walking with backstab on keeps the Backstab set's armour on too; the travel sets dress only the other places
+
 ## 3.196.4
 
 - Walking with backstab on keeps the backstab weapon in hand, a failed sneak included; the attack weapon goes on only to fight
