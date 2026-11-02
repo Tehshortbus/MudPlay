@@ -700,7 +700,10 @@ public sealed partial class GameDataCache
                 };
                 lock (_tables)
                 {
-                    if (_tables.ContainsKey(tableName) || _prewarmed.ContainsKey((setName, tableName))
+                    // _tables holds the active set's tables: one of the same name from
+                    // another set is no reason to leave this set's unread.
+                    if ((string.Equals(setName, ActiveSet, StringComparison.OrdinalIgnoreCase) && _tables.ContainsKey(tableName))
+                        || _prewarmed.ContainsKey((setName, tableName))
                         || !_reading.TryAdd((setName, tableName), read))
                         return Task.CompletedTask;
                 }

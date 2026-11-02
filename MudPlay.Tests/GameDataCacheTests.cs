@@ -535,4 +535,24 @@ public sealed class GameDataCacheTests : IDisposable
 
         Assert.Equal(RealmType.Stock, cache.ActiveRealm);
     }
+
+    // The active set holding a table of the same name is no reason to leave another
+    // set's unread ahead of a switch to it: a profile load prepares its set while
+    // another is active (Hang-20261101-201809). The read made ahead is the one the
+    // switch takes.
+    [Fact]
+    public async Task PrewarmAsync_ReadsAnotherSetsTable_WhileTheActiveSetHoldsOneOfThatName()
+    {
+        SeedSet("alpha", ("Rooms", "[{\"Name\":\"Alpha\"}]"));
+        string beta = SeedSet("beta", ("Rooms", "[{\"Name\":\"Read ahead\"}]"));
+        GameDataCache cache = NewCache();
+        cache.SwitchSet("alpha");
+        Assert.NotNull(cache.GetTable("Rooms"));
+
+        await cache.PrewarmAsync("beta", new[] { "Rooms" });
+        File.WriteAllText(Path.Combine(beta, "Rooms.json"), "[{\"Name\":\"Written since\"}]");
+        cache.SwitchSet("beta");
+
+        Assert.Equal("Read ahead", FirstName(cache.GetTable("Rooms")));
+    }
 }

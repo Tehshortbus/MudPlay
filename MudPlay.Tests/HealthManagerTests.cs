@@ -1618,15 +1618,17 @@ public sealed class HealthManagerTests
     // ----- engage-to-clear a rest-blocker (Auto-Combat OFF) ----------
     // report paradigm-20260901-093301: a hostile blocking a needed rest with
     // Auto-Combat off deadlocks (can't rest, won't fight, HP above the flee
-    // trigger so won't run). Defaults: RestIfBelowHp=60, RunIfBelowHp=20,
-    // RestIfBelowMa=30. MaxHp/MaxMa=200.
+    // trigger so won't run). Only a monster attacking us blocks the rest (user,
+    // 2026-11-01). Defaults: RestIfBelowHp=60, RunIfBelowHp=20, RestIfBelowMa=30.
+    // MaxHp/MaxMa=200.
 
     [Fact]
-    public void ForceClearForRest_ArmsAndPokes_WhenHostileBlocksHpRest_CombatOff()
+    public void ForceClearForRest_ArmsAndPokes_WhenAnAttackerBlocksHpRest_CombatOff()
     {
         using Harness h = new();
         h.AutoCombatEnabled = false;   // combat off
-        h.HostilesPresent = true;      // an enemy blocks rest
+        h.HostilesPresent = true;
+        h.State.InCombat = true;       // an enemy attacking us blocks rest
         h.SetPrompt(hp: 80, maxHp: 200);   // 40% — below rest(60), above run(20)
         h.Health.Evaluate();
 
@@ -1640,12 +1642,30 @@ public sealed class HealthManagerTests
         using Harness h = new();
         h.AutoCombatEnabled = false;
         h.HostilesPresent = true;
+        h.State.InCombat = true;
         // HP healthy (90%), but mana below its rest trigger (20% < 30%) — a mana
-        // rest is due and the hostile blocks it, so still engage-to-clear.
+        // rest is due and the attacker blocks it, so still engage-to-clear.
         h.SetPrompt(hp: 180, maxHp: 200, ma: 40, maxMa: 200);
         h.Health.Evaluate();
 
         Assert.True(h.Health.ForceClearForRest);
+    }
+
+    // A monster that walks in on a rest without attacking doesn't end it: with
+    // Auto-Combat off it is left alone and the rest goes out beside it (report
+    // paradigm-20261101-201549: a worm that hadn't swung was backstabbed).
+    [Fact]
+    public void ForceClearForRest_DoesNotArm_ForAHostileThatIsntAttacking_AndTheRestGoesOut()
+    {
+        using Harness h = new();
+        h.AutoCombatEnabled = false;
+        h.HostilesPresent = true;      // in the room, not attacking
+        h.SetPrompt(hp: 80, maxHp: 200);
+        h.Health.Evaluate();
+
+        Assert.False(h.Health.ForceClearForRest);
+        Assert.Equal(0, h.RestClearEngageCount);
+        Assert.Contains("rest", h.SentLines);
     }
 
     [Fact]

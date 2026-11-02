@@ -186,6 +186,43 @@ public sealed class LoopManager
 
     // ----- Game-data-set lifecycle -----------------------------------
 
+    // A set's loops read ahead of its switch, off the UI thread: LoadAll runs inside
+    // the switch on the UI thread, and 639 loop files held it 0.9 s while three
+    // clients loaded their profiles (Hang-20261101-201809). LoadAll takes each one
+    // whose file is unchanged since it was read and reads the rest itself.
+    private readonly object _preloadGate = new();
+    private (string Set, Dictionary<string, (SharedFolderStamp.FileMark Mark, Loop Loop)> Loops)? _preloaded;
+
+    public Task PreloadAsync(string setName) => Task.Run(() =>
+    {
+        if (!PathGuard.Usable(AppPaths.GameDataRoot, setName)) return;
+        string folder = AppPaths.GameDataSetLoopsFolder(setName);
+        if (!Directory.Exists(folder)) return;
+        Dictionary<string, (SharedFolderStamp.FileMark, Loop)> read = new(StringComparer.Ordinal);
+        foreach ((string path, SharedFolderStamp.FileMark mark) in NavTreeScan.Walk(folder, LoopFileSuffix).FilesWith(LoopFileSuffix))
+        {
+            try
+            {
+                if (JsonStore.Load<Loop>(path) is { } loop) read[path] = (mark, loop);
+            }
+            catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException)
+            {
+                // LoadAll reads it again and reports it.
+            }
+        }
+        lock (_preloadGate) _preloaded = (setName, read);
+    });
+
+    // The preloaded loop read from path while it held mark, taken once.
+    private static Loop? Preloaded(Dictionary<string, (SharedFolderStamp.FileMark Mark, Loop Loop)>? preloaded,
+        IReadOnlyDictionary<string, SharedFolderStamp.FileMark> seen, string path)
+    {
+        string full = Path.GetFullPath(path);
+        return preloaded is not null && preloaded.Remove(full, out (SharedFolderStamp.FileMark Mark, Loop Loop) early)
+            && seen.TryGetValue(full, out SharedFolderStamp.FileMark now) && now == early.Mark
+            ? early.Loop : null;
+    }
+
     // Rebuild the in-memory cache from disk for setName. Pass null to clear
     // (no set active). Idempotent on no-op transitions — calling with the
     // same name twice still rereads because the user may have hand-edited a
@@ -229,16 +266,26 @@ public sealed class LoopManager
             NavTreeScan.Walk(folder, LoopFileSuffix).FilesWith(LoopFileSuffix);
         _stamp.Accept(seen);
 
+        Dictionary<string, (SharedFolderStamp.FileMark Mark, Loop Loop)>? preloaded;
+        lock (_preloadGate)
+        {
+            preloaded = _preloaded is { } p && string.Equals(p.Set, setName, StringComparison.OrdinalIgnoreCase) ? p.Loops : null;
+            _preloaded = null;
+        }
+
         int loaded = 0;
         int failed = 0;
         int upgraded = 0;
+        int readAhead = 0;
         // Recurse: loops may live in user-created sub-folders under the
         // Loops root. The relative directory is the loop's Folder.
         foreach (string path in Directory.EnumerateFiles(folder, "*" + LoopFileSuffix, SearchOption.AllDirectories))
         {
             try
             {
-                Loop? loop = JsonStore.Load<Loop>(path);
+                Loop? loop = Preloaded(preloaded, seen, path);
+                if (loop is not null) readAhead++;
+                else loop = JsonStore.Load<Loop>(path);
                 // Schema-validate: a JSON file dropped in this folder
                 // that isn't a Loop (or one we can't deserialise) is
                 // silently skipped — the user can hand-drop .loop
@@ -266,6 +313,7 @@ public sealed class LoopManager
             ? $"Loaded {loaded} loop(s) for set '{setName}'"
             : $"Loaded {loaded} loop(s) for set '{setName}' ({failed} malformed file(s) skipped)";
         if (upgraded > 0) detail += $"; {upgraded} legacy loop(s) upgraded to v{Loop3Schema} in memory";
+        if (readAhead > 0) detail += $"; {readAhead} read ahead of the switch";
         _log?.Info("Loops", detail + ".");
         LoopsChanged?.Invoke();
     }

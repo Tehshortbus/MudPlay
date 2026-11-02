@@ -51,7 +51,7 @@ public sealed class LoopManagerTests : IDisposable
         ]
         """;
 
-    private LoopManager NewManager()
+    private LoopManager NewManager(LogService? log = null)
     {
         // The unique per-test set name keeps concurrent tests apart and lets
         // Dispose clean up.
@@ -64,7 +64,7 @@ public sealed class LoopManagerTests : IDisposable
         RoomGraphManager graph = new(cache);
         graph.OnActiveSetChanged(_setName);
         BfsMapper bfs = new(graph);
-        return new LoopManager(bfs, graph);
+        return new LoopManager(bfs, graph, log);
     }
 
     // ----- LoadAll lifecycle ----------------------------------------
@@ -568,5 +568,29 @@ public sealed class LoopManagerTests : IDisposable
         Assert.Equal(new RoomKey(999, 999), unreach[0].To);
         Assert.Equal(new RoomKey(999, 999), unreach[1].From);
         Assert.Equal(new RoomKey(1, 1),   unreach[1].To);
+    }
+
+    // A set's loops are read ahead of its switch, off the UI thread, and the switch
+    // takes each one whose file is unchanged since; one changed since is read again
+    // (Hang-20261101-201809: 639 loop files held the switch 0.9 s).
+    [Fact]
+    public async Task PreloadAsync_LoopsReadAhead_AreTakenByTheLoad_UnlessTheirFileChanged()
+    {
+        LoopManager writer = NewManager();
+        writer.LoadAll(_setName);
+        writer.Save(new Loop("kept", new[] { new LoopWaypoint(new RoomKey(1, 1)) }));
+        writer.Save(new Loop("changed", new[] { new LoopWaypoint(new RoomKey(1, 1)) }));
+        LogService log = new();
+        List<string> lines = new();
+        log.EntryAdded += e => lines.Add(e.Message);
+        LoopManager m = NewManager(log);
+
+        await m.PreloadAsync(_setName);
+        writer.Save(new Loop("changed", new[] { new LoopWaypoint(new RoomKey(1, 1)), new LoopWaypoint(new RoomKey(1, 2)) }));
+        m.LoadAll(_setName);
+
+        Assert.Single(m.Get("kept")!.Waypoints);
+        Assert.Equal(2, m.Get("changed")!.Waypoints.Count);
+        Assert.Contains(lines, l => l.Contains("1 read ahead of the switch", StringComparison.Ordinal));
     }
 }

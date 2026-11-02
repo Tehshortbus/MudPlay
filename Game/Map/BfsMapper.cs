@@ -37,6 +37,14 @@ public sealed class BfsMapper
 
     private readonly object _cacheLock = new();
 
+    // A build of a layout someone else is already building is waited on, not run
+    // again: opening the Navigation window asked for its first layout on two threads
+    // at once, a 35,000-room build twice over while the window hung (reports
+    // Hang-20261101-201809 / -201847 / -201853). Keyed by the cache's generation, so
+    // a request after an invalidation never takes a build begun before it.
+    private readonly Dictionary<(RoomKey Origin, int Radius, int Generation), Lazy<RoomLayout>> _building = new();
+    private int _generation;
+
     // Vertical-plane index: each room → (component, floor), where floor is
     // net U/D displacement (U:+1, D:-1) within the room's connected
     // component computed over NON-text exits only. Text exits are excluded
@@ -127,6 +135,7 @@ public sealed class BfsMapper
         {
             _layoutCache.Clear();
             _lruOrder.Clear();
+            _generation++;
         }
     }
 
@@ -1089,7 +1098,31 @@ public sealed class BfsMapper
             }
         }
         cacheable &= remember;
+        if (!cacheable) return Build(origin, maxRadius, keepVisible, cacheKey, cacheable: false);
 
+        Lazy<RoomLayout> mine = new(() => Build(origin, maxRadius, null, cacheKey, cacheable: true),
+            LazyThreadSafetyMode.ExecutionAndPublication);
+        Lazy<RoomLayout> running;
+        (RoomKey, int, int) building;
+        lock (_cacheLock)
+        {
+            building = (origin, maxRadius, _generation);
+            if (!_building.TryGetValue(building, out Lazy<RoomLayout>? found)) _building[building] = found = mine;
+            running = found;
+        }
+        try
+        {
+            return running.Value;
+        }
+        finally
+        {
+            if (ReferenceEquals(running, mine)) lock (_cacheLock) _building.Remove(building);
+        }
+    }
+
+    private RoomLayout Build(RoomKey origin, int maxRadius, RoomKey? keepVisible,
+        (RoomKey Origin, int Radius) cacheKey, bool cacheable)
+    {
         if (_graph.GetRoom(origin) is null)
         {
             RoomLayout empty = new(
@@ -1733,6 +1766,7 @@ public sealed class BfsMapper
         lock (_cacheLock)
         {
             _layoutCache.Clear();
+            _generation++;
             _planeIndex = null;
             _walkReachCache = null;
         }

@@ -1,5 +1,13 @@
 # Version history
 
+## 3.195.26
+
+- A sneaked room opens with a backstab again when the server's status data is on, not a bash
+- With Auto-Combat off, a monster that walks in without attacking is left alone and the rest goes on
+- The Navigation window opens without freezing; a big map draws a moment after
+- Loading a profile reads its game data and loops ahead, so the switch freezes the window far less
+- bug reports addressed: paradigm-20261101-201452, paradigm-20261101-201549, Hang-20261101-201809, Hang-20261101-201847, Hang-20261101-201853
+
 ## 3.195.21
 
 - A null or missing field in a hand-edited settings file loads as its default instead of crashing
