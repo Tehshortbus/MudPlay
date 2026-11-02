@@ -193,4 +193,26 @@ public sealed class TriggerLevelTests : IDisposable
         Assert.Equal(new[] { TriggerLevel.Character }, alpha.Engine.Levels);
         Assert.False(alpha.Engine.Add(On(Bell, "say hi", TriggerLevel.Realm)));
     }
+
+    // A shared file put together by hand can leave a trigger's name out, which reads
+    // back null; the list is keyed by name, so the character's load threw. The trigger
+    // loads blank-named and still fires; a null in the list is passed over.
+    [Fact]
+    public void ASharedTriggerWithNoName_LoadsAndFires()
+    {
+        string path = AppPaths.RealmTriggersFile(AppPaths.RealmFolder(_board, "Main"));
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, $$"""
+            [ { "Enabled": true, "Scope": "GameMessages", "MatchType": "Literal", "Pattern": "{{Bell}}", "Response": "say hi" }, null ]
+            """);
+        Client alpha = new(_board, "Alpha");
+
+        Assert.True(alpha.Engine.Add(On("A gong sounds.", "say gong", TriggerLevel.Character, name: "gong")));
+        alpha.Hear(Bell);
+
+        Assert.Equal(new[] { "say hi" }, alpha.Sent);
+        Trigger shared = Assert.Single(alpha.Engine.Triggers, t => t.Level == TriggerLevel.Realm);
+        Assert.Equal("", shared.Name);
+        Assert.False(alpha.Engine.IsOverridden(shared));
+    }
 }

@@ -106,7 +106,8 @@ public sealed class SharedTriggerFile
         if (!File.Exists(path)) return new List<Trigger>();
         try
         {
-            return Leveled(JsonStore.Load<List<Trigger>>(path) ?? new List<Trigger>()).ToList();
+            List<Trigger> read = JsonStore.Load<List<Trigger>>(path) ?? new List<Trigger>();
+            return Leveled(read.OfType<Trigger>().Select(t => t.WithBlanksForMissing())).ToList();
         }
         catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException)
         {

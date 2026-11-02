@@ -1129,4 +1129,22 @@ public sealed class KeyDoorRulesTests : IDisposable
         Assert.Contains("no stat screen read", rig.Filter.DescribeDoorRefusal(ExitOf(rig, ThragsGuardroom, Direction.E)));
         Assert.False(rig.Filter.IsExitBlocked(ExitOf(rig, Passageway, Direction.W)));
     }
+
+    // A hand-edited record can hold a null for a side; it is passed over and the
+    // rest of the realm's record loads.
+    [Fact]
+    public void ANullSideInTheRealmsRecord_IsPassedOver()
+    {
+        string realm = RealmFolder("A");
+        File.WriteAllText(AppPaths.RealmBareKeyLocksFile(realm), """
+            { "9/1 E": null, "9/2 W": { "Door": 2, "KeyExit": 0 } }
+            """);
+        BareKeyLockBook book = new((_, _) => null);
+        BareKeyLockStore store = new(book);
+
+        store.OnRealmChanged(realm);
+
+        Assert.Equal(1, book.LearnedCount);
+        Assert.Equal(2, book.RecordOf(new RoomKey(9, 2), Direction.W)!.Value.Door);
+    }
 }

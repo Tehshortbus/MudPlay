@@ -237,9 +237,10 @@ public sealed class MessageCandidateStore
     private List<MessageCandidateRecord>? TryLoad(string path)
     {
         if (!File.Exists(path)) return null;
+        List<MessageCandidateRecord>? read;
         try
         {
-            return JsonStore.Load<List<MessageCandidateRecord>>(path);
+            read = JsonStore.Load<List<MessageCandidateRecord>>(path);
         }
         catch (Exception ex)
         {
@@ -247,6 +248,25 @@ public sealed class MessageCandidateStore
                 $"Failed to load '{path}': {ex.Message}");
             return null;
         }
+        return read is null ? null : Usable(read, path);
+    }
+
+    // A field the file leaves out reads back null, and every candidate is keyed by its
+    // Id. One with its line is given back the Id the line makes; one without a line is
+    // nothing to review, and is dropped.
+    private List<MessageCandidateRecord> Usable(List<MessageCandidateRecord> read, string path)
+    {
+        List<MessageCandidateRecord> usable = new(read.Count);
+        foreach (MessageCandidateRecord? c in read)
+        {
+            if (c?.RawText is null) continue;
+            usable.Add(c.Id is null ? c with { Id = MessageCandidateRecord.ComputeId(c.RawText) } : c);
+        }
+        int dropped = read.Count - usable.Count;
+        if (dropped > 0)
+            _log?.Log(LogSeverity.Warn, "MessageCandidates",
+                $"'{path}': left out {dropped} entr{(dropped == 1 ? "y" : "ies")} with no line — not unrecognized lines this client saved.");
+        return usable;
     }
 
     // Write the realm's file now, on this thread, when a change waits: what is on

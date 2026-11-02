@@ -655,7 +655,8 @@ public sealed class TriggerEngine
         if (!System.IO.File.Exists(path)) return new List<Trigger>();
         try
         {
-            return JsonStore.Load<List<Trigger>>(path) ?? new List<Trigger>();
+            List<Trigger> read = JsonStore.Load<List<Trigger>>(path) ?? new List<Trigger>();
+            return read.OfType<Trigger>().Select(t => t.WithBlanksForMissing()).ToList();
         }
         catch (Exception ex)
         {

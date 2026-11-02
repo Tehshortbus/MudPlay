@@ -268,6 +268,10 @@ public sealed class GhItemLocationStore
         _stamp.Mark(path);
         List<GhItemSighting>? loaded = JsonStore.Load<List<GhItemSighting>>(path);
         if (loaded is null) return;
+        // Keyed by item name: a hand-edited file's null sighting or name is passed over.
+        int dropped = loaded.RemoveAll(s => s?.ItemName is null);
+        if (dropped > 0)
+            _log?.Warn("GhSweep", $"'{path}': left out {dropped} item sighting(s) with no item name.");
         foreach (GhItemSighting s in loaded)
         {
             if (!_sightings.TryGetValue(s.ItemName, out Dictionary<RoomKey, GhItemSighting>? byRoom))

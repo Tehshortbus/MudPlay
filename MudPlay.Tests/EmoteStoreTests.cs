@@ -100,4 +100,22 @@ public sealed class EmoteStoreTests : IDisposable
         File.WriteAllText(bad, "nope");
         Assert.Null(new EmoteStore(_dir).ReadPackageDrafts(bad, _dir + "-tmp"));
     }
+
+    // The catalog is keyed by shortcode, built as the store opens at startup: a
+    // hand-edited manifest's null shortcode, null emote or null hidden name is left
+    // out and the rest of the library loads.
+    [Fact]
+    public void AManifestWithNulls_LoadsTheRest()
+    {
+        Directory.CreateDirectory(_dir);
+        File.WriteAllText(Path.Combine(_dir, "emotes.json"), """
+            { "Emotes": [ { "Shortcode": null, "Emoji": "x" }, { "Shortcode": "boom", "Emoji": "💥" }, null ],
+              "HiddenDefaults": [ null, "smile" ] }
+            """);
+
+        EmoteStore store = new(_dir);
+
+        Assert.Equal("boom", Assert.Single(store.Emotes).Shortcode);
+        Assert.Equal("smile", Assert.Single(store.HiddenDefaults));
+    }
 }
