@@ -1,12 +1,8 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.196.2**
-> - After an NPC's port (the Grey Lord's `teleport`), the map is sure of the room his port leads to
-> - A room with a hidden or text exit is no longer mistaken for a look-alike in another town
-> - The hang-up death check and death-arrival learning still read a room the map can't tell from its twin
-> - A route between two other places never cuts through the Isle of Bones and its bone caverns; walks to and from them still go
-> - The exit west at the top of the Isle of Bones stairs is never walked: it teleports every time, never onto the isle
+> **Version 3.196.3**
+> - A release build no longer stops on a log test that timed out while the machine was busy
 <!-- current-version:end -->
 
 A modern Telnet terminal client for **MajorMUD** and other BBS door games, built in C# / .NET 10 with [Avalonia](https://avaloniaui.net/). It renders a faithful CP437 cell grid with full VT100/ANSI parsing, and layers a MegaMUD-style automation suite (combat, party, navigation, healing, and more) on top — all in modeless, dockable windows so the terminal stays live while you configure anything.

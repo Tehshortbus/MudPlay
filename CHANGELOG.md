@@ -1,5 +1,9 @@
 # Version history
 
+## 3.196.3
+
+- A release build no longer stops on a log test that timed out while the machine was busy
+
 ## 3.196.2
 
 - After an NPC's port (the Grey Lord's `teleport`), the map is sure of the room his port leads to
