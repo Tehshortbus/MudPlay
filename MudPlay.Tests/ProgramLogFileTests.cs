@@ -180,12 +180,14 @@ public sealed class ProgramLogFileTests
         LogService log = new();
         int failing = 1;
         Disks disks = new() { Make = () => new TestDisk { FailFlush = () => Volatile.Read(ref failing) == 1 } };
-        // A retry wait far longer than the exit's bound.
-        ProgramLogFile file = Make(log, disks, retryDelay: TimeSpan.FromSeconds(30));
         // The failure notice, not WhenWrittenAsync: a barrier posted after the writer
-        // has taken "first" is read only after the 30 s wait.
+        // has taken "first" is read only after the 30 s wait. Listened for before the
+        // file is made: the session's header can fail its flush, and draw the one
+        // notice, before "first" is logged.
         TaskCompletionSource noticed = new(TaskCreationOptions.RunContinuationsAsynchronously);
         log.EntryAdded += e => { if (e.Source == ProgramLogFile.LogSource) noticed.TrySetResult(); };
+        // A retry wait far longer than the exit's bound.
+        ProgramLogFile file = Make(log, disks, retryDelay: TimeSpan.FromSeconds(30));
 
         log.Info("Walker", "first");
         await noticed.Task.WaitAsync(Patience);
