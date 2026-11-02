@@ -157,8 +157,8 @@ public sealed class BareKeyLockStore
         catch (Exception ex) { _log?.Warn(LogCategory, $"the realm's bare key locks can't be read: {ex.Message}"); }
         List<(RoomKey, Direction, BareKeyLockBook.Tally)> entries = new();
         if (onFile is null) return entries;
-        foreach ((string side, TallyRecord t) in onFile)
-            if (BareKeyLockBook.TryParseSide(side, out RoomKey room, out Direction dir))
+        foreach ((string side, TallyRecord? t) in onFile)
+            if (t is not null && BareKeyLockBook.TryParseSide(side, out RoomKey room, out Direction dir))
                 entries.Add((room, dir, new BareKeyLockBook.Tally(
                     Math.Max(0, t.Door), Math.Max(0, t.KeyExit), t.LastAnswered, t.SetByUser)));
         return entries;

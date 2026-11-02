@@ -32,6 +32,12 @@ public sealed record Trigger(
     // Where the trigger is kept, and so who it fires for. Not written out: the file
     // it is kept in says.
     [JsonIgnore] public TriggerLevel Level { get; init; }
+
+    // A field a hand-written or carried-in trigger file leaves out reads back null.
+    // Blank is what the editor saves: a blank pattern never fires, a blank response
+    // sends a bare carriage return.
+    public Trigger WithBlanksForMissing() =>
+        this with { Name = Name ?? "", Pattern = Pattern ?? "", Response = Response ?? "" };
 }
 
 // Where a trigger is kept: on the character, with the realm (every character

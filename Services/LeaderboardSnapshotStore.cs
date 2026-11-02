@@ -200,8 +200,8 @@ public sealed class LeaderboardSnapshotStore
         if (!File.Exists(path)) { _stamp.Mark(path); return true; }
         try
         {
-            loaded = JsonSerializer.Deserialize<List<LeaderboardSnapshot>>(File.ReadAllText(path))
-                     ?? new List<LeaderboardSnapshot>();
+            loaded = Usable(JsonSerializer.Deserialize<List<LeaderboardSnapshot>>(File.ReadAllText(path))
+                            ?? new List<LeaderboardSnapshot>(), path);
             _stamp.Mark(path);
             return true;
         }
@@ -210,6 +210,25 @@ public sealed class LeaderboardSnapshotStore
             _log?.Log(LogSeverity.Warn, "Leaderboard", $"Failed to read '{path}': {ex.Message}");
             return false;
         }
+    }
+
+    // A field a hand-edited or carried-in file leaves out reads back null, and a hero
+    // is keyed by first name: a capture with no rows, or a row with no name, is dropped.
+    private List<LeaderboardSnapshot> Usable(List<LeaderboardSnapshot> read, string path)
+    {
+        int dropped = 0;
+        List<LeaderboardSnapshot> usable = new(read.Count);
+        foreach (LeaderboardSnapshot? s in read)
+        {
+            if (s?.Entries is null) { dropped++; continue; }
+            LeaderboardEntry[] rows = s.Entries.Where(e => e?.Name is not null).ToArray();
+            dropped += s.Entries.Count - rows.Length;
+            usable.Add(rows.Length == s.Entries.Count ? s : s with { Entries = rows });
+        }
+        if (dropped > 0)
+            _log?.Log(LogSeverity.Warn, "Leaderboard",
+                $"'{path}': left out {dropped} capture(s) or row(s) missing their heroes or a name.");
+        return usable;
     }
 
     private void Persist()

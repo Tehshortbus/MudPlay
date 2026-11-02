@@ -552,4 +552,33 @@ public sealed class LearnedArrivalRoomStoreTests : IDisposable
             Assert.True(waited.ElapsedMilliseconds >= 200);
         }
     }
+
+    // A hand-edited file can hold a null where the rooms, a room or its readings go;
+    // each is passed over like an entry naming no room, and the rest loads.
+    [Fact]
+    public void NullsInAFilePutTogetherByHand_ArePassedOver()
+    {
+        Directory.CreateDirectory(Path.Combine(_root, "paradigm"));
+        File.WriteAllText(FileFor("paradigm"), """
+            { "Version": 1, "Rooms": [ null, { "DiedIn": "14/1950", "Seen": null },
+                { "DiedIn": "14/1813", "Seen": [ null, { "Arrival": "14/1900", "Times": 2 } ] } ] }
+            """);
+
+        LearnedArrivalRoomStore store = Client();
+
+        Assert.Equal(new[] { IstaGraveyard }, store.ArrivalsFor(TerraIsta));
+        Assert.Equal(1, store.Count);
+    }
+
+    [Fact]
+    public void ANullRoomList_LoadsAsNone()
+    {
+        Directory.CreateDirectory(Path.Combine(_root, "paradigm"));
+        File.WriteAllText(FileFor("paradigm"), """{ "Version": 1, "Rooms": null }""");
+
+        LearnedArrivalRoomStore store = Client();
+
+        Assert.Equal(0, store.Count);
+        Assert.Equal(LearnedArrivalOutcome.Learned, store.Learn(TerraIsta, IstaGraveyard));
+    }
 }

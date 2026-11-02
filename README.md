@@ -1,13 +1,10 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.195.19**
-> - Game Data → Spells no longer crashes on a set imported from a newer Anomaly database
-> - Importing skips a database table that would overwrite one of MudPlay's own files
-> - Walks step straight through a hidden exit the game data marks walkable instead of searching it
-> - Settings → Auto-Trainer: choose the closest or cheapest trainer, and how party trips pick stops
-> - Bug report shows the trainer choice, both rankings, the last pick and the last party trip plan
-> - A leader who trains by hand re-invites the party when it leaves the trainer screen
+> **Version 3.195.21**
+> - A null or missing field in a hand-edited settings file loads as its default instead of crashing
+> - Triggers, bosses, emotes, leaderboard, Roomba, unrecognized-line and other realm files skip unusable entries
+> - Importing an unreadable boss table says so instead of crashing
 <!-- current-version:end -->
 
 A modern Telnet terminal client for **MajorMUD** and other BBS door games, built in C# / .NET 10 with [Avalonia](https://avaloniaui.net/). It renders a faithful CP437 cell grid with full VT100/ANSI parsing, and layers a MegaMUD-style automation suite (combat, party, navigation, healing, and more) on top — all in modeless, dockable windows so the terminal stays live while you configure anything.

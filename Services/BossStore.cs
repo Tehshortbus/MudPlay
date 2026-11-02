@@ -52,9 +52,7 @@ public sealed class BossStore
     {
         _log = log;
         _seedPath = seedPath ?? AppPaths.DefaultBossDefsSeedFile;
-        List<BossDef>? seed = JsonStore.Load<List<BossDef>>(_seedPath);
-        if (seed is not null)
-            foreach (BossDef b in seed) { _seed.Add(b); _seedByName[b.Name] = b; }
+        foreach (BossDef b in ReadList(_seedPath)) { _seed.Add(b); _seedByName[b.Name] = b; }
     }
 
     // ----- Stop before / Grab All: the character's own -------------------------
@@ -151,8 +149,18 @@ public sealed class BossStore
         if (ActiveRealmFolder is null) return;
         string path = AppPaths.RealmBossesFile(ActiveRealmFolder);
         _seenWrite = WriteTime(path);
-        if (JsonStore.Load<List<BossDef>>(path) is { } ov)
-            foreach (BossDef b in ov) _overlay[b.Name] = b;
+        foreach (BossDef b in ReadList(path)) _overlay[b.Name] = b;
+    }
+
+    // The list is keyed by Name, and a hand-edited file can hold a null where a boss
+    // or its name goes: those are dropped.
+    private List<BossDef> ReadList(string path)
+    {
+        List<BossDef> list = JsonStore.Load<List<BossDef>>(path) ?? new List<BossDef>();
+        int dropped = list.RemoveAll(b => b?.Name is null);
+        if (dropped > 0)
+            _log?.Warn("Bosses", $"'{path}': left out {dropped} entr{(dropped == 1 ? "y" : "ies")} with no name.");
+        return list;
     }
 
     private void AdoptLegacyList(string realmFolder, string? legacySet)

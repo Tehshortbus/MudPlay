@@ -194,4 +194,26 @@ public sealed class LeaderboardSnapshotStoreTests : IDisposable
         store.OnRealmChanged(null);
         Assert.Empty(store.Snapshots);
     }
+
+    // A hero is keyed by first name, worked out from Name: a hand-edited history's
+    // capture with no rows, or a row with no name, is dropped and the rest loads.
+    [Fact]
+    public void AHistoryWithMissingRowsOrNames_LoadsTheRest()
+    {
+        string realm = AppPaths.BbsFolder(_scratchBbs);
+        Directory.CreateDirectory(realm);
+        File.WriteAllText(AppPaths.RealmLeaderboardFile(realm), """
+            [ { "CapturedAtUtc": "2026-07-20T20:00:00+00:00", "RequestedCount": 100,
+                "Entries": [ { "Rank": 1, "Name": "Salty Exp", "Class": "Bard", "Guild": "None", "Experience": 1000 },
+                             { "Rank": 2, "Class": "Bard", "Experience": 900 } ] },
+              { "CapturedAtUtc": "2026-07-20T19:00:00+00:00", "RequestedCount": 100 } ]
+            """);
+        var store = new LeaderboardSnapshotStore();
+
+        store.OnRealmChanged(realm);
+        store.Add(Snap(T.AddHours(1), 100, 2000));
+
+        Assert.Equal(2, store.Snapshots.Count);
+        Assert.Equal("Salty", Assert.Single(store.Snapshots[1].Entries).FirstName);
+    }
 }

@@ -419,11 +419,20 @@ public sealed partial class BossesSectionViewModel : WorkshopSectionViewModel
             },
         });
         if (picked.Count == 0) return;
-        if (JsonStore.Load<List<BossDef>>(picked[0].Path.LocalPath) is not { } imported) return;
+        string path = picked[0].Path.LocalPath;
+        List<BossDef>? imported;
+        try { imported = JsonStore.Load<List<BossDef>>(path); }
+        catch (Exception ex) when (ex is InvalidDataException or IOException or UnauthorizedAccessException)
+        {
+            AppServices.Current.Log.Warn("Bosses", $"boss table not imported: {ex.Message}");
+            AppServices.Current.WriteTerminalNotice($"[Boss table not imported: '{Path.GetFileName(path)}' isn't a boss table that can be read]");
+            return;
+        }
+        if (imported is null) return;
 
         var byName = new Dictionary<string, BossDef>(StringComparer.OrdinalIgnoreCase);
-        foreach (BossDef b in imported)
-            if (!string.IsNullOrWhiteSpace(b.Name)) byName[b.Name.Trim().ToLowerInvariant()] = b;
+        foreach (BossDef? b in imported)
+            if (b?.Name is { } name && !string.IsNullOrWhiteSpace(name)) byName[name.Trim().ToLowerInvariant()] = b;
 
         var merged = new List<BossDef>(byName.Values);
         foreach (BossDef b in _bosses.Resolve())

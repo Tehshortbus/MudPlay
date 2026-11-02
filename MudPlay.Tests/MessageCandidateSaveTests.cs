@@ -198,4 +198,25 @@ public sealed class MessageCandidateSaveTests : IDisposable
         Assert.True(store.Contains("One line too many."));
         Assert.Equal(MessageCandidateStore.MaxPending, store.Candidates.Count(c => !c.Dismissed));
     }
+
+    // Every candidate is keyed by its Id, and a field a file leaves out reads back
+    // null. One with its line gets back the Id the line makes; one with no line is
+    // dropped, and the queue still merges another client's file.
+    [Fact]
+    public void AFileEntryWithNoId_GetsItsLinesId_AndOneWithNoLineIsDropped()
+    {
+        string realm = Realm("Main");
+        File.WriteAllText(AppPaths.RealmMessageCandidatesFile(realm), """
+            [ { "RawText": "A strange line.", "FirstSeenAt": "2026-11-01T00:00:00+00:00", "LastSeenAt": "2026-11-01T00:00:00+00:00", "Occurrences": 2 },
+              { "Id": "abc", "Occurrences": 1 }, null ]
+            """);
+
+        MessageCandidateStore store = NewStore(realm);
+        File.SetLastWriteTimeUtc(AppPaths.RealmMessageCandidatesFile(realm), DateTime.UtcNow.AddSeconds(5));
+        Assert.True(store.TakeInOutsideChanges());
+
+        MessageCandidateRecord kept = Assert.Single(store.Candidates);
+        Assert.Equal(MessageCandidateRecord.ComputeId("A strange line."), kept.Id);
+        Assert.Equal(2, kept.Occurrences);
+    }
 }

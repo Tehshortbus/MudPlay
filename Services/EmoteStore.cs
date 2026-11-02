@@ -215,9 +215,9 @@ public sealed partial class EmoteStore
                 EmoteSet? incoming;
                 using (Stream s = manifest.Open())
                     incoming = System.Text.Json.JsonSerializer.Deserialize<EmoteSet>(s);
-                foreach (UserEmote e in incoming?.Emotes ?? new())
+                foreach (UserEmote? e in incoming?.Emotes ?? new())
                 {
-                    if (NormalizeShortcode(e.Shortcode) is not { } name) continue;
+                    if (e is null || NormalizeShortcode(e.Shortcode) is not { } name) continue;
                     if (!string.IsNullOrEmpty(e.Image) && zip.GetEntry(e.Image) is { } imgEntry)
                     {
                         string fileName = Path.GetFileName(e.Image);
@@ -367,8 +367,18 @@ public sealed partial class EmoteStore
     private EmoteSet LoadFromDisk()
     {
         _stamp.Mark(_manifestPath);
-        try { return JsonStore.Load<EmoteSet>(_manifestPath) ?? new EmoteSet(); }
+        EmoteSet set;
+        try { set = JsonStore.Load<EmoteSet>(_manifestPath) ?? new EmoteSet(); }
         catch (System.Exception ex) { _log?.Warn("Emotes", $"failed to load '{_manifestPath}': {ex.Message}"); return new EmoteSet(); }
+
+        // A field a hand-edited manifest leaves null reads back null, and the catalog
+        // is keyed by shortcode: an emote without one, or a null hidden name, is dropped.
+        set.Emotes ??= new();
+        set.HiddenDefaults ??= new();
+        int dropped = set.Emotes.RemoveAll(e => e?.Shortcode is null) + set.HiddenDefaults.RemoveAll(h => h is null);
+        if (dropped > 0)
+            _log?.Warn("Emotes", $"'{_manifestPath}': left out {dropped} entr{(dropped == 1 ? "y" : "ies")} with no shortcode.");
+        return set;
     }
 
     private void Save()

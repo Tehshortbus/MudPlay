@@ -1,5 +1,12 @@
 # Version history
 
+## 3.195.21
+
+- A null or missing field in a hand-edited settings file loads as its default instead of crashing
+- Triggers, bosses, emotes, leaderboard, Roomba, unrecognized-line and other realm files skip unusable entries
+- Importing an unreadable boss table says so instead of crashing
+- bug reports addressed: Crash-20261101-185257
+
 ## 3.195.19
 
 - Game Data → Spells no longer crashes on a set imported from a newer Anomaly database

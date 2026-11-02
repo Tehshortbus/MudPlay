@@ -359,4 +359,19 @@ public sealed class GhItemLocationStoreTests : IDisposable
 
         Assert.Equal(newer, store.LatestSeenAt);
     }
+
+    // Sightings are keyed by item name: a hand-edited file's null sighting or null
+    // name is passed over as the realm loads, and the rest is found.
+    [Fact]
+    public void ASightingWithNoItemName_IsPassedOver()
+    {
+        Directory.CreateDirectory(_realm);
+        File.WriteAllText(AppPaths.RealmRoombaItemsFile(_realm), """
+            [ { "ItemName": null, "Map": 1, "Room": 2 }, null, { "ItemName": "torch", "Map": 1, "Room": 3 } ]
+            """);
+
+        GhItemLocationStore store = NewPinnedStore();
+
+        Assert.Equal("torch", Assert.Single(store.Sightings).ItemName);
+    }
 }

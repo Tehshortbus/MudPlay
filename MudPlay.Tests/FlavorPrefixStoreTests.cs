@@ -108,4 +108,17 @@ public sealed class FlavorPrefixStoreTests : IDisposable
         store.Remove("stinking");     // 3
         Assert.Equal(3, count);
     }
+
+    // A hand edit's null among the set's prefixes is no prefix; the rest load.
+    [Fact]
+    public void ANullInTheFile_IsPassedOver()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(AppPaths.FlavorPrefixesFile(_setName))!);
+        File.WriteAllText(AppPaths.FlavorPrefixesFile(_setName), """[ null, "stinking" ]""");
+
+        FlavorPrefixStore store = new();
+        store.Load(_setName);
+
+        Assert.True(store.IsPrefix("stinking"));
+    }
 }

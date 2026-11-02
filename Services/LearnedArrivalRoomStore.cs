@@ -377,13 +377,15 @@ public sealed class LearnedArrivalRoomStore
                 _newer = true;
                 return false;
             }
-            foreach (RoomShape room in file.Rooms)
+            // A hand-edited file can hold a null where a list or an entry goes; it is
+            // passed over like an entry naming no room.
+            foreach (RoomShape? room in file.Rooms ?? [])
             {
-                if (!RoomKey.TryParseWire(room.DiedIn, out RoomKey diedIn)) continue;
+                if (room?.Seen is null || !RoomKey.TryParseWire(room.DiedIn, out RoomKey diedIn)) continue;
                 List<(RoomKey Arrival, int Seen, int Nearby)> readings = new();
-                foreach (SightingShape sighting in room.Seen)
+                foreach (SightingShape? sighting in room.Seen)
                 {
-                    if (!RoomKey.TryParseWire(sighting.Arrival, out RoomKey arrival)) continue;
+                    if (sighting is null || !RoomKey.TryParseWire(sighting.Arrival, out RoomKey arrival)) continue;
                     arrival = Filed(arrival);
                     int already = readings.FindIndex(r => r.Arrival == arrival);
                     int times = Math.Max(1, sighting.Times), nearby = Math.Max(0, sighting.Nearby);

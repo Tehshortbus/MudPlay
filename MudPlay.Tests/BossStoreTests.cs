@@ -447,4 +447,19 @@ public sealed class BossStoreTests : IDisposable
         store.Save(rows);
         Assert.True(fujin.Flags!["cocoon"].StopBefore);
     }
+
+    // The list is keyed by Name, read at startup (the seed) and on realm load: a
+    // hand-edited file's null boss or null name is dropped and the rest loads.
+    [Fact]
+    public void ABossWithNoName_IsDropped_FromTheSeedAndTheRealmsList()
+    {
+        File.WriteAllText(_seedPath, """[ { "Name": null }, { "Name": "cyclops", "Rooms": [ "7/730" ] }, null ]""");
+        Directory.CreateDirectory(RealmFolder);
+        File.WriteAllText(AppPaths.RealmBossesFile(RealmFolder), """[ null, { "Name": null }, { "Name": "lich", "Rooms": [ "8/1" ] } ]""");
+
+        BossStore s = new(seedPath: _seedPath);
+        s.OnRealmChanged(RealmFolder);
+
+        Assert.Equal(new[] { "cyclops", "lich" }, s.Resolve().Select(b => b.Name).Order());
+    }
 }

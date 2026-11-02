@@ -29,6 +29,12 @@ namespace MudPlay.Services;
 //     list where an object goes) is left out, so that field takes the value from
 //     the tier below, or the default.
 //
+// The serializer doesn't hold a field to its type's promise of a value: a null
+// written into a text, list or record field, or a positional record's field the file
+// leaves out, reads back null, and the code reading it throws far from the file. So
+// the walk also gives such a field its default, and takes a null entry out of a list
+// or map whose entries have to hold something.
+//
 // One bad field used to fail the whole file: a profile that wouldn't parse came up
 // as the default profile, the character's whole workspace missing for the session.
 // Now only that field is lost. The tab-keyed sections each tier's Settings
@@ -117,6 +123,8 @@ public static class SettingsValueGuard
             JsonNode? node = ToNode(JsonDocument.Parse(json, DocumentOptions).RootElement);
             Fix(node, typeof(T), null, "", RootFallback, clamps);
             result = (T?)DeserializeLeavingOutBadFields(node, typeof(T), "", RootFallback, clamps);
+            // The tree is fixed for what the serializer refuses; a null it takes.
+            if (result is not null) Walk(result, PlanOf(typeof(T)), new List<object>(), clamps, apply: true);
         }
 
         string? backup = clamps.Any(c => c.LeftOut) ? KeepBackup(path, json) : null;
@@ -142,10 +150,12 @@ public static class SettingsValueGuard
 
     // ----- The object a file read as it stands --------------------------------
 
-    private enum Check { Number, NumberList, NumberMap, Enum, EnumList, EnumKeys, Child, ChildList, ChildMap, Sections }
+    private enum Check { Number, NumberList, NumberMap, Enum, EnumList, EnumKeys, Child, ChildList, ChildMap, Sections, Required, RequiredItems }
 
+    // Fresh makes the value a Required field is given: a new one each time, so two
+    // fixed fields never share one list.
     private sealed record Step(PropertyInfo Property, string Name, Check Check, Type Type,
-        SettingRangeAttribute? Range, NumberKind? Kind, object? Default);
+        SettingRangeAttribute? Range, NumberKind? Kind, object? Default, Func<object>? Fresh = null);
 
     // What to look at in an object of each type, cached: a profile's record lists
     // hold thousands of the same type. A type with nothing to check, all the way
@@ -183,6 +193,7 @@ public static class SettingsValueGuard
     {
         if (!IsOwnType(type)) return Array.Empty<Step>();
         object? defaults = type.IsValueType || type.GetConstructor(Type.EmptyTypes) is not null ? Activator.CreateInstance(type) : null;
+        NullabilityInfoContext nullability = new();
         List<Step> steps = new();
         foreach (PropertyInfo p in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
         {
@@ -192,6 +203,13 @@ public static class SettingsValueGuard
             SettingRangeAttribute? range = p.GetCustomAttribute<SettingRangeAttribute>();
             Type t = Nullable.GetUnderlyingType(p.PropertyType) ?? p.PropertyType;
             Type? element = ElementType(t), value = DictionaryValueType(t), key = DictionaryKeyType(t);
+            NullabilityInfo declared = nullability.Create(p);
+            // Ahead of the property's other steps, which then look over the value given.
+            if (!t.IsValueType && p.CanWrite && declared.ReadState == NullabilityState.NotNull
+                && FreshOf(p, type, defaults) is { } fresh)
+                steps.Add(new Step(p, name, Check.Required, t, null, null, null, fresh));
+            if (EntriesMustHoldValues(declared, t))
+                steps.Add(new Step(p, name, Check.RequiredItems, t, null, null, null));
             if (HoldsSections(p))
                 steps.Add(new Step(p, name, Check.Sections, t, null, null, null));
             else if (NumberKind.Of(t) is { } kind)
@@ -228,6 +246,30 @@ public static class SettingsValueGuard
         return steps.ToArray();
     }
 
+    // What a field that has to hold a value is given in place of a null: the DTO's own
+    // default, else an empty text or collection. None for a field with neither (an
+    // interface-typed list on a positional record), which is left as it is.
+    private static Func<object>? FreshOf(PropertyInfo p, Type type, object? defaults)
+    {
+        if (defaults is not null && p.GetValue(defaults) is { } own)
+            return own is string text ? () => text : () => p.GetValue(Activator.CreateInstance(type))!;
+        if (p.PropertyType == typeof(string)) return () => string.Empty;
+        if (p.PropertyType is { IsClass: true, IsAbstract: false } c && c.GetConstructor(Type.EmptyTypes) is not null)
+            return () => Activator.CreateInstance(c)!;
+        return null;
+    }
+
+    // A list's or map's entries are declared to hold a value (a List<string>, not a
+    // List<string?>), so a null among them is taken out.
+    private static bool EntriesMustHoldValues(NullabilityInfo declared, Type t)
+    {
+        NullabilityInfo? entry = t.IsArray ? declared.ElementType
+            : ElementType(t) is not null ? declared.GenericTypeArguments[0]
+            : DictionaryValueType(t) is not null ? declared.GenericTypeArguments[1]
+            : null;
+        return entry is { ReadState: NullabilityState.NotNull } && !entry.Type.IsValueType;
+    }
+
     // The value an enum field is put back to: the DTO's own default when that is one
     // of the enum's values, else the enum's zero (or null, for a nullable field).
     private static object? DefaultOf(PropertyInfo p, Type enumType, object? defaults)
@@ -245,7 +287,17 @@ public static class SettingsValueGuard
         foreach (Step step in plan)
         {
             object? value = step.Property.GetValue(obj);
-            if (value is null) continue;
+            if (value is null)
+            {
+                if (step.Check != Check.Required) continue;
+                if (!apply) return true;
+                found = true;
+                step.Property.SetValue(obj, step.Fresh!());
+                path.Add(step.Name);
+                clamps!.Add(new SettingsClamp(PathText(path), "null", "which it can't be", FieldDefault));
+                path.RemoveAt(path.Count - 1);
+                continue;
+            }
             path.Add(step.Name);
             try
             {
@@ -357,6 +409,34 @@ public static class SettingsValueGuard
                                     path.RemoveAt(path.Count - 1);
                                 }
                         break;
+                    case Check.RequiredItems:
+                        if (value is IList { IsFixedSize: false } entries)
+                        {
+                            for (int i = entries.Count - 1; i >= 0; i--)
+                                if (entries[i] is null)
+                                {
+                                    if (!apply) return true;
+                                    found = true;
+                                    entries.RemoveAt(i);
+                                    path.Add(i);
+                                    clamps!.Add(LeftOutNull(path));
+                                    path.RemoveAt(path.Count - 1);
+                                }
+                        }
+                        else if (value is IDictionary keyedEntries)
+                        {
+                            foreach (object key in keyedEntries.Keys.Cast<object>().ToList())
+                                if (keyedEntries[key] is null)
+                                {
+                                    if (!apply) return true;
+                                    found = true;
+                                    keyedEntries.Remove(key);
+                                    path.Add(new MapKey(key));
+                                    clamps!.Add(LeftOutNull(path));
+                                    path.RemoveAt(path.Count - 1);
+                                }
+                        }
+                        break;
                     case Check.Sections:
                         if (apply && value is Dictionary<string, JsonElement> sections)
                             foreach (string key in sections.Keys.ToList())
@@ -441,6 +521,7 @@ public static class SettingsValueGuard
                 JsonNode? node = tree();
                 Fix(node, type, null, key, FieldDefault, clamps);
                 value = DeserializeLeavingOutBadFields(node, type, key, FieldDefault, clamps);
+                if (value is not null) Walk(value, PlanOf(type), new List<object> { key }, clamps, apply: true);
             }
             catch (JsonException ex)
             {
@@ -479,6 +560,9 @@ public static class SettingsValueGuard
     private static SettingsClamp LeftOutEnum(List<object> path, object value, Type enumType) =>
         new(PathText(path), Convert.ToInt64(value, CultureInfo.InvariantCulture).ToString(CultureInfo.InvariantCulture),
             $"not one of {enumType.Name}'s values", "nothing (left out)", LeftOut: true);
+
+    private static SettingsClamp LeftOutNull(List<object> path) =>
+        new(PathText(path), "null", "an entry that has to hold something", "nothing (left out)", LeftOut: true);
 
     private static object ToNumber(decimal value, Type type) => Convert.ChangeType(value, type, CultureInfo.InvariantCulture);
 

@@ -55,7 +55,10 @@ public sealed class FlavorPrefixStore
             ? null
             : TryLoad(AppPaths.FlavorPrefixesFile(setName));
         if (loaded is not null)
-            foreach (string p in loaded) AddNormalized(p);
+        {
+            foreach (string? p in loaded)
+                if (p is not null) AddNormalized(p);   // a hand edit's null is no prefix
+        }
         else
             SeedDefaults();
         Changed?.Invoke();

@@ -445,6 +445,72 @@ public sealed class SettingsValueHardeningTests : IDisposable
         Assert.Equal(0, players.PurgeStale(days, DateTime.UtcNow));
         Assert.Equal(0, players.PurgeStale(days, new DateTime(2, 1, 1, 0, 0, 0, DateTimeKind.Utc)));
     }
+
+    // The serializer leaves a null where a file writes one, or where it leaves a
+    // record's field out, whatever the field promises, and the code reading it threw
+    // far from the file: the trigger list keys on Name. Each such field gets its
+    // default, and a null entry in a list or map is left out.
+    [Fact]
+    public void ProfileLoad_NullsWhereAValueGoes_GetDefaults_AndNullEntriesAreLeftOut()
+    {
+        string path = WriteProfile("""
+            {
+              "Name": "Hero",
+              "Triggers": [ { "Enabled": true, "Pattern": "A bell rings." }, null ],
+              "WindowBounds": { "Settings": null, "Map": { "X": 1, "Y": 2, "Width": 300, "Height": 200 } }
+            }
+            """);
+
+        CharacterProfile hero = TestProfiles.Service().Load(_bbs, "Hero");
+
+        Models.GameData.Trigger trigger = Assert.Single(hero.Triggers!);
+        Assert.Equal(("", "A bell rings.", ""), (trigger.Name, trigger.Pattern, trigger.Response));
+        Assert.Equal(Models.GameData.TriggerLevel.Character, TriggerEngine.Nearest(hero.Triggers!)[""]);
+        Assert.Equal("Map", Assert.Single(hero.WindowBounds!).Key);
+        List<string> warns = WarnsAbout(path);
+        Assert.Contains(warns, w => w.Contains("setting Triggers[0].Name in", StringComparison.Ordinal)
+                                  && w.Contains("was null, which it can't be; using the default", StringComparison.Ordinal));
+        Assert.Contains(warns, w => w.Contains("setting WindowBounds[Settings] in", StringComparison.Ordinal)
+                                  && w.Contains("nothing (left out)", StringComparison.Ordinal));
+    }
+
+    // A board's Host is matched against the built-in boards at startup, and every
+    // BBS has a realm.
+    [Fact]
+    public void BbsLoad_NullHostAndRealms_LoadAsABlankHostAndAFirstRealm()
+    {
+        WriteBbs($$"""{ "Name": "{{_bbs}}", "Host": null, "Realms": null }""");
+
+        BbsProfile bbs = new BbsProfileStore().Get(_bbs)!;
+
+        Assert.Equal("", bbs.Host);
+        Assert.Single(bbs.Realms);
+        Assert.DoesNotContain(BuiltInBbses.All, preset => preset.IsBoardOf(bbs));
+    }
+
+    [Fact]
+    public void GlobalLoad_NullBoardAndRecentLists_LoadAsLists()
+    {
+        string file = AppPaths.GlobalSettingsFile;
+        string? saved = File.Exists(file) ? File.ReadAllText(file) : null;
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+            File.WriteAllText(file, """
+                { "BuiltInBbsesAdded": null, "RecentProfiles": [ null, { "Bbs": "Board", "Name": "Hero" } ] }
+                """);
+
+            SettingsService settings = new();
+
+            Assert.Empty(settings.Current.BuiltInBbsesAdded);
+            Assert.Equal("Hero", Assert.Single(settings.Current.RecentProfiles!).Name);
+        }
+        finally
+        {
+            if (saved is null) File.Delete(file);
+            else File.WriteAllText(file, saved);
+        }
+    }
 }
 
 // Every number a settings section or file holds has a range, and the range never
