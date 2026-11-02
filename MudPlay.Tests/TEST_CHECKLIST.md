@@ -4033,6 +4033,11 @@ How to keep it current:
 - Checks: default priority order 1..10 and empty spell slots; the cast-when-full slots start empty with "Cast while resting" on, also read from a save that predates them; bless slots serialise sparsely and keep a slot out of the realm's range.
 - Why: CastingDirector's between-round order (user, 2026-10-06)
 
+### SplashSceneTests.cs
+- Covers: Controls/Splash (every SplashScene through SplashCanvas)
+- Checks: every scene's first and last frames leave the lens clear; every frame of every scene draws at the smallest and a large terminal without throwing or touching the header rows.
+- Why: the splash swaps scenes at a loop boundary with no cut, which holds only while each starts and ends clear (six of the mud scenes drew on frame 0 until 3.196.0).
+
 ### SplitReformJoinNagTests.cs
 - Covers: Game/AutoPartyManager (party-split reform with the @join nag)
 - Checks: after a party-splitting teleport the leader invites each member as they land; the @join nag runs its 3 nags before the wait may end; a rejoin after the first nag is never uninvited; with no rejoin the existing fallback runs; longer waits and resend intervals; an `{Ok}` reply; nags turned off; the master switch at the split or midway holds the nags and the uninvite.

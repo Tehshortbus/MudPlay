@@ -40,6 +40,7 @@ public sealed class MonsterTruckScene : SplashScene
 
     public override void Render(SplashCanvas c, int f)
     {
+        if (f <= 0) return;   // the clear lens the last scene handed off on
         int ground = c.Rows - 2;
         int puddleX = c.Cols / 2;
         int cx = c.Cols / 2, cy = (c.Rows + SplashCanvas.TitleRows) / 2;

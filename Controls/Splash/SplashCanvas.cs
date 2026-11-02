@@ -62,6 +62,33 @@ public sealed class SplashCanvas
     public static CellAttributes Rgb(byte r, byte g, byte b) =>
         CellAttributes.Default.WithForeground(TerminalColor.Rgb(r, g, b));
 
+    // ----- colour by value --------------------------------------------------
+    // The game-scene splashes fade their whole picture in and out and shift one colour
+    // into another (a lake running to blood), so they hold colours as RGB triples and
+    // make the cell attribute at the brightness the frame wants.
+
+    // The colour between a and b at t (0..1).
+    public static (byte R, byte G, byte B) Mix((byte R, byte G, byte B) a, (byte R, byte G, byte B) b, double t)
+    {
+        t = Math.Clamp(t, 0, 1);
+        return ((byte)Math.Round(Lerp(a.R, b.R, t)), (byte)Math.Round(Lerp(a.G, b.G, t)),
+            (byte)Math.Round(Lerp(a.B, b.B, t)));
+    }
+
+    // The colour as a glyph's foreground, at `light` of its brightness (0 is black).
+    public static CellAttributes Fg((byte R, byte G, byte B) c, double light = 1)
+    {
+        (byte r, byte g, byte b) = Mix((0, 0, 0), c, light);
+        return Rgb(r, g, b);
+    }
+
+    // The colour as a background-only cell, for PutBg / FillBg / a sprite's solid cells.
+    public static CellAttributes Bg((byte R, byte G, byte B) c, double light = 1)
+    {
+        (byte r, byte g, byte b) = Mix((0, 0, 0), c, light);
+        return CellAttributes.Default.WithBackground(TerminalColor.Rgb(r, g, b));
+    }
+
     // ----- basic drawing ----------------------------------------------------
 
     // Put a single glyph. Clips to the mud band and the grid; ' ' is skipped so
@@ -108,6 +135,163 @@ public sealed class SplashCanvas
         for (int y = y0; y <= y1; y++)
         for (int x = x0; x <= x1; x++)
             PutBg(x, y, attr);
+    }
+
+    // A multi-row sprite at (x, y). paint is the same shape as rows, each character a
+    // key into palette; a space in paint is a transparent cell. A space in rows with a
+    // painted key is drawn as a solid background cell (the palette entry's
+    // background), so a sprite can carry flat colour masses as cheaply as a fill.
+    public void Sprite(int x, int y, string[] rows, string[] paint, Func<char, CellAttributes> palette)
+    {
+        for (int r = 0; r < rows.Length; r++)
+        {
+            string row = rows[r], keys = paint[r];
+            for (int i = 0; i < row.Length && i < keys.Length; i++)
+            {
+                if (keys[i] == ' ') continue;
+                if (row[i] == ' ') PutBg(x + i, y + r, palette(keys[i]));
+                else Put(x + i, y + r, row[i], palette(keys[i]));
+            }
+        }
+    }
+
+    // Sprite at twice the size: each cell becomes two by two, a block glyph drawn as the
+    // blocks that fill the same quarters, so a figure rushing at the viewer can loom
+    // without a second drawing of it. Other glyphs keep their top-left corner.
+    public void SpriteDoubled(int x, int y, string[] rows, string[] paint, Func<char, CellAttributes> palette)
+    {
+        for (int r = 0; r < rows.Length; r++)
+        {
+            string row = rows[r], keys = paint[r];
+            for (int i = 0; i < row.Length && i < keys.Length; i++)
+            {
+                if (keys[i] == ' ' || row[i] == ' ') continue;
+                (string upper, string lower) = Quarters(row[i]);
+                CellAttributes attr = palette(keys[i]);
+                for (int k = 0; k < 2; k++)
+                {
+                    Put(x + i * 2 + k, y + r * 2, upper[k], attr);
+                    Put(x + i * 2 + k, y + r * 2 + 1, lower[k], attr);
+                }
+            }
+        }
+    }
+
+    // A glyph at double size, as its top and bottom pairs of cells.
+    private static (string Upper, string Lower) Quarters(char ch) => ch switch
+    {
+        '█' => ("██", "██"),
+        '▀' => ("██", "  "),
+        '▄' => ("  ", "██"),
+        '▌' => ("█ ", "█ "),
+        '▐' => (" █", " █"),
+        '▖' => ("  ", "█ "),
+        '▗' => ("  ", " █"),
+        '▘' => ("█ ", "  "),
+        '▝' => (" █", "  "),
+        '▙' => ("█ ", "██"),
+        '▟' => (" █", "██"),
+        '▛' => ("██", "█ "),
+        '▜' => ("██", " █"),
+        '●' => ("▄▄", "▀▀"),
+        '╱' => (" ╱", "╱ "),
+        '╲' => ("╲ ", " ╲"),
+        '║' => ("▐▌", "▐▌"),
+        _ => (ch + " ", "  "),
+    };
+
+    // The first `shown` characters of text from (x, y): a line being typed out. Spaces
+    // stay transparent, as in Str.
+    public void Typed(int x, int y, string text, int shown, CellAttributes attr)
+    {
+        int n = Math.Clamp(shown, 0, text.Length);
+        for (int i = 0; i < n; i++) Put(x + i, y, text[i], attr);
+    }
+
+    // text broken into lines of at most width, at spaces where it can be. A word longer
+    // than width is split.
+    public static List<string> Wrap(string text, int width)
+    {
+        width = Math.Max(1, width);
+        List<string> lines = new();
+        string line = string.Empty;
+        foreach (string word in text.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        {
+            string w = word;
+            while (w.Length > width)
+            {
+                if (line.Length > 0) { lines.Add(line); line = string.Empty; }
+                lines.Add(w[..width]);
+                w = w[width..];
+            }
+            if (line.Length == 0) line = w;
+            else if (line.Length + 1 + w.Length <= width) line += " " + w;
+            else { lines.Add(line); line = w; }
+        }
+        if (line.Length > 0) lines.Add(line);
+        return lines;
+    }
+
+    // Words a figure speaks, in a framed bubble at (left, top) `width` wide, typed out
+    // `shown` characters at a time, with a tail running back to the speaker. The bubble
+    // is opaque (fill's background) so the scene behind it doesn't show through the
+    // words. It stays inside the band, moving up if it would run off the bottom.
+    public void SpeechBubble(int left, int top, int width, string text, int shown,
+        CellAttributes frame, CellAttributes words, CellAttributes fill, (int X, int Y) speaker)
+    {
+        width = Math.Max(6, width);
+        words = words.WithBackground(fill.Background);
+        frame = frame.WithBackground(fill.Background);
+        List<string> lines = Wrap(text, width - 4);
+        int height = lines.Count + 2;
+        top = Math.Clamp(top, TitleRows, Math.Max(TitleRows, Rows - height));
+        int right = left + width - 1, bottom = top + height - 1;
+
+        for (int y = top + 1; y < bottom; y++)
+            for (int x = left + 1; x < right; x++) PutBg(x, y, fill);
+        Put(left, top, '╭', frame); Put(right, top, '╮', frame);
+        Put(left, bottom, '╰', frame); Put(right, bottom, '╯', frame);
+        for (int x = left + 1; x < right; x++) { Put(x, top, '─', frame); Put(x, bottom, '─', frame); }
+        for (int y = top + 1; y < bottom; y++) { Put(left, y, '│', frame); Put(right, y, '│', frame); }
+
+        int row = top + 1;
+        foreach (string line in lines)
+        {
+            Typed(left + 2, row++, line, shown, words);
+            shown -= line.Length + 1;
+        }
+
+        // The tail: out of the top or bottom edge toward a speaker above or below the
+        // bubble (straight out, then across to the speaker), otherwise out of the side,
+        // level with the speaker.
+        if (speaker.Y < top || speaker.Y > bottom)
+        {
+            bool above = speaker.Y < top;
+            int tx = Math.Clamp(speaker.X, left + 2, right - 2);
+            Put(tx, above ? top : bottom, above ? '┴' : '┬', frame);
+            int step = above ? -1 : 1;
+            if (tx == speaker.X)
+            {
+                for (int y = (above ? top : bottom) + step; y != speaker.Y; y += step) Put(tx, y, '│', frame);
+            }
+            else
+            {
+                for (int y = (above ? top : bottom) + step; y != speaker.Y; y += step) Put(tx, y, '│', frame);
+                bool toRight = speaker.X > tx;
+                Put(tx, speaker.Y, above ? (toRight ? '╭' : '╮') : (toRight ? '╰' : '╯'), frame);
+                for (int x = tx + (toRight ? 1 : -1); x != speaker.X; x += toRight ? 1 : -1) Put(x, speaker.Y, '─', frame);
+            }
+        }
+        else if (speaker.X < left)
+        {
+            Put(left, speaker.Y, '┤', frame);
+            for (int x = speaker.X + 1; x < left; x++) Put(x, speaker.Y, '─', frame);
+        }
+        else if (speaker.X > right)
+        {
+            Put(right, speaker.Y, '├', frame);
+            for (int x = right + 1; x < speaker.X; x++) Put(x, speaker.Y, '─', frame);
+        }
     }
 
     // A rough integer line (Bresenham) for limbs and other thin strokes.
@@ -358,6 +542,17 @@ public sealed class SplashCanvas
     public static double EaseIn(double p) => p * p;
     // Gentle acceleration: a touch sticky at first, then a steady slow run.
     public static double EaseInSoft(double p) => p * p * (0.6 + 0.4 * p);
+    // A picture's brightness at frame f: up from black over [0, inEnd), full until
+    // outStart, back down to black at outEnd. 0 at frame 0 and from outEnd on, so a
+    // scene that draws nothing at 0 light leaves a clear lens at both ends.
+    public static double FadeInOut(int f, int inEnd, int outStart, int outEnd)
+    {
+        if (f <= 0 || f >= outEnd) return 0;
+        if (f < inEnd) return Smooth(f / (double)inEnd);
+        if (f < outStart) return 1;
+        return 1 - Smooth((f - outStart) / (double)(outEnd - outStart));
+    }
+
     // Smoothstep 0→1.
     public static double Smooth(double p) { p = Math.Clamp(p, 0, 1); return p * p * (3 - 2 * p); }
 }

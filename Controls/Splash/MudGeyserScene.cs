@@ -18,6 +18,7 @@ public sealed class MudGeyserScene : SplashScene
 
     public override void Render(SplashCanvas c, int f)
     {
+        if (f <= 0) return;   // the clear lens the last scene handed off on
         int cx = c.Cols / 2;
         int ground = c.Rows - 2;
         int topY = SplashCanvas.TitleRows;
