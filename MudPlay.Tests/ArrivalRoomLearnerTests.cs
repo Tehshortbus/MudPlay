@@ -184,20 +184,23 @@ public sealed class ArrivalRoomLearnerTests : IDisposable
         Assert.Equal(0, _store.Count);
     }
 
+    // Two grottoes look the same, so the map can't say which the dead arrived in. One
+    // stands in for both: whatever reads the lesson takes either for the other.
     [Fact]
-    public void ARoomTheMapCantPlace_TeachesNothing_AndALaterDisplayIsNotTriedInstead()
+    public void ARoomTheMapCantTellFromItsTwin_TeachesTheTwin_AndALaterDisplayIsNotTriedInstead()
     {
         DieIn(Landing);
 
-        // Two grottoes look the same: the map isn't sure which this is.
         _tracker.NoteRoomObserved(GrottoShown);
         Assert.NotEqual(RoomConfidence.Confirmed, _tracker.State.Confidence);
-        Assert.Equal(0, _store.Count);
+        RoomKey learned = Assert.Single(_store.ArrivalsFor(Landing)!);
+        Assert.Contains(learned, new[] { new RoomKey(14, 1901), new RoomKey(14, 1902) });
 
         // The next display is of a room it can place, and is not the first.
         _tracker.NoteRoomObserved(ShrineShown);
         Assert.Equal(RoomConfidence.Confirmed, _tracker.State.Confidence);
-        Assert.Equal(0, _store.Count);
+        Assert.Equal(1, _store.Count);
+        Assert.Equal(new[] { learned }, _store.ArrivalsFor(Landing));
     }
 
     // An arena death is the arena's own rule: where it puts the character says

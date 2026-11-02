@@ -206,6 +206,9 @@ public sealed class HangupItemRecheckTests
         public int MaxItems { get; set; } = 10;
         public InventorySnapshot Inventory { get; set; } = InventorySnapshot.Empty;
         public RoomKey? Room { get; set; } = new RoomKey(1, 3);
+        // With no room confirmed, the one standing in for the look-alikes the
+        // display could be (RoomTracker.DisplayLookAlike).
+        public RoomKey? LookAlike { get; set; }
         public List<string> Floor { get; } = new();
         public bool Fighting { get; set; }
         public bool Hostile { get; set; }
@@ -310,7 +313,8 @@ public sealed class HangupItemRecheckTests
                         ? new[] { new MudPlay.Game.Recovery.LearnedArrival(seen, LearnedIn ?? room) }
                         : null),
                 roomLabel: room => RoomNames.TryGetValue(room, out string? name) ? $"{name} ({room})" : $"room {room}",
-                roomsGameData: () => GameDataSet);
+                roomsGameData: () => GameDataSet,
+                displayLookAlike: () => LookAlike);
             Check.SetWireSender(CheckWire.Add);
         }
 
@@ -360,10 +364,13 @@ public sealed class HangupItemRecheckTests
 
         // The next entry: this room, this HP at the first prompt, the board's line
         // or not, the login's `stat` or not, then its `i`. A null hp is a first
-        // prompt the statline's HP wasn't read from.
-        public void ComeBack(int? hp, int? lives, InventorySnapshot held, bool boardLine = true, RoomKey? room = null)
+        // prompt the statline's HP wasn't read from. A look-alike is a room the map
+        // can't place, and that one standing in.
+        public void ComeBack(int? hp, int? lives, InventorySnapshot held, bool boardLine = true, RoomKey? room = null,
+            RoomKey? lookAlike = null)
         {
-            Room = room ?? HallsOfTheDead;
+            Room = lookAlike is null ? room ?? HallsOfTheDead : null;
+            LookAlike = lookAlike;
             Now = Now.AddMinutes(1);
             Check.NoteConnected();
             if (boardLine) BoardSaysHungUp();
@@ -3502,6 +3509,22 @@ public sealed class HangupItemRecheckTests
         h.PlayAndDrop(lives: 7, Geared, hpAtDrop: -5, new RoomKey(11, 5));
 
         h.ComeBack(hp: 150, lives: 7, Geared, boardLine: false, room: new RoomKey(11, 37));
+
+        MudPlay.Game.Recovery.UnwitnessedDeath death = Assert.Single(h.Deaths);
+        Assert.True(death.NothingLost);
+        Assert.Contains("It came back in Portal Room (11/37), which the map can't tell from Portal Room (11/35), "
+            + "where the dead of Crimson Passage (11/5) arrive.", death.Message);
+    }
+
+    // The map left unsure between the two Portal Rooms, one standing in: the room is
+    // read as it would be confirmed (report paradigm-20261102-042424).
+    [Fact]
+    public void AnArenaDeath_BackInARoomTheMapCantPlace_IsReadByTheLookAlikeStandingIn()
+    {
+        Harness h = WithLookAlikes(pveShare: null);
+        h.PlayAndDrop(lives: 7, Geared, hpAtDrop: -5, new RoomKey(11, 5));
+
+        h.ComeBack(hp: 150, lives: 7, Geared, boardLine: false, lookAlike: new RoomKey(11, 37));
 
         MudPlay.Game.Recovery.UnwitnessedDeath death = Assert.Single(h.Deaths);
         Assert.True(death.NothingLost);

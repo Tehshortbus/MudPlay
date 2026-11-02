@@ -314,6 +314,18 @@ public sealed partial class RoomTracker
     // room wasn't known.
     public RoomKey? LastDeathRoom { get; private set; }
 
+    // A room the display being read (or last read) could be, when several rooms
+    // could have printed it: the same name and exits, one of them with an exit no
+    // exits line shows (a text exit, a hidden one). The map holds the character in
+    // none of them, since it can't tell which; a reader that already takes such
+    // look-alikes for one another (RoomGraphManager.CouldBeTakenFor) can take this
+    // one: the hang-up death check and the arrival learner, which ask whether the
+    // room is a death's arrival room or one that looks like it. The room whose own
+    // exits are exactly the display's is preferred, as the map used to confirm it.
+    // Null when the display fits one room or none. Set before the display's
+    // transition is raised, so its listeners read it for that display.
+    public RoomKey? DisplayLookAlike { get; private set; }
+
     // Whether the map was sure of that room when the death came. With a move in
     // flight, or a position in doubt, the room it held is only where the
     // character was last known to be.
@@ -1542,6 +1554,7 @@ public sealed partial class RoomTracker
 
     private void ReadRoomDisplay(RoomObservation observation, DateTimeOffset when)
     {
+        DisplayLookAlike = LookAlikeOf(observation);
         if (_suppressObservationUntil is { } until)
         {
             if (when <= until)
@@ -2160,6 +2173,12 @@ public sealed partial class RoomTracker
 
     // ----- FSM internals ----------------------------------------------
 
+    private RoomKey? LookAlikeOf(RoomObservation observation)
+    {
+        IReadOnlyList<RoomKey> candidates = _graph.FindCandidates(observation.Name, observation.Exits);
+        return candidates.Count < 2 ? null : candidates[0];
+    }
+
     private void ReconcileFromConfirmed(RoomObservation observation, DateTimeOffset when)
     {
         Room? current = State.CurrentRoom;
@@ -2178,7 +2197,8 @@ public sealed partial class RoomTracker
         }
 
         // We thought we knew where we were but the observation
-        // disagrees. Three possibilities: (a) a 1-of-1 candidate exists
+        // disagrees. A room the current one leads to comes first (fear, or a
+        // command exit taken unannounced). Then three possibilities: (a) a 1-of-1 candidate exists
         // in the graph and the user got teleported / dragged → land
         // Confirmed at the new room; (b) a current-room neighbour
         // shipped without a Name (typical of ganghouse rooms on map 15)
@@ -2186,6 +2206,7 @@ public sealed partial class RoomTracker
         // and learn the observed name; (c) ambiguous / zero → escalate
         // to Suspect at the current room.
         if (TryFearMove(current, observation, when)) return;
+        if (TryNeighbourMove(current, observation, when)) return;
 
         IReadOnlyList<RoomKey> candidates = _graph.FindCandidates(observation.Name, observation.Exits);
         if (candidates.Count == 1
@@ -2221,8 +2242,9 @@ public sealed partial class RoomTracker
 
         // A hand-typed hidden-exit move / CMD teleport / drag lands us in a room
         // whose live display hides exits the graph knows about (the hidden exit we
-        // just crossed, a closed door), so the exact (Name, ExitMask) search above
-        // misses even though the destination is unique by name. The door-tolerant
+        // just crossed, a closed door), so the candidate search above misses (it
+        // needs every exit the room prints shown) even though the destination is
+        // unique by name. The door-tolerant
         // covering-exits re-anchor otherwise only runs after three Suspect strikes;
         // a uniquely-named destination should re-latch on the first display rather
         // than freezing the marker at the source until the strike limit trips.
@@ -2772,8 +2794,8 @@ public sealed partial class RoomTracker
         return true;
     }
 
-    // Last-ditch re-anchor before Lost: when the exact (Name, ExitMask) search
-    // misses because a closed door / hidden exit changed the observed mask, fall
+    // Last-ditch re-anchor before Lost: when the candidate search misses because a
+    // closed door / hidden exit changed the observed mask, fall
     // back to the name bucket and accept a 1-of-1 reachable room whose graph
     // exits COVER the observation. A name that's unique in the reachable graph
     // re-latches through the door instead of freezing the marker at Lost.
@@ -3300,6 +3322,32 @@ public sealed partial class RoomTracker
         if (match is null) return false;
         ClearPendingAndSteps();
         SetRoom(match, RoomConfidence.Confirmed, when, $"fear-moved {via}");
+        return true;
+    }
+
+    // A command typed by hand that the client doesn't read as a move takes us through
+    // one of the room's command exits (`ask grey lord teleport` in the Floating
+    // Citadel), and the next display is unannounced. When exactly one room behind
+    // those exits fits it, that's where we went, ahead of the map-wide search that
+    // can't tell it from a look-alike in another town (report
+    // paradigm-20261102-042424). A room behind an ordinary exit isn't taken so: with
+    // no move sent and no fear, a look-alike elsewhere is as likely.
+    private bool TryNeighbourMove(Room? current, RoomObservation observation, DateTimeOffset when)
+    {
+        if (current is null) return false;
+        Room? match = null;
+        foreach (RoomExit exit in current.Exits.Values)
+        {
+            if (exit.Hint is not (RoomExitHint.Text or RoomExitHint.Teleport)
+                || exit.Target == current.Key || _graph.GetRoom(exit.Target) is not { } next
+                || !MatchesPredicted(next, observation))
+                continue;
+            if (match is not null && match.Key != next.Key) return false;   // two neighbours fit
+            match = next;
+        }
+        if (match is null) return false;
+        ClearPendingAndSteps();
+        SetRoom(match, RoomConfidence.Confirmed, when, $"unannounced command exit out of {current.Key}");
         return true;
     }
 

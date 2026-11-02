@@ -1,5 +1,12 @@
 # Version history
 
+## 3.196.1
+
+- After an NPC's port (the Grey Lord's `teleport`), the map is sure of the room his port leads to
+- A room with a hidden or text exit is no longer mistaken for a look-alike in another town
+- The hang-up death check and death-arrival learning still read a room the map can't tell from its twin
+- bug reports addressed: paradigm-20261102-042424
+
 ## 3.196.0
 
 - Nine new startup scenes from the realm: a cave bear fight, Zanthus on Crystal Lake, the Champion of Blood, the adult red dragon, Goru-Nezar, Gnaj the Creator's laboratory, Devil Fiend Malivek, the storm giant king and a look out over the desert

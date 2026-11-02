@@ -116,7 +116,7 @@ How to keep it current:
 
 ### ArrivalRoomLearnerTests.cs
 - Covers: Game/Recovery/ArrivalRoomLearner (with RoomTracker, LearnedArrivalRoomStore, LearnedArrivalLookup, StandardListContradictions)
-- Checks: learning where a room's dead arrive from a witnessed death. Only the first display after the death counts, with no move or exit command in between and within the window; not arena deaths or unsure rooms. Standard-list and Albion agreement or contradiction; the board is marked edited after two contradictions, counted in a real board file read afresh each time, and the marking death is learned; land-wide readings, exceptions and disputes.
+- Checks: learning where a room's dead arrive from a witnessed death. Only the first display after the death counts, with no move or exit command in between and within the window; not arena deaths. A room the map can't tell from a look-alike is learned as the look-alike standing in for it (paradigm-20261102-042424). Standard-list and Albion agreement or contradiction; the board is marked edited after two contradictions, counted in a real board file read afresh each time, and the marking death is learned; land-wide readings, exceptions and disputes.
 - Why: corpse recovery routing, so the client walks to where the dead really arrive.
 
 ### AttackEstimatorTests.cs
@@ -1710,7 +1710,7 @@ How to keep it current:
 
 ### HangupDeathArrivalRoomsTests.cs
 - Covers: Game/Recovery/HangupDeathArrivalRooms, GameDataCache.ActiveSetIsVanillaStock, RoomGraphManager.CouldBeTakenFor
-- Checks: where a room's dead arrive (Stock list, Paradigm Albion, learned rooms) and whether the first room back says a death, per list trust; look-alike arrival rooms.
+- Checks: where a room's dead arrive (Stock list, Paradigm Albion, learned rooms) and whether the first room back says a death, per list trust; look-alike arrival rooms, including the one standing in when the map can't tell them apart.
 - Why: hang-up death detection (owner confirmations 2026-10-10/11).
 
 ### HangupDeathTests.cs
@@ -1725,7 +1725,7 @@ How to keep it current:
 
 ### HangupItemRecheckTests.cs
 - Covers: Game/Inventory/HangupItemRecheck, HangupItemPlan, HeldAtDisconnect persistence
-- Checks: picking dropped items back up after a penalised hang-up (the item cap, room, fight and Auto-All gates, movement hold); when the held-item list is written; hang-up death detection by lives, room, arena and learned arrival rooms; realm differences.
+- Checks: picking dropped items back up after a penalised hang-up (the item cap, room, fight and Auto-All gates, movement hold); when the held-item list is written; hang-up death detection by lives, room, arena and learned arrival rooms, and by the look-alike standing in for a room the map can't place; realm differences.
 - Why: the board's hang-up penalty; several reports and owner rulings
 
 ### HangupPenaltyTests.cs
@@ -3592,8 +3592,8 @@ How to keep it current:
 
 ### RoomTrackerTests.cs
 - Covers: Game/Map/RoomTracker
-- Checks: The confidence state machine: first observation, predicted moves, subset exits, blocked moves, silent desync, manual locate, graph reload, StateChanged. Also: the Suspect strike ladder; door-tolerant re-anchor; go-path text exits; dark-room and blind-move advance; the echo-claim and peek windows; manual-move detection; reconnect with a move in flight; hydrate, replay and persist of the profile anchor; death capture; fear moves.
-- Why: Reports `paradigm-20260921-145800`, `paradigm-20260813-201720`, `paradigm-20260811-122610`, `paradigm-20260811-104042`, `paradigm-20260805-224603`, and the 002347 / 141605 / 002430 / 195229 cases.
+- Checks: The confidence state machine: first observation, predicted moves, subset exits, blocked moves, silent desync, manual locate, graph reload, StateChanged. Also: the Suspect strike ladder; door-tolerant re-anchor; go-path text exits; dark-room and blind-move advance; the echo-claim and peek windows; manual-move detection; reconnect with a move in flight; hydrate, replay and persist of the profile anchor; death capture; fear moves. A display two rooms could print (one with a text exit no exits line shows) is no 1-of-1 match, and one a command exit of the current room leads to is that room.
+- Why: Reports `paradigm-20261102-042424`, `paradigm-20260921-145800`, `paradigm-20260813-201720`, `paradigm-20260811-122610`, `paradigm-20260811-104042`, `paradigm-20260805-224603`, and the 002347 / 141605 / 002430 / 195229 cases.
 
 ### RoomTrackingRecoveryWireTests.cs
 - Covers: Game/Map/RoomTracker (the passive grid re-localiser, the Suspect re-confirm, Hydrate and saves), Game/Map/EngineRecoveryGate (walk-back history, tier-2 forward footprint, tier-3 walk-back), Game/Health/HealthManager (a flee's steps), over TrackerWireRig

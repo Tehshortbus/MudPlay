@@ -296,8 +296,8 @@ public sealed class RoomRenameRelearnTests : IDisposable
     }
 
     // The display is of the guard post, beside the street the move leaves, seen
-    // with its hidden exit left out, so no exact (name, exits) search finds it;
-    // its exits fit the house room the move was heading for. With no echo to say
+    // with its hidden exit left out, which the candidate search allows for; its
+    // exits fit the house room the move was heading for too. With no echo to say
     // the game took the move, the post's own display is as near as the house
     // room's: the house room keeps its name, or stays nameless, and the tracker
     // is anchored at the post.
@@ -307,7 +307,7 @@ public sealed class RoomRenameRelearnTests : IDisposable
     public void ANamedNeighboursDisplayWithAnExitLeftOut_IsNotTakenForTheHouseRoomAhead(bool houseSeenBefore)
     {
         RoomGraphManager graph = houseSeenBefore ? Map(stored: OwnName) : Map();
-        Assert.Empty(graph.FindCandidates("Guard Post", X(Direction.E)));
+        Assert.Equal(new[] { Post }, graph.FindCandidates("Guard Post", X(Direction.E)));
         (RoomTracker tracker, List<NameLearnedEvent> learned) = Track(graph, Street);
 
         tracker.NoteMoveSent(Direction.N);

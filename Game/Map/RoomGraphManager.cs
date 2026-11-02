@@ -19,11 +19,11 @@ namespace MudPlay.Game.Map;
 // GameDataCache immediately after conversion (per the project's memory-hygiene
 // pattern set by MonsterOverlaySeedStore).
 //
-// Uniqueness index: a side table keyed on (Name, ExitMask) gives the room
-// tracker its "is this a 1-of-1 room?" answer in O(1). When the user lands in a
-// room whose tuple resolves to exactly one candidate, the tracker promotes to
-// Located without further reconciliation. Buckets with > 1 candidate are
-// surfaced via FindCandidates for the Tier-2 footprint matcher.
+// Candidates: FindCandidates answers the room tracker's "is this a 1-of-1 room?"
+// from the rooms of the shown name (a side table by name), keeping those that could
+// print the display shown. When exactly one could, the tracker promotes to Located
+// without further reconciliation. More than one is surfaced for the Tier-2
+// footprint matcher.
 //
 // Wiring: AppServices subscribes OnActiveSetChanged to
 // GameDataCache.ActiveSetChanged at construction time — every set swap rebuilds
@@ -48,7 +48,6 @@ public sealed class RoomGraphManager
     // Replaced whole by each build, laid out for the rooms its rows hold.
     private RoomTable<Room> _rooms = RoomTable<Room>.Empty;
     private readonly Dictionary<string, List<Room>> _byName = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<(string Name, uint ExitMask), List<RoomKey>> _byNameAndExits = new();
 
     // Reverse index: for a room where a remote lever/switch physically sits, the
     // exits (in OTHER rooms) that lever controls. Built during the action-cell
@@ -133,8 +132,8 @@ public sealed class RoomGraphManager
             : Array.Empty<RemoteLeverRef>();
 
     // Replace the in-memory Room at key with a copy whose Name is the new value,
-    // and reshuffle the _byName / _byNameAndExits indexes so later candidate
-    // searches find the updated tuple. No-op (returns null) when the key isn't
+    // and reshuffle the _byName index so later candidate searches find the room
+    // under its new name. No-op (returns null) when the key isn't
     // in the graph, the existing room already has the same name, or the new name
     // is null/empty. Otherwise returns the new Room instance with the updated
     // name.
@@ -414,12 +413,6 @@ public sealed class RoomGraphManager
             nameBucket.RemoveAll(r => r.Key.Equals(room.Key));
             if (nameBucket.Count == 0) _byName.Remove(room.Name);
         }
-        var tuple = (room.Name, room.ExitMask);
-        if (_byNameAndExits.TryGetValue(tuple, out List<RoomKey>? exitBucket))
-        {
-            exitBucket.RemoveAll(k => k.Equals(room.Key));
-            if (exitBucket.Count == 0) _byNameAndExits.Remove(tuple);
-        }
     }
 
     private void AddToIndexes(Room room)
@@ -430,14 +423,6 @@ public sealed class RoomGraphManager
             _byName[room.Name] = nameBucket;
         }
         nameBucket.Add(room);
-
-        var tuple = (room.Name, room.ExitMask);
-        if (!_byNameAndExits.TryGetValue(tuple, out List<RoomKey>? exitBucket))
-        {
-            exitBucket = new List<RoomKey>();
-            _byNameAndExits[tuple] = exitBucket;
-        }
-        exitBucket.Add(room.Key);
     }
 
     // All rooms in the active set whose Name matches name case-insensitively.
@@ -459,26 +444,37 @@ public sealed class RoomGraphManager
     public void ConfigureUnreachable(Func<RoomKey, bool>? isUnreachable)
         => _isUnreachable = isUnreachable;
 
-    // All rooms in the active set whose (Name, exit-set) tuple matches, minus any
-    // flagged unreachable (see ConfigureUnreachable). Used by RoomTracker to
-    // detect the 1-of-1 case — when the result has exactly one entry, the tracker
-    // can promote to Located without further reconciliation. Excluding unreachable
-    // rooms here means an ambiguous bucket that resolves to a single reachable
-    // room now promotes cleanly, and a bucket of only-unreachable rooms resolves
-    // to zero (tracker replays / stays Lost) instead of stranding the player.
+    // Every room in the active set that could have shown a display of this name and
+    // these exits, minus any flagged unreachable (see ConfigureUnreachable): the
+    // room bears the name, every exit shown is one of its exits, and every exit its
+    // exits line always prints is shown. A room with an exit no exits line lists (a
+    // text exit, a hidden one) shows the same display as a room without it, so both
+    // are candidates: matching the full exit set instead made Silvermere's Town
+    // Square, with a `go manhole` text exit down, never match its own display, and
+    // the one other Town Square printing the same exits came out 1-of-1 (report
+    // paradigm-20261102-042424). Used by RoomTracker to detect the 1-of-1 case,
+    // when the tracker can promote to Located without further reconciliation.
+    // Excluding unreachable rooms here means an ambiguous bucket that resolves to a
+    // single reachable room now promotes cleanly, and a bucket of only-unreachable
+    // rooms resolves to zero (tracker replays / stays Lost) instead of stranding
+    // the player.
     public IReadOnlyList<RoomKey> FindCandidates(string name, IReadOnlySet<Direction> exits)
     {
         if (string.IsNullOrEmpty(name)) return Array.Empty<RoomKey>();
         ArgumentNullException.ThrowIfNull(exits);
+        if (!_byName.TryGetValue(name, out List<Room>? named)) return Array.Empty<RoomKey>();
 
         uint mask = MaskFromSet(exits);
-        if (!_byNameAndExits.TryGetValue((name, mask), out List<RoomKey>? keys))
-            return Array.Empty<RoomKey>();
+        List<RoomKey> keys = new();
+        foreach (Room room in named)
+            if ((mask & room.ExitMask) == mask && (PrintedExitMask(room) & ~mask) == 0)
+                keys.Add(room.Key);
+        if (keys.Count == 0) return Array.Empty<RoomKey>();
 
         if (_isUnreachable is not { } excluded) return keys;
 
         // Only allocate a filtered copy when at least one key is excluded —
-        // the common case (nothing flagged) returns the stored bucket as-is.
+        // the common case (nothing flagged) returns the list as-is.
         List<RoomKey>? filtered = null;
         for (int i = 0; i < keys.Count; i++)
         {
@@ -504,10 +500,10 @@ public sealed class RoomGraphManager
     // a SUPERSET of the observed exit set — every observed exit is a known graph
     // exit, but the graph may carry extra exits the observation hid (a closed
     // door, an unsearched hidden exit). Excludes unreachable rooms (see
-    // ConfigureUnreachable). Distinct from FindCandidates, which demands an EXACT
-    // (Name, ExitMask) match: a single closed door drops one bit from the
-    // observed mask and defeats the exact lookup even for a room that's unique by
-    // name. RoomTracker calls this when the exact search misses and re-latches
+    // ConfigureUnreachable). Distinct from FindCandidates, which demands that every
+    // exit the room's exits line prints be shown: a single closed door drops one bit
+    // from the observed mask and defeats that lookup even for a room that's unique
+    // by name. RoomTracker calls this when the exact search misses and re-latches
     // only on a 1-of-1 reachable result, so a name-unique room recovers through a
     // door instead of freezing at Lost.
     public IReadOnlyList<RoomKey> FindByNameCoveringExits(string name, IReadOnlySet<Direction> exits)
@@ -575,10 +571,10 @@ public sealed class RoomGraphManager
     // Whether the map can take the room display of shown for other: the two bear
     // the same name, and every exit shown prints on its exits line is an exit of
     // other. That is the test a position match makes (RoomTracker.MatchesPredicted),
-    // and the exact (Name, ExitMask) search lands on such a room when shown itself
-    // has exits its display leaves out: an exit taken by a text command, or a
-    // hidden one, is in the graph and on no exits line. So a character standing in
-    // shown can be confirmed in other. False for a room with itself, and for a
+    // and the reason FindCandidates lists such rooms together when shown has exits
+    // its display leaves out: an exit taken by a text command, or a hidden one, is in
+    // the graph and on no exits line. So a character standing in shown can be
+    // confirmed in other. False for a room with itself, and for a
     // room the graph doesn't have.
     public bool CouldBeTakenFor(RoomKey shown, RoomKey other)
     {
@@ -985,7 +981,6 @@ public sealed class RoomGraphManager
         _learnedNames = NoLearnedNames;
         _learnedUntold = 0;
         _byName.Clear();
-        _byNameAndExits.Clear();
         _leversByRoom.Clear();
         _boatPassages.Clear();
         _castPocketEntrances.Clear();
@@ -1823,14 +1818,6 @@ public sealed class RoomGraphManager
                 _byName[room.Name] = nameBucket;
             }
             nameBucket.Add(room);
-
-            var tuple = (room.Name, room.ExitMask);
-            if (!_byNameAndExits.TryGetValue(tuple, out List<RoomKey>? exitBucket))
-            {
-                exitBucket = new List<RoomKey>();
-                _byNameAndExits[tuple] = exitBucket;
-            }
-            exitBucket.Add(room.Key);
 
             // Accumulate lair sizes per monster named in this room's tag. The
             // per-room cap is the "(Max N)"; a lair room with no cap counts as 0

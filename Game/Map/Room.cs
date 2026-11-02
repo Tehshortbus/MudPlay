@@ -88,7 +88,7 @@ public sealed record Room
     public required IReadOnlyDictionary<Direction, RoomExit> Exits { get; init; }
 
     // Bit field of the directions present in Exits — (1u << (int)dir) per
-    // direction. Used to key the graph's (Name, ExitMask) uniqueness index
+    // direction. The graph's candidate searches compare a display's exits with it
     // without allocating a HashSet per lookup.
     public uint ExitMask { get; init; }
 
