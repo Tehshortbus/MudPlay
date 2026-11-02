@@ -1646,21 +1646,21 @@ public sealed class HealthManager : IDisposable
         // InCombat drops and this same Evaluate rests. If HP falls to the run trigger
         // while fighting, the flee block above takes over instead. Auto-Combat ON needs
         // nothing (the engine already engages); ShadowRest rests through it stealthed.
+        //
+        // Only a monster attacking us blocks the rest: one that is merely in the room
+        // doesn't end it (GAME_MECHANICS "What ends a rest"), so with Auto-Combat off
+        // it is left alone and the rest goes out beside it (user, 2026-11-01; report
+        // paradigm-20261101-201549: a worm walked in on a resting character and was
+        // backstabbed with Auto-Combat off).
         bool autoCombatOn = _isAutoCombatEnabled?.Invoke() ?? true;
         int restClearRunTrigger = ResolveHpThreshold(s.HpThresholdMode, s.RunIfBelowHp);
         bool hpFleeWorthy = s.RunIfBelowHp > 0 && _state.Hp > 0 && _state.Hp <= restClearRunTrigger;
-        // A rest-blocker registers two ways, and they can fall out of sync: the room
-        // roster (hostilesPresent, from the last Also-Here) OR the live combat lines that
-        // keep us InCombat. A monster chasing us mid-walk HITS us — flipping InCombat —
-        // before, or without, a fresh room re-display lists it in the roster. Keying the
-        // clear off the roster alone let a stale-empty roster deadlock the rest: InCombat
-        // blocks the rest send, no roster hostile blocks the clear, so we sit and take
-        // hits ("stopped to rest, monster entered, didn't fight back"). Arm off EITHER
-        // signal — RequestRestClearEngage refreshes the roster when it's the InCombat
-        // side that fired, and a genuinely empty re-display clears a stale InCombat.
+        // The live combat lines that keep us InCombat are the blocker, not the room
+        // roster: a monster chasing us mid-walk HITS us before, or without, a fresh
+        // room re-display listing it, and RequestRestClearEngage refreshes the roster
+        // for the attack. A genuinely empty re-display clears a stale InCombat.
         bool beingAttacked = _state.InCombat;
-        bool restBlocked = hostilesPresent || beingAttacked;
-        bool wantRestClear = !autoCombatOn && restBlocked && shouldRest
+        bool wantRestClear = !autoCombatOn && beingAttacked && shouldRest
             && !hpFleeWorthy && !_fledThisCombat && !shadowRest;
         if (wantRestClear)
         {
@@ -1688,14 +1688,14 @@ public sealed class HealthManager : IDisposable
             // blocker IS present, yet we're NOT engaging-to-clear — record which gate
             // suppressed it (fleeing / already fled / shadow-rest) so a capture explains
             // the "sits there not fighting back" case instead of leaving it invisible.
-            else if (!autoCombatOn && shouldRest && restBlocked && !_restClearHeldLogged)
+            else if (!autoCombatOn && shouldRest && beingAttacked && !_restClearHeldLogged)
             {
                 _log?.Combat(LogCategory,
-                    $"engage-to-clear held — blocker present (roster={hostilesPresent} inCombat={beingAttacked}) "
+                    $"engage-to-clear held — attacked (roster={hostilesPresent}) "
                     + $"but suppressed: fleeWorthy={hpFleeWorthy} fled={_fledThisCombat} shadowRest={shadowRest}");
                 _restClearHeldLogged = true;
             }
-            else if (!restBlocked || autoCombatOn || !shouldRest)
+            else if (!beingAttacked || autoCombatOn || !shouldRest)
                 _restClearHeldLogged = false;   // condition gone — re-arm the once-log
             _forceClearForRest = false;
         }
@@ -1731,7 +1731,7 @@ public sealed class HealthManager : IDisposable
         }
         else if (shouldSendRestCommand && !_state.InCombat && !_restInFlight && !equipmentApplying
             && (!RestRefusedSickHolding(selfPoisoned) || MeditatesWhilePoisoned(s, selfPoisoned))
-            && (!hostilesPresent || shadowRest || _restHostilesBypassArmed)
+            && (!hostilesPresent || shadowRest || _restHostilesBypassArmed || !autoCombatOn)
             && !RestHeldForSneak(anyGate)
             && !SneakingBeforeShadowRest(s))
         {

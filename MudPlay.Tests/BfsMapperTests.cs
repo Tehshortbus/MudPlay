@@ -1543,4 +1543,37 @@ public sealed class BfsMapperTests : IDisposable
             foreach (RoomKey to in rooms)
                 Assert.Equal(bfs.DistanceBetween(from, to), memo(from, to));
     }
+
+    // Two callers asking for the same layout while it is being built share the one
+    // build: opening the Navigation window asked for a 35,000-room layout on two
+    // threads at once and built it twice (Hang-20261101-201809). The blacklist check,
+    // read as the build walks, holds the first build open until the second has asked.
+    [Fact]
+    public async Task TwoCallersAskingForTheSameLayoutAtOnce_ShareOneBuild()
+    {
+        (_, RoomGraphManager graph) = NewMapper();
+        LogService log = new() { Diagnostics = new LogDiagnosticState { DebugDiagnostics = true } };
+        int builds = 0;
+        log.EntryAdded += e =>
+        {
+            if (e.Message.StartsWith("BuildLayout origin=1/1 ", StringComparison.Ordinal)) Interlocked.Increment(ref builds);
+        };
+        BfsMapper bfs = new(graph, log);
+        using ManualResetEventSlim building = new(), release = new();
+        bfs.ConfigureBlacklist(_ =>
+        {
+            building.Set();
+            release.Wait(TimeSpan.FromSeconds(5));
+            return false;
+        });
+
+        Task<RoomLayout> first = Task.Run(() => bfs.BuildLayout(new RoomKey(1, 1)));
+        Assert.True(building.Wait(TimeSpan.FromSeconds(5)));
+        Task<RoomLayout> second = Task.Run(() => bfs.BuildLayout(new RoomKey(1, 1)));
+        await Task.Delay(200);
+        release.Set();
+
+        Assert.Same(await first, await second);
+        Assert.Equal(1, builds);
+    }
 }

@@ -5127,10 +5127,13 @@ public partial class MainWindowViewModel : ObservableObject
     {
         await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
         if (!await SettleUnnamedDraftAsync("loading another profile")) return;
+        await AppServices.Current.PrepareGameDataForAsync(target);
         try
         {
-            AppServices.Current.Profile.Load(target.Bbs, target.Name);
+            // Ahead of the load, which saves the settings file again only when the
+            // last-used profile it finds isn't this one.
             PromoteRecent(target);
+            AppServices.Current.Profile.Load(target.Bbs, target.Name);
             SyncProfileMenuState();
         }
         catch (Exception ex)

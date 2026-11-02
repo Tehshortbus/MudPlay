@@ -47,6 +47,14 @@ public sealed class SettingsService
         JsonStore.Save(AppPaths.GlobalSettingsFile, _current);
         _stamp.Mark(AppPaths.GlobalSettingsFile);
         _baseline = mine;
+        RaiseChanged();
+    }
+
+    // Timed on its own: a save measured 0.4 to 0.6 s in a hang while the write took
+    // 4 ms (Hang-20261101-201809), and the menus and windows this rebuilds are the rest.
+    private void RaiseChanged()
+    {
+        using PerformanceMonitor.Scope? scope = AppServices.CurrentOrNull?.Performance.Measure("global settings changed: handlers");
         GlobalSettingsChanged?.Invoke(_current);
     }
 
@@ -59,7 +67,7 @@ public sealed class SettingsService
         _stamp.Mark(AppPaths.GlobalSettingsFile);
         Adopt(JsonThreeWayMerge.Merge(_baseline, AsNode(_current), theirs));
         _baseline = theirs;
-        GlobalSettingsChanged?.Invoke(_current);
+        RaiseChanged();
         return true;
     }
 

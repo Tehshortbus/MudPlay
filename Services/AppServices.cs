@@ -19,6 +19,9 @@ public sealed class AppServices
     // item-name / shop-stock indexes (Items) read on every cold launch.
     private static readonly string[] StartupPrewarmTables = { "Rooms", "Monsters", "Items" };
 
+    // Every table a set switch parses that takes more than a few milliseconds.
+    private static readonly string[] SwitchPrewarmTables = { "Rooms", "Monsters", "Items", "Spells", "TBInfo", "Shops" };
+
     // The active service holder. Initialize must be called first.
     public static AppServices Current => _current
         ?? throw new InvalidOperationException(
@@ -3114,14 +3117,9 @@ public sealed class AppServices
         // predicted BBS/set doesn't match what actually loads) just wastes the
         // background parse — GetTable falls back to its normal on-demand read either
         // way, so this can't make startup any slower than it already is.
-        if (Settings.Current.StartupProfile() is { } startupPrediction)
-        {
-            string? predictedRealm = Profile.RealmOf(startupPrediction);
-            string? predictedSet = Bbs.Get(startupPrediction.Bbs)?.RealmFor(predictedRealm)?.ActiveGameDataSet
-                ?? Settings.Current.DefaultGameDataSet;
-            if (!string.IsNullOrWhiteSpace(predictedSet))
-                _ = GameData.PrewarmAsync(predictedSet, StartupPrewarmTables);
-        }
+        if (Settings.Current.StartupProfile() is { } startupPrediction
+            && GameDataSetOf(startupPrediction) is { } predictedSet)
+            _ = GameData.PrewarmAsync(predictedSet, StartupPrewarmTables);
 
         // Resolver subscribes to Profile events for active-BBS tracking; build
         // it before Load() below so it catches the auto-load's ProfileLoaded
@@ -17040,6 +17038,36 @@ public sealed class AppServices
         System.Text.RegularExpressions.Regex rx = Game.StatlinePromptRegexBuilder.Build(statline.Command);
         PromptScanner.InstallRegex(rx);
         CurrentStatlinePromptRegex = rx;
+    }
+
+    // The game-data set a profile loads onto: its realm's set, else the default one.
+    private string? GameDataSetOf(Models.Profile.ProfileRef target)
+    {
+        string? set = Bbs.Get(target.Bbs)?.RealmFor(Profile.RealmOf(target))?.ActiveGameDataSet
+            ?? Settings.Current.DefaultGameDataSet;
+        return string.IsNullOrWhiteSpace(set) ? null : set;
+    }
+
+    // Read the game data a profile about to be loaded switches to off the UI thread
+    // first, its big tables and its loops, so the switch, which runs on the UI thread,
+    // finds them read (Hang-20261101-201809 / -201847 / -201853: three clients loading
+    // their profiles froze 2 to 3 s each in the switch). Nothing is read when the set
+    // is the one already active, and a read that fails only leaves the switch to read
+    // it as ever.
+    public async Task PrepareGameDataForAsync(Models.Profile.ProfileRef target)
+    {
+        if (GameDataSetOf(target) is not { } set
+            || string.Equals(set, GameData.ActiveSet, StringComparison.OrdinalIgnoreCase))
+            return;
+        Log.Info("GameData", $"reading '{set}' ahead of loading '{target.Name}' on '{target.Bbs}'.");
+        try
+        {
+            await Task.WhenAll(GameData.PrewarmAsync(set, SwitchPrewarmTables), Loops.PreloadAsync(set));
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("GameData", $"reading '{set}' ahead of the load failed ({ex.Message}); the switch reads it.");
+        }
     }
 
     private void OnProfileLoaded(Models.Profile.CharacterProfile profile)

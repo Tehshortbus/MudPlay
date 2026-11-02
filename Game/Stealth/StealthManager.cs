@@ -1119,10 +1119,13 @@ public sealed class StealthManager : IDisposable
 
     private void OnSneaking(MatchResult _)
     {
-        if (GmcpOwnsStatus?.Invoke() == true) return;
         // `Sneaking...` on room entry — post-move confirmation we
-        // arrived unseen. Re-arms the silent-loss watchdog.
+        // arrived unseen. Re-arms the silent-loss watchdog. The server's status
+        // owns whether we sneak, but it only speaks on a change, so a sneaked step
+        // is confirmed by this line all the same (report paradigm-20261101-201452:
+        // unconfirmed, the room's opener read a broken sneak and bashed).
         _awaitingArrivalConfirm = false;
+        if (GmcpOwnsStatus?.Invoke() == true) return;
         EstablishSneaking();
         SneakEntry?.Invoke(true);
     }

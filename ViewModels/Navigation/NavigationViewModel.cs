@@ -3585,14 +3585,14 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         Layout = _services.Bfs.BuildLayout(key);
     }
 
-    private async Task ReRootAsync(RoomKey origin)
+    private async Task ReRootAsync(RoomKey origin, RoomKey? keepVisible = null)
     {
         int request = ++_reRootRequest;
         Game.Map.BfsMapper bfs = _services.Bfs;
         RoomLayout layout;
         try
         {
-            layout = await Task.Run(() => bfs.BuildLayout(origin));
+            layout = await Task.Run(() => bfs.BuildLayout(origin, keepVisible: keepVisible));
         }
         catch (Exception ex)
         {
@@ -4267,7 +4267,14 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         // selection moves off it, so the room finally vanishes then.
         RoomKey? keepVisible = SelectedRoomKey is { } sel
             && _services.RoomBlacklist.IsBlacklisted(sel) ? sel : null;
-        Layout = key is { } k ? _services.Bfs.BuildLayout(k, keepVisible: keepVisible) : null;
+        // Off the UI thread like a re-root: the window's first layout of a big area
+        // (35,000 rooms) held the window opening for 2.7 s (Hang-20261101-201809).
+        if (key is { } k) _ = ReRootAsync(k, keepVisible);
+        else
+        {
+            _reRootRequest++;
+            Layout = null;
+        }
     }
 
     private void RefreshFromWalker()

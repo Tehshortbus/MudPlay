@@ -1364,6 +1364,26 @@ public sealed partial class GmcpIntegrationTests
         Assert.True(session.Stealth.IsStealthedHere);
     }
 
+    // The server's status only speaks on a change, so a step taken sneaking and
+    // still sneaking sends none: the room's "Sneaking..." line confirms it. Left
+    // unconfirmed, the room's opener read a broken sneak and bashed instead of
+    // backstabbing (report paradigm-20261101-201452).
+    [Fact]
+    public void ActiveStealth_ASneakedStepIsConfirmedByTheRoomsSneakingLine()
+    {
+        using Session session = new();
+        session.Replay("01-handshake");
+        Dictionary<string, JsonElement> status = session.Gmcp.State.Snapshot("Anomaly.Char.Status")!.Value.EnumerateObject().ToDictionary(p => p.Name, p => p.Value);
+        status["sneaking"] = JsonSerializer.SerializeToElement(true);
+        session.Send("Anomaly.Char.Status", status);
+
+        session.Stealth.RequestPreMoveStealth();
+        session.Text("Sneaking...\r\n");
+
+        Assert.True(session.Stealth.IsStealthedHere);
+        Assert.False(session.Stealth.TakeSneakBrokeOnEntry());
+    }
+
     [Fact]
     public async Task ExplicitRefresh_RequestsSnapshotsAndMonsterBaselines()
     {
