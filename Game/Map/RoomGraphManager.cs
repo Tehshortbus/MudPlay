@@ -794,6 +794,7 @@ public sealed class RoomGraphManager
 
         PromoteCmdTeleportExits(rooms.WithCmd, cmdTeleports);
         PromoteCastTeleportExits(rooms.WithCastExit);
+        MarkIsleCastExits(rooms.WithCastExit);
         MarkCastPocketEntrances(rooms.WithCastExit);
         BuildTeleportEdges(rooms.WithCmd, cmdTeleports);
         BuildGreetTeleportEdges(rooms.Greeters);
@@ -1312,6 +1313,30 @@ public sealed class RoomGraphManager
                     $"Room {key} {dir} → {exit.Target}: cast-on-walk spell {exit.PostCastSpell} teleports on to "
                     + string.Join(", ", landings.Select(l => l.ItemId > 0 ? $"{l.Room} (with item {l.ItemId})" : l.Room.ToString()))
                     + " — a party is split on the way through.");
+            }
+            if (rebuilt is not null) _rooms[key] = room with { Exits = rebuilt };
+        }
+    }
+
+    // A cast-on-walk exit between two rooms of the Island of Bones never lands where
+    // it leads (RoomsNoRouteCrosses): marked as one, no route steps through it, and
+    // the map draws it as the spell wall it is. The data alone can't say so.
+    private void MarkIsleCastExits(List<RoomKey> castRooms)
+    {
+        foreach (RoomKey key in castRooms)
+        {
+            Room room = _rooms[key];
+            if (!RoomsNoRouteCrosses.Holds(room)) continue;
+            RoomExitSet exits = ExitsOf(room);
+            RoomExitSet? rebuilt = null;
+            foreach ((Direction dir, RoomExit exit) in exits)
+            {
+                if (exit.PostCastSpell <= 0 || exit.CastTeleportRandom
+                    || !_rooms.TryGetValue(exit.Target, out Room? into) || !RoomsNoRouteCrosses.Holds(into))
+                    continue;
+                rebuilt = (rebuilt ?? exits).With(dir, exit with { CastTeleportRandom = true });
+                _log?.Log(LogSeverity.Debug, "RoomGraph",
+                    $"Room {key} {dir} → {exit.Target}: the isle's cast-on-walk exit never lands there — marked non-routable.");
             }
             if (rebuilt is not null) _rooms[key] = room with { Exits = rebuilt };
         }

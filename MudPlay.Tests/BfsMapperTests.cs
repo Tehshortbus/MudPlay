@@ -1110,8 +1110,12 @@ public sealed class BfsMapperTests : IDisposable
             "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
           { "Map Number": 2, "Room Number": 10, "Name": "Island Of Bones",
             "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
-            "N": "0", "S": "0", "E": "0", "W": "0",
-            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "2/5 (Text: enter shadowy portal)" }
+            "N": "0", "S": "0", "E": "2/11", "W": "0",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "2/5 (Text: enter shadowy portal)" },
+          { "Map Number": 2, "Room Number": 11, "Name": "Island Of Bones",
+            "Light": 0, "Shop": 0, "Lair": "", "Delay": 5,
+            "N": "0", "S": "0", "E": "0", "W": "2/10 (Cast: pre-0, post-1231)",
+            "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
         ]
         """;
 
@@ -1129,6 +1133,21 @@ public sealed class BfsMapperTests : IDisposable
 
         Assert.Equal(new[] { Direction.U }, bfs.FindPath(library, isle));
         Assert.Equal(new[] { Direction.D }, bfs.FindPath(isle, graveyard));
+    }
+
+    // The stairs room's cast-on-walk exit west never puts anyone on the isle, though
+    // the room it names is there: no route takes it, gates set aside or not, and
+    // the way from the stairs to the isle is none. The walk back east still goes.
+    [Fact]
+    public void FindPath_NeverTakesTheIslesCastExit_ThatNeverLandsOnIt()
+    {
+        var (bfs, graph) = NewMapper(IsleJson);
+        RoomKey stairs = new(2, 11), isle = new(2, 10);
+
+        Assert.True(graph.GetRoom(stairs)!.Exits[Direction.W].CastTeleportRandom);
+        Assert.Null(bfs.FindPath(stairs, isle));
+        Assert.Null(bfs.FindPath(stairs, isle, ignoreExitGates: true, ignoreAvoids: true));
+        Assert.Equal(new[] { Direction.E }, bfs.FindPath(isle, stairs));
     }
 
     // ----- blacklist hook --------------------------------------------

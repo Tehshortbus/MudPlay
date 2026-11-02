@@ -8,6 +8,11 @@ namespace MudPlay.Game.Map;
 // is still planned out; a shortcut through them never is (the user, 2026-11-02;
 // GAME_MECHANICS "Island of Bones: reached through the library, never crossed").
 //
+// The one exit cast on the walker inside them, west from the stairs up from Crystal
+// Lake, never lets anyone onto the isle (the user, 2026-11-02), though its spell
+// reads as a teleport only to 49 and under: RoomGraphManager marks it as an exit
+// that never lands where it leads.
+//
 // Told by the room names, which no other room on any set we hold bears.
 public static class RoomsNoRouteCrosses
 {
@@ -16,10 +21,12 @@ public static class RoomsNoRouteCrosses
         "Island of Bones", "Bone Strewn Cavern", "Bone Room", "Bone Cavern", "Isle of Shadow",
     };
 
+    public static bool Holds(Room room) => Names.Contains(room.Name);
+
     public static IReadOnlySet<RoomKey> Of(RoomGraphManager graph)
     {
         ArgumentNullException.ThrowIfNull(graph);
         return graph.Derived("rooms no route crosses", () =>
-            (IReadOnlySet<RoomKey>)graph.Rooms.Where(r => Names.Contains(r.Name)).Select(r => r.Key).ToHashSet());
+            (IReadOnlySet<RoomKey>)graph.Rooms.Where(Holds).Select(r => r.Key).ToHashSet());
     }
 }
