@@ -1,8 +1,9 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.196.5**
+> **Version 3.196.6**
 > - Walking with backstab on keeps the Backstab set's armour on too; the travel sets dress only the other places
+> - A friend's corpse recovered with `recover corpse of <name> <password>` is recorded for hand-back, its password masked
 <!-- current-version:end -->
 
 A modern Telnet terminal client for **MajorMUD** and other BBS door games, built in C# / .NET 10 with [Avalonia](https://avaloniaui.net/). It renders a faithful CP437 cell grid with full VT100/ANSI parsing, and layers a MegaMUD-style automation suite (combat, party, navigation, healing, and more) on top — all in modeless, dockable windows so the terminal stays live while you configure anything.

@@ -1,8 +1,9 @@
 # Version history
 
-## 3.196.5
+## 3.196.6
 
 - Walking with backstab on keeps the Backstab set's armour on too; the travel sets dress only the other places
+- A friend's corpse recovered with `recover corpse of <name> <password>` is recorded for hand-back, its password masked
 
 ## 3.196.4
 
