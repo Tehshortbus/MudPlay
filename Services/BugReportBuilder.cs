@@ -1100,6 +1100,8 @@ public static class BugReportBuilder
         Kv(sb, "Worn weapon", WornSlot(inv, "Weapon Hand") ?? "(none)");
         Kv(sb, "Worn off-hand", WornSlot(inv, "Off-Hand") ?? "(none)");
         Kv(sb, "Using alternate weapon", combat.UsingAlternateWeapon.ToString());
+        // On, the Default and While Moving sets leave the weapon to the backstab prep.
+        Kv(sb, "Backstab holds the weapon out of a swing", svc.Combat.BackstabWeaponArmed.ToString());
         // The round's committed spell action + the cast-code the server is repeating —
         // "DrainSpell" here means the drain override is currently taking the round.
         Kv(sb, "Round spell action", combat.LastCastAction ?? "(weapon / idle)");

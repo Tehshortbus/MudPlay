@@ -1390,6 +1390,15 @@ public sealed partial class CombatManager : IDisposable
     // (OnRoomCleared) or a fresh weapon pick lands on the normal weapon.
     public bool IsWeaponOverrideActive => _usingAlternateWeapon;
 
+    // True while backstab is on with a weapon of its own. The pre-move prep wields
+    // it before every sneak and EquipForAttack wields the attack weapon before every
+    // swing, so the travel gear sets leave the weapon to those two
+    // (EquipmentManager.SetBackstabWeaponProbe).
+    public bool BackstabWeaponArmed => HasBackstabWeapon(_readSettings());
+
+    private static bool HasBackstabWeapon(CombatSettings settings) =>
+        settings.DoBackstab && !string.IsNullOrWhiteSpace(settings.BackstabWeapon);
+
     // Immutable view of the combat decision state, for the bug-report
     // engine-state dump. The believed-worn weapon is no longer shadowed here —
     // live inventory is authoritative (the actuator diffs against it), so the
@@ -2748,9 +2757,7 @@ public sealed partial class CombatManager : IDisposable
         // weapon — but skip it when backstab is active, since the pre-move
         // sequence re-gears to the backstab weapon before the next approach and
         // a normal-then-backstab double swap would be wasted commands.
-        bool backstabActive = settings.DoBackstab
-            && !string.IsNullOrWhiteSpace(settings.BackstabWeapon);
-        if (!backstabActive && _usingAlternateWeapon)
+        if (!HasBackstabWeapon(settings) && _usingAlternateWeapon)
             _swapWeapon?.Invoke(settings.NormalWeapon, settings.NormalOffHand, false);
         _usingAlternateWeapon = false;
     }

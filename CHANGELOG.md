@@ -1,5 +1,9 @@
 # Version history
 
+## 3.196.4
+
+- Walking with backstab on keeps the backstab weapon in hand, a failed sneak included; the attack weapon goes on only to fight
+
 ## 3.196.3
 
 - A release build no longer stops on a log test that timed out while the machine was busy
