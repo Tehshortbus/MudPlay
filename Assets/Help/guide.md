@@ -4923,6 +4923,12 @@ With a real font selected (JetBrains Mono or a system font, not MX437), the zoom
 **What it does:** As you drag the panel windows (Conversation, Party, Buff Watchdog, Player Workshop, Navigation, Spell Book, Session Stats) they snap flush to each other's edges when brought close, and dragging the main window carries the whole snapped cluster with it. Turn it off to let every window float independently. See **The windows → Snapping windows together** for the full behavior.
 **Important notes:** Applies live. Editors and dialogs opened from inside a panel don't snap.
 
+### Draw windows with the graphics card
+
+**Default:** Off
+**What it does:** Off, MudPlay draws its windows with the CPU. That costs a few percent of one core and saves the roughly 120 MB of memory the graphics driver takes in every running client, which adds up when you run several. On, the graphics card draws them, and MudPlay falls back to the CPU if the card's driver won't start.
+**Important notes:** Install-wide (Global tier). The choice is made as MudPlay starts, so a change takes effect the next time each client launches. A bug report's *Windows drawn with* line says which one the reporting client used.
+
 ### Check for updates automatically
 
 **Default:** On
@@ -7578,6 +7584,7 @@ This section is a compact, technical lookup table for every setting documented a
 | Auto-load last profile (edited on MainWindow, not Settings) | `false` | bool | `GlobalSettings.AutoLoadLastProfile` | Models/Settings/GlobalSettings.cs |
 | Check for updates automatically | `true` | bool | `GlobalSettings.AutoCheckForUpdates` | Models/Settings/GlobalSettings.cs |
 | Snap windows together | `true` | bool (Global) | `GlobalSettings.SnapWindows` | Models/Settings/GlobalSettings.cs |
+| Draw windows with the graphics card (after a restart) | `false` | bool (Global) | `GlobalSettings.DrawWithGraphicsCard` | Models/Settings/GlobalSettings.cs |
 | Recent profiles shown in File menu | `5` | 0–10 (Global) | `GlobalSettings.RecentProfilesShown` | Models/Settings/GlobalSettings.cs |
 | Navigation map: other floors — which are drawn (the map's Overlays chip) / floors up and down / overlap limit / route lines | `Both` / `10` / `50` / `true` | Both / Up / Down / Off; 1–99 / 0–100% / bool (Global) | `GlobalSettings.MapOtherFloors` / `MapOtherFloorsLevels` / `MapOtherFloorsMaxOverlapPercent` / `MapRouteLinesOnOtherFloors` | Models/Settings/GlobalSettings.cs |
 | Visual impairment: terminal colours | `null` (Default) | Default / Deuteranopia / Protanopia / Tritanopia / Custom (Global) | `GlobalSettings.TerminalColors` | Models/Settings/GlobalSettings.cs |

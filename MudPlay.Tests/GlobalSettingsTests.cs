@@ -1,5 +1,7 @@
+using System.IO;
 using MudPlay.Models.Profile;
 using MudPlay.Models.Settings;
+using MudPlay.Services;
 using Xunit;
 
 namespace MudPlay.Tests;
@@ -43,5 +45,34 @@ public sealed class GlobalSettingsTests
     public void AutoLoadLastProfile_DefaultsOff()
     {
         Assert.False(new GlobalSettings().AutoLoadLastProfile);
+    }
+
+    // The renderer is picked from global.json before the settings load, so the
+    // launch reads the file itself: what a Settings save writes is what the next
+    // launch draws with, and a file that's missing, broken or silent on it draws
+    // with the CPU, the default.
+    [Fact]
+    public void DrawWithGraphicsCard_TheLaunchReadsWhatASaveWrote_AndDefaultsToTheCpu()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "mudplay-drawing-" + Path.GetRandomFileName());
+        Directory.CreateDirectory(dir);
+        try
+        {
+            string path = Path.Combine(dir, "global.json");
+            Assert.False(ClientEnvironment.ReadDrawWithGraphicsCard(path));
+
+            JsonStore.Save(path, new GlobalSettings { DrawWithGraphicsCard = true });
+            Assert.True(ClientEnvironment.ReadDrawWithGraphicsCard(path));
+
+            JsonStore.Save(path, new GlobalSettings());
+            Assert.False(ClientEnvironment.ReadDrawWithGraphicsCard(path));
+
+            File.WriteAllText(path, "{ \"DrawWithGraphicsCard\": tru");
+            Assert.False(ClientEnvironment.ReadDrawWithGraphicsCard(path));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
     }
 }

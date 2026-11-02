@@ -27,6 +27,7 @@ public static class BugReportContext
             + $"(up {BugReportHoldsAndWaits.Age(now - ClientEnvironment.ProcessStart)}), process {ClientEnvironment.ProcessId}");
         Kv(sb, "Operating system", $"{ClientEnvironment.Os} ({ClientEnvironment.Architecture})");
         Kv(sb, "Desktop and window system", ClientEnvironment.Desktop);
+        Kv(sb, "Windows drawn with", ClientEnvironment.Drawing);
         Kv(sb, ".NET runtime", ClientEnvironment.Runtime);
         Kv(sb, "Time zone", $"{TimeZoneInfo.Local.Id} (UTC{now:zzz}); every time in this report is local unless it ends in Z");
         Part(sb, () => Kv(sb, "Memory", $"{GC.GetTotalMemory(false) / (1024 * 1024)} MB managed, "

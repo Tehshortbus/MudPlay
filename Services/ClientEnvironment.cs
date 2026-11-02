@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Text.Json;
 
 namespace MudPlay.Services;
 
@@ -38,6 +39,16 @@ public static class ClientEnvironment
     // The desktop and window system, where the platform says: how windows raise,
     // focus and stack differs between them, and window bugs follow those lines.
     public static string Desktop { get; } = ReadDesktop();
+
+    // Whether this process draws its windows on the graphics card
+    // (GlobalSettings.DrawWithGraphicsCard as the file held it at launch). Read
+    // straight from global.json: the renderer is chosen before the settings load,
+    // and once, so a change made since waits for the next launch.
+    public static bool DrawsWithGraphicsCard { get; } = ReadDrawWithGraphicsCard(AppPaths.GlobalSettingsFile);
+
+    public static string Drawing => DrawsWithGraphicsCard
+        ? "graphics card (the CPU if the card's driver won't start)"
+        : "CPU";
 
     public static string Build =>
         $"{AppInfo.Version} ({BuildConfiguration}"
@@ -98,6 +109,31 @@ public static class ClientEnvironment
             : Environment.GetEnvironmentVariable("WAYLAND_DISPLAY") is { Length: > 0 } ? "wayland"
             : Environment.GetEnvironmentVariable("DISPLAY") is { Length: > 0 } ? "x11" : "(window system not named)";
         return $"{desktop}, {session}";
+    }
+
+    // The setting as global.json holds it; off when the file is missing, won't
+    // parse or doesn't say, as a fresh install is.
+    internal static bool ReadDrawWithGraphicsCard(string path)
+    {
+        try
+        {
+            if (!File.Exists(path)) return false;
+            using FileStream file = File.OpenRead(path);
+            using JsonDocument doc = JsonDocument.Parse(file, new JsonDocumentOptions
+            {
+                AllowTrailingCommas = true,
+                CommentHandling = JsonCommentHandling.Skip,
+            });
+            return doc.RootElement.ValueKind == JsonValueKind.Object
+                && doc.RootElement.TryGetProperty(nameof(Models.Settings.GlobalSettings.DrawWithGraphicsCard), out JsonElement value)
+                && value.ValueKind == JsonValueKind.True;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+        {
+            // The settings service reports a bad file once it loads; this launch
+            // just draws the default way.
+            return false;
+        }
     }
 
     private static string Safe(Func<string> read)

@@ -455,6 +455,11 @@
                           ToolTip.Tip="When checked (default), MudPlay's panel windows — Conversation, Party, Buff Watchdog, Player Workshop, Navigation, Spell Book, Session Stats — snap flush to each other's edges as you drag them near, and dragging the main window carries the whole snapped cluster with it. Grab any other panel to pull it off freely. When unchecked, every window floats independently. Install-wide preference; applies on Apply."/>
 
                 <CheckBox Margin="0,2,0,0"
+                          IsChecked="{Binding DrawWithGraphicsCard, Mode=TwoWay}"
+                          Content="Draw windows with the graphics card (after a restart)"
+                          ToolTip.Tip="When unchecked (default), MudPlay draws its windows with the CPU, which costs a few percent of one core and saves the roughly 120 MB of memory the graphics driver takes in every running client. When checked, the graphics card draws them, falling back to the CPU if its driver won't start. The renderer is picked as MudPlay starts, so a change takes effect the next time each client launches. Install-wide preference."/>
+
+                <CheckBox Margin="0,2,0,0"
                           IsChecked="{Binding AutoCheckForUpdates, Mode=TwoWay}"
                           Content="Check for updates automatically"
                           ToolTip.Tip="When checked (default), MudPlay asks GitHub whether a newer build has been published — each time it launches, and again at 9am and 9pm so a client left running for days doesn't sit on a stale answer. It only NOTIFIES — a red 'UPDATE AVAILABLE!!!' banner flanks the title on the startup splash, the same message scrolls across the window's title bar for as long as the update is waiting, and Help / Tools → Update the Client shows what's new. Nothing is ever downloaded or installed without you choosing Download &amp; Restart there. When unchecked, no check runs on its own and you can still check manually any time from the Help or Tools menu. Install-wide preference; applies on Apply."/>

@@ -194,6 +194,7 @@ public static class HangReport
         Kv(sb, "OS", Safe(() => $"{ClientEnvironment.Os} ({ClientEnvironment.Architecture})"));
         Kv(sb, "Runtime", Safe(() => ClientEnvironment.Runtime));
         Kv(sb, "Desktop", Safe(() => ClientEnvironment.Desktop));
+        Kv(sb, "Drawn with", Safe(() => ClientEnvironment.Drawing));
         Kv(sb, "Client started", Safe(() =>
             $"{ClientEnvironment.ProcessStart:yyyy-MM-dd HH:mm:ss}, process {ClientEnvironment.ProcessId}"));
         Kv(sb, "UI thread unresponsive", $"{Seconds(snapshot.Unresponsive)} when this was written "
