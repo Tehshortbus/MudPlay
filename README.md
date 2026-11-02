@@ -1,7 +1,9 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.195.29**
+> **Version 3.196.0**
+> - Nine new startup scenes from the realm: a cave bear fight, Zanthus on Crystal Lake, the Champion of Blood, the adult red dragon, Goru-Nezar, Gnaj the Creator's laboratory, Devil Fiend Malivek, the storm giant king and a look out over the desert
+> - Every startup scene now opens on a clear screen, so the hand-off between them never jumps
 > - Drawing with the CPU on Linux keeps each window's frame, halving the idle client's CPU and its GC pauses
 <!-- current-version:end -->
 

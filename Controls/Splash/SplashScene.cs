@@ -36,6 +36,15 @@ public abstract class SplashScene
         () => new GoblinSinkScene(),
         () => new SeagullsScene(),
         () => new ChocoboScene(),
+        () => new CaveBearScene(),
+        () => new ZanthusScene(),
+        () => new ChampionOfBloodScene(),
+        () => new RedDragonScene(),
+        () => new GoruNezarScene(),
+        () => new GnajScene(),
+        () => new MalivekScene(),
+        () => new StormGiantKingScene(),
+        () => new DesertPanoramaScene(),
     };
 
     public static int Count => Factory.Length;

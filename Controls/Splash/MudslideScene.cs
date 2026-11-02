@@ -24,6 +24,7 @@ public sealed class MudslideScene : SplashScene
 
     public override void Render(SplashCanvas c, int f)
     {
+        if (f <= 0) return;   // the clear lens the last scene handed off on
         int cx = c.Cols / 2, cy = (c.Rows + SplashCanvas.TitleRows) / 2;
         int top = SplashCanvas.TitleRows;
         int peakY = top + 1;

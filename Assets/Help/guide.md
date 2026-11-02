@@ -4914,7 +4914,7 @@ With a real font selected (JetBrains Mono or a system font, not MX437), the zoom
 ### Show the mud-throwing startup animation
 
 **Default:** On
-**What it does:** Plays a small animated splash on the terminal while MudPlay is starting up, before you've connected or loaded a profile. Turning it off shows just a static title/byline instead.
+**What it does:** Plays a small animated splash on the terminal while MudPlay is starting up, before you've connected or loaded a profile: a different scene each loop, every one shown before any repeats. Some are mud-slinging gags; others are scenes from the realm: a fresh adventurer in padded armour taking a club to a cave bear, Zanthus the Lich on the Isle of Shadow as Crystal Lake turns to blood, the Champion of Blood at his altar, the adult red dragon in the Volcanic Chamber, Goru-Nezar and his dragonclaw staff in the palace of the Ancient Ruins, Gnaj the Creator in his laboratory with his portal device, Devil Fiend Malivek in the diamond mine, the storm giant king in his Throne Room of Lightning, and a look out over the Scorching Desert from the Dusty Village. Where a figure speaks, his own words from the game appear in a speech bubble beside him. Turning it off shows just a static title/byline instead.
 **Important notes:** This is actually an install-wide preference (not per-character) even though it's edited from this character's tab — it's stored on the app's default profile so it survives switching characters. Applies immediately; a splash already playing stops the moment you turn it off. While the MudPlay window is minimized the animation holds still, and it plays on from the same frame when you bring the window back.
 
 ### Snap windows together
