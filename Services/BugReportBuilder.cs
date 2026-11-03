@@ -816,6 +816,8 @@ public static class BugReportBuilder
                 : "(none)");
         Kv(sb, "Ailment told again on following a leader",
             svc.AilmentSync.LastFollowAnnounce ?? "(not this session)");
+        Kv(sb, "Our '@held' waiting to see the hold outlast its round",
+            svc.AilmentSync.HeldSayPending ? "yes" : "no");
         Kv(sb, "Party @wait holding for", svc.PartyEssentials.WaitingMembers.Count == 0
             ? "(nobody)"
             : string.Join(", ", svc.PartyEssentials.WaitingMembers.Select(m =>

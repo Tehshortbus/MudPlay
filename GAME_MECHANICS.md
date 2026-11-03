@@ -3851,6 +3851,12 @@ How one damage spell cast against a monster is worked out.
   - **disease** — `RemovesSpell` (**122**) whose `AbilVal` is a disease-applying Spell.Number (the
     disease-apply set = spells whose Messages record carries the Diseased flag — same source as ailment
     identification).
+  - **hold, blind or confusion** — `RemovesSpell` (122) whose `AbilVal` is a spell whose own codes apply
+    it: HoldPerson (74) / Paralyze (75), BlindingLight (53) / BlindUser (107), Confusion (71). This is how
+    monsters' death spells end what they cast (*Monsters, lairs & spawns → Death spells that end an ailment
+    (`roar cancel`)*). A few item spells read this way too: the ashwood wand ends `blind globe`, the
+    orange potion `banshee's wail`. *[OBSERVED] Anomaly v0.65.0, Paradigm 1.9.1 and Stock 1.11p data,
+    2026-11-03.*
 - **The `DispellMagic` / `RemovesSpell` indirection is what separates cure from apply.** A DIRECT
   `BlindUser(107)` code is the blind APPLY (spell "blind"), while `DispellMagic(73)=107` is the blind
   CURE ("cure blindness").
@@ -4491,6 +4497,34 @@ Some monsters spawn **more monsters when they die**, and those can summon in tur
     - **Known, and left as it is:** in a room of several kinds, a response for a round that killed only the others is spent for nothing, and if the monster with the spell then dies before the room has been read anew, that kill gets none.
   - The next round's kills are answered again only when the room has been read anew (`Also here:`) and lists that kind still, or the roster dropped the kind and an arrival listed it again.
   - A death that names its monster (every kill but a room spell's) is answered each time, as before. Nothing is sent with the master switch off.
+
+### Death spells that end an ailment (`roar cancel`)
+*Status: CONFIRMED 2026-11-03 (user) and OBSERVED 2026-11-03 (report `paradigm-20261103-092609`; Anomaly v0.65.0 game data) · Realm: Paradigm (Stock not recorded)*
+
+- **A monster can put an ailment on you that its death takes off again.** *([CONFIRMED] 2026-11-03, user.)* The monster's `DeathSpell` carries `RemovesSpell` (122) for the spell that applied it.
+- **That death spell prints nothing of its own.** *([CONFIRMED] 2026-11-03, user.)* Its message record is all `{null}`. The freed character is shown the removed spell's own end line, and nobody else sees anything.
+- **The yetis' roar:** *([OBSERVED] Anomaly v0.65.0 data.)*
+  - large yeti (#209), yeti (#741) and abominable yeti (#2540) cast `roar` (#193, HoldPerson 74) as `MidSpell-0` at 15%.
+  - Each one's `DeathSpell` is `roar cancel` (#1368): `Targets` 12, `Diff` 100, and `RemovesSpell` for #193, #1250, #5486 and #5547.
+  - The roar lands as `The <monster> beats his chest and roars deafeningly!` then `You are too scared to flee!`. It ends with `You feel braver.`.
+  - Every yeti dies with `The large yeti collapses with a deafening howl.`, whatever its displayed name.
+- **Any of those yetis dying ends every roar in the room, not only the roaring one's.** *([OBSERVED] report `paradigm-20261103-092609`.)*
+  - At 09:26:05 the fat yeti roared and the small yeti died. `You feel braver.` came in the same second, and the fat yeti was fought next.
+  - The user's description (2026-11-03) was the caster dying. `[NEEDS CONFIRMATION]` Is it any yeti's death, as the capture and the spell's room target suggest?
+- **In the report every roar was cancelled in the round it landed.** The order was the roar, `You are too scared to flee!`, the round's hits, `You feel braver.`, the death line, then the exp.
+- **The other death spells shaped this way** *([OBSERVED] 2026-11-03, Anomaly v0.65.0 and Paradigm 1.9.1 data; Stock 1.11p has the first four)*. Each one `RemovesSpell`s the spell its monster casts:
+  - `remove engulfs` (#235: shambling mound, bog and river shambler) ends `engulfs`, a hold.
+  - `constrictor off` (#796: the constrictors) ends `constriction`, a hold that also confuses.
+  - `rosebush death` (#962: black rosebush) ends `entangles` (a hold) and `rosebush sleep` (confusion; on Stock only the hold).
+  - `dissolve` (#5807: cave fisher) ends `sticky filament`, a hold.
+  - `AG Cancel` (#5040: ancestral guardian) ends `ghastly wail`, confusion.
+  - `dissipate` (#5121: the darken beasts) ends `blind globe`, blindness.
+  - `nanati darkness cancel` (#5052: nanati shadow, dark element) ends a spell that applies no ailment the client tracks.
+
+**Client use:**
+- `CureSpellIndex` reads a `RemovesSpell` aimed at a spell that holds, blinds or confuses as a cure for that ailment (*Spells, buffs & conditions → Cure-spell identification — which spells REMOVE each ailment*).
+- `AppServices.ClearAilmentsEndedByDeathSpell` looks up the dying monster's `DeathSpell` on each kill. `PartyAilmentTracker.ClearOnDeathSpell` then clears the hold, blind and confused chips it ends from every party member (report `paradigm-20261103-092609`).
+- **Client policy** (report `paradigm-20261103-092609`): `AilmentSyncEngine` holds its `.@held` say for `HoldSettle` (1 s) and says nothing if the hold has ended by then (*Party → Party ailment signaling and cross-client sync (MegaMUD parity)*).
 
 ### Mid-fight summons
 *Status: [OBSERVED] 2026-09-30 (user capture; game data v1.11p and Paradigm 1.9.1) · Realm: both (data); the capture's realm isn't recorded*
@@ -9361,12 +9395,14 @@ This covers how a client learns which ailments afflict itself and its party memb
   - the **spell's duration timing out**
   - the **par `P` flag dropping** (poison)
   - a **`@status`** reply of "no ailments"
+  - a dying monster's **death spell** that removes the ailment's spell (*Monsters, lairs & spawns → Death spells that end an ailment (`roar cancel`)*)
 - **The only clear signal the afflicted member emits is `@ok`**, a telepath to the leader to release the wait.
 - **Ailment duration is deterministic.** When a monster's ailment spell *lands* (a "resist" means it never landed, so there's no chip at all), the duration is a specific number the spell record computes from **that monster's cast level**.
   - The same spell on different monsters differs only because their cast levels differ.
   - So an observer that witnessed the apply computes the exact duration (`Dur` rounds × spell-round seconds, at the caster's cast level) and auto-clears the chip when it elapses, with no fudge beyond clock jitter.
 - **Client use:**
   - MudPlay reads its own ailments with `ConditionTracker`, matched against the Messages table.
+  - **Client policy** (report `paradigm-20261103-092609`): the `.@held` say waits `AilmentSyncEngine.HoldSettle` (1 s) and isn't sent if the hold ended meanwhile, or the say's gates no longer pass. The `@wait` still goes out at once. A roar cancelled in its own round was otherwise told to the party after the hold was over, and with the `@ok` held back by a Health wait the members' chips stayed lit while they cast cures at nothing.
   - `PartyManager.FollowingLeader` → `AilmentSyncEngine.NoteFollowingLeader` says the tokens again and re-asks the `@wait` (`PartyRestSync.RequestWait`, `resend`) on following a leader while afflicted; logged under `Ailment`, and the bug report's Party section shows the last one (report `paradigm-20261014-214037`). A receiving MudPlay leader lights the chip and pauses (`PartyAilmentTracker`; another member only once its roster has us back, since a member off its roster is ignored), and `CastingDirector.PickPartyCure` casts the configured cure-holds spell on a member whose Held chip is lit.
   - `PartyAilmentTracker.WitnessApplies` lights a member's chip from the ailment record's witness line and arms its duration. A line that names only the victim (`{target} is knocked flat!`) counts, since an on-hit effect names nobody else. `AppServices.ResolveAilmentDurationSeconds` takes the length from the monster the line names when one of that name in the room carries the spell, otherwise the longest among in-room monsters that carry it; an on-hit effect runs the spell's base `Dur` (*Combat → Monster on-hit procs (`AttHitSpell-N`) are physical attacks, not casts*). With nothing resolved the chip keeps a 180 s cap.
   - A chip clears on a witnessed cure only when the game data lists that spell as curing the ailment (`CureSpellIndex`), whatever sits in the cure slots (**Client policy**, user 2026-10-03). `merciful grace` (#804) is Heal + CurePoison + DispellMagic(BlindUser) in both sets, so it clears poison and blind chips and never a held one. *[NEEDS CONFIRMATION]: a player reports it cures the ultangir's knockdown (#318) on Paradigm; the 1.9.1 data shows nothing on it that removes a hold.*

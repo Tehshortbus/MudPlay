@@ -130,6 +130,44 @@ public sealed class PartyAilmentTrackerTests
         Assert.DoesNotContain(log.Snapshot(), e => e.Source == PartyAilmentTracker.LogCategory && e.Message.Contains("Stranger"));
     }
 
+    // A yeti's death spell "roar cancel" removes every roar in the room and prints
+    // nothing the party sees (report paradigm-20261103-092609): each member's Held
+    // chip goes, and an ailment the spell doesn't end stays.
+    [Fact]
+    public void ClearOnDeathSpell_EndsThatAilmentOnEveryMember()
+    {
+        using Harness h = new();
+        PartyMember torvold = h.AddMember("Torvold");
+        PartyMember travish = h.AddMember("Travish");
+        h.Say(@"Torvold says ""@held""");
+        h.Say(@"Travish says ""@held""");
+        h.Say(@"Travish says ""@blind""");
+
+        h.Tracker.ClearOnDeathSpell(MessageFlags.MovementPrevented, "yeti's death spell 'roar cancel'");
+
+        Assert.False(torvold.Held);
+        Assert.False(travish.Held);
+        Assert.True(travish.Blinded);
+    }
+
+    // A darken beast's "dissipate" ends the blindness it cast, an ancestral
+    // guardian's "AG Cancel" the confusion.
+    [Fact]
+    public void ClearOnDeathSpell_EndsBlindnessAndConfusion()
+    {
+        using Harness h = new();
+        PartyMember mage = h.AddMember("Mage");
+        h.Say(@"Mage says ""@blind""");
+        h.Say(@"Mage says ""@confused""");
+        h.Say(@"Mage says ""@held""");
+
+        h.Tracker.ClearOnDeathSpell(MessageFlags.Blinded | MessageFlags.Confused, "darken beast's death spell 'dissipate'");
+
+        Assert.False(mage.Blinded);
+        Assert.False(mage.Confused);
+        Assert.True(mage.Held);
+    }
+
     [Fact]
     public void InboundBlind_SetsMemberChip()
     {

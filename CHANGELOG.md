@@ -1,5 +1,11 @@
 # Version history
 
+## 3.198.3
+
+- A monster whose death ends the hold, blindness or confusion it cast (a yeti's roar, a darken beast's blind globe) no longer leaves party members marked with it
+- A hold that's over within its round isn't announced to the party
+- bug reports addressed: paradigm-20261103-092609
+
 ## 3.198.1
 
 - Death tab: a long corpse-handoff item list wraps instead of stretching the Workshop window off the screen

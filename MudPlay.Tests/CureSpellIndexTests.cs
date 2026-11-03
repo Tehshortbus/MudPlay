@@ -45,6 +45,38 @@ public sealed class CureSpellIndexTests
         => Assert.Equal(MessageFlags.Diseased,
             Cured(new[] { (122, 323) }, new HashSet<int> { 323, 445 }));
 
+    // Monsters' death spells end what they cast by removing it: a yeti's "roar cancel"
+    // (#1368) the roars (#193, HoldPerson), a darken beast's "dissipate" (#5121) its
+    // blinding (#1033, BlindUser), an ancestral guardian's "AG Cancel" (#5040) its
+    // confusion (#821). Each ends the ailment the removed spell's own codes apply.
+    [Theory]
+    [InlineData(74, MessageFlags.MovementPrevented)] // HoldPerson
+    [InlineData(75, MessageFlags.MovementPrevented)] // Paralyze
+    [InlineData(107, MessageFlags.Blinded)]          // BlindUser
+    [InlineData(53, MessageFlags.Blinded)]           // BlindingLight
+    [InlineData(71, MessageFlags.Confused)]          // Confusion
+    public void RemovesSpell_TargetingAnAilmentsSpell_CuresThatAilment(int appliedCode, MessageFlags ailment)
+    {
+        Dictionary<int, MessageFlags> applied = new()
+        {
+            [193] = CureSpellIndex.AppliedFlags(new[] { (appliedCode, 0), (115, 194) }),
+        };
+        Assert.Equal(ailment, CureSpellIndex.CuredFlags(new[] { (122, 193) }, NoDisease, applied));
+    }
+
+    // A constrictor's "constrictor off" (#796) removes a spell that both holds and
+    // confuses: both end.
+    [Fact]
+    public void RemovesSpell_TargetingAHoldThatConfuses_CuresBoth()
+    {
+        Dictionary<int, MessageFlags> applied = new()
+        {
+            [795] = CureSpellIndex.AppliedFlags(new[] { (74, 0), (71, 50) }),
+        };
+        Assert.Equal(MessageFlags.MovementPrevented | MessageFlags.Confused,
+            CureSpellIndex.CuredFlags(new[] { (122, 0), (122, 795) }, NoDisease, applied));
+    }
+
     [Fact]
     public void RemovesSpell_TargetingNonDiseaseSpell_CuresNothing()
         => Assert.Equal(MessageFlags.None,

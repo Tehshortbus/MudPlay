@@ -5009,6 +5009,9 @@ public sealed class AppServices
         FloorCheck.SetAcquisitionGate(Acquisition);
         FloorCheck.SetRoomRedisplay(RoomRedisplay);
         MonsterDeath.MonsterDied += FloorCheck.OnMonsterDied;
+        // Ahead of the roster resync, which drops the dead monster this reads its
+        // number from. PartyAilment is built further down; a death can't come first.
+        MonsterDeath.MonsterDied += ClearAilmentsEndedByDeathSpell;
         // A fight that ends with no kill of ours still owes the look its kills asked for.
         CombatTracker.FightEnded += FloorCheck.NoteFightEnded;
         MonsterDeath.MonsterDied += evt =>
@@ -13688,6 +13691,22 @@ public sealed class AppServices
     // The room-spell bookkeeping behind FireTempDeathResponse. Set in the
     // constructor, ahead of the death subscription that reads it.
     private readonly Game.Combat.TempDeathBurst _tempDeathBurst;
+
+    // A dying monster whose death spell removes an ailment's spells ends it on the
+    // room: a yeti's roar cancel frees everyone a roar held, whichever yeti roared.
+    private void ClearAilmentsEndedByDeathSpell(Game.Combat.MonsterDeathEvent evt)
+    {
+        foreach (int number in DyingMonsterNumbers(evt))
+        {
+            int deathSpell = MonsterCatalog.Get(number)?.DeathSpell ?? 0;
+            if (deathSpell <= 0) continue;
+            Models.GameData.MessageFlags ended = _cureSpells.CuresOf(deathSpell);
+            if (ended == Models.GameData.MessageFlags.None) continue;
+            PartyAilment.ClearOnDeathSpell(ended,
+                $"{GameData.FindNameByNumber("Monsters", number) ?? $"monster #{number}"}'s death spell "
+                + $"'{GameData.FindNameByNumber("Spells", deathSpell)}' (#{deathSpell})");
+        }
+    }
 
     // A monster's DeathSpell when it is one of the silent "... temp" spells.
     private (int Number, string Name)? TempDeathSpellOf(int monsterNumber)

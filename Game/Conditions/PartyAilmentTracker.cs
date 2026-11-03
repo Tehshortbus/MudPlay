@@ -30,7 +30,8 @@ namespace MudPlay.Game.Conditions;
 // `P` flag dropping (poison only, PartyManager); (4) a @status reconcile; (5) the
 // member's @ok telepath — they hold @ok until their last non-ignored ailment
 // clears, so it clears every VERBOSE chip (blind / confused / diseased / held) at
-// once (ClearVerboseChipsOnOk). For the cure path, each configured cure spell's
+// once (ClearVerboseChipsOnOk); (6) a dying monster's death spell that removes the
+// ailment's spells (ClearOnDeathSpell). For the cure path, each configured cure spell's
 // CasterMessage (OUR cast) and
 // WitnessMessage (a cast by another member, seen in the room) templates are
 // compiled to CasterMessageMatchers; a server line naming BOTH the cure spell AND
@@ -429,6 +430,39 @@ public sealed class PartyAilmentTracker : IDisposable
         }
         _log?.Info(LogCategory, $"ailment chips on {name} cleared ({why})");
     }
+
+    // A monster's death spell ended these ailments on everyone in the room. Only the
+    // one freed is shown a line (the hold's own end text); the cancel itself prints
+    // nothing, so a member's chip would otherwise stay lit until their @ok, which
+    // another wait reason can keep back (report paradigm-20261103-092609). Poison is
+    // par-owned and left to the next par.
+    public void ClearOnDeathSpell(MessageFlags ailments, string why)
+    {
+        List<string>? cleared = null;
+        foreach (PartyMember m in _party.State.Members)
+        {
+            if (m.IsSelf) continue;
+            string given = GivenName(m.Name);
+            foreach ((_, MessageFlags flag) in Tokens)
+            {
+                if (flag == MessageFlags.Poisoned || (ailments & flag) == 0 || !HasChip(m, flag)) continue;
+                _party.SetMemberAilment(m.Name, flag, false);
+                _expiryAtMs.Remove((given, flag));
+                (cleared ??= new()).Add($"{flag} on {m.Name}");
+            }
+        }
+        if (cleared is not null)
+            _log?.Info(LogCategory, $"{why} — cleared {string.Join(", ", cleared)}");
+    }
+
+    private static bool HasChip(PartyMember m, MessageFlags flag) => flag switch
+    {
+        MessageFlags.Blinded => m.Blinded,
+        MessageFlags.Confused => m.Confused,
+        MessageFlags.Diseased => m.Diseased,
+        MessageFlags.MovementPrevented => m.Held,
+        _ => false,
+    };
 
     // Clear any chip whose armed duration has elapsed — the spell-data "duration
     // timed out" clear. Every non-timeout clear (cure / par / @status / inbound

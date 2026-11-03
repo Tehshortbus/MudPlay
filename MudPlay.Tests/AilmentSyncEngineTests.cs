@@ -41,6 +41,9 @@ public sealed class AilmentSyncEngineTests
         // Telepath wire (@wait / @ok via PartyRestSync).
         public List<string> Telepath { get; } = new();
 
+        // The held say waits out AilmentSyncEngine.HoldSettle on these.
+        public ManualTimers Timers { get; } = new();
+
         public Harness()
         {
             Tracker = new ConditionTracker(Messages, null);
@@ -51,7 +54,8 @@ public sealed class AilmentSyncEngineTests
                 Tracker, Rest, () => Spells,
                 isInParty: () => Party.IsInParty,
                 hasCureConfigured: f => (CureConfigured & f) != MessageFlags.None,
-                log: null);
+                log: null,
+                schedule: Timers.Arm);
             Engine.SetWireSender(b => Say.Add(Encoding.Latin1.GetString(b)));
 
             // Follower in a party so @wait / @ok can fire.
@@ -210,11 +214,47 @@ public sealed class AilmentSyncEngineTests
 
         h.Feed("You cannot move!");
 
-        // Held broadcasts a bare '.@held' on set (MegaMUD parity — no 'on'/'off'
-        // suffix) AND telepaths @wait to the leader, like the curable four: the say
-        // lights the member's chip on the receiver, the @wait pauses the leader.
-        Assert.Equal(".@held\r", Assert.Single(h.Say));
+        // The @wait goes at once, the leader must stop now; the say waits to see the
+        // hold outlast its round.
+        Assert.Empty(h.Say);
         Assert.Equal($"/Leader @wait {PartyRestSync.HeldNote}\r", Assert.Single(h.Telepath));
+
+        h.Timers.Advance(AilmentSyncEngine.HoldSettle);
+
+        // Held broadcasts a bare '.@held' (MegaMUD parity — no 'on'/'off' suffix)
+        // AND telepaths @wait to the leader, like the curable four: the say lights
+        // the member's chip on the receiver, the @wait pauses the leader.
+        Assert.Equal(".@held\r", Assert.Single(h.Say));
+    }
+
+    // A yeti's roar cancelled in the round it landed (another yeti's death spell
+    // removes it, report paradigm-20261103-092609): telling the party would leave
+    // their chips lit on a hold that's already over.
+    [Fact]
+    public void Held_EndedBeforeItSettles_IsNeverSaid()
+    {
+        using Harness h = new();
+        SeedAll(h);
+
+        h.Feed("You cannot move!");
+        h.Feed("You can move again.");
+        h.Timers.Advance(AilmentSyncEngine.HoldSettle);
+
+        Assert.Empty(h.Say);
+        Assert.Equal(new[] { $"/Leader @wait {PartyRestSync.HeldNote}\r", "/Leader @ok\r" }, h.Telepath);
+    }
+
+    [Fact]
+    public void Held_LeavingThePartyBeforeItSettles_IsNotSaid()
+    {
+        using Harness h = new();
+        SeedAll(h);
+
+        h.Feed("You cannot move!");
+        h.Party.IsInParty = false;
+        h.Timers.Advance(AilmentSyncEngine.HoldSettle);
+
+        Assert.Empty(h.Say);
     }
 
     [Fact]
@@ -224,6 +264,7 @@ public sealed class AilmentSyncEngineTests
         SeedAll(h);
 
         h.Feed("You cannot move!");
+        h.Timers.Advance(AilmentSyncEngine.HoldSettle);
         h.Feed("You can move again.");
 
         // No '.@held off' on clear — MegaMUD sends no 'off' token. The bare '.@held'
@@ -540,7 +581,9 @@ public sealed class AilmentSyncEngineTests
         h.Telepath.Clear();
 
         Follow(h, "Other");
+        h.Timers.Advance(AilmentSyncEngine.HoldSettle);
 
+        // The follow said it, so the apply's own say, still settling, doesn't go too.
         Assert.Equal(".@held\r", Assert.Single(h.Say));
         Assert.Equal($"/Other @wait {PartyRestSync.HeldNote}\r", Assert.Single(h.Telepath));
     }
