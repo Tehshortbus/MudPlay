@@ -2,7 +2,7 @@
 
 ## 3.197.1
 
-- A weapon proc the monster resists no longer makes the client give up the fight, and moving resumes right after the kill
+- A proc on your hit that the monster resists (the weapon's or a class buff's) no longer makes the client give up the fight, and moving resumes right after the kill
 - bug reports addressed: paradigm-20261102-183246
 
 ## 3.197.0

@@ -3172,9 +3172,9 @@ public sealed class CombatManagerTests
         Assert.True(h.CrRefreshSends >= 1);
     }
 
-    // Report paradigm-20261102-183246: a weapon whose hit casts a drain the monster
-    // can't take prints the spell's "no effect" line after a plain swing. The swing
-    // went on hitting, so the target is kept and nothing is re-sent.
+    // Report paradigm-20261102-183246: a proc on the hit (here a class buff's drain)
+    // the monster can't take prints the spell's "no effect" line after a plain swing.
+    // The swing went on hitting, so the target is kept and nothing is re-sent.
     [Fact]
     public void WeaponProcNoEffect_UnderASwing_KeepsTheTarget()
     {

@@ -2,7 +2,7 @@
 
 <!-- current-version:start -->
 > **Version 3.197.1**
-> - A weapon proc the monster resists no longer makes the client give up the fight, and moving resumes right after the kill
+> - A proc on your hit that the monster resists (the weapon's or a class buff's) no longer makes the client give up the fight, and moving resumes right after the kill
 <!-- current-version:end -->
 
 A modern Telnet terminal client for **MajorMUD** and other BBS door games, built in C# / .NET 10 with [Avalonia](https://avaloniaui.net/). It renders a faithful CP437 cell grid with full VT100/ANSI parsing, and layers a MegaMUD-style automation suite (combat, party, navigation, healing, and more) on top — all in modeless, dockable windows so the terminal stays live while you configure anything.
