@@ -979,6 +979,8 @@ public sealed class ProfileService
             copy.Name = toName;
             copy.LastKnownStats = null;
             copy.DefaultPoolBaseline = null;
+            // The game read those flags off the source's character.
+            copy.QuestFlagReads = null;
             copy.LastKnownEncumbrance = null;
             copy.HeldAtDisconnect = null;
             // The buffs are on the source's character, not on the copy's.

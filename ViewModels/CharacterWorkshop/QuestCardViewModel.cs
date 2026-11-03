@@ -62,6 +62,12 @@ public sealed partial class QuestCardViewModel : ObservableObject
     // True when RequirementsText is non-empty.
     public bool HasRequirements { get; }
 
+    // The quest flag's value at its last read off the game ("flag 126 = 8"), and when;
+    // empty until one has been read.
+    public string FlagReadText { get; }
+    public string FlagReadTip { get; }
+    public bool HasFlagRead => FlagReadText.Length > 0;
+
     // Ordered followable step + label rows parsed from the quest's step markdown; empty when it drafts none.
     public ObservableCollection<QuestStepRowViewModel> Steps { get; }
 
@@ -95,7 +101,8 @@ public sealed partial class QuestCardViewModel : ObservableObject
         bool ineligible,
         bool isComplete,
         ObservableCollection<QuestStepRowViewModel> steps,
-        Action<QuestCardViewModel> onCompletionChanged)
+        Action<QuestCardViewModel> onCompletionChanged,
+        Models.Profile.QuestFlagRead? flagRead = null)
     {
         ArgumentNullException.ThrowIfNull(title);
         ArgumentNullException.ThrowIfNull(requiredLevelText);
@@ -121,6 +128,9 @@ public sealed partial class QuestCardViewModel : ObservableObject
         HasExp = expText.Length > 0;
         HasRequirements = requirementsText.Length > 0;
         Steps = steps;
+        FlagReadText = flagRead is null ? string.Empty : $"flag {flag} = {flagRead.Value}";
+        FlagReadTip = flagRead is null ? string.Empty
+            : $"Read from the game {flagRead.At.ToLocalTime():yyyy-MM-dd HH:mm}";
         _isComplete = isComplete;
         _onCompletionChanged = onCompletionChanged;
     }

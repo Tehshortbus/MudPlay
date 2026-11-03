@@ -1126,6 +1126,9 @@ public sealed class AppServices
     // MainWindowViewModel alongside QuestFlagReader.
     public Game.Quests.QuestFlagProbe QuestQueryReader { get; private set; } = null!;
 
+    // Any other `abil` the game answers (one the user typed), kept as a live flag read.
+    public Game.Quests.QuestFlagReadout QuestFlagReadout { get; private set; } = null!;
+
     // Login-time quest-flag completion sync (opt-in per character): reads the flags via
     // QuestFlagReader and marks newly-complete quests. Run by MainWindowViewModel before the
     // availability dump.
@@ -2656,6 +2659,9 @@ public sealed class AppServices
     // re-anchors position on the landing. Enabled per-BBS (SysopGoto credential).
     public Game.SysopGotoManager SysopGoto { get; private set; } = null!;
 
+    // A typed `!@<command>`, run here as a remote command and never sent.
+    public Game.Remote.SelfRemoteCommand SelfRemoteCommand { get; private set; } = null!;
+
     // BFS pathfinding + planar layout over the active
     // RoomGraph. Consumed by the walker, loop runner,
     // auto-lair scheduler (pathfinding), and the Navigation
@@ -3280,6 +3286,7 @@ public sealed class AppServices
         {
             BlockedByMasterSwitch = what => AutoModeController.Blocks("Remote commands", what),
         };
+        SelfRemoteCommand = new Game.Remote.SelfRemoteCommand(RemoteCommands, WriteTerminalNotice, Log);
         // Reserve the party ailment-sync announces (@poisoned / @blind / @held …)
         // so the engine swallows them instead of bouncing a "{command invalid}"
         // reply at the member who announced — PartyAilmentTracker consumes them on
@@ -7409,7 +7416,7 @@ public sealed class AppServices
         // holds a per-monster alternate-weapon override, so the Default set's
         // combat-entry trigger can't clobber the swap (the weapon-flap report).
         Equipment.SetCombatWeaponOwnershipProbe(() => Combat.IsWeaponOverrideActive);
-        Equipment.SetBackstabWeaponProbe(() => Combat.BackstabWeaponArmed);
+        Equipment.SetBackstabProbes(() => Combat.BackstabWeaponArmed, () => PlayerState.InCombat);
 
         // Confusion-fumble retry: a fumble consumes the just-sent command without it
         // executing, so the client re-sends it. Combat re-sends a weapon swing first
@@ -10262,6 +10269,13 @@ public sealed class AppServices
                 resolveName: (q, _) => ViewModels.CharacterWorkshop.QuestTextFormatter.Title(Quests, q),
                 PlayerStats.Level),
             log: Log);
+        // An `abil` the user typed is a live read like `@quest`'s: its values are kept for
+        // the quest cards and mark what they prove. The client's own reads keep theirs.
+        QuestFlagReadout = new Game.Quests.QuestFlagReadout(
+            selfName: () => PlayerStats.Name,
+            clientReadUnderWay: () => QuestFlagReader.IsCollecting || QuestQueryReader.IsCollecting,
+            read: values => QuestFlagSync.MarkObserved(values),
+            log: Log);
         // A sync that marks quests complete changes the quest bonuses in both regen percents.
         QuestFlagSync.Synced += () =>
         {
@@ -12610,16 +12624,28 @@ public sealed class AppServices
     // even while stale until a fresh one lands; before the first one, estimated from
     // the live max and the gear bonuses (DefaultSetMaxPool).
     private int DefaultBasisMaxHp()
-        => PoolBaseline.Current is { MaxHp: > 0 } b ? b.MaxHp
+        => !DefaultSetInUse() ? 0
+            : PoolBaseline.Current is { MaxHp: > 0 } b ? b.MaxHp
             : DefaultSetMaxPool(static t => t.PlusMaxHp, PlayerState.MaxHp);
     private int DefaultBasisMaxMa()
-        => PoolBaseline.Current is { MaxMa: > 0 } b ? b.MaxMa
+        => !DefaultSetInUse() ? 0
+            : PoolBaseline.Current is { MaxMa: > 0 } b ? b.MaxMa
             : DefaultSetMaxPool(static t => t.PlusMaxMana, PlayerState.MaxMa);
 
+    // A disabled Default set is never put on by automation, so the gear worn is
+    // whatever the user put on and the maxima it would give are no basis: the rest
+    // figures go by the live maxima, and no `stat` is asked for to keep its baseline.
+    // A baseline read levels ago otherwise stood in for good (report
+    // paradigm-20261102-134506: 433/80 from level 37 against a level-59 915/164).
+    private bool DefaultSetInUse() =>
+        Profile.Current?.Equipment?.Sets.FirstOrDefault(s => s.Trigger == Models.Profile.EquipTriggerType.Default)
+            is { Enabled: true };
+
     // The Default set's summed +MaxHP / +MaxMana item bonus (owned items only, like
-    // DefaultSetMaxPool), or null when no Default set is configured.
+    // DefaultSetMaxPool), or null when no Default set is configured or it's disabled.
     private (int Hp, int Ma)? DefaultGearPoolBonus()
     {
+        if (!DefaultSetInUse()) return null;
         IReadOnlyList<Game.Inventory.EquippedItem> items = DefaultSetEquippedItems();
         if (items.Count == 0) return null;
         Game.Calculators.EquipmentStatSummary t = Game.Calculators.CharacterCalculator

@@ -335,8 +335,9 @@ public sealed class RemoteCommandManager : IDisposable
     //
     // Replies arrive through the collector instead of being sent to a channel, so
     // invoking @health locally answers the caller and puts nothing on the wire.
+    // sender names the local route in the handlers' logs (the API, a typed `!@`).
     public LocalInvokeResult TryInvokeLocal(
-        string command, IReadOnlyList<string>? args, Action<string> reply)
+        string command, IReadOnlyList<string>? args, Action<string> reply, string sender = LocalSenderName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(command);
         ArgumentNullException.ThrowIfNull(reply);
@@ -373,14 +374,14 @@ public sealed class RemoteCommandManager : IDisposable
         // it holds here too. Unlike chat, the caller is told why: it already has
         // the machine, so there is nothing to keep from it.
         if (!normalised.Equals(MasterSwitchCommand, StringComparison.OrdinalIgnoreCase)
-            && SkippedForMasterSwitch(LocalSenderName, normalised))
+            && SkippedForMasterSwitch(sender, normalised))
             return LocalInvokeResult.MasterSwitchOff;
 
         // Sender is a literal rather than a player name: handlers use it for reply
         // addressing and logging, and naming the origin keeps a locally-driven
         // action distinguishable from a party member's in the log.
         RemoteCommandContext ctx = new(
-            Sender:          LocalSenderName,
+            Sender:          sender,
             Command:         normalised,
             Args:            argv,
             OriginalMessage: string.Join(' ', new[] { normalised }.Concat(argv)),
@@ -393,7 +394,7 @@ public sealed class RemoteCommandManager : IDisposable
         };
 
         _log?.Log(LogSeverity.Info, "RemoteCmd",
-            $"Local invocation: {normalised}{(argv.Length > 0 ? " " + string.Join(' ', argv) : "")}");
+            $"Local invocation by {sender}: {normalised}{(argv.Length > 0 ? " " + string.Join(' ', argv) : "")}");
         try { registration.Handler(ctx); }
         catch (Exception ex)
         {

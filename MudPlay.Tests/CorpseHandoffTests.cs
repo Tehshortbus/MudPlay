@@ -103,6 +103,9 @@ public sealed class CorpseHandoffTests
     [InlineData("  Recover Raijin secret\r", true, "Raijin", "secret")]
     [InlineData("recover raijin", false, "", "")]
     [InlineData("recover raijin two words", false, "", "")]
+    [InlineData("recover corpse of raijin secret", true, "raijin", "secret")]
+    [InlineData("recover corpse of raijin", false, "", "")]                  // the owner's own form
+    [InlineData("recover corpse of raijin two words", false, "", "")]
     public void Command_ParsesNameAndPassword(string command, bool ok, string name, string password)
     {
         Assert.Equal(ok, CorpseRecoveryLines.TryParseRecoverWithPassword(command, out string n, out string p));
@@ -119,6 +122,11 @@ public sealed class CorpseHandoffTests
         Assert.Equal("look", CorpseRecoveryLines.Redact("look"));
         Assert.Equal("@do from Raijin: 'recover corpse raijin [redacted]",
             CorpseRecoveryLines.Redact("@do from Raijin: 'recover corpse raijin pa'ss'"));
+        Assert.Equal("recover corpse of raijin [redacted]", CorpseRecoveryLines.Redact($"recover corpse of raijin {Password}"));
+        Assert.Equal("recover corpse of raijin", CorpseRecoveryLines.WithoutPassword($"recover corpse of raijin {Password}"));
+        Assert.Equal("recover corpse of raijin", CorpseRecoveryLines.Redact("recover corpse of raijin"));
+        Assert.Equal("@do from Raijin: 'recover corpse of raijin [redacted]",
+            CorpseRecoveryLines.Redact($"@do from Raijin: 'recover corpse of raijin {Password}'"));
     }
 
     // The short form, the one the game takes, is masked as the long one is, and keeps
@@ -181,6 +189,23 @@ public sealed class CorpseHandoffTests
         Assert.Equal(51, r.Coins.Platinum);
         Assert.Equal(53, r.Coins.Gold);
         Assert.Contains(h.Log.Snapshot(), e => e.Message == "recorded 4 item(s) from Raijin's corpse and 51 platinum pieces, 53 gold crowns");
+    }
+
+    // Every form the user may type for a friend's corpse arms the record.
+    [Theory]
+    [InlineData("recover raijin")]
+    [InlineData("recover corpse raijin")]
+    [InlineData("recover corpse of raijin")]
+    public void FriendsCorpse_RecordedWhicheverFormWasTyped(string form)
+    {
+        Harness h = new();
+        h.Manager.ObserveCommand($"{form} {Password}", usersOwn: true);
+        h.Manager.OnLine("You begin to pick through the corpse of Raijin...");
+        h.Manager.OnLine("You took thorned whip.");
+        h.Manager.OnLine("You have recovered the corpse of Raijin.");
+
+        CorpseHandoffRecord r = Assert.Single(h.Manager.Records);
+        Assert.Equal("thorned whip", Assert.Single(r.Items).ToString());
     }
 
     [Fact]

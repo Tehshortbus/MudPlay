@@ -1009,12 +1009,13 @@ public sealed partial class StatParser : IDisposable
     // Paired N/M fields — Hits / Kai / Mana / Armour Class allow `*`
     // between the colon and digits to capture altered values
     // ("Hits: *22/22"). Lives/CP is never altered in-game so doesn't
-    // need the tolerance.
+    // need the tolerance. Anomaly's sheet can leave no space after the
+    // colon (`Mana:* 136/164`, `Armour Class:100/14`), so these four take `\s*`.
     [GeneratedRegex(@"\bLives/CP:\s+(\d+)/(\d+)",                       RegexOptions.CultureInvariant)] private static partial Regex LivesCpRx();
-    [GeneratedRegex(@"\bHits:\s+\*?\s*(\d+)/(\d+)",                     RegexOptions.CultureInvariant)] private static partial Regex HitsRx();
-    [GeneratedRegex(@"\bKai:\s+\*?\s*(\d+)/(\d+)",                      RegexOptions.CultureInvariant)] private static partial Regex KaiRx();
-    [GeneratedRegex(@"\bMana:\s+\*?\s*(\d+)/(\d+)",                     RegexOptions.CultureInvariant)] private static partial Regex ManaRx();
-    [GeneratedRegex(@"\bArmour Class:\s+\*?\s*(\d+)/(\d+)",             RegexOptions.CultureInvariant)] private static partial Regex ArmourClassRx();
+    [GeneratedRegex(@"\bHits:\s*\*?\s*(\d+)/(\d+)",                     RegexOptions.CultureInvariant)] private static partial Regex HitsRx();
+    [GeneratedRegex(@"\bKai:\s*\*?\s*(\d+)/(\d+)",                      RegexOptions.CultureInvariant)] private static partial Regex KaiRx();
+    [GeneratedRegex(@"\bMana:\s*\*?\s*(\d+)/(\d+)",                     RegexOptions.CultureInvariant)] private static partial Regex ManaRx();
+    [GeneratedRegex(@"\bArmour Class:\s*\*?\s*(\d+)/(\d+)",             RegexOptions.CultureInvariant)] private static partial Regex ArmourClassRx();
 
     // The compact `health`-command output. Anchored at line start (with optional
     // leading whitespace) so it never matches the stat sheet's mid-row `Health:`

@@ -1210,7 +1210,11 @@ public sealed class TerminalControl : Control
         if (MudPlay.Services.AppServices.Current.SysopGoto.TryHandleTypedLine(line))
             return;
         foreach (string wireLine in MudPlay.Services.MacroStore.SplitTypedInput(line))
+        {
+            // `!@<command>` runs the remote command here and sends nothing.
+            if (MudPlay.Services.AppServices.Current.SelfRemoteCommand.TryHandleTypedLine(wireLine)) continue;
             UserInput?.Invoke(System.Text.Encoding.Latin1.GetBytes(wireLine + "\r"));
+        }
     }
 
     // Read the clipboard and feed it into the input exactly as typed text would

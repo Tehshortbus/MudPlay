@@ -8,11 +8,11 @@ namespace MudPlay.Game.Recovery;
 // (GAME_MECHANICS "Corpse recovery (`recover corpse`)").
 public static partial class CorpseRecoveryLines
 {
-    // `recover <name> <password>`, the form the game takes for another player's
-    // corpse, or `recover corpse <name> <password>`, which it refuses: one line
-    // holding just the command. A password is one word. `recover corpse <name>` is
-    // the owner's own form, not a name and a password (GAME_MECHANICS "Corpse
-    // recovery (`recover corpse`)").
+    // Another player's corpse: `recover <name> <password>`, `recover corpse <name>
+    // <password>` or `recover corpse of <name> <password>`, one line holding just the
+    // command. A password is one word. `recover corpse <name>` and `recover corpse of
+    // <name>` are the owner's own forms, not a name and a password (GAME_MECHANICS
+    // "Corpse recovery (`recover corpse`)").
     public static bool TryParseRecoverWithPassword(string? command, out string name, out string password) =>
         TryParseRecoverWithPassword(command, out _, out name, out password);
 
@@ -81,13 +81,13 @@ public static partial class CorpseRecoveryLines
     public static string GivenName(string? name) =>
         string.IsNullOrWhiteSpace(name) ? string.Empty : name.Trim().Split(' ')[0];
 
-    [GeneratedRegex(@"^[ \t]*(?<form>recover[ \t]+(?:corpse[ \t]+)?(?!corpse[ \t])(?<name>\S+)[ \t]+)(?<password>\S+)[ \t\r]*$",
+    [GeneratedRegex(@"^[ \t]*(?<form>recover[ \t]+(?:corpse[ \t]+(?:of[ \t]+)?)?(?!(?:corpse|of)[ \t])(?<name>\S+)[ \t]+)(?<password>\S+)[ \t\r]*$",
         RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
     private static partial Regex RecoverWithPasswordRegex();
 
     // The password runs to the next space or separator, a quote inside it included:
     // `pa'ss` must not leave `'ss` standing.
-    [GeneratedRegex(@"(?<lead>\brecover[ \t]+corpse[ \t]+[^\s'"";|`]+[ \t]+)(?!\[redacted\])[^\s;|`]+",
+    [GeneratedRegex(@"(?<lead>\brecover[ \t]+corpse[ \t]+(?:of[ \t]+)?(?!of[ \t])[^\s'"";|`]+[ \t]+)(?!\[redacted\])[^\s;|`]+",
         RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
     private static partial Regex EmbeddedRecoverRegex();
 

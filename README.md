@@ -1,8 +1,14 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.196.4**
-> - Walking with backstab on keeps the backstab weapon in hand, a failed sneak included; the attack weapon goes on only to fight
+> **Version 3.197.0**
+> - Typing `!@<command>` runs a remote command on your own client and prints its replies in brackets
+> - Quest Status cards show each quest's flag as last read; any `abil` read updates it
+> - Walking with backstab on keeps the Backstab set's armour on too; the travel sets dress only the other places
+> - A friend's corpse recovered with `recover corpse of <name> <password>` is recorded for hand-back, its password masked
+> - Anomaly's `stat` sheet: max mana and AC are read when no space follows the colon
+> - Rest and heal thresholds follow the live max HP / mana while the Default gear set is disabled
+> - Log-file exit test no longer misses the failure notice when the disk fails on the file's header
 <!-- current-version:end -->
 
 A modern Telnet terminal client for **MajorMUD** and other BBS door games, built in C# / .NET 10 with [Avalonia](https://avaloniaui.net/). It renders a faithful CP437 cell grid with full VT100/ANSI parsing, and layers a MegaMUD-style automation suite (combat, party, navigation, healing, and more) on top — all in modeless, dockable windows so the terminal stays live while you configure anything.

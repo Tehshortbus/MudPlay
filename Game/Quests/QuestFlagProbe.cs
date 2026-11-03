@@ -28,6 +28,10 @@ public sealed partial class QuestFlagProbe : IDisposable
     private bool _collecting;
     private bool _disposed;
 
+    // True while a read of its own is gathering replies: QuestFlagReadout leaves those
+    // lines to it.
+    public bool IsCollecting => _collecting;
+
     // How long to keep collecting after the last command before returning.
     public TimeSpan SettleWindow { get; set; } = TimeSpan.FromSeconds(2);
 

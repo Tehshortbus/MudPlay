@@ -1101,7 +1101,7 @@ public static class BugReportBuilder
         Kv(sb, "Worn off-hand", WornSlot(inv, "Off-Hand") ?? "(none)");
         Kv(sb, "Using alternate weapon", combat.UsingAlternateWeapon.ToString());
         // On, the Default and While Moving sets leave the weapon to the backstab prep.
-        Kv(sb, "Backstab holds the weapon out of a swing", svc.Combat.BackstabWeaponArmed.ToString());
+        Kv(sb, "Backstab holds the weapon and its armour out of a fight", svc.Combat.BackstabWeaponArmed.ToString());
         // The round's committed spell action + the cast-code the server is repeating —
         // "DrainSpell" here means the drain override is currently taking the round.
         Kv(sb, "Round spell action", combat.LastCastAction ?? "(weapon / idle)");
@@ -2078,6 +2078,10 @@ public static class BugReportBuilder
         var quests = profile.QuestLog;
         sb.Append("\n**Quest log (QuestLog)** (").Append(quests?.Count ?? 0).Append(")\n\n");
         sb.Append(quests is { Count: > 0 } ? Json(quests) : "_(none)_\n");
+        // Each quest flag as the game last read it out, a read of 0 included.
+        var flagReads = profile.QuestFlagReads;
+        sb.Append("\n**Quest flags as last read (QuestFlagReads)** (").Append(flagReads?.Count ?? 0).Append(")\n\n");
+        sb.Append(flagReads is { Count: > 0 } ? Json(flagReads) : "_(none)_\n");
         // Which shape of drafted checklist the step ticks above count against, so a
         // "my ticks moved" report shows whether they were carried onto today's draft.
         sb.Append("\n- **Quest step ticks made against draft revision**: ")
@@ -2344,7 +2348,8 @@ public static class BugReportBuilder
         Kv(sb, "Sell detour", svc.SellDetour.Status);
         Kv(sb, "Default-gear pool baseline", svc.PoolBaseline.Current is { } pb
             ? $"HP {pb.MaxHp}, pool {pb.MaxMa} at level {pb.Level} (gear +{pb.DefaultGearHp}/+{pb.DefaultGearMa}, {pb.RecordedAt.ToLocalTime():yyyy-MM-dd HH:mm:ss})"
-              + (svc.PoolBaseline.IsStale ? " — stale, re-reading `stat` in Default gear" : "")
+              + (!svc.RestPreviewMaxHp().FromDefaultSet ? " — not in use: the Default set is disabled or none of it is owned, so rest goes by the live maxima"
+                 : svc.PoolBaseline.IsStale ? " — stale, re-reading `stat` in Default gear" : "")
             : "none yet — using the gear estimate");
         Kv(sb, "Party @ok held for gear", svc.Health.IsPartyOkHeldForGear.ToString());
         Kv(sb, "Auto-sell", svc.AutoSell.IsSelling ? "selling here" : "idle");

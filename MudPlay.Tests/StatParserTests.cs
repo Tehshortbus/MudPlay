@@ -118,6 +118,22 @@ public sealed class StatParserTests
         Assert.Equal(0,   s.Kai);
     }
 
+    // Anomaly's sheet (report paradigm-20261102-134506): the altered-pool mark and a
+    // three-digit AC sit right after the colon, so the pool's ceiling and the AC were
+    // never read and the stale ones stayed in use.
+    [Fact]
+    public void AnomalyRows_WithNoSpaceAfterTheColon_AreRead()
+    {
+        var (p, s) = Setup();
+        _feed.Line("Hits:  645/915    Armour Class:100/14  Thievery:        0");
+        _feed.Line("Mana:* 136/164    Spellcasting: 199    Traps:           0");
+        Assert.Equal(915, s.MaxHits);
+        Assert.Equal(100, s.ArmourClass);
+        Assert.Equal(14, s.MaxArmourClass);
+        Assert.Equal(136, s.Mana);
+        Assert.Equal(164, s.MaxMana);
+    }
+
     [Fact]
     public void SpellcastingField_Captured()
     {

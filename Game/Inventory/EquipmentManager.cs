@@ -56,6 +56,7 @@ public sealed class EquipmentManager
     // rather than clobbering its swap — see ApplySet.
     private Func<bool>? _combatOwnsWeaponSlot;
     private Func<bool>? _backstabHoldsWeapon;
+    private Func<bool>? _fighting;
 
     // True on Paradigm (where a full-pair eq/wear evicts SLOT 1), false on Stock
     // (evicts SLOT 2) — see ComposePairedSlotCommands. Null before wiring
@@ -223,8 +224,13 @@ public sealed class EquipmentManager
     // Wired post-construction to break the manager ↔ combat-engine build cycle.
     public void SetCombatWeaponOwnershipProbe(Func<bool> probe) => _combatOwnsWeaponSlot = probe;
 
-    // Bind the backstab probe (CombatManager.BackstabWeaponArmed), wired the same way.
-    public void SetBackstabWeaponProbe(Func<bool> probe) => _backstabHoldsWeapon = probe;
+    // Bind the backstab probe (CombatManager.BackstabWeaponArmed) and the fight probe
+    // (PlayerState.InCombat), wired the same way.
+    public void SetBackstabProbes(Func<bool> weaponArmed, Func<bool> fighting)
+    {
+        _backstabHoldsWeapon = weaponArmed;
+        _fighting = fighting;
+    }
 
     // ----- @equip <set> ----------------------------------------------------
 
@@ -776,20 +782,23 @@ public sealed class EquipmentManager
         // and always control the weapon.
         bool deferWeaponToCombat = !fillFromInventory && _combatOwnsWeaponSlot?.Invoke() == true;
         // Backstab on with a weapon of its own: the pre-move prep wields that weapon
-        // before every sneak and combat wields the attack weapon before every swing.
-        // An automatic Default or While Moving apply that put its own weapon on in
-        // between (a walk resuming, a loop starting) only had it taken off at the next
-        // step, ending the sneak twice a room: eq, sn, eq, sn. The rest sets and the
-        // Bossing set keep their weapons.
-        if (!fillFromInventory && !deferWeaponToCombat
+        // and wears the Backstab set's armour before every sneak, and combat wields
+        // the attack weapon before every swing. An automatic Default or While Moving
+        // apply that put its own gear on in between (a walk resuming, a loop starting)
+        // only had it taken off at the next step, ending the sneak twice a room: eq,
+        // sn, eq, sn. The rest sets and the Bossing set keep their gear, and a
+        // Default fired for a fight still dresses its armour for it.
+        bool backstabApproach = !fillFromInventory
             && set.Trigger is EquipTriggerType.Default or EquipTriggerType.WhileMoving
-            && _backstabHoldsWeapon?.Invoke() == true)
+            && _backstabHoldsWeapon?.Invoke() == true;
+        if (backstabApproach && !deferWeaponToCombat)
         {
             deferWeaponToCombat = true;
             _log?.Debug(LogCategory, $"'{set.Name}' applied without its weapon: backstab is on, so the weapon is the backstab approach's");
         }
+        EquipmentSet dress = backstabApproach && _fighting?.Invoke() != true ? WithoutBackstabArmor(set) : set;
 
-        List<string> cmds = BuildApplyCommands(set, _getSnapshot(), fillFromInventory, deferWeaponToCombat);
+        List<string> cmds = BuildApplyCommands(dress, _getSnapshot(), fillFromInventory, deferWeaponToCombat);
 
         if (cmds.Count == 0)
             return combatChanged;
@@ -823,6 +832,33 @@ public sealed class EquipmentManager
         RecordPending(set, cmds);
         SendSet(cmds);
         return true;
+    }
+
+    // The set with the places the enabled Backstab set dresses taken out, so it
+    // leaves the backstab armour on. A finger or wrist pair goes out whole when the
+    // Backstab set dresses either of its places, since an `eq` into a full pair can
+    // push out the backstab piece.
+    private EquipmentSet WithoutBackstabArmor(EquipmentSet set)
+    {
+        EquipmentSet? backstab = _readEquipment().Sets
+            .FirstOrDefault(s => s.Trigger == EquipTriggerType.Backstab);
+        if (backstab is not { Enabled: true }) return set;
+        HashSet<EquipmentSlot> families = backstab.Slots
+            .Where(e => !IsVirtual(e.Slot) && e.Slot is not (EquipmentSlot.Weapon or EquipmentSlot.OffHand)
+                        && !string.IsNullOrWhiteSpace(e.ItemName))
+            .Select(e => FamilyOf(e.Slot))
+            .ToHashSet();
+        List<EquipmentSlotEntry> slots = set.Slots
+            .Where(e => IsVirtual(e.Slot) || !families.Contains(FamilyOf(e.Slot)))
+            .ToList();
+        if (slots.Count == set.Slots.Count) return set;
+        _log?.Debug(LogCategory,
+            $"'{set.Name}' leaves {set.Slots.Count - slots.Count} slot(s) to the Backstab set: backstab is on");
+        return new EquipmentSet
+        {
+            Id = set.Id, Trigger = set.Trigger, Enabled = set.Enabled,
+            Name = set.Name, Keyword = set.Keyword, Slots = slots,
+        };
     }
 
     // True when every item this apply would (re)wear is already outstanding for

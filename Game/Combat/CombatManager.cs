@@ -1391,9 +1391,9 @@ public sealed partial class CombatManager : IDisposable
     public bool IsWeaponOverrideActive => _usingAlternateWeapon;
 
     // True while backstab is on with a weapon of its own. The pre-move prep wields
-    // it before every sneak and EquipForAttack wields the attack weapon before every
-    // swing, so the travel gear sets leave the weapon to those two
-    // (EquipmentManager.SetBackstabWeaponProbe).
+    // it and wears the Backstab set's armour before every sneak, and EquipForAttack
+    // wields the attack weapon before every swing, so the travel gear sets leave that
+    // gear to those two (EquipmentManager.SetBackstabProbes).
     public bool BackstabWeaponArmed => HasBackstabWeapon(_readSettings());
 
     private static bool HasBackstabWeapon(CombatSettings settings) =>

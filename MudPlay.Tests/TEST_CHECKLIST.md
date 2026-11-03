@@ -900,7 +900,7 @@ How to keep it current:
 
 ### CorpseHandoffTests.cs
 - Covers: Game/Recovery/CorpseHandoffManager, CorpseRecoveryLines, CorpseHandoffPlan; BugReportScrub; SentCommandTrail; CommandHistory; DoHandler.
-- Checks: another player's corpse is recorded from the recovery lines; the command is read in the short form the game takes (`recover <name> <password>`) and the long form, never the owner's `recover corpse <name>`; the password stays out of storage, log, trail and history, the short form masked where a command stands and prose with "recover" left alone; gives are planned per realm and struck off on confirmation.
+- Checks: another player's corpse is recorded from the recovery lines; the command is read in the short form the game takes (`recover <name> <password>`) , the long form and `recover corpse of <name> <password>`, each arming the record, never the owner's `recover corpse <name>` or `recover corpse of <name>`; the password stays out of storage, log, trail and history, the short form masked where a command stands and prose with "recover" left alone; gives are planned per realm and struck off on confirmation.
 - Why: handing a friend's gear back without leaking their password; report `bug-report-recover-corpse-for-another-player` (the game refuses the long form, and the short one was neither recorded nor masked).
 
 ### CountedCommandTests.cs
@@ -1243,7 +1243,7 @@ How to keep it current:
 
 ### EquipmentManagerTests.cs
 - Covers: Game/Inventory/EquipmentManager
-- Checks: wear/equip command building (availability, blocks, 2H/off-hand rems, paired-slot eviction per realm, fallback fill); apply by keyword/id/trigger; in-flight guard; SwapWeapon; backstab armour; the Default and While Moving sets leaving the weapon to backstab while it is on; slot blocks; UpdateSetFromWorn; manual-equip signal.
+- Checks: wear/equip command building (availability, blocks, 2H/off-hand rems, paired-slot eviction per realm, fallback fill); apply by keyword/id/trigger; in-flight guard; SwapWeapon; backstab armour; the Default and While Moving sets leaving the weapon, and the Backstab set's armour places (a ring pair whole), to backstab while it is on and out of a fight; slot blocks; UpdateSetFromWorn; manual-equip signal.
 - Why: the weapon swapping on every sneak while walking (user, 2026-11-02); reports paradigm-20260831-071637, -20260716-095547, -20260901-130100, -20260903-111522, -20260825-103537, -20260926-194514, -20260926-221353.
 
 ### EquipmentMaxPoolSyncTests.cs
@@ -3186,7 +3186,7 @@ How to keep it current:
 
 ### ProgramLogFileTests.cs
 - Covers: Services/ProgramLogFile, Services/LogEntryQueue
-- Checks: logging returns at once while the disk is stuck, and entries land in order once it answers; past the queue depth the oldest go and the file says how many; a failed write is noted once, never through its own file, reopened on the same path with its header if the failure lost it, and noted again only after a write succeeded; a failure doesn't carry into the next session's file; exit waits for a slow disk, cuts a retry wait short to write the tail, and gives up on a stuck disk at its bound; the crash wait lands the last line or gives up at its bound; the Auto-collect switch opens a fresh `…-program.log` each time it goes on and closes it when off; entries queued across a switch land in their own session's file; three loggers racing 3000 flips of the switch never start a session's file twice (bounded by counts: switch and loggers are kept in step a few entries apart, so every flip lands while they log and the test can't pass or fail for want of a race); every file, each new one after a switch included, opens with the build, the system, the process, how long the client had been up, and the character, BBS, realm and game data as they stand when that file opens (Services/LogFileHeader); the real file holds the header and entries.
+- Checks: logging returns at once while the disk is stuck, and entries land in order once it answers; past the queue depth the oldest go and the file says how many; a failed write is noted once, never through its own file, reopened on the same path with its header if the failure lost it, and noted again only after a write succeeded; a failure doesn't carry into the next session's file; exit waits for a slow disk, cuts a retry wait short to write the tail (its failure notice listened for before the file is made, since the header's own flush can fail first), and gives up on a stuck disk at its bound; the crash wait lands the last line or gives up at its bound; the Auto-collect switch opens a fresh `…-program.log` each time it goes on and closes it when off; entries queued across a switch land in their own session's file; three loggers racing 3000 flips of the switch never start a session's file twice (bounded by counts: switch and loggers are kept in step a few entries apart, so every flip lands while they log and the test can't pass or fail for want of a race); every file, each new one after a switch included, opens with the build, the system, the process, how long the client had been up, and the character, BBS, realm and game data as they stand when that file opens (Services/LogFileHeader); the real file holds the header and entries.
 - Why: with Auto-collect logs on, a slow or locked disk froze the window on any log line; and a file started mid-session didn't say what build, system or session it came from (user, 2026-10-23).
 - Named seam: ProgramLogFile's `open` constructor parameter (default opens the file for appending): stands in a disk that stalls or throws.
 - Named seam: ProgramLogFile's `retryDelay` constructor parameter (default 5 s): keeps the failure tests short, and makes a wait longer than the exit's bound.
@@ -3278,6 +3278,11 @@ How to keep it current:
 - Covers: Game/Quests/QuestFlagSyncManager.AlreadyCheckedToday
 - Checks: once-per-day gate.
 - Why: limits the abil sync.
+
+### QuestFlagReadoutTests.cs
+- Covers: Game/Quests/QuestFlagReadout; QuestFlagSyncManager.MarkObserved's kept reads
+- Checks: a typed `abil` reply is read; the reply shape with no `abil` sent, or past the window, is not; a Stock dump only when it names this character; the client's own read keeps its lines; a live read keeps each quest flag's value and time, a 0 included, and leaves other abilities out.
+- Why: the quest cards show each flag's latest read, whatever read it (user, 2026-11-02).
 
 ### QuestFlagSyncTests.cs
 - Covers: Game/Quests/QuestFlagProbe, QuestFlagCompletion
@@ -3417,6 +3422,11 @@ How to keep it current:
 - Covers: Game/Remote/RemoteCommandCatalog.Help
 - Checks: the `@help <command>` wording that goes out on the wire ("Syntax - Description") for the commands whose behaviour it describes, `@auto-get`'s item forms among them; every line fits one telepath.
 - Why: @help accuracy is user-visible; the game truncates long telepaths.
+
+### SelfRemoteCommandTests.cs
+- Covers: Game/Remote/SelfRemoteCommand
+- Checks: a typed `!@<command>` runs the handler with its args and the `(typed !@)` sender, with no permission check, and prints each reply in brackets; a line that isn't `!@` at the start is left for the game; an unknown command, remote commands switched off and a bare `!@` are each said so, with nothing run.
+- Why: running a remote command on your own client by typing it (user, 2026-11-02).
 
 ### RemoteCommandLocalInvokeTests.cs
 - Covers: Game/Remote/RemoteCommandManager.TryInvokeLocal
@@ -4106,8 +4116,8 @@ How to keep it current:
 
 ### StatParserTests.cs
 - Covers: Game/StatParser
-- Checks: stat-screen field capture; outbound stat/exp/health prefix gates and their windows; always-on lives / exp / CP / train lines; prompt-close and settle-close; chat-line guards; self-arm on the header; IsStatScreenLine; LastCaptureRead* flags
-- Why: reports paradigm-20260906-090057, -20260916-081052, -20260924-132158, -20260928-223148, -20260928-231447
+- Checks: stat-screen field capture, Anomaly's pairs with no space after the colon included; outbound stat/exp/health prefix gates and their windows; always-on lives / exp / CP / train lines; prompt-close and settle-close; chat-line guards; self-arm on the header; IsStatScreenLine; LastCaptureRead* flags
+- Why: reports paradigm-20260906-090057, -20260916-081052, -20260924-132158, -20260928-223148, -20260928-231447, -20261102-134506
 
 ### StatScreenMarksTests.cs
 - Covers: Game/StatParser (modified-stat marks, effect list)
