@@ -2995,6 +2995,8 @@ The ailment broadcasts `@blind` / `@confused` / `@diseased` / `@held` look like 
 
 Your client says the word once when the ailment lands, and **again when you start following a leader while it is still on you**. A held or knocked-down follower drops out of the party when the leader moves on; when the leader comes back and you follow again, your client says `@held` again and telepaths the leader `@wait (can't move)`, so a party member with a cure for holds (Settings → Spells + Ailments, the cure spells) can free you instead of the party waiting for it to wear off. The same goes for being blind, confused or diseased (and the `@wait` for poison). It follows the same rules as the first announce: nothing is said for an ailment you have your own cure set for or have told it to ignore, and nothing at all with the master switch off. The program log shows it under `Ailment`.
 
+`@held` waits a second before it is said, and isn't said at all if the hold is over by then. Some holds end in the round they land: when any yeti dies, its death spell takes every yeti's roar off the room. Telling the party about a hold that has already gone would leave it lit in their Party windows and have them cast cures at nothing. The `@wait (can't move)` to the leader still goes out at once.
+
 A member's chip clears on the first of:
 
 - the member broadcasting they're clear (`@ok`);
@@ -5997,7 +5999,7 @@ Saved with the character, like the cure spells; not part of a combat profile. Th
 ### Cure Holds / Cure poison / Cure disease / Cure blindness
 
 **Default:** unset
-**What it does:** The specific spell used to cure each named ailment. These feed the Curing priority category (self first, then party members). A party member is cured when their ailment shows: a hold, disease or blindness from their client's announcement on say (`.@held`, `.@diseased`, `.@blind`), and poison from the party screen (`par`). They are cured in that order, a hold first, as for you. A member's hold clears when they send `@ok`.
+**What it does:** The specific spell used to cure each named ailment. These feed the Curing priority category (self first, then party members). A party member is cured when their ailment shows: a hold, disease or blindness from their client's announcement on say (`.@held`, `.@diseased`, `.@blind`), and poison from the party screen (`par`). They are cured in that order, a hold first, as for you. A member's hold clears when they send `@ok`, or when a monster dies whose death spell ends that kind of hold (a yeti's death takes every roar off the room).
 
 During a fight a cure is cast between rounds like any other spell in the priority list: when the round's hits have landed and nothing ranked above Curing (a heal, by default) is due, the cure goes out.
 

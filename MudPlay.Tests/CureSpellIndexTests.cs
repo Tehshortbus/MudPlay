@@ -45,6 +45,13 @@ public sealed class CureSpellIndexTests
         => Assert.Equal(MessageFlags.Diseased,
             Cured(new[] { (122, 323) }, new HashSet<int> { 323, 445 }));
 
+    // A yeti's death spell "roar cancel" (#1368) removes the roars (#193, #1250), which
+    // carry HoldPerson: it ends the hold they put on the room.
+    [Fact]
+    public void RemovesSpell_TargetingHoldApply_CuresHold()
+        => Assert.Equal(MessageFlags.MovementPrevented,
+            CureSpellIndex.CuredFlags(new[] { (122, 193), (122, 1250) }, NoDisease, new HashSet<int> { 193, 1250 }));
+
     [Fact]
     public void RemovesSpell_TargetingNonDiseaseSpell_CuresNothing()
         => Assert.Equal(MessageFlags.None,

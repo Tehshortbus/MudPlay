@@ -1,5 +1,10 @@
 # Version history
 
+## 3.198.2
+
+- A yeti's roar ended by a yeti's death no longer leaves party members marked held, and a hold over within its round isn't announced
+- bug reports addressed: paradigm-20261103-092609
+
 ## 3.198.1
 
 - Death tab: a long corpse-handoff item list wraps instead of stretching the Workshop window off the screen

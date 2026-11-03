@@ -45,6 +45,14 @@ namespace MudPlay.Game.Conditions;
 // comes back and we follow again, nobody in the party knows we are held unless we
 // say so, and they sit out a hold a cure would end (report
 // paradigm-20261014-214037).
+//
+// The '.@held' say waits HoldSettle before it goes out, and goes out only if the
+// hold is still on. Some holds end in the round they land: a yeti's roar is
+// cancelled by any yeti's death spell, which prints nothing the rest of the party
+// can see, and with no 'off' and our @ok held back by another wait reason their
+// chips stayed lit and they spent cures on a hold that was already over (report
+// paradigm-20261103-092609). The @wait is not delayed: a held follower can't move,
+// so the leader must stop at once, and an @ok balances it the moment the hold ends.
 public sealed class AilmentSyncEngine : IDisposable
 {
     // LogService category — appears as [Ailment] rows.
@@ -67,14 +75,21 @@ public sealed class AilmentSyncEngine : IDisposable
         (MessageFlags.MovementPrevented, "@held", WaitReason.Held, true),
     };
 
+    // Long enough for the rest of the round a hold landed in to arrive, the death
+    // that cancels it among them; short against the five-second round a party
+    // member needs before they could cast a cure anyway.
+    public static readonly TimeSpan HoldSettle = TimeSpan.FromSeconds(1);
+
     private readonly ConditionTracker _conditions;
     private readonly PartyRestSync _restSync;
     private readonly Func<SpellsSettings> _readSpells;
     private readonly Func<bool> _isInParty;
     private readonly Func<MessageFlags, bool> _hasCureConfigured;
     private readonly LogService? _log;
+    private readonly Func<TimeSpan, Action, IDisposable> _schedule;
 
     private MessageFlags _lastFlags;
+    private IDisposable? _heldSay;
     private Action<byte[]>? _wireSender;
     private bool _disposed;
 
@@ -84,7 +99,8 @@ public sealed class AilmentSyncEngine : IDisposable
         Func<SpellsSettings> readSpells,
         Func<bool> isInParty,
         Func<MessageFlags, bool> hasCureConfigured,
-        LogService? log = null)
+        LogService? log = null,
+        Func<TimeSpan, Action, IDisposable>? schedule = null)
     {
         ArgumentNullException.ThrowIfNull(conditions);
         ArgumentNullException.ThrowIfNull(restSync);
@@ -97,6 +113,7 @@ public sealed class AilmentSyncEngine : IDisposable
         _isInParty = isInParty;
         _hasCureConfigured = hasCureConfigured;
         _log = log;
+        _schedule = schedule ?? DispatcherTicks.Once;
 
         _lastFlags = conditions.ActiveFlags;
         _conditions.PropertyChanged += OnConditionsChanged;
@@ -133,7 +150,11 @@ public sealed class AilmentSyncEngine : IDisposable
                 // spell-data duration timing out, the par `P` flag (poison), or a
                 // @status reconcile (PartyAilmentTracker) — never an 'off' say.
                 // Non-verbose ailments (poison) never say anything — par carries them.
-                if (verbose && ShouldAnnounce(flag, spells, inParty)) Say(token);
+                if (verbose && ShouldAnnounce(flag, spells, inParty))
+                {
+                    if (flag == MessageFlags.MovementPrevented) SayHeldOnceSettled();
+                    else Say(token);
+                }
 
                 // Telepath @wait unless this ailment's Ignore<X> gate suppresses it.
                 // Held has no gate (never suppressible) but still @waits like the
@@ -147,6 +168,11 @@ public sealed class AilmentSyncEngine : IDisposable
                 // No say on clear — MegaMUD sends no 'off'. Only the @ok telepath goes
                 // out, releasing the leader's wait. RequestOk is a no-op when no
                 // matching reason is held, so calling it unconditionally is safe.
+                if (flag == MessageFlags.MovementPrevented && _heldSay is not null)
+                {
+                    CancelHeldSay();
+                    _log?.Info(LogCategory, "hold ended before the party was told — '@held' not said");
+                }
                 _restSync.RequestOk(reason);
             }
         }
@@ -175,6 +201,7 @@ public sealed class AilmentSyncEngine : IDisposable
             else wait ??= reason;
             if (verbose && ShouldAnnounce(flag, spells, inParty))
             {
+                if (flag == MessageFlags.MovementPrevented) CancelHeldSay();
                 Say(token);
                 (said ??= new()).Add(token);
             }
@@ -186,6 +213,9 @@ public sealed class AilmentSyncEngine : IDisposable
         LastFollowAnnounce = $"{DateTime.Now:HH:mm:ss} on following {leader}: {what}";
         _log?.Info(LogCategory, $"following {leader} while still afflicted — {what}");
     }
+
+    // Whether a '.@held' is waiting out HoldSettle, for the bug report.
+    public bool HeldSayPending => _heldSay is not null;
 
     // The last follow that told the leader of an ailment again, for the bug report.
     public string? LastFollowAnnounce { get; private set; }
@@ -239,6 +269,25 @@ public sealed class AilmentSyncEngine : IDisposable
         _ => false,
     };
 
+    private void SayHeldOnceSettled()
+    {
+        if (_heldSay is not null) return;
+        _heldSay = _schedule(HoldSettle, () =>
+        {
+            _heldSay = null;
+            // The hold ending cancels this; the say's gates are asked again, as we
+            // may have left the party within the second.
+            if (_disposed || !ShouldAnnounce(MessageFlags.MovementPrevented, _readSpells(), _isInParty())) return;
+            Say("@held");
+        });
+    }
+
+    private void CancelHeldSay()
+    {
+        _heldSay?.Dispose();
+        _heldSay = null;
+    }
+
     private void Say(string token)
     {
         if (_wireSender is null) return;
@@ -253,6 +302,7 @@ public sealed class AilmentSyncEngine : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        CancelHeldSay();
         _conditions.PropertyChanged -= OnConditionsChanged;
     }
 }

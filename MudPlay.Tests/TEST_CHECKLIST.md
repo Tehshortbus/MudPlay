@@ -40,8 +40,8 @@ How to keep it current:
 
 ### AilmentSyncEngineTests.cs
 - Covers: Game/Conditions/AilmentSyncEngine (with ConditionTracker, PartyRestSync)
-- Checks: a bare `.@blind` / `.@held` say on apply and never an `off`; poison telepaths @wait without a say. Ignore<X> suppresses both say and wait, and a configured cure suppresses only the say. One @wait / @ok pair is held across several ailments. ReevaluateWaits reconciles when an Ignore is toggled. The say and wait are given again on re-following a leader.
-- Why: MegaMUD parity; reports `paradigm-20260820-122200`, `paradigm-20260820-153540`, `paradigm-20261014-214037`.
+- Checks: a bare `.@blind` / `.@held` say on apply and never an `off`; poison telepaths @wait without a say. Ignore<X> suppresses both say and wait, and a configured cure suppresses only the say. One @wait / @ok pair is held across several ailments. ReevaluateWaits reconciles when an Ignore is toggled. The say and wait are given again on re-following a leader, and the follow's say stands in for an apply's still settling. `.@held` waits HoldSettle and is never said for a hold that ended in the meantime or once we've left the party; its @wait goes at once.
+- Why: MegaMUD parity; reports `paradigm-20260820-122200`, `paradigm-20260820-153540`, `paradigm-20261014-214037`, `paradigm-20261103-092609` (a yeti's roar cancelled in its own round).
 
 ### AliasEngineTests.cs
 - Covers: Services/AliasEngine
@@ -941,8 +941,8 @@ How to keep it current:
 
 ### CureSpellIndexTests.cs
 - Covers: Game/GameData/CureSpellIndex.CuredFlags.
-- Checks: ability code → cured ailment (CurePoison, Freedom, DispellMagic, RemovesSpell on disease).
-- Why: cure-spell selection.
+- Checks: ability code → cured ailment (CurePoison, Freedom, DispellMagic, RemovesSpell on disease, RemovesSpell on a hold-carrying spell).
+- Why: cure-spell selection; a yeti's death spell `roar cancel` ending the roar's hold (report `paradigm-20261103-092609`).
 
 ### CurrencyFormatTests.cs
 - Covers: Game/Cash/CurrencyFormat.
@@ -2874,8 +2874,8 @@ How to keep it current:
 
 ### PartyAilmentTrackerTests.cs
 - Covers: Game/Conditions/PartyAilmentTracker
-- Checks: Ailment chips set by @announce or @status; cleared by a witnessed cure; witnessed apply and duration; held pauses; a member's token use (negate magic) clears every chip but the par-owned poison, and a stranger's touches and logs nothing.
-- Why: Party ailment sync; the user's ruling of 2026-10-23 (negate magic ends every spell on its user).
+- Checks: Ailment chips set by @announce or @status; cleared by a witnessed cure; witnessed apply and duration; held pauses; a member's token use (negate magic) clears every chip but the par-owned poison, and a stranger's touches and logs nothing; a death spell clears the ailment it ends on every member and leaves the rest.
+- Why: Party ailment sync; the user's ruling of 2026-10-23 (negate magic ends every spell on its user); report `paradigm-20261103-092609` (a yeti's death ends the roar's hold).
 
 ### PartyBroadcasterTests.cs
 - Covers: Game/Remote/PartyBroadcaster

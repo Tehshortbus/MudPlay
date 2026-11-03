@@ -14,7 +14,9 @@ namespace MudPlay.Game.GameData;
 //
 // Cure encoding, verified against real stock + paradigm Spells data:
 //   poison  — CurePoison(20), or DispellMagic(73) targeting the Poison apply code (19)
-//   hold    — Freedom(81), or DispellMagic(73) targeting HoldPerson(74)/Paralyze(75)
+//   hold    — Freedom(81), DispellMagic(73) targeting HoldPerson(74)/Paralyze(75), or
+//             RemovesSpell(122) targeting a spell that carries one of those two: a
+//             yeti's death spell "roar cancel" removes its kind's roars this way
 //   blind   — DispellMagic(73) targeting BlindingLight(53)/BlindUser(107)
 //   disease — RemovesSpell(122) targeting a spell that APPLIES disease. Disease has
 //             no ability code of its own, so the disease-apply set is supplied by the
@@ -63,6 +65,14 @@ public sealed class CureSpellIndex
     // Every cure spell in the active set (empty when no set / no cures).
     public IReadOnlyList<CureSpell> AllCures() => Map();
 
+    // The ailments a spell's cast removes, None for a spell that cures nothing.
+    public MessageFlags CuresOf(int spellNumber)
+    {
+        foreach (CureSpell cure in Map())
+            if (cure.Number == spellNumber) return cure.Cures;
+        return MessageFlags.None;
+    }
+
     // Drop the cache so the next read rebuilds — call when the Messages catalogue
     // (the disease-apply source) changes within a session.
     public void Invalidate() => _cures = null;
@@ -81,6 +91,8 @@ public sealed class CureSpellIndex
         List<CureSpell> result = new();
         GameTable? doc = cache.GetTable("Spells");
         if (doc is null) return result;
+        List<(int Number, string Name, List<(int Code, int Val)> Codes)> spells = new();
+        HashSet<int> holdApply = new();
         foreach (GameRow row in doc.Rows)
         {
             int num = ReadInt(row, "Number");
@@ -91,9 +103,14 @@ public sealed class CureSpellIndex
                 int c = ReadInt(row, $"Abil-{i}");
                 if (c != 0) codes.Add((c, ReadInt(row, $"AbilVal-{i}")));
             }
-            MessageFlags cured = CuredFlags(codes, diseaseApply);
+            if (codes.Exists(static a => a.Code is HoldPerson or Paralyze)) holdApply.Add(num);
+            spells.Add((num, ReadString(row, "Name"), codes));
+        }
+        foreach ((int num, string name, List<(int Code, int Val)> codes) in spells)
+        {
+            MessageFlags cured = CuredFlags(codes, diseaseApply, holdApply);
             if (cured != MessageFlags.None)
-                result.Add(new CureSpell(num, ReadString(row, "Name"), cured));
+                result.Add(new CureSpell(num, name, cured));
         }
         return result;
     }
@@ -101,7 +118,8 @@ public sealed class CureSpellIndex
     // Pure map from a spell's ability (code, value) pairs to the ailment flags it
     // cures — the testable core.
     public static MessageFlags CuredFlags(
-        IReadOnlyList<(int Code, int Val)> abilities, IReadOnlySet<int> diseaseApplyNumbers)
+        IReadOnlyList<(int Code, int Val)> abilities, IReadOnlySet<int> diseaseApplyNumbers,
+        IReadOnlySet<int>? holdApplyNumbers = null)
     {
         MessageFlags cured = MessageFlags.None;
         foreach ((int code, int val) in abilities)
@@ -117,6 +135,7 @@ public sealed class CureSpellIndex
                     break;
                 case RemovesSpell:
                     if (val > 0 && diseaseApplyNumbers.Contains(val)) cured |= MessageFlags.Diseased;
+                    if (val > 0 && holdApplyNumbers?.Contains(val) == true) cured |= MessageFlags.MovementPrevented;
                     break;
             }
         }
