@@ -1,5 +1,10 @@
 # Version history
 
+## 3.197.1
+
+- A weapon proc the monster resists no longer makes the client give up the fight, and moving resumes right after the kill
+- bug reports addressed: paradigm-20261102-183246
+
 ## 3.197.0
 
 - Typing `!@<command>` runs a remote command on your own client and prints its replies in brackets

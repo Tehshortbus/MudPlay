@@ -2499,9 +2499,16 @@ public sealed partial class CombatManager
         // (report paradigm-20260809-131642: priest `harm` as the attack command vs an
         // acid slime never dropped to `attack`). Spell mode leaves _castingSpellTarget
         // set, so this branch never eats a spell-cascade line.
+        //
+        // Only a spell in the command slot draws the line here. A weapon whose hit
+        // casts a spell the monster can't take prints it after an ordinary swing
+        // (report paradigm-20261102-183246: `rime worm's life is drained for 3
+        // damage!` then `Your spell has no effect on rime worm.` under `a`); read as
+        // the command's, every such swing gave up the monster it was killing.
         if (_castingSpellTarget is null)
         {
-            if (_lastCastAction is null && _currentTarget is not null)
+            if (_lastCastAction is null && _currentTarget is not null
+                && SpellCommandCode(_lastAttackCommand) is not null)
             {
                 _immunityHandledThisRound = true;
                 FallBackToAlternateCommandOnImmunity();
