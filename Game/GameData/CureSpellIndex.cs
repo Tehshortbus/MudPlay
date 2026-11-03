@@ -14,10 +14,13 @@ namespace MudPlay.Game.GameData;
 //
 // Cure encoding, verified against real stock + paradigm Spells data:
 //   poison  — CurePoison(20), or DispellMagic(73) targeting the Poison apply code (19)
-//   hold    — Freedom(81), DispellMagic(73) targeting HoldPerson(74)/Paralyze(75), or
-//             RemovesSpell(122) targeting a spell that carries one of those two: a
-//             yeti's death spell "roar cancel" removes its kind's roars this way
+//   hold    — Freedom(81), or DispellMagic(73) targeting HoldPerson(74)/Paralyze(75)
 //   blind   — DispellMagic(73) targeting BlindingLight(53)/BlindUser(107)
+//   any of hold / blind / confusion — RemovesSpell(122) targeting a spell whose own
+//             codes apply it (HoldPerson / Paralyze, BlindingLight / BlindUser,
+//             Confusion(71)). Monsters' death spells end what they cast this way: a
+//             yeti's "roar cancel" its kind's roars, a darken beast's "dissipate" its
+//             blindness, an ancestral guardian's "AG Cancel" its confusion
 //   disease — RemovesSpell(122) targeting a spell that APPLIES disease. Disease has
 //             no ability code of its own, so the disease-apply set is supplied by the
 //             caller — the Messages catalogue's Diseased-flagged spells, the same
@@ -41,6 +44,7 @@ public sealed class CureSpellIndex
     private const int Freedom = 81;
     private const int BlindingLight = 53;
     private const int BlindUser = 107;
+    private const int Confusion = 71;
     private const int PoisonApply = 19;
     private const int RemovesSpell = 122;
 
@@ -92,7 +96,7 @@ public sealed class CureSpellIndex
         GameTable? doc = cache.GetTable("Spells");
         if (doc is null) return result;
         List<(int Number, string Name, List<(int Code, int Val)> Codes)> spells = new();
-        HashSet<int> holdApply = new();
+        Dictionary<int, MessageFlags> applies = new();
         foreach (GameRow row in doc.Rows)
         {
             int num = ReadInt(row, "Number");
@@ -103,12 +107,12 @@ public sealed class CureSpellIndex
                 int c = ReadInt(row, $"Abil-{i}");
                 if (c != 0) codes.Add((c, ReadInt(row, $"AbilVal-{i}")));
             }
-            if (codes.Exists(static a => a.Code is HoldPerson or Paralyze)) holdApply.Add(num);
+            if (AppliedFlags(codes) is var applied and not MessageFlags.None) applies[num] = applied;
             spells.Add((num, ReadString(row, "Name"), codes));
         }
         foreach ((int num, string name, List<(int Code, int Val)> codes) in spells)
         {
-            MessageFlags cured = CuredFlags(codes, diseaseApply, holdApply);
+            MessageFlags cured = CuredFlags(codes, diseaseApply, applies);
             if (cured != MessageFlags.None)
                 result.Add(new CureSpell(num, name, cured));
         }
@@ -119,7 +123,7 @@ public sealed class CureSpellIndex
     // cures — the testable core.
     public static MessageFlags CuredFlags(
         IReadOnlyList<(int Code, int Val)> abilities, IReadOnlySet<int> diseaseApplyNumbers,
-        IReadOnlySet<int>? holdApplyNumbers = null)
+        IReadOnlyDictionary<int, MessageFlags>? appliedBySpell = null)
     {
         MessageFlags cured = MessageFlags.None;
         foreach ((int code, int val) in abilities)
@@ -135,11 +139,26 @@ public sealed class CureSpellIndex
                     break;
                 case RemovesSpell:
                     if (val > 0 && diseaseApplyNumbers.Contains(val)) cured |= MessageFlags.Diseased;
-                    if (val > 0 && holdApplyNumbers?.Contains(val) == true) cured |= MessageFlags.MovementPrevented;
+                    if (val > 0 && appliedBySpell?.TryGetValue(val, out MessageFlags applied) == true) cured |= applied;
                     break;
             }
         }
         return cured;
+    }
+
+    // The ailments a spell's own codes put on its target, for a RemovesSpell aimed at it.
+    public static MessageFlags AppliedFlags(IReadOnlyList<(int Code, int Val)> abilities)
+    {
+        MessageFlags applied = MessageFlags.None;
+        foreach ((int code, _) in abilities)
+            applied |= code switch
+            {
+                HoldPerson or Paralyze => MessageFlags.MovementPrevented,
+                BlindingLight or BlindUser => MessageFlags.Blinded,
+                Confusion => MessageFlags.Confused,
+                _ => MessageFlags.None,
+            };
+        return applied;
     }
 
     private static int ReadInt(GameRow row, string prop)

@@ -5999,7 +5999,7 @@ Saved with the character, like the cure spells; not part of a combat profile. Th
 ### Cure Holds / Cure poison / Cure disease / Cure blindness
 
 **Default:** unset
-**What it does:** The specific spell used to cure each named ailment. These feed the Curing priority category (self first, then party members). A party member is cured when their ailment shows: a hold, disease or blindness from their client's announcement on say (`.@held`, `.@diseased`, `.@blind`), and poison from the party screen (`par`). They are cured in that order, a hold first, as for you. A member's hold clears when they send `@ok`, or when a monster dies whose death spell ends that kind of hold (a yeti's death takes every roar off the room).
+**What it does:** The specific spell used to cure each named ailment. These feed the Curing priority category (self first, then party members). A party member is cured when their ailment shows: a hold, disease or blindness from their client's announcement on say (`.@held`, `.@diseased`, `.@blind`), and poison from the party screen (`par`). They are cured in that order, a hold first, as for you. A member's hold clears when they send `@ok`. A hold, blindness or confusion also clears when a monster dies whose death spell ends it: a yeti's death takes every roar off the room, and a darken beast's ends its blind globe.
 
 During a fight a cure is cast between rounds like any other spell in the priority list: when the round's hits have landed and nothing ranked above Curing (a heal, by default) is due, the cure goes out.
 

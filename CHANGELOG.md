@@ -1,8 +1,9 @@
 # Version history
 
-## 3.198.2
+## 3.198.3
 
-- A yeti's roar ended by a yeti's death no longer leaves party members marked held, and a hold over within its round isn't announced
+- A monster whose death ends the hold, blindness or confusion it cast (a yeti's roar, a darken beast's blind globe) no longer leaves party members marked with it
+- A hold that's over within its round isn't announced to the party
 - bug reports addressed: paradigm-20261103-092609
 
 ## 3.198.1

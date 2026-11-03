@@ -941,8 +941,8 @@ How to keep it current:
 
 ### CureSpellIndexTests.cs
 - Covers: Game/GameData/CureSpellIndex.CuredFlags.
-- Checks: ability code → cured ailment (CurePoison, Freedom, DispellMagic, RemovesSpell on disease, RemovesSpell on a hold-carrying spell).
-- Why: cure-spell selection; a yeti's death spell `roar cancel` ending the roar's hold (report `paradigm-20261103-092609`).
+- Checks: ability code → cured ailment (CurePoison, Freedom, DispellMagic, RemovesSpell on disease, RemovesSpell on a spell whose own codes hold, blind or confuse, a spell that does two ending both).
+- Why: cure-spell selection; monsters' death spells ending what they cast, a yeti's `roar cancel` first (report `paradigm-20261103-092609`).
 
 ### CurrencyFormatTests.cs
 - Covers: Game/Cash/CurrencyFormat.
@@ -2874,7 +2874,7 @@ How to keep it current:
 
 ### PartyAilmentTrackerTests.cs
 - Covers: Game/Conditions/PartyAilmentTracker
-- Checks: Ailment chips set by @announce or @status; cleared by a witnessed cure; witnessed apply and duration; held pauses; a member's token use (negate magic) clears every chip but the par-owned poison, and a stranger's touches and logs nothing; a death spell clears the ailment it ends on every member and leaves the rest.
+- Checks: Ailment chips set by @announce or @status; cleared by a witnessed cure; witnessed apply and duration; held pauses; a member's token use (negate magic) clears every chip but the par-owned poison, and a stranger's touches and logs nothing; a death spell clears the ailments it ends (hold, blindness, confusion) on every member and leaves the rest.
 - Why: Party ailment sync; the user's ruling of 2026-10-23 (negate magic ends every spell on its user); report `paradigm-20261103-092609` (a yeti's death ends the roar's hold).
 
 ### PartyBroadcasterTests.cs

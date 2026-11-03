@@ -150,6 +150,24 @@ public sealed class PartyAilmentTrackerTests
         Assert.True(travish.Blinded);
     }
 
+    // A darken beast's "dissipate" ends the blindness it cast, an ancestral
+    // guardian's "AG Cancel" the confusion.
+    [Fact]
+    public void ClearOnDeathSpell_EndsBlindnessAndConfusion()
+    {
+        using Harness h = new();
+        PartyMember mage = h.AddMember("Mage");
+        h.Say(@"Mage says ""@blind""");
+        h.Say(@"Mage says ""@confused""");
+        h.Say(@"Mage says ""@held""");
+
+        h.Tracker.ClearOnDeathSpell(MessageFlags.Blinded | MessageFlags.Confused, "darken beast's death spell 'dissipate'");
+
+        Assert.False(mage.Blinded);
+        Assert.False(mage.Confused);
+        Assert.True(mage.Held);
+    }
+
     [Fact]
     public void InboundBlind_SetsMemberChip()
     {
