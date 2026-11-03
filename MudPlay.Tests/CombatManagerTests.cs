@@ -3172,6 +3172,30 @@ public sealed class CombatManagerTests
         Assert.True(h.CrRefreshSends >= 1);
     }
 
+    // Report paradigm-20261102-183246: a proc on the hit (here a class buff's drain)
+    // the monster can't take prints the spell's "no effect" line after a plain swing.
+    // The swing went on hitting, so the target is kept and nothing is re-sent.
+    [Fact]
+    public void WeaponProcNoEffect_UnderASwing_KeepsTheTarget()
+    {
+        using Harness h = new();
+        h.Settings.NormalAttackCommand = "a";
+        h.Settings.AlternateAttackCommand = "a";
+        h.AddMonster(1, "rime worm");
+        h.Feed("Also here: rime worm.");
+        Assert.Equal("a rime worm", h.LastSent);
+        h.Sent.Clear();
+
+        h.Feed("You slash rime worm for 61 damage!");
+        h.Feed("rime worm's life is drained for 3 damage!");
+        h.Feed("Your spell has no effect on rime worm.");
+
+        Assert.Equal("rime worm", h.Combat.CurrentTarget);
+        Assert.Empty(h.Sent);
+        Assert.Equal(0, h.CrRefreshSends);
+        Assert.True(h.Combat.CanEngageMonster(1));
+    }
+
     [Fact]
     public void PhysicalOverride_ReplacesConfiguredCommand_OnPhysicalRound()
     {
