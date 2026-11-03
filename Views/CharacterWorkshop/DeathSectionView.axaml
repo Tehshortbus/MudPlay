@@ -27,7 +27,11 @@
         </Style>
     </UserControl.Styles>
 
-    <Grid Margin="22" RowDefinitions="Auto,Auto,*,Auto,Auto">
+    <!-- MaxWidth keeps the tab from forcing the workshop window ultra-wide: the
+         window sizes to its tab's width, so without a cap the wrapping handoff and
+         detail text measure at infinite width and stretch to one line. 860 is the
+         deathpile grid's own width. -->
+    <Grid Margin="22" MaxWidth="860" RowDefinitions="Auto,Auto,*,Auto,Auto">
 
         <!-- Header: recovery toggles (current lives live on the Character Info tab). -->
         <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,8">
@@ -117,6 +121,7 @@
                 <ListBox ItemsSource="{Binding Handoffs}"
                          SelectedItem="{Binding SelectedHandoff, Mode=TwoWay}"
                          MaxHeight="120"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                          Background="{StaticResource ChromeBgSunkenBrush}">
                     <ListBox.ItemTemplate>
                         <DataTemplate DataType="profile:CorpseHandoffRecord">

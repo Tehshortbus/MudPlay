@@ -1,9 +1,8 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.198.0**
-> - Combat tab: an Undead spell slot, cast at undead monsters in place of the normal and alternate attack spells
-> - Quest Status cards: name, then the flag as last read, then a Quest Flags button opening that flag's steps
+> **Version 3.198.1**
+> - Death tab: a long corpse-handoff item list wraps instead of stretching the Workshop window off the screen
 <!-- current-version:end -->
 
 A modern Telnet terminal client for **MajorMUD** and other BBS door games, built in C# / .NET 10 with [Avalonia](https://avaloniaui.net/). It renders a faithful CP437 cell grid with full VT100/ANSI parsing, and layers a MegaMUD-style automation suite (combat, party, navigation, healing, and more) on top — all in modeless, dockable windows so the terminal stays live while you configure anything.
