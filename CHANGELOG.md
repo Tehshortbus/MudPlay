@@ -1,5 +1,9 @@
 # Version history
 
+## 3.198.1
+
+- Death tab: a long corpse-handoff item list wraps instead of stretching the Workshop window off the screen
+
 ## 3.198.0
 
 - Combat tab: an Undead spell slot, cast at undead monsters in place of the normal and alternate attack spells
