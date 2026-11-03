@@ -132,6 +132,11 @@
                                             <TextBlock Classes="FieldLabel"
                                                        VerticalAlignment="Center"
                                                        Text="{Binding RequiredLevelText}"/>
+                                            <TextBlock Classes="FieldLabel"
+                                                       VerticalAlignment="Center"
+                                                       IsVisible="{Binding HasFlagRead}"
+                                                       Text="{Binding FlagReadText}"
+                                                       ToolTip.Tip="{Binding FlagReadTip}"/>
                                             <!-- Hard eligibility flag: the character's class/race
                                                  is excluded from this quest (hover shows what it
                                                  requires). Open quests / unknown class/race omit it. -->

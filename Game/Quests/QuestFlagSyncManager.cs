@@ -33,6 +33,7 @@ public sealed class QuestFlagSyncManager
     private readonly Action _reannounce;
     private readonly Func<IReadOnlyList<QuestAvailabilityInfo>> _availableQuests;
     private readonly LogService? _log;
+    private readonly Func<DateTimeOffset> _now;
     private bool _running;
 
     // Raised after a sync that marked at least one quest complete, so an open Quest tab
@@ -46,7 +47,8 @@ public sealed class QuestFlagSyncManager
         GameDataCache gameData, ProfileService profile, QuestStore quests, QuestFlagProbe probe,
         Func<RealmType> realm, Func<bool> hasSysopPowers, Func<string?> characterName,
         Func<int?> classId, Func<bool> enabled, Func<bool> isInRealm, Action reannounce,
-        Func<IReadOnlyList<QuestAvailabilityInfo>> availableQuests, LogService? log = null)
+        Func<IReadOnlyList<QuestAvailabilityInfo>> availableQuests, LogService? log = null,
+        Func<DateTimeOffset>? now = null)
     {
         ArgumentNullException.ThrowIfNull(gameData);
         ArgumentNullException.ThrowIfNull(profile);
@@ -73,6 +75,7 @@ public sealed class QuestFlagSyncManager
         _reannounce = reannounce;
         _availableQuests = availableQuests;
         _log = log;
+        _now = now ?? (static () => DateTimeOffset.Now);
     }
 
     // Whether the active character has opted into the login sync (Settings → General).
@@ -160,12 +163,12 @@ public sealed class QuestFlagSyncManager
             return 0;
         }
 
-        int progressed = RecordFlagValues(prof, observed);
+        int progressed = RecordFlagValues(prof, observed, out bool readsRecorded);
         IReadOnlyList<QuestFlagCompletion.QuestKey> newly =
             QuestFlagCompletion.ResolveNewlyComplete(targets, observed, alreadyComplete);
         if (newly.Count == 0)
         {
-            if (progressed > 0) { _profile.Save(); Synced?.Invoke(); }
+            if (progressed > 0 || readsRecorded) { _profile.Save(); Synced?.Invoke(); }
             LastResult = $"{observed.Count} flag(s) read, nothing newly complete";
             _log?.Info("QuestFlags", $"sync: {LastResult}");
             StampCheckedToday(prof);
@@ -208,10 +211,10 @@ public sealed class QuestFlagSyncManager
             if (await ReadFlagsAsync(flags, ct).ConfigureAwait(true) is not { } observed)
                 return new(UpdateOutcome.NoAccess, 0, []);
 
-            int progressed = RecordFlagValues(prof, observed);
+            int progressed = RecordFlagValues(prof, observed, out bool readsRecorded);
             IReadOnlyList<QuestFlagCompletion.QuestKey> newly =
                 QuestFlagCompletion.ResolveNewlyComplete(targets, observed, alreadyComplete);
-            Mark(prof, newly, "@quest update", progressed);
+            Mark(prof, newly, "@quest update", progressed, readsRecorded);
             LastResult = $"@quest update: {observed.Count} flag(s) read, {newly.Count} quest(s) marked complete, "
                 + $"{progressed} in progress advanced";
             return new(UpdateOutcome.Done, observed.Count, newly, progressed);
@@ -219,8 +222,8 @@ public sealed class QuestFlagSyncManager
         finally { _running = false; }
     }
 
-    // A live flag read made elsewhere (the @quest <name|flag> reply) — mark what it
-    // proves. Every crawled quest of this character's class on a read flag counts, not
+    // A live flag read made elsewhere (the @quest <name|flag> reply, an `abil` the
+    // user typed: QuestFlagReadout) — mark what it proves. Every crawled quest of this character's class on a read flag counts, not
     // just level-eligible ones: a flag at a band's complete value means that band is
     // done, whatever our level says. One-way like the sync.
     public IReadOnlyList<QuestFlagCompletion.QuestKey> MarkObserved(IReadOnlyDictionary<int, int> observed)
@@ -231,17 +234,17 @@ public sealed class QuestFlagSyncManager
             .Where(q => observed.ContainsKey(q.Flag))
             .Select(ToTarget)
             .ToList();
-        int progressed = RecordFlagValues(prof, observed);
+        int progressed = RecordFlagValues(prof, observed, out bool readsRecorded);
         IReadOnlyList<QuestFlagCompletion.QuestKey> newly =
             QuestFlagCompletion.ResolveNewlyComplete(targets, observed, BuildAlreadyComplete(prof.QuestLog));
-        Mark(prof, newly, "@quest", progressed);
+        Mark(prof, newly, "a live flag read", progressed, readsRecorded);
         return newly;
     }
 
     private void Mark(CharacterProfile prof, IReadOnlyList<QuestFlagCompletion.QuestKey> newly, string source,
-        int progressed = 0)
+        int progressed, bool readsRecorded)
     {
-        if (newly.Count == 0 && progressed == 0) return;
+        if (newly.Count == 0 && progressed == 0 && !readsRecorded) return;
         if (newly.Count > 0) ApplyComplete(prof, newly);
         _profile.Save();
         if (newly.Count > 0)
@@ -254,8 +257,11 @@ public sealed class QuestFlagSyncManager
     // (or band) the read has reached (QuestFlagCompletion.ResolveProgress). Returns how
     // many rows' recorded value changed. Unlike completion this isn't one-way: the latest
     // read is the truth about where the character is.
-    private int RecordFlagValues(CharacterProfile prof, IReadOnlyDictionary<int, int> observed)
+    // readsRecorded: the read of some quest's flag was kept in QuestFlagReads, its value
+    // and time, for the quest card to show (a read of 0 included).
+    private int RecordFlagValues(CharacterProfile prof, IReadOnlyDictionary<int, int> observed, out bool readsRecorded)
     {
+        readsRecorded = RecordReads(prof, observed);
         List<QuestProgress> log = prof.QuestLog is { } existing
             ? new List<QuestProgress>(existing)
             : new List<QuestProgress>();
@@ -282,6 +288,24 @@ public sealed class QuestFlagSyncManager
                 + string.Join(", ", observed.Where(kv => kv.Value > 0).Select(kv => $"{kv.Key}={kv.Value}")));
         }
         return changed;
+    }
+
+    // Keep each read flag that belongs to a quest, crawled or added by hand: other
+    // abilities (`AC(2)`, a Stock dump's every slot) have no card to show them on.
+    private bool RecordReads(CharacterProfile prof, IReadOnlyDictionary<int, int> observed)
+    {
+        HashSet<int> questFlags = QuestCrawler.Crawl(_gameData, _classId()).Select(q => q.Flag)
+            .Concat(_quests.ManualQuests().Select(d => d.Flag))
+            .ToHashSet();
+        DateTimeOffset at = _now();
+        bool any = false;
+        foreach ((int flag, int value) in observed)
+        {
+            if (!questFlags.Contains(flag)) continue;
+            (prof.QuestFlagReads ??= new())[flag] = new QuestFlagRead { Value = value, At = at };
+            any = true;
+        }
+        return any;
     }
 
     // Only quests this character can actually complete at its current level — the same

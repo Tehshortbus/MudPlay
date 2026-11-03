@@ -1386,6 +1386,7 @@ public partial class MainWindowViewModel : ObservableObject
         AppServices.Current.QuestFlagReader.AttachLineExtractor(Lines);
         // The @quest command's dedicated on-demand reader shares the same reply shapes.
         AppServices.Current.QuestQueryReader.AttachLineExtractor(Lines);
+        AppServices.Current.QuestFlagReadout.AttachLineExtractor(Lines);
         // Let a replaced / re-imported user emote image drop its cached bitmap.
         AppServices.Current.Emotes.ConversationImageInvalidate = Views.ConversationMessageInlines.InvalidateEmoteImage;
         // Token charge tracker — parses each held token's `look` "Uses remaining: N"
@@ -4105,6 +4106,7 @@ public partial class MainWindowViewModel : ObservableObject
         bool typedInConversation = _conversationLine && _userLineOrigin == SentCommandTrail.Origin.Window
             && !sendGate.SendingClientCommand && sendGate.CurrentSender is null;
         AppServices.Current.CorpseHandoff.ObserveOutbound(data, usersOwn: typedAtTerminal || typedInConversation);
+        AppServices.Current.QuestFlagReadout.ObserveOutbound(data);
         // Stat-screen parser — gates on outbound `stat` so chat lines
         // containing "Strength: 60" or similar can't bleed into the
         // PlayerStats snapshot.
@@ -4434,6 +4436,8 @@ public partial class MainWindowViewModel : ObservableObject
 
     private void SendOneUserLine(string text, SentCommandTrail.Origin origin)
     {
+        // `!@<command>` runs the remote command here and sends nothing.
+        if (AppServices.Current.SelfRemoteCommand.TryHandleTypedLine(text)) return;
         // Alias check first — first-word match, case-insensitive. When
         // an enabled alias's name matches, the engine returns the
         // multi-step expansion + we send each step in place of the raw

@@ -9553,6 +9553,7 @@ How MajorMUD quests are structured in the game data (kill steps, NPC dialogue st
   - The login quest-completion sync (`QuestFlagSyncManager`, opt-in via `GeneralSettings.AutoSyncQuestFlagsOnLogin`) reads these values before the availability announce and marks `QuestProgress.Complete` for any quest whose flag has reached its effective complete value (the per-quest `QuestDefinition.CompleteValueOverride` if set, else the crawl's). Strictly one-way — never clears.
   - The `@quest <name|flag>` remote reply marks the same way from its live read (every crawled band on a read flag, not just level-eligible ones — the flag value proves it).
   - `@quest update` runs the sync's read-and-mark on demand (no daily gate, no opt-in).
+  - **Any other read** (user request, 2026-11-02): an `abil` / `abil <flag>` the user sends, or a `sys god <name> abil` naming this character, arms `QuestFlagReadout` for 5 s, and the reply's values are a live read like `@quest`'s (`QuestFlagSyncManager.MarkObserved`). While the client's own sync or `@quest` read is collecting, its reader keeps the lines. Every read of a quest's flag, a value of 0 included, is kept as `CharacterProfile.QuestFlagReads` (value and time) and shown on the Quest Status card.
 
 ### Quest stat rewards — `giveability` vs `addability`
 *Status: Stock [OBSERVED] `wccmmud.dll` 1.11p (textblock `giveability` / `addability` / `removeability`), CONFIRMED to follow 2026-09-27 (user); Paradigm CONFIRMED 2026-09-27 (user) · Realm: differs*

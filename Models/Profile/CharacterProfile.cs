@@ -457,6 +457,11 @@ public sealed class CharacterProfile
     // null = never synced (so the next eligible login runs it).
     public System.DateOnly? LastQuestFlagSyncDate { get; set; }
 
+    // Each quest flag's value at its last read, keyed by flag: whatever read it (the
+    // login sync, `@quest`, or an `abil` the user typed), and including a read of 0,
+    // which QuestLog's per-band FlagValue never holds. Shown beside each quest's name.
+    public Dictionary<int, QuestFlagRead>? QuestFlagReads { get; set; }
+
     // Announce "[<quest> Quest is Now Available]" to the terminal when training crosses a
     // quest's minimum level, and dump the currently-available list once at login. Toggled
     // from the top of the Quest Status tab. Defaults on.

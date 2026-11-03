@@ -3279,6 +3279,11 @@ How to keep it current:
 - Checks: once-per-day gate.
 - Why: limits the abil sync.
 
+### QuestFlagReadoutTests.cs
+- Covers: Game/Quests/QuestFlagReadout; QuestFlagSyncManager.MarkObserved's kept reads
+- Checks: a typed `abil` reply is read; the reply shape with no `abil` sent, or past the window, is not; a Stock dump only when it names this character; the client's own read keeps its lines; a live read keeps each quest flag's value and time, a 0 included, and leaves other abilities out.
+- Why: the quest cards show each flag's latest read, whatever read it (user, 2026-11-02).
+
 ### QuestFlagSyncTests.cs
 - Covers: Game/Quests/QuestFlagProbe, QuestFlagCompletion
 - Checks: Stock bulk and Paradigm line parsers; newly-complete resolution (thresholds, tiers, one-way); flags to query; progress values.
@@ -3417,6 +3422,11 @@ How to keep it current:
 - Covers: Game/Remote/RemoteCommandCatalog.Help
 - Checks: the `@help <command>` wording that goes out on the wire ("Syntax - Description") for the commands whose behaviour it describes, `@auto-get`'s item forms among them; every line fits one telepath.
 - Why: @help accuracy is user-visible; the game truncates long telepaths.
+
+### SelfRemoteCommandTests.cs
+- Covers: Game/Remote/SelfRemoteCommand
+- Checks: a typed `!@<command>` runs the handler with its args and the `(typed !@)` sender, with no permission check, and prints each reply in brackets; a line that isn't `!@` at the start is left for the game; an unknown command, remote commands switched off and a bare `!@` are each said so, with nothing run.
+- Why: running a remote command on your own client by typing it (user, 2026-11-02).
 
 ### RemoteCommandLocalInvokeTests.cs
 - Covers: Game/Remote/RemoteCommandManager.TryInvokeLocal

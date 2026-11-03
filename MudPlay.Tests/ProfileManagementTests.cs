@@ -116,6 +116,7 @@ public sealed class ProfileManagementTests : IDisposable
         CharacterProfile source = JsonStore.Load<CharacterProfile>(sourcePath)!;
         source.LastKnownStats = new LastKnownStats { Level = 60, MaxHits = 480 };
         source.DefaultPoolBaseline = new DefaultPoolBaseline { MaxHp = 480, MaxMa = 300, Level = 60 };
+        source.QuestFlagReads = new Dictionary<int, QuestFlagRead> { [126] = new() { Value = 8 } };
         source.LearnedSpells = new List<string> { "minor healing" };
         source.DeathHistory = new List<DeathRecord> { new() };
         source.HeldAtDisconnect = new HeldAtDisconnect { Items = { new HeldItem("silver chalice", 1) } };
@@ -130,6 +131,7 @@ public sealed class ProfileManagementTests : IDisposable
         CharacterProfile copy = JsonStore.Load<CharacterProfile>(AppPaths.CharacterProfileFile(_bbsA, "Priest40"))!;
         Assert.Null(copy.LastKnownStats);
         Assert.Null(copy.DefaultPoolBaseline);
+        Assert.Null(copy.QuestFlagReads);
         Assert.True(copy.StateUnverified);
         Assert.Empty(copy.Equipment!.Sets);
         Assert.True(copy.Equipment.SwapToDefaultBeforeLairs);

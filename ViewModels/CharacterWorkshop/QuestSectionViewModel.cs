@@ -230,7 +230,8 @@ public sealed partial class QuestSectionViewModel : WorkshopSectionViewModel
                     ineligible,
                     prog.Complete,
                     steps,
-                    OnCardCompletionChanged);
+                    OnCardCompletionChanged,
+                    FlagRead(q.Flag));
 
                 // Every quest carries a followable checklist (multi-part bands too,
                 // filtered to the band's give-step range by the crawl + StepLines).
@@ -330,6 +331,9 @@ public sealed partial class QuestSectionViewModel : WorkshopSectionViewModel
         }
     }
 
+    private QuestFlagRead? FlagRead(int flag) =>
+        _profile.Current?.QuestFlagReads is { } reads && reads.TryGetValue(flag, out QuestFlagRead? read) ? read : null;
+
     // Build a card for a user-added quest (null when it's blocked / hidden). It has no
     // crawl backing, so every field comes from the definition: no class-resolved bonus,
     // no crawled requirements, the user's reward label as the award, and the user's step
@@ -354,7 +358,8 @@ public sealed partial class QuestSectionViewModel : WorkshopSectionViewModel
             ineligible: false,
             prog.Complete,
             steps,
-            OnCardCompletionChanged);
+            OnCardCompletionChanged,
+            FlagRead(def.Flag));
 
         AddStepRows(card, def.Steps ?? string.Empty, prog);
         return card;

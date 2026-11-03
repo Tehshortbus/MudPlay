@@ -1126,6 +1126,9 @@ public sealed class AppServices
     // MainWindowViewModel alongside QuestFlagReader.
     public Game.Quests.QuestFlagProbe QuestQueryReader { get; private set; } = null!;
 
+    // Any other `abil` the game answers (one the user typed), kept as a live flag read.
+    public Game.Quests.QuestFlagReadout QuestFlagReadout { get; private set; } = null!;
+
     // Login-time quest-flag completion sync (opt-in per character): reads the flags via
     // QuestFlagReader and marks newly-complete quests. Run by MainWindowViewModel before the
     // availability dump.
@@ -2656,6 +2659,9 @@ public sealed class AppServices
     // re-anchors position on the landing. Enabled per-BBS (SysopGoto credential).
     public Game.SysopGotoManager SysopGoto { get; private set; } = null!;
 
+    // A typed `!@<command>`, run here as a remote command and never sent.
+    public Game.Remote.SelfRemoteCommand SelfRemoteCommand { get; private set; } = null!;
+
     // BFS pathfinding + planar layout over the active
     // RoomGraph. Consumed by the walker, loop runner,
     // auto-lair scheduler (pathfinding), and the Navigation
@@ -3280,6 +3286,7 @@ public sealed class AppServices
         {
             BlockedByMasterSwitch = what => AutoModeController.Blocks("Remote commands", what),
         };
+        SelfRemoteCommand = new Game.Remote.SelfRemoteCommand(RemoteCommands, WriteTerminalNotice, Log);
         // Reserve the party ailment-sync announces (@poisoned / @blind / @held …)
         // so the engine swallows them instead of bouncing a "{command invalid}"
         // reply at the member who announced — PartyAilmentTracker consumes them on
@@ -10261,6 +10268,13 @@ public sealed class AppServices
                 GameData, Quests, PlayerStats, Profile,
                 resolveName: (q, _) => ViewModels.CharacterWorkshop.QuestTextFormatter.Title(Quests, q),
                 PlayerStats.Level),
+            log: Log);
+        // An `abil` the user typed is a live read like `@quest`'s: its values are kept for
+        // the quest cards and mark what they prove. The client's own reads keep theirs.
+        QuestFlagReadout = new Game.Quests.QuestFlagReadout(
+            selfName: () => PlayerStats.Name,
+            clientReadUnderWay: () => QuestFlagReader.IsCollecting || QuestQueryReader.IsCollecting,
+            read: values => QuestFlagSync.MarkObserved(values),
             log: Log);
         // A sync that marks quests complete changes the quest bonuses in both regen percents.
         QuestFlagSync.Synced += () =>
