@@ -3225,6 +3225,10 @@ How one damage spell cast against a monster is worked out.
     weapon).
   - Since 2026-09-22 target-class mismatches are pre-empted from game data — see *"Your spell has no
     effect" — immunity spends no round*.
+  - **Client policy** (user, 2026-11-02): the Combat tab's **Undead spell** slot is cast at a monster
+    whose `Undead` column is non-zero in place of the normal and alternate attack spells
+    (`MonsterLifeIndex.IsUndead`, `CombatSpellChooser`'s undead rung); a monster with no game-data
+    row is not taken for undead. A round it can't fire in goes to normal and alternate.
 
 ### "Your spell has no effect" — immunity spends no round
 *Status: CONFIRMED 2026-08-09 (user; report `paradigm-20260809-162350`); updated 2026-09-22 (report `paradigm-20260922-082559`)*

@@ -36,6 +36,7 @@ public sealed class CombatSpellProfile
     public CombatSpellSlot NormalAttackSpell { get; set; } = new();
     public CombatSpellSlot AlternateAttackSpell { get; set; } = new();
     public CombatSpellSlot DrainSpell { get; set; } = new();
+    public CombatSpellSlot UndeadAttackSpell { get; set; } = new();
 
     // Slot-governing fields captured alongside the slots.
     public ThresholdMode SpellManaThresholdMode { get; set; } = ThresholdMode.Percentage;
@@ -125,6 +126,7 @@ public sealed class CombatSpellProfile
             NormalAttackSpell = src.NormalAttackSpell.Clone(),
             AlternateAttackSpell = src.AlternateAttackSpell.Clone(),
             DrainSpell = src.DrainSpell.Clone(),
+            UndeadAttackSpell = src.UndeadAttackSpell.Clone(),
             SpellManaThresholdMode = src.SpellManaThresholdMode,
             DrainHpTrigger = src.DrainHpTrigger,
             DrainsOverrideAoe = src.DrainsOverrideAoe,
@@ -169,6 +171,7 @@ public sealed class CombatSpellProfile
         dst.NormalAttackSpell = NormalAttackSpell.Clone();
         dst.AlternateAttackSpell = AlternateAttackSpell.Clone();
         dst.DrainSpell = DrainSpell.Clone();
+        dst.UndeadAttackSpell = UndeadAttackSpell.Clone();
         dst.SpellManaThresholdMode = SpellManaThresholdMode;
         dst.DrainHpTrigger = DrainHpTrigger;
         dst.DrainsOverrideAoe = DrainsOverrideAoe;
@@ -212,6 +215,7 @@ public sealed class CombatSpellProfile
         NormalAttackSpell = src.NormalAttackSpell.Clone();
         AlternateAttackSpell = src.AlternateAttackSpell.Clone();
         DrainSpell = src.DrainSpell.Clone();
+        UndeadAttackSpell = src.UndeadAttackSpell.Clone();
         SpellManaThresholdMode = src.SpellManaThresholdMode;
         DrainHpTrigger = src.DrainHpTrigger;
         DrainsOverrideAoe = src.DrainsOverrideAoe;
@@ -253,6 +257,7 @@ public sealed class CombatSpellProfile
         NormalAttackSpell = NormalAttackSpell.Clone(),
         AlternateAttackSpell = AlternateAttackSpell.Clone(),
         DrainSpell = DrainSpell.Clone(),
+        UndeadAttackSpell = UndeadAttackSpell.Clone(),
         SpellManaThresholdMode = SpellManaThresholdMode,
         DrainHpTrigger = DrainHpTrigger,
         DrainsOverrideAoe = DrainsOverrideAoe,

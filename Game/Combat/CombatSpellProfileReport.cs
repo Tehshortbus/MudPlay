@@ -31,6 +31,7 @@ public static class CombatSpellProfileReport
         Add(parts, "normal", profile.NormalAttackSpell);
         Add(parts, "alt", profile.AlternateAttackSpell);
         Add(parts, "drain", profile.DrainSpell);
+        Add(parts, "undead", profile.UndeadAttackSpell);
 
         string slots = parts.Count > 0 ? string.Join(" · ", parts) : "no spells set";
         return $"{label} — {slots}";
@@ -52,7 +53,7 @@ public static class CombatSpellProfileReport
         string label = Label(profile, number);
 
         // MinEnemies is honoured only on the two room-wide rows; the engine ignores
-        // it on the four single-target rows, so don't report it there.
+        // it on the single-target rows, so don't report it there.
         string slots = string.Join(" · ", new[]
         {
             SlotDetail("multi", profile.MultiAttackSpell, roomWide: true),
@@ -67,6 +68,7 @@ public static class CombatSpellProfileReport
             SlotDetail("normal", profile.NormalAttackSpell, roomWide: false),
             SlotDetail("alt", profile.AlternateAttackSpell, roomWide: false),
             SlotDetail("drain", profile.DrainSpell, roomWide: false),
+            SlotDetail("undead", profile.UndeadAttackSpell, roomWide: false),
         });
 
         string knobs = $"mana-mode={profile.SpellManaThresholdMode}" +

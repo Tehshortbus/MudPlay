@@ -34,7 +34,7 @@ namespace MudPlay.Tests;
 public sealed class SimulatorVersionPinTests(ITestOutputHelper output)
 {
     // The SimulatorVersion the figures below were taken at.
-    private const int PinnedAt = 2;
+    private const int PinnedAt = 3;
 
     private const string Bump =
         "The simulation gives a different result for the same character, lap and game data. If that is intended, " +
@@ -224,6 +224,6 @@ public sealed class SimulatorVersionPinTests(ITestOutputHelper output)
     }
 
     private const string PinnedGroups =
-        "stats or gear=7300ec2bcee84536 spells=ab646fd58ac771c1 settings=a94ce4b93dcdf8bc game-data edits=edits " +
+        "stats or gear=7300ec2bcee84536 spells=ab646fd58ac771c1 settings=51cf8ff1d8c1a414 game-data edits=edits " +
         "reach=e4155c9c19ec28b1 loops=c40c5515bd5b1716b6113fd87190266786f9cdca2ad48af747afce130533d5a3";
 }

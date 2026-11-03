@@ -265,6 +265,15 @@ public sealed class CombatSettings
     // the drain still overrides only the single-target / physical action.
     public bool DrainsOverrideAoe { get; set; }
 
+    // ----- Undead attack spell -----------------------------------------
+
+    // Single-target damage spell cast at an undead target (game data's Undead
+    // column) in place of the normal and alternate attack spells, with its own
+    // MaxCastsPerRoom (per target), MinManaPerCast and FireRegardlessOfMana. A round
+    // it can't fire in (mana, casts spent, a "no effect") goes to the normal and
+    // alternate spells as usual. Ignores MinEnemies.
+    public CombatSpellSlot UndeadAttackSpell { get; set; } = new();
+
     // ----- Display --------------------------------------------------
 
     // Append the per-round damage roll-up to the terminal canvas after each

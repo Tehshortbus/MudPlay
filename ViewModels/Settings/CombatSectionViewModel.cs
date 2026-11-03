@@ -298,6 +298,15 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private int _drainSpellMinManaPerCast;
     [ObservableProperty] private int _drainHpTrigger = 50;
 
+    // Undead attack spell — cast at an undead target in place of the normal and
+    // alternate attack spells.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(UndeadAttackSpellUnlearned))]
+    private string? _undeadAttackSpellName;
+    [ObservableProperty] private int? _undeadAttackSpellMaxCastsPerRoom;
+    [ObservableProperty] private int _undeadAttackSpellMinManaPerCast;
+    [ObservableProperty] private bool _undeadAttackSpellFireRegardlessOfMana;
+
     // Red-outline flags: the slot points at a spell this class can learn but the
     // character hasn't (re-raised on the name change above via NotifyPropertyChangedFor,
     // and on a spellbook change via OnSpellbookChanged).
@@ -308,6 +317,7 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
     public bool NormalAttackSpellUnlearned       => IsSpellUnlearned(SpellSuggestions, NormalAttackSpellName);
     public bool AlternateAttackSpellUnlearned    => IsSpellUnlearned(SpellSuggestions, AlternateAttackSpellName);
     public bool DrainSpellUnlearned              => IsSpellUnlearned(SpellSuggestions, DrainSpellName);
+    public bool UndeadAttackSpellUnlearned       => IsSpellUnlearned(SpellSuggestions, UndeadAttackSpellName);
     [ObservableProperty] private bool _drainsOverrideAoe;
 
     // Amber-warning text when a debuff slot points at a spell that resolves but
@@ -352,6 +362,7 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
     public string NormalAttackSpellMinManaPerCastConverted   => FormatMana(NormalAttackSpellMinManaPerCast);
     public string AlternateAttackSpellMinManaPerCastConverted => FormatMana(AlternateAttackSpellMinManaPerCast);
     public string DrainSpellMinManaPerCastConverted          => FormatMana(DrainSpellMinManaPerCast);
+    public string UndeadAttackSpellMinManaPerCastConverted   => FormatMana(UndeadAttackSpellMinManaPerCast);
 
     // Percentage mode shows the absolute mana equivalent ("54/66"); Value mode shows
     // the percentage ("82%"). Empty until a prompt gives us a live MaxMa.
@@ -373,6 +384,7 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
         OnPropertyChanged(nameof(NormalAttackSpellMinManaPerCastConverted));
         OnPropertyChanged(nameof(AlternateAttackSpellMinManaPerCastConverted));
         OnPropertyChanged(nameof(DrainSpellMinManaPerCastConverted));
+        OnPropertyChanged(nameof(UndeadAttackSpellMinManaPerCastConverted));
     }
 
     // In Percentage mode a Min-mana-per-cast can't exceed 100% — snap any Value-mode
@@ -386,6 +398,7 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
         if (NormalAttackSpellMinManaPerCast > 100) NormalAttackSpellMinManaPerCast = 100;
         if (AlternateAttackSpellMinManaPerCast > 100) AlternateAttackSpellMinManaPerCast = 100;
         if (DrainSpellMinManaPerCast > 100) DrainSpellMinManaPerCast = 100;
+        if (UndeadAttackSpellMinManaPerCast > 100) UndeadAttackSpellMinManaPerCast = 100;
     }
 
     private static Game.PlayerState? TryGetPlayerState()
@@ -747,6 +760,14 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
             },
             DrainHpTrigger    = Math.Clamp(DrainHpTrigger, 0, 100),
             DrainsOverrideAoe = DrainsOverrideAoe,
+            UndeadAttackSpell = new CombatSpellSlot
+            {
+                SpellName       = NullIfBlank(UndeadAttackSpellName),
+                MinEnemies      = 0,
+                MaxCastsPerRoom = ClampCasts(UndeadAttackSpellMaxCastsPerRoom),
+                MinManaPerCast  = ClampSpell(UndeadAttackSpellMinManaPerCast),
+                FireRegardlessOfMana = UndeadAttackSpellFireRegardlessOfMana,
+            },
 
             ShowCombatRoundTotals = ShowCombatRoundTotals,
             ShowCombatRoundTotalsSelf     = ShowCombatRoundTotalsSelf,
@@ -809,6 +830,7 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
         OnPropertyChanged(nameof(NormalAttackSpellUnlearned));
         OnPropertyChanged(nameof(AlternateAttackSpellUnlearned));
         OnPropertyChanged(nameof(DrainSpellUnlearned));
+        OnPropertyChanged(nameof(UndeadAttackSpellUnlearned));
         // The resolved energy/targeting behind each debuff slot may have changed too.
         OnPropertyChanged(nameof(AreaDebuffSpellMisSlotWarning));
         OnPropertyChanged(nameof(SingleTargetDebuffSpellMisSlotWarning));
@@ -896,6 +918,11 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
         DrainSpellMinManaPerCast  = dto.DrainSpell.MinManaPerCast;
         DrainHpTrigger            = dto.DrainHpTrigger;
         DrainsOverrideAoe         = dto.DrainsOverrideAoe;
+
+        UndeadAttackSpellName            = dto.UndeadAttackSpell.SpellName;
+        UndeadAttackSpellMaxCastsPerRoom = dto.UndeadAttackSpell.MaxCastsPerRoom;
+        UndeadAttackSpellMinManaPerCast  = dto.UndeadAttackSpell.MinManaPerCast;
+        UndeadAttackSpellFireRegardlessOfMana = dto.UndeadAttackSpell.FireRegardlessOfMana;
 
         ShowCombatRoundTotals = dto.ShowCombatRoundTotals;
         ShowCombatRoundTotalsSelf     = dto.ShowsRoundTotalsRow(dto.ShowCombatRoundTotalsSelf);
@@ -1048,6 +1075,12 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
     partial void OnDrainSpellMinManaPerCastChanged(int value)    { OnPropertyChanged(nameof(DrainSpellMinManaPerCastConverted)); MarkDirty(); }
     partial void OnDrainHpTriggerChanged(int value)              => MarkDirty();
     partial void OnDrainsOverrideAoeChanged(bool value)          => MarkDirty();
+
+    // Spell slot — undead attack spell
+    partial void OnUndeadAttackSpellNameChanged(string? value)          => MarkDirty();
+    partial void OnUndeadAttackSpellMaxCastsPerRoomChanged(int? value)  => MarkDirty();
+    partial void OnUndeadAttackSpellMinManaPerCastChanged(int value)    { OnPropertyChanged(nameof(UndeadAttackSpellMinManaPerCastConverted)); MarkDirty(); }
+    partial void OnUndeadAttackSpellFireRegardlessOfManaChanged(bool value) => MarkDirty();
 
     // Display
     partial void OnShowCombatRoundTotalsChanged(bool value)      => MarkDirty();

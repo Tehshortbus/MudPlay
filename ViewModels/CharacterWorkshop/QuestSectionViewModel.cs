@@ -12,6 +12,7 @@ using MudPlay.Game.Map;
 using MudPlay.Game.Quests;
 using MudPlay.Models.Profile;
 using MudPlay.Services;
+using MudPlay.ViewModels.GameData;
 using MudPlay.Views.CharacterWorkshop;
 
 namespace MudPlay.ViewModels.CharacterWorkshop;
@@ -582,8 +583,51 @@ public sealed partial class QuestSectionViewModel : WorkshopSectionViewModel
     private void OnProfileLoaded(CharacterProfile _) => Rebuild();
     private void OnActiveSetChanged(string? _) => Rebuild();
 
+    // ----- Quest Flag Steps --------------------------------------------------
+
+    // A card's Quest Flags button opens the Quest Flag Steps window on its flag, the
+    // window a double-click in Game Data → Quest Flags opens. One window serves every
+    // card: another card's button turns it to that card's flag.
+    private QuestFlagStepsViewModel? _openFlagSteps;
+    private QuestFlagIndex? _flagIndex;
+
+    [RelayCommand]
+    private async Task OpenQuestFlagsAsync(QuestCardViewModel? card)
+    {
+        if (card is null || AppServices.CurrentOrNull is not { } svc) return;
+        if (_openFlagSteps is { } open)
+        {
+            // Already on this flag it's the window's own toggle: to the front, or closed
+            // when it's in front.
+            if (open.Flag == card.Flag) svc.Dialogs.RaiseOrCloseIfOpen(open);
+            else
+            {
+                open.Show(card.Flag);
+                svc.Dialogs.RaiseIfOpen(open);
+            }
+            return;
+        }
+        QuestFlagStepsViewModel vm = new(
+            _flagIndex ??= new QuestFlagIndex(_gameData), _gameData, card.Flag,
+            monsterRooms: () => svc.RoomSearch?.QuestKillRooms(),
+            questName: q => svc.Quests.DisplayName(q.Flag, q.Step, q.StepRangeStart),
+            log: svc.Log);
+        _openFlagSteps = vm;
+        try
+        {
+            await svc.Dialogs.OpenWindowAsync<QuestFlagStepsViewModel, bool>(vm);
+        }
+        finally
+        {
+            _openFlagSteps = null;
+        }
+    }
+
     public override void Dispose()
     {
+        // Left open past the Workshop, the next one's cards wouldn't know the window and
+        // would open a second.
+        _openFlagSteps?.CloseCommand.Execute(null);
         _stats.PropertyChanged -= OnStatsChanged;
         _profile.ProfileLoaded -= OnProfileLoaded;
         _gameData.ActiveSetChanged -= OnActiveSetChanged;

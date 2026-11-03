@@ -112,12 +112,13 @@
                         <Border Classes="Box">
                             <StackPanel Spacing="4">
 
-                                <!-- Compact header: click the title row to expand its detail;
-                                     the manual Complete toggle stays separate on the right. -->
-                                <Grid ColumnDefinitions="*,Auto">
+                                <!-- Compact header: the name and the flag as last read, the Quest
+                                     Flags button, then the rest of the row; clicking the name or
+                                     the rest expands the detail, and the manual Complete toggle
+                                     stays separate on the right. -->
+                                <Grid ColumnDefinitions="Auto,Auto,*,Auto">
                                     <Button Grid.Column="0" Classes="QuestHeader"
-                                            Command="{Binding ToggleExpandCommand}"
-                                            HorizontalAlignment="Stretch">
+                                            Command="{Binding ToggleExpandCommand}">
                                         <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                                             <TextBlock Text="{Binding ExpandGlyph}"
                                                        IsVisible="{Binding CanExpand}"
@@ -131,12 +132,26 @@
                                                        VerticalAlignment="Center"/>
                                             <TextBlock Classes="FieldLabel"
                                                        VerticalAlignment="Center"
-                                                       Text="{Binding RequiredLevelText}"/>
-                                            <TextBlock Classes="FieldLabel"
-                                                       VerticalAlignment="Center"
                                                        IsVisible="{Binding HasFlagRead}"
                                                        Text="{Binding FlagReadText}"
                                                        ToolTip.Tip="{Binding FlagReadTip}"/>
+                                        </StackPanel>
+                                    </Button>
+                                    <!-- This quest's flag in the Quest Flag Steps window, as a
+                                         double-click in Game Data → Quest Flags opens it. -->
+                                    <Button Grid.Column="1" Content="Quest Flags"
+                                            Margin="8,0,0,0" Padding="8,2" VerticalAlignment="Center"
+                                            Command="{Binding $parent[ItemsControl].((vm:QuestSectionViewModel)DataContext).OpenQuestFlagsCommand}"
+                                            CommandParameter="{Binding}"
+                                            ToolTip.Tip="Everything the game data's scripts do with this quest's flag, step by step: the Quest Flag Steps window from Game Data → Quest Flags."/>
+                                    <!-- The rest of the row still opens and closes the card. -->
+                                    <Button Grid.Column="2" Classes="QuestHeader" Margin="8,0,0,0"
+                                            Command="{Binding ToggleExpandCommand}"
+                                            HorizontalAlignment="Stretch">
+                                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                            <TextBlock Classes="FieldLabel"
+                                                       VerticalAlignment="Center"
+                                                       Text="{Binding RequiredLevelText}"/>
                                             <!-- Hard eligibility flag: the character's class/race
                                                  is excluded from this quest (hover shows what it
                                                  requires). Open quests / unknown class/race omit it. -->
@@ -149,7 +164,7 @@
                                                        ToolTip.Tip="{Binding RequirementsText}"/>
                                         </StackPanel>
                                     </Button>
-                                    <CheckBox Grid.Column="1" Content="Complete"
+                                    <CheckBox Grid.Column="3" Content="Complete"
                                               IsChecked="{Binding IsComplete, Mode=TwoWay}"
                                               Foreground="{StaticResource ChromeFgBrush}"/>
                                 </Grid>
