@@ -1,5 +1,9 @@
 # Version history
 
+## 3.198.4
+
+- Roomba ignore list: ticked items in the Master List are never picked up or moved by a sweep
+
 ## 3.198.3
 
 - A monster whose death ends the hold, blindness or confusion it cast (a yeti's roar, a darken beast's blind globe) no longer leaves party members marked with it

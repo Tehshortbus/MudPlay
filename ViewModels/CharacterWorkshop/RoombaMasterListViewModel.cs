@@ -6,6 +6,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using MudPlay.Game.Map;
 using MudPlay.Models.Profile;
 using MudPlay.Services;
@@ -13,7 +14,7 @@ using MudPlay.ViewModels.GameData.Edit;
 
 namespace MudPlay.ViewModels.CharacterWorkshop;
 
-// Read-only master inventory across every room Roomba has ever scanned,
+// Master inventory across every room Roomba has ever scanned,
 // opened from the Workshop Roomba tab's "Master List" button. One row per
 // (item, room) sighting in GhItemLocationStore, cross-referenced against
 // Items.json's Obtained From via the same ItemMdbViewBuilder the Item edit
@@ -27,6 +28,11 @@ namespace MudPlay.ViewModels.CharacterWorkshop;
 // (RoombaMasterListRowViewModel.Market) — the list opens instantly even on a
 // large log. A filter box narrows the rows live; a double-click opens the
 // item's record.
+//
+// The ignore list is edited here too: a row's checkbox ignores that item, and
+// the panel under the grid lists every ignored item, so one that has left the
+// floor (and with it the grid) can still be taken off, and one not seen yet can
+// be added by name.
 public sealed partial class RoombaMasterListViewModel : ObservableObject, IDisposable
 {
     // The reference point the user asked for — MajorMUD's neutral "retail"
@@ -49,6 +55,15 @@ public sealed partial class RoombaMasterListViewModel : ObservableObject, IDispo
     // (which carries the map/room, so "15/12" matches).
     [ObservableProperty] private string _filter = string.Empty;
 
+    public ObservableCollection<string> IgnoredItems { get; } = new();
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(UnignoreCommand))]
+    private string? _selectedIgnoredItem;
+
+    [ObservableProperty] private string _ignoreInput = string.Empty;
+    [ObservableProperty] private string? _ignoreError;
+
     public RoombaMasterListViewModel(
         GhItemLocationStore locations, GhRoomLabelStore labels, ItemNameStore itemNames,
         GameDataCache gameData, RoomGraphManager roomGraph)
@@ -65,10 +80,52 @@ public sealed partial class RoombaMasterListViewModel : ObservableObject, IDispo
         _roomGraph = roomGraph;
 
         _locations.Changed += Rebuild;
+        _labels.Changed += RefreshIgnored;
         Rebuild();
+        RefreshIgnored();
     }
 
-    public void Dispose() => _locations.Changed -= Rebuild;
+    public void Dispose()
+    {
+        _locations.Changed -= Rebuild;
+        _labels.Changed -= RefreshIgnored;
+    }
+
+    private void SetIgnored(string itemName, bool ignored) => _labels.SetIgnored(itemName, ignored);
+
+    private void RefreshIgnored()
+    {
+        foreach (RoombaMasterListRowViewModel r in _allRows) r.IsIgnored = _labels.IsIgnored(r.ItemName);
+
+        IgnoredItems.Clear();
+        foreach (string name in _labels.IgnoredItems.OrderBy(n => n, StringComparer.OrdinalIgnoreCase))
+            IgnoredItems.Add(name);
+    }
+
+    // Ignore by name, for an item not on the list yet. Stored under the game
+    // data's own spelling, the name the sweep compares a floor stack's against.
+    [RelayCommand]
+    private void IgnoreByName()
+    {
+        string typed = IgnoreInput.Trim();
+        if (typed.Length == 0) return;
+        if (_itemNames.FindByName(typed) is not int number || _itemNames.GetName(number) is not { } name)
+        {
+            IgnoreError = $"No item named '{typed}' in the game data.";
+            return;
+        }
+        IgnoreError = null;
+        IgnoreInput = string.Empty;
+        _labels.SetIgnored(name, true);
+    }
+
+    [RelayCommand(CanExecute = nameof(CanUnignore))]
+    private void Unignore()
+    {
+        if (SelectedIgnoredItem is { } name) _labels.SetIgnored(name, false);
+    }
+
+    private bool CanUnignore() => SelectedIgnoredItem is not null;
 
     partial void OnFilterChanged(string value) => ApplyFilter();
 
@@ -98,7 +155,8 @@ public sealed partial class RoombaMasterListViewModel : ObservableObject, IDispo
                 : UnresolvedMarket;
 
             _allRows.Add(new RoombaMasterListRowViewModel(
-                sighting.ItemName, sighting.Quantity, seenInText, number, market));
+                sighting.ItemName, sighting.Quantity, seenInText, number, market,
+                _labels.IsIgnored(sighting.ItemName), SetIgnored));
         }
 
         ApplyFilter();

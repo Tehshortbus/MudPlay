@@ -12,7 +12,7 @@
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False">
 
-    <Grid Margin="16" RowDefinitions="Auto,*">
+    <Grid Margin="16" RowDefinitions="Auto,*,Auto">
         <Grid Grid.Row="0" Margin="0,0,0,8" ColumnDefinitions="*,Auto">
             <TextBox Grid.Column="0"
                      Text="{Binding Filter, Mode=TwoWay}"
@@ -37,6 +37,15 @@
                   HorizontalScrollBarVisibility="Auto"
                   VerticalScrollBarVisibility="Auto">
             <DataGrid.Columns>
+                <DataGridTemplateColumn Header="Ignore" Width="Auto" SortMemberPath="IsIgnored">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate DataType="vm:RoombaMasterListRowViewModel">
+                            <CheckBox IsChecked="{Binding IsIgnored, Mode=TwoWay}"
+                                      HorizontalAlignment="Center" VerticalAlignment="Center"
+                                      ToolTip.Tip="A sweep leaves this item wherever it finds it: never picked up, never moved. Applies to the item in every room, for every character on this realm."/>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
                 <DataGridTextColumn Header="Item" Binding="{ReflectionBinding ItemName}" SortMemberPath="ItemName"
                                     Width="180" Foreground="{StaticResource ChromeFgBrush}"/>
                 <DataGridTextColumn Header="Qty" Binding="{ReflectionBinding Quantity}" SortMemberPath="Quantity"
@@ -47,5 +56,31 @@
                                     Width="*" Foreground="{StaticResource ChromeFgBrush}"/>
             </DataGrid.Columns>
         </DataGrid>
+
+        <!-- The whole ignore list, including items no longer on any floor (and so
+             not in the grid) and items added by name before Roomba has seen them. -->
+        <StackPanel Grid.Row="2" Spacing="4" Margin="0,10,0,0">
+            <TextBlock Text="Ignored items — a sweep never picks these up or moves them"
+                       Foreground="{StaticResource ChromeFgMutedBrush}" FontSize="11" FontWeight="SemiBold"/>
+            <Grid ColumnDefinitions="*,Auto">
+                <ListBox Grid.Column="0" ItemsSource="{Binding IgnoredItems}"
+                         SelectedItem="{Binding SelectedIgnoredItem, Mode=TwoWay}"
+                         MaxHeight="110"
+                         Background="{StaticResource ChromeBgSunkenBrush}"
+                         BorderThickness="1" BorderBrush="{StaticResource ChromeBorderBrush}"/>
+                <StackPanel Grid.Column="1" Spacing="6" Margin="8,0,0,0" Width="220">
+                    <TextBox Text="{Binding IgnoreInput, Mode=TwoWay}" PlaceholderText="Item name…"/>
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Button Content="Ignore" Command="{Binding IgnoreByNameCommand}"
+                                ToolTip.Tip="Add the named item to the ignore list, whether or not Roomba has seen it yet."/>
+                        <Button Content="Un-ignore" Command="{Binding UnignoreCommand}"
+                                ToolTip.Tip="Take the highlighted item off the ignore list, so the next sweep sorts it again."/>
+                    </StackPanel>
+                    <TextBlock Text="{Binding IgnoreError}" TextWrapping="Wrap"
+                               Foreground="{StaticResource SeverityWarnBrush}"
+                               IsVisible="{Binding IgnoreError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                </StackPanel>
+            </Grid>
+        </StackPanel>
     </Grid>
 </Window>

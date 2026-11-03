@@ -4508,9 +4508,9 @@ Some monsters spawn **more monsters when they die**, and those can summon in tur
   - Each one's `DeathSpell` is `roar cancel` (#1368): `Targets` 12, `Diff` 100, and `RemovesSpell` for #193, #1250, #5486 and #5547.
   - The roar lands as `The <monster> beats his chest and roars deafeningly!` then `You are too scared to flee!`. It ends with `You feel braver.`.
   - Every yeti dies with `The large yeti collapses with a deafening howl.`, whatever its displayed name.
-- **Any of those yetis dying ends every roar in the room, not only the roaring one's.** *([OBSERVED] report `paradigm-20261103-092609`.)*
+- **Any of those yetis dying ends every roar in the room, not only the roaring one's.** *([CONFIRMED] 2026-11-03, user; [OBSERVED] report `paradigm-20261103-092609`.)*
   - At 09:26:05 the fat yeti roared and the small yeti died. `You feel braver.` came in the same second, and the fat yeti was fought next.
-  - The user's description (2026-11-03) was the caster dying. `[NEEDS CONFIRMATION]` Is it any yeti's death, as the capture and the spell's room target suggest?
+  - (An earlier note gave the caster's own death as the trigger; superseded 2026-11-03.)
 - **In the report every roar was cancelled in the round it landed.** The order was the roar, `You are too scared to flee!`, the round's hits, `You feel braver.`, the death line, then the exp.
 - **The other death spells shaped this way** *([OBSERVED] 2026-11-03, Anomaly v0.65.0 and Paradigm 1.9.1 data; Stock 1.11p has the first four)*. Each one `RemovesSpell`s the spell its monster casts:
   - `remove engulfs` (#235: shambling mound, bog and river shambler) ends `engulfs`, a hold.

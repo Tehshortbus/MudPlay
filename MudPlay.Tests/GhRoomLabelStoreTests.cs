@@ -184,4 +184,18 @@ public sealed class GhRoomLabelStoreTests : IDisposable
         Assert.Single(store.Labels);
         Assert.True(store.TryGetLabel(new RoomKey(1, 1), out _));
     }
+
+    [Fact]
+    public void IgnoredItems_SurviveAReload_AndMatchIgnoringCase()
+    {
+        GhRoomLabelStore first = NewPinnedStore();
+        first.SetIgnored("war hammer", true);
+        first.SetIgnored("mace", true);
+        first.SetIgnored("mace", false);
+
+        GhRoomLabelStore second = NewPinnedStore();
+        Assert.Equal(new[] { "war hammer" }, second.IgnoredItems);
+        Assert.True(second.IsIgnored("War Hammer"));
+        Assert.False(second.IsIgnored("mace"));
+    }
 }

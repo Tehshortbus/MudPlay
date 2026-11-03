@@ -30,4 +30,6 @@ public enum GhLeftReason
     // what's left is too heavy for the budget the player's own load leaves). Left
     // where it is rather than circling the circuit forever.
     CouldNotComplete,
+    // The user put the item on Roomba's ignore list.
+    Ignored,
 }

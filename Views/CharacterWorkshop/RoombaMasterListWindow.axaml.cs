@@ -8,7 +8,7 @@ using MudPlay.ViewModels.CharacterWorkshop;
 
 namespace MudPlay.Views.CharacterWorkshop;
 
-// Modeless, read-only Roomba master inventory list opened from the Workshop's
+// Modeless Roomba master inventory list opened from the Workshop's
 // Roomba tab. Code-behind disposes the VM on close (unsubscribing it from
 // GhItemLocationStore) and routes a row double-click to the item's record —
 // everything else is XAML.

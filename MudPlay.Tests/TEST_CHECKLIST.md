@@ -1547,7 +1547,7 @@ How to keep it current:
 
 ### GhRoomLabelStoreTests.cs
 - Covers: Game/Map/GhRoomLabelStore
-- Checks: searches-per-room default/clamp; search-for-hidden; Changed; sync merge keeps local and catch-all flags; persistence; legacy per-character migration.
+- Checks: searches-per-room default/clamp; search-for-hidden; Changed; sync merge keeps local and catch-all flags; persistence; legacy per-character migration; the ignore list survives a reload and matches ignoring case.
 - Why: shared gang-house labels.
 
 ### GhRouteOrdererTests.cs
@@ -1584,6 +1584,11 @@ How to keep it current:
 - Covers: Game/Map/GhSweepManager + GroundItemTracker + ConditionTracker on a huge floor
 - Checks: a 600-stack vault is queued stack for stack with a bounded log line; allocation stays linear.
 - Why: report paradigm-20261009-164508 (UI lock-ups).
+
+### GhSweepIgnoredItemsTests.cs
+- Covers: Game/Map/GhSweepManager + GhSortQueueBuilder, with GhRoomLabelStore's ignore list (played in RoombaHouse)
+- Checks: an ignored item is never picked up and is left in place as ignored while the rest is sorted; taken off the list, it is sorted again.
+- Why: Roomba's ignore list — items the user keeps where they lie.
 
 ### GhSweepManagerIntegrationTests.cs
 - Covers: Game/Map/GhSweepManager end to end
@@ -3618,7 +3623,7 @@ How to keep it current:
 
 ### RoombaMasterListViewModelTests.cs
 - Covers: ViewModels/CharacterWorkshop/RoombaMasterListViewModel
-- Checks: market cross-reference excludes gang-house shops; one row per room; room names; unresolved items; live refresh; export text.
+- Checks: market cross-reference excludes gang-house shops; one row per room; room names; unresolved items; live refresh; export text; the ignore list edited from a row (every row of the item follows), by name (game-data spelling, unknown names refused) and un-ignored.
 - Why: the Roomba master list.
 
 ### RoombaQueryHandlerTests.cs

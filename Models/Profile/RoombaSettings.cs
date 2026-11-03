@@ -20,4 +20,8 @@ public sealed class RoombaSettings
     // Whether recon searches (`sea`) each room for hidden items during recon.
     // null/false = sort visible floor items only.
     public bool? SearchForHidden { get; set; }
+
+    // Items a sweep leaves wherever it finds them, by canonical item name.
+    // null/empty = sort everything.
+    public List<string>? IgnoredItems { get; set; }
 }

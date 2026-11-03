@@ -68,6 +68,26 @@ public sealed class GhRoomLabelStore
         Changed?.Invoke();
     }
 
+    // Canonical names of the items a sweep never picks up, compared ignoring case.
+    public IReadOnlyCollection<string> IgnoredItems => _ignored;
+    private HashSet<string> _ignored = new(StringComparer.OrdinalIgnoreCase);
+
+    public bool IsIgnored(string itemName) => _ignored.Contains(itemName);
+
+    public void SetIgnored(string itemName, bool ignored)
+    {
+        if (_realmFolder is null || string.IsNullOrWhiteSpace(itemName)) return;
+        TakeInOutsideChanges();
+        if (!(ignored ? _ignored.Add(itemName) : _ignored.Remove(itemName))) return;
+
+        _settings.IgnoredItems = _ignored.Count == 0
+            ? null
+            : _ignored.OrderBy(n => n, StringComparer.OrdinalIgnoreCase).ToList();
+        Persist();
+        _log?.Info("GhSweep", $"{(ignored ? "ignoring" : "no longer ignoring")} '{itemName}'");
+        Changed?.Invoke();
+    }
+
     public bool TryGetLabel(RoomKey key, out GhRoomLabel label)
         => _labels.TryGetValue(key, out label!);
 
@@ -158,6 +178,7 @@ public sealed class GhRoomLabelStore
                 _realmFolder = null;
                 _settings = new RoombaSettings();
                 _labels.Clear();
+                _ignored.Clear();
                 Changed?.Invoke();
             }
             return;
@@ -229,6 +250,7 @@ public sealed class GhRoomLabelStore
         _labels.Clear();
         if (_settings.RoomLabels is { } list)
             foreach (GhRoomLabel l in list) _labels[new RoomKey(l.Map, l.Room)] = l;
+        _ignored = new HashSet<string>(_settings.IgnoredItems ?? [], StringComparer.OrdinalIgnoreCase);
     }
 
     private void Persist()
