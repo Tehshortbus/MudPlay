@@ -69,11 +69,16 @@
                          Background="{StaticResource ChromeBgSunkenBrush}"
                          BorderThickness="1" BorderBrush="{StaticResource ChromeBorderBrush}"/>
                 <StackPanel Grid.Column="1" Spacing="6" Margin="8,0,0,0" Width="220">
-                    <TextBox Text="{Binding IgnoreInput, Mode=TwoWay}" PlaceholderText="Item name…"/>
+                    <AutoCompleteBox ItemsSource="{Binding ItemNameChoices}"
+                                     Text="{Binding IgnoreInput, Mode=TwoWay}"
+                                     FilterMode="ContainsOrdinal"
+                                     MinimumPrefixLength="1"
+                                     MaxDropDownHeight="240"
+                                     PlaceholderText="Item name…"/>
                     <StackPanel Orientation="Horizontal" Spacing="6">
-                        <Button Content="Ignore" Command="{Binding IgnoreByNameCommand}"
-                                ToolTip.Tip="Add the named item to the ignore list, whether or not Roomba has seen it yet."/>
-                        <Button Content="Un-ignore" Command="{Binding UnignoreCommand}"
+                        <Button Content="Add" Command="{Binding IgnoreByNameCommand}"
+                                ToolTip.Tip="Add the named item to the ignore list, whether or not Roomba has seen it yet. Pick it from the list that opens as you type."/>
+                        <Button Content="Remove" Command="{Binding UnignoreCommand}"
                                 ToolTip.Tip="Take the highlighted item off the ignore list, so the next sweep sorts it again."/>
                     </StackPanel>
                     <TextBlock Text="{Binding IgnoreError}" TextWrapping="Wrap"

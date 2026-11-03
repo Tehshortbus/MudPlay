@@ -198,7 +198,8 @@ public sealed class RoombaMasterListViewModelTests : IDisposable
     }
 
     // The list is edited from the window: a row's box ignores the item in every
-    // room, and by name an item not seen yet goes on under the game data's spelling.
+    // room, and by name an item not seen yet goes on under the game data's spelling,
+    // picked from the names the add box offers.
     [Fact]
     public void Ignore_FromARow_AndByName_EditsTheRealmsList()
     {
@@ -212,6 +213,8 @@ public sealed class RoombaMasterListViewModelTests : IDisposable
         Assert.All(vm.Rows, r => Assert.True(r.IsIgnored));
         Assert.Equal(new[] { "torch" }, vm.IgnoredItems);
 
+        // The add box offers every record's name, so it is picked rather than spelled.
+        Assert.Equal(new[] { "gh only trinket", "torch" }, vm.ItemNameChoices);
         vm.IgnoreInput = "GH ONLY TRINKET";
         vm.IgnoreByNameCommand.Execute(null);
         Assert.True(labels.IsIgnored("gh only trinket"));

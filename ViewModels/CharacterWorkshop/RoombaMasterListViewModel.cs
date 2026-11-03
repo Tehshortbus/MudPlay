@@ -62,6 +62,9 @@ public sealed partial class RoombaMasterListViewModel : ObservableObject, IDispo
     private string? _selectedIgnoredItem;
 
     [ObservableProperty] private string _ignoreInput = string.Empty;
+
+    // The game data's item names, offered as the add box is typed in.
+    public IReadOnlyList<string> ItemNameChoices => _itemNames.AllNames;
     [ObservableProperty] private string? _ignoreError;
 
     public RoombaMasterListViewModel(

@@ -3623,7 +3623,7 @@ How to keep it current:
 
 ### RoombaMasterListViewModelTests.cs
 - Covers: ViewModels/CharacterWorkshop/RoombaMasterListViewModel
-- Checks: market cross-reference excludes gang-house shops; one row per room; room names; unresolved items; live refresh; export text; the ignore list edited from a row (every row of the item follows), by name (game-data spelling, unknown names refused) and un-ignored.
+- Checks: market cross-reference excludes gang-house shops; one row per room; room names; unresolved items; live refresh; export text; the ignore list edited from a row (every row of the item follows), by name (the add box offers every record's name; game-data spelling, unknown names refused) and un-ignored.
 - Why: the Roomba master list.
 
 ### RoombaQueryHandlerTests.cs

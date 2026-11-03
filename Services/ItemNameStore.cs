@@ -25,6 +25,10 @@ public sealed class ItemNameStore
     // tomes, the bard lute, etc.).
     private string[] _offHandNames = Array.Empty<string>();
 
+    // Every record's name, sorted and de-duplicated: what a name box offers so a
+    // typed item can be picked rather than spelled.
+    private string[] _allNames = Array.Empty<string>();
+
     // Reverse index for resolving a room "You notice ..." entry (e.g.
     // "a long sword") back to its item Number. Keyed by the normalized
     // name (article/count stripped, lowercased) so loose room wording
@@ -80,6 +84,7 @@ public sealed class ItemNameStore
     // equipment classifier checks an off-hand against. Empty when no set is
     // active.
     public IReadOnlyList<string> OffHandNames => _offHandNames;
+    public IReadOnlyList<string> AllNames => _allNames;
 
     public ItemNameStore(GameDataCache cache) : this(cache, log: null) { }
 
@@ -293,6 +298,7 @@ public sealed class ItemNameStore
         _armourTypeByNumber.Clear();
         _packStealthByNumber.Clear();
         _offHandNames = Array.Empty<string>();
+        _allNames = Array.Empty<string>();
         ActiveSet = setName;
 
         if (string.IsNullOrWhiteSpace(setName))
@@ -345,6 +351,8 @@ public sealed class ItemNameStore
 
         _offHandNames = new string[offHands.Count];
         offHands.CopyTo(_offHandNames);
+        _allNames = _names.Values.Distinct(StringComparer.OrdinalIgnoreCase)
+            .Order(StringComparer.OrdinalIgnoreCase).ToArray();
 
         _cache.EvictTable("Items");
 
