@@ -45,7 +45,7 @@ public static class CombatSpellGates
     public static IReadOnlySet<CombatSpellAction>? LevelBlocked(
         MonsterMagicIndex? monsterMagic, SpellReqLevelIndex? spellReqLevel,
         int monsterNumber, string? singleCode, string? normalCode, string? altCode,
-        Func<string, int?>? ownSpell)
+        Func<string, int?>? ownSpell, string? undeadCode = null)
     {
         if (monsterMagic is null || spellReqLevel is null) return null;
         int immu = monsterMagic.SpellImmunity(monsterNumber);
@@ -62,6 +62,7 @@ public static class CombatSpellGates
         Check(singleCode, CombatSpellAction.SingleDebuff);
         Check(normalCode, CombatSpellAction.NormalAttackSpell);
         Check(altCode, CombatSpellAction.AlternateAttackSpell);
+        Check(undeadCode, CombatSpellAction.UndeadAttackSpell);
         return blocked;
     }
 
@@ -71,7 +72,8 @@ public static class CombatSpellGates
     // resist still lands damage and doesn't block.
     public static IReadOnlySet<CombatSpellAction>? ResistBlocked(
         MonsterResistIndex? monsterResist, SpellAttackTypeIndex? spellAttackType,
-        int monsterNumber, string? normalCode, string? altCode, Func<string, int?>? ownSpell)
+        int monsterNumber, string? normalCode, string? altCode, Func<string, int?>? ownSpell,
+        string? undeadCode = null)
     {
         if (monsterResist is null || spellAttackType is null) return null;
 
@@ -88,6 +90,7 @@ public static class CombatSpellGates
         }
         Check(normalCode, CombatSpellAction.NormalAttackSpell);
         Check(altCode, CombatSpellAction.AlternateAttackSpell);
+        Check(undeadCode, CombatSpellAction.UndeadAttackSpell);
         return blocked;
     }
 
@@ -96,7 +99,8 @@ public static class CombatSpellGates
     // a nonliving construct (report paradigm-20260922-082559).
     public static IReadOnlySet<CombatSpellAction>? TargetTypeBlocked(
         SpellTargetTypeIndex? spellTargetType, MonsterLifeIndex? monsterLife,
-        int monsterNumber, string? normalCode, string? altCode, Func<string, int?>? ownSpell)
+        int monsterNumber, string? normalCode, string? altCode, Func<string, int?>? ownSpell,
+        string? undeadCode = null)
     {
         if (spellTargetType is null || monsterLife is null) return null;
 
@@ -111,6 +115,7 @@ public static class CombatSpellGates
         }
         Check(normalCode, CombatSpellAction.NormalAttackSpell);
         Check(altCode, CombatSpellAction.AlternateAttackSpell);
+        Check(undeadCode, CombatSpellAction.UndeadAttackSpell);
         return blocked;
     }
 }

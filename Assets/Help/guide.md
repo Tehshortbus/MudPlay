@@ -241,7 +241,7 @@ Each combat round the engine picks one main action — **cast an attack spell** 
 - **Alternate** — flip the preferred action every round; a round whose preferred type can't fire falls back to the other, so no round is wasted.
 - **Custom round cycle** — spend a set number of rounds swinging, then a set number casting, on repeat.
 
-Two things always sit above that choice: a **backstab opener** fires first when eligible, and **debuff spells** are a separate extra action that can land the same round. A **Drain spell** (Settings → Combat) takes the round over once your HP is at or under its **Heal when ≤ HP** %; it overrides a room spell too only with **Drains override AOE** ticked.
+Two things always sit above that choice: a **backstab opener** fires first when eligible, and **debuff spells** are a separate extra action that can land the same round. A **Drain spell** (Settings → Combat) takes the round over once your HP is at or under its **Heal when ≤ HP** %; it overrides a room spell too only with **Drains override AOE** ticked. An **Undead spell** takes the place of the normal and alternate attack spells against an undead monster.
 
 **Taking a round yourself.** If you hand-type an attack mid-fight — a **combat spell** (any spell that costs round energy, as opposed to a 0-energy heal/buff) or a **physical attack** (`a`…`attack`, `aa`/`bash`, `sma`/`smash`, `bs`/`backstab`, `pu`/`punch`, `kic`/`kick`, `ju`/`jumpkick`: every spelling the game takes) — the engine treats it as a **user override** and holds its own auto-attack for that round, so it won't fight you by re-sending its action on top of yours. Control returns automatically on the next combat round: if one of the engine's own heals or buffs stopped the fight during the round you took, it re-attacks then. `bash` or `aa` followed by a direction (`bash n`) is a door, not an attack, and doesn't count. `sm` isn't a command the game knows (smash starts at `sma`), so it doesn't count either. Nor does a line that is a text exit of the room you are standing in: `jump pool`, where the room has that exit, is a move, though `jump` is otherwise a jumpkick.
 
@@ -3526,7 +3526,7 @@ Alignment quests are gated separately: the three **Evil / Neutral / Good** check
 
 **Auto-detect completed quests from your flags.** Turn on **Settings → General → "Auto-detect completed quests from flags on login"** (off by default) and, on your first login of the day, MudPlay reads your live quest-flag values and ticks **Complete** on any quest whose flag has reached its finished value — then sends the availability announce, so a quest you've already done drops off the "now available" list. It runs **at most once per day** per character, so relogging later the same day doesn't re-fire the flag-read burst; the next day's first login checks again. Turning the checkbox on **while you're already playing** fires the check right away if it hasn't run yet today (it does nothing if you flip it at the character-select menu):
 
-**Each quest shows its flag as last read**, beside its level: *flag 126 = 8* (hover it for when it was read). Any read updates it: the login check, `@quest update`, `@quest <name|flag>`, or an `abil <flag>` you type yourself on Paradigm or Anomaly (on Stock, a `sys god <your name> abil`, with sys-god powers). A quest no read has reached yet shows no flag.
+**Each quest shows its flag as last read**, after its name: *flag 126 = 8* (hover it for when it was read). Its **Quest Flags** button opens the **Quest Flag Steps** window on that quest's flag, the same window a double-click in **Game Data → Quest Flags** opens: everything the game data's scripts do with the flag, step by step. One window serves every card; another card's button turns it to that quest's flag, and the same card's button again closes it when it's in front. Any read updates it: the login check, `@quest update`, `@quest <name|flag>`, or an `abil <flag>` you type yourself on Paradigm or Anomaly (on Stock, a `sys god <your name> abil`, with sys-god powers). A quest no read has reached yet shows no flag.
 
 A live flag read — that login check, `@quest update`, `@quest <name|flag>`, or an `abil` you type — also records how far you are through a quest you haven't finished: each quest step sets the flag to that step's number, so the checklist ticks every step up to the value read (a flag read of 7 ticks every step up to step 7). This works on the crawler's own checklist; a checklist you've rewritten in **Edit Quests…** keeps only your own ticks.
 
@@ -5753,7 +5753,7 @@ A flee sends one move per room. A **text exit** on the way (a trail you leave wi
 ### Minimum mana per cast — Percentage / Value
 
 **Default:** `Percentage`
-**What it does:** Decides how every **Min mana per cast** box on this tab is read (both Multi-attack rows, both Debuff rows, the Normal and Alternate attack spells, and the Drain spell) — as a 0–100% share of your maximum mana, or as a flat number.
+**What it does:** Decides how every **Min mana per cast** box on this tab is read (both Multi-attack rows, both Debuff rows, the Normal and Alternate attack spells, the Drain spell and the Undead spell) — as a 0–100% share of your maximum mana, or as a flat number.
 
 ### Combat profiles (quick-swap loadouts)
 
@@ -5856,6 +5856,18 @@ Debuffing is a separate "extra" action that can land the same round as your main
 **Targeting:** a drain can only affect a **living, non-undead** target — there's no life to steal from a construct or a skeleton — so against a NonLiving or Undead monster the drain is skipped and MudPlay falls back to your normal attack cascade for that fight. (If game data is thin, the game's own "no effect" reply is caught as a backstop.)
 
 **Drains override AOE:** by default the drain **yields to your room AoE** — if you have enough enemies present to trigger the Multi-attack spells, rooming is usually the safer play (and it yields to whichever of the two room slots is carrying the round), so the AoE keeps firing and the drain only overrides single-target / weapon rounds. Check this box to let the drain pre-empt the AoE too, when your loop calls for it.
+
+### Undead spell
+
+**Default:** unset
+**What it does:** a damage spell for **undead** monsters (those the game data marks *Undead: yes*), cast in place of your **Normal** and **Alternate attack spells** whenever the monster you're fighting is undead. Put a spell here that does well against undead (a turn-undead or holy spell), and keep your usual spells in the rows above for everything else.
+
+- It sits in the attack-spell cascade where Normal and Alternate do: the room spells still come first when the room calls for them, and your **action order** decides spell rounds against weapon rounds as usual.
+- A round it can't fire in goes to your Normal, then Alternate, attack spell as usual: under its **Min mana per cast**, its **Max casts** (per target) spent, a "no effect" on that monster, or game data showing it can't hurt that monster (its level under the monster's spell immunity, an element the monster fully resists).
+- **Ignore mana** works as on the attack rows: in a party, it's cast on its turn whatever your mana.
+- A **per-monster attack override** (Game Data) wins over it for that one monster.
+- A monster with no game-data record isn't taken for undead, so the slot is never cast on a guess.
+- **Min enemies** doesn't apply.
 
 A per-monster override configured in Game Data can substitute different spells (and a physical command) for a specific monster species — worth checking if a particular monster seems to diverge from your setup here. In the monster editor's **Attacks on this monster** group:
 

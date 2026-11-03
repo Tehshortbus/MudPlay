@@ -56,7 +56,7 @@ public static class LoopSimulator
     //   - AreaTours: which lairs make an area and the order its tour takes them in;
     //   - the walk pace (AppServices.LoopSimulationWalkSeconds and the travel models
     //     behind it), which sets how many laps fit in the hour.
-    public const int SimulatorVersion = 2;
+    public const int SimulatorVersion = 3;
 
     public static LoopSimSummary RunMany(
         SimCharacter character, IReadOnlyList<SimRoom> lap, SimWorld world,
@@ -354,8 +354,8 @@ public static class LoopSimulator
         }
 
         // Whether anything in the configured cascade can damage it — the weapon clears
-        // its Magical level, or the Normal / Alternate attack spell isn't blocked by
-        // game data. The client walks past a monster it provably can't hurt.
+        // its Magical level, or the Normal / Alternate attack spell (or, at an undead
+        // monster, the undead spell) isn't blocked by game data. The client walks past a monster it provably can't hurt.
         private bool CanHurt(MonsterCatalogEntry entry)
         {
             if (_ch.Melee.HasWeapon && _ch.WeaponHitMagic >= entry.Magical) return true;
@@ -364,21 +364,24 @@ public static class LoopSimulator
             MonsterOverlay overlay = _ch.Overlay(entry.Number);
             normal = _ch.SpellShortByNumber(overlay.OverrideAttackSpellId ?? 0) ?? normal;
             alt = _ch.SpellShortByNumber(overlay.OverrideAltAttackSpellId ?? 0) ?? alt;
+            string? undead = _world.MonsterLife?.IsUndead(entry.Number) == true
+                ? NullIfBlank(_ch.Combat.UndeadAttackSpell.SpellName) : null;
             bool Blocked(string? code, CombatSpellAction action) =>
                 code is null || !_ch.Spells.ContainsKey(code)
-                || (Gates(entry.Number, null, normal, alt) is { } b && b.Contains(action));
+                || (Gates(entry.Number, null, normal, alt, undead) is { } b && b.Contains(action));
             return !Blocked(normal, CombatSpellAction.NormalAttackSpell)
-                || !Blocked(alt, CombatSpellAction.AlternateAttackSpell);
+                || !Blocked(alt, CombatSpellAction.AlternateAttackSpell)
+                || !Blocked(undead, CombatSpellAction.UndeadAttackSpell);
         }
 
-        private IReadOnlySet<CombatSpellAction>? Gates(int number, string? single, string? normal, string? alt)
+        private IReadOnlySet<CombatSpellAction>? Gates(int number, string? single, string? normal, string? alt, string? undead)
         {
             HashSet<CombatSpellAction>? all = null;
             foreach (IReadOnlySet<CombatSpellAction>? set in new[]
             {
-                CombatSpellGates.LevelBlocked(_world.MonsterMagic, _world.SpellReqLevel, number, single, normal, alt, OwnSpell),
-                CombatSpellGates.ResistBlocked(_world.MonsterResist, _world.SpellAttackType, number, normal, alt, OwnSpell),
-                CombatSpellGates.TargetTypeBlocked(_world.SpellTargetType, _world.MonsterLife, number, normal, alt, OwnSpell),
+                CombatSpellGates.LevelBlocked(_world.MonsterMagic, _world.SpellReqLevel, number, single, normal, alt, OwnSpell, undead),
+                CombatSpellGates.ResistBlocked(_world.MonsterResist, _world.SpellAttackType, number, normal, alt, OwnSpell, undead),
+                CombatSpellGates.TargetTypeBlocked(_world.SpellTargetType, _world.MonsterLife, number, normal, alt, OwnSpell, undead),
             })
                 if (set is not null) (all ??= new HashSet<CombatSpellAction>()).UnionWith(set);
             return all;
@@ -494,6 +497,8 @@ public static class LoopSimulator
             string? normalEff = atk ?? NullIfBlank(_ch.Combat.NormalAttackSpell.SpellName);
             string? altEff = alt ?? NullIfBlank(_ch.Combat.AlternateAttackSpell.SpellName);
             string? singleEff = pre ?? NullIfBlank(_ch.Combat.SingleTargetDebuffSpell.SpellName);
+            bool undead = _world.MonsterLife?.IsUndead(number) == true;
+            string? undeadEff = undead ? NullIfBlank(_ch.Combat.UndeadAttackSpell.SpellName) : null;
             bool hpBelowDrain = _ch.Combat.DrainHpTrigger > 0
                 && _hp <= Math.Round(_ch.MaxHp * _ch.Combat.DrainHpTrigger / 100.0);
 
@@ -504,9 +509,9 @@ public static class LoopSimulator
                 MaxMana: _ch.MaxMana,
                 BackstabPending: _stabPending,
                 SpellsAvailable: ma > 0,
-                LevelBlockedActions: CombatSpellGates.LevelBlocked(_world.MonsterMagic, _world.SpellReqLevel, number, singleEff, normalEff, altEff, OwnSpell),
-                ResistBlockedActions: CombatSpellGates.ResistBlocked(_world.MonsterResist, _world.SpellAttackType, number, normalEff, altEff, OwnSpell),
-                TargetTypeBlockedActions: CombatSpellGates.TargetTypeBlocked(_world.SpellTargetType, _world.MonsterLife, number, normalEff, altEff, OwnSpell),
+                LevelBlockedActions: CombatSpellGates.LevelBlocked(_world.MonsterMagic, _world.SpellReqLevel, number, singleEff, normalEff, altEff, OwnSpell, undeadEff),
+                ResistBlockedActions: CombatSpellGates.ResistBlocked(_world.MonsterResist, _world.SpellAttackType, number, normalEff, altEff, OwnSpell, undeadEff),
+                TargetTypeBlockedActions: CombatSpellGates.TargetTypeBlocked(_world.SpellTargetType, _world.MonsterLife, number, normalEff, altEff, OwnSpell, undeadEff),
                 TargetDontBackstab: o.DontBackstab ?? false,
                 OverrideAttackSpell: atk,
                 OverrideAttackMaxCasts: atkCap,
@@ -517,6 +522,7 @@ public static class LoopSimulator
                 WeaponIneffective: !_ch.Melee.HasWeapon || _ch.WeaponHitMagic < target.Entry.Magical,
                 HpBelowDrainTrigger: hpBelowDrain,
                 DrainTargetEligible: _world.MonsterLife?.CanDrain(number) ?? true,
+                TargetIsUndead: undead,
                 RoomMobKeys: fightable.Select(m => m.Key).ToList(),
                 ManaCostOf: c => _ch.Spells.TryGetValue(c, out SimSpell? s) ? s.ManaPerCast : null);
         }

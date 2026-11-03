@@ -14338,6 +14338,7 @@ public sealed class AppServices
         Add(combat.MultiAttackSpell?.SpellName);
         Add(combat.MultiAttack2Spell?.SpellName);
         Add(combat.DrainSpell?.SpellName);
+        Add(combat.UndeadAttackSpell?.SpellName);
         foreach (Game.Spells.KnownSpell s in Spellbook.Available)
             Add(s.Name);
         return list;

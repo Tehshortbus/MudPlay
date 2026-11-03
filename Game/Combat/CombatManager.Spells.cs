@@ -242,6 +242,7 @@ public sealed partial class CombatManager
             CombatSpellAction.MultiAttack2 => settings.MultiAttack2Spell,
             CombatSpellAction.NormalAttackSpell => settings.NormalAttackSpell,
             CombatSpellAction.AlternateAttackSpell => settings.AlternateAttackSpell,
+            CombatSpellAction.UndeadAttackSpell => settings.UndeadAttackSpell,
             _ => null,
         };
         return slot is { FireRegardlessOfMana: true }
@@ -372,7 +373,8 @@ public sealed partial class CombatManager
     // blocks while a room attack is held: a room spell slotted as the normal or
     // alternate attack hits a bystander just the same.
     private IReadOnlySet<CombatSpellAction>? WithRoomScopedHeld(
-        IReadOnlySet<CombatSpellAction>? blocked, string? singleCode, string? normalCode, string? altCode)
+        IReadOnlySet<CombatSpellAction>? blocked, string? singleCode, string? normalCode, string? altCode,
+        string? undeadCode)
     {
         HashSet<CombatSpellAction>? held = null;
         void Check(string? code, CombatSpellAction action)
@@ -383,6 +385,7 @@ public sealed partial class CombatManager
         Check(singleCode, CombatSpellAction.SingleDebuff);
         Check(normalCode, CombatSpellAction.NormalAttackSpell);
         Check(altCode, CombatSpellAction.AlternateAttackSpell);
+        Check(undeadCode, CombatSpellAction.UndeadAttackSpell);
         return held ?? blocked;
     }
 
@@ -1042,6 +1045,7 @@ public sealed partial class CombatManager
         if (_announcedSpellCode is not { } announced
             || _lastCastAction is not (CombatSpellAction.NormalAttackSpell
                 or CombatSpellAction.AlternateAttackSpell
+                or CombatSpellAction.UndeadAttackSpell
                 or CombatSpellAction.DrainSpell
                 or CombatSpellAction.MultiAttack
                 or CombatSpellAction.MultiAttack2))
@@ -1193,6 +1197,7 @@ public sealed partial class CombatManager
     // owners).
     private static bool IsAttackSpellRoundOwner(CombatSpellAction action) => action is
         CombatSpellAction.NormalAttackSpell or CombatSpellAction.AlternateAttackSpell
+        or CombatSpellAction.UndeadAttackSpell
         or CombatSpellAction.MultiAttack or CombatSpellAction.MultiAttack2
         or CombatSpellAction.DrainSpell;
 
@@ -1651,10 +1656,12 @@ public sealed partial class CombatManager
         string? singleEff = preAttackOverride ?? NullIfBlank(settings.SingleTargetDebuffSpell.SpellName);
         string? normalEff = attackOverride    ?? NullIfBlank(settings.NormalAttackSpell.SpellName);
         string? altEff    = altAttackOverride ?? NullIfBlank(settings.AlternateAttackSpell.SpellName);
+        bool undead = _monsterLife?.IsUndead(monsterNumber) == true;
+        string? undeadEff = undead ? NullIfBlank(settings.UndeadAttackSpell.SpellName) : null;
 
         bool roomAttackHeld = _roomAttackHold?.Invoke() is not null;
-        IReadOnlySet<CombatSpellAction>? levelBlocked = LevelBlockedFor(monsterNumber, singleEff, normalEff, altEff);
-        if (roomAttackHeld) levelBlocked = WithRoomScopedHeld(levelBlocked, singleEff, normalEff, altEff);
+        IReadOnlySet<CombatSpellAction>? levelBlocked = LevelBlockedFor(monsterNumber, singleEff, normalEff, altEff, undeadEff);
+        if (roomAttackHeld) levelBlocked = WithRoomScopedHeld(levelBlocked, singleEff, normalEff, altEff, undeadEff);
 
         CombatSpellContext ctx = new(
             EnemyCount:          enemyCount,
@@ -1671,8 +1678,8 @@ public sealed partial class CombatManager
             SpellsAvailable:     ma > 0,
             LevelBlockedActions: levelBlocked,
             AllowNukes:          !roomAttackHeld && (_autoNukeGate?.Invoke() ?? true),
-            ResistBlockedActions: ResistBlockedFor(monsterNumber, normalEff, altEff),
-            TargetTypeBlockedActions: TargetTypeBlockedFor(monsterNumber, normalEff, altEff),
+            ResistBlockedActions: ResistBlockedFor(monsterNumber, normalEff, altEff, undeadEff),
+            TargetTypeBlockedActions: TargetTypeBlockedFor(monsterNumber, normalEff, altEff, undeadEff),
             TargetDontBackstab:  IsDontBackstab(monsterNumber),
             OverrideAttackSpell:       attackOverride,
             OverrideAttackMaxCasts:    attackCap,
@@ -1685,11 +1692,12 @@ public sealed partial class CombatManager
             AlternationPreferSpell: AlternationPreferSpell(settings),
             HpBelowDrainTrigger: hpBelowDrain,
             DrainTargetEligible: drainEligible,
+            TargetIsUndead:      undead,
             RoomMobKeys:         obs is { } listed ? CollectEngageableMobKeys(listed) : null,
             ManaCostOf:          _spellManaCost,
             InParty:             _party.IsInParty,
             RoomAttacksNoDamage: RoomAttacksThatDamageNothing(settings, obs, monsterNumber));
-        if (logGateSkips) LogDataGateSkips(ctx, settings, target, monsterNumber, normalEff, altEff);
+        if (logGateSkips) LogDataGateSkips(ctx, settings, target, monsterNumber, normalEff, altEff, undeadEff);
         return ctx;
     }
 
@@ -2070,16 +2078,16 @@ public sealed partial class CombatManager
     // caller passes the EFFECTIVE cast-code per rung — the per-monster override when
     // active, else the configured slot.
     private IReadOnlySet<CombatSpellAction>? LevelBlockedFor(
-        int monsterNumber, string? singleCode, string? normalCode, string? altCode) =>
-        CombatSpellGates.LevelBlocked(_monsterMagic, _spellReqLevel, monsterNumber, singleCode, normalCode, altCode, _ownSpell);
+        int monsterNumber, string? singleCode, string? normalCode, string? altCode, string? undeadCode = null) =>
+        CombatSpellGates.LevelBlocked(_monsterMagic, _spellReqLevel, monsterNumber, singleCode, normalCode, altCode, _ownSpell, undeadCode);
 
     private IReadOnlySet<CombatSpellAction>? ResistBlockedFor(
-        int monsterNumber, string? normalCode, string? altCode) =>
-        CombatSpellGates.ResistBlocked(_monsterResist, _spellAttackType, monsterNumber, normalCode, altCode, _ownSpell);
+        int monsterNumber, string? normalCode, string? altCode, string? undeadCode = null) =>
+        CombatSpellGates.ResistBlocked(_monsterResist, _spellAttackType, monsterNumber, normalCode, altCode, _ownSpell, undeadCode);
 
     private IReadOnlySet<CombatSpellAction>? TargetTypeBlockedFor(
-        int monsterNumber, string? normalCode, string? altCode) =>
-        CombatSpellGates.TargetTypeBlocked(_spellTargetType, _monsterLife, monsterNumber, normalCode, altCode, _ownSpell);
+        int monsterNumber, string? normalCode, string? altCode, string? undeadCode = null) =>
+        CombatSpellGates.TargetTypeBlocked(_spellTargetType, _monsterLife, monsterNumber, normalCode, altCode, _ownSpell, undeadCode);
 
     // ----- Data-gate skip log ---------
     // The chooser passes over a spell a game-data gate keeps off the target in
@@ -2100,7 +2108,7 @@ public sealed partial class CombatManager
 
     private void LogDataGateSkips(
         in CombatSpellContext ctx, CombatSettings settings, string target, int monsterNumber,
-        string? normalCode, string? altCode)
+        string? normalCode, string? altCode, string? undeadCode)
     {
         if (_log is null) return;
         if (!string.Equals(_gateSkipTarget, target, StringComparison.OrdinalIgnoreCase))
@@ -2110,6 +2118,7 @@ public sealed partial class CombatManager
         }
         LogGateSkip(ctx, CombatSpellAction.NormalAttackSpell, "normal", normalCode, target, monsterNumber);
         LogGateSkip(ctx, CombatSpellAction.AlternateAttackSpell, "alternate", altCode, target, monsterNumber);
+        LogGateSkip(ctx, CombatSpellAction.UndeadAttackSpell, "undead", undeadCode, target, monsterNumber);
         LogGateSkip(ctx, CombatSpellAction.MultiAttack, "multi", NullIfBlank(settings.MultiAttackSpell.SpellName), target, monsterNumber);
         LogGateSkip(ctx, CombatSpellAction.MultiAttack2, "multi 2", NullIfBlank(settings.MultiAttack2Spell.SpellName), target, monsterNumber);
     }
@@ -2528,6 +2537,7 @@ public sealed partial class CombatManager
         if (!CombatSpellsWired) return;
         if (_lastCastAction is not (CombatSpellAction.NormalAttackSpell
                                   or CombatSpellAction.AlternateAttackSpell
+                                  or CombatSpellAction.UndeadAttackSpell
                                   or CombatSpellAction.DrainSpell))
             return;
 

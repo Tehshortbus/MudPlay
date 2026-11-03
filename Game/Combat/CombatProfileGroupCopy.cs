@@ -72,6 +72,7 @@ public static class CombatProfileGroupCopy
                 to.NormalAttackSpell = from.NormalAttackSpell.Clone();
                 to.AlternateAttackSpell = from.AlternateAttackSpell.Clone();
                 to.DrainSpell = from.DrainSpell.Clone();
+                to.UndeadAttackSpell = from.UndeadAttackSpell.Clone();
                 to.SpellManaThresholdMode = from.SpellManaThresholdMode;
                 to.DrainHpTrigger = from.DrainHpTrigger;
                 to.DrainsOverrideAoe = from.DrainsOverrideAoe;

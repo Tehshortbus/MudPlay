@@ -1494,6 +1494,59 @@ public sealed class CombatSpellChooserTests
     // while keeping the physical constraints (mana affordability, once-per-target,
     // cast cap). It is NOT a bypass: the user picks WHICH spell fills the rung.
 
+    // ----- Undead attack spell ------------------------------------------
+
+    private static CombatSettings UndeadSettings(int? undeadCap = null) => new()
+    {
+        NormalAttackSpell = Slot("mmis"),
+        AlternateAttackSpell = Slot("fbal"),
+        UndeadAttackSpell = Slot("turn", maxCasts: undeadCap),
+    };
+
+    // Each target's cast cap is the undead slot's own; spent, the normal spell takes over.
+    [Fact]
+    public void Choose_UndeadTarget_UndeadSpellUpToItsCap_ThenTheNormalSpell()
+    {
+        CombatSpellChooser sut = new();
+        CombatSettings settings = UndeadSettings(undeadCap: 1);
+        CombatSpellContext undead = Ctx() with { TargetIsUndead = true };
+
+        CombatSpellDecision first = sut.Choose(settings, undead);
+        Assert.Equal(new CombatSpellDecision(CombatSpellAction.UndeadAttackSpell, "turn"), first);
+        sut.MarkCast(first, "a rat");
+
+        Assert.Equal(new CombatSpellDecision(CombatSpellAction.NormalAttackSpell, "mmis"), sut.Choose(settings, undead));
+        sut.ResetForNewTarget();
+        Assert.Equal(CombatSpellAction.UndeadAttackSpell, sut.Choose(settings, undead).Action);
+    }
+
+    // A living target never takes it, and a per-monster attack override is that one
+    // monster's own choice and wins over the undead slot.
+    [Fact]
+    public void Choose_UndeadSlot_NotForALivingTarget_AndAPerMonsterOverrideWins()
+    {
+        CombatSpellChooser sut = new();
+        CombatSettings settings = UndeadSettings();
+
+        Assert.Equal(CombatSpellAction.NormalAttackSpell, sut.Choose(settings, Ctx()).Action);
+        CombatSpellDecision overridden = sut.Choose(settings, OverrideCtx(attackOverride: "fireball") with { TargetIsUndead = true });
+        Assert.Equal(new CombatSpellDecision(CombatSpellAction.NormalAttackSpell, "fireball"), overridden);
+    }
+
+    // The game-data and observed blocks apply to it as to the other attack rungs.
+    [Fact]
+    public void Choose_UndeadSpellBlocked_TheCascadeGoesOn()
+    {
+        CombatSpellChooser sut = new();
+        CombatSettings settings = UndeadSettings();
+        HashSet<CombatSpellAction> blocked = new() { CombatSpellAction.UndeadAttackSpell };
+
+        Assert.Equal(CombatSpellAction.NormalAttackSpell,
+            sut.Choose(settings, Ctx() with { TargetIsUndead = true, ImmuneAttackSpells = blocked }).Action);
+        Assert.Equal(CombatSpellAction.NormalAttackSpell,
+            sut.Choose(settings, Ctx() with { TargetIsUndead = true, LevelBlockedActions = blocked }).Action);
+    }
+
     private static CombatSpellContext OverrideCtx(
         string? attackOverride = null, int? attackCap = null,
         string? altOverride = null, int? altCap = null,

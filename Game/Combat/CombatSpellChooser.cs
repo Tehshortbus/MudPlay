@@ -25,7 +25,8 @@ namespace MudPlay.Game.Combat;
 // 2. Round action — CombatSettings.ActionOrder picks between spells and the
 //    weapon. SpellsFirst runs the attack-spell cascade: MultiAttackSpell while
 //    its conditions hold (room count ≥ MinEnemies, mana, cast cap), then
-//    NormalAttackSpell, then AlternateAttackSpell, then the weapon; a spell that
+//    UndeadAttackSpell at an undead target, then NormalAttackSpell, then
+//    AlternateAttackSpell, then the weapon; a spell that
 //    can't fire this round falls through to the swing. PhysicalFirst swings the
 //    weapon and reaches for that same cascade only when the weapon path is proven
 //    ineffective against this target (ctx.WeaponIneffective — the normal weapon
@@ -40,7 +41,7 @@ namespace MudPlay.Game.Combat;
 // reserve, not the spell's cost, not that there is any.
 //
 // Three deterministic "skip this single-target attack spell" inputs flow in via
-// CombatSpellContext, each gating NormalAttackSpell / AlternateAttackSpell down
+// CombatSpellContext, each gating the undead / normal / alternate attack spell down
 // the cascade to the next slot (then the weapon):
 //   - ImmuneAttackSpells — the target's species produced a "Your spell has no
 //     effect on X." line this room (a hard targeting/immunity mismatch).
@@ -58,6 +59,7 @@ public sealed class CombatSpellChooser
     private int _normalAttackCasts;
     private int _alternateAttackCasts;
     private int _drainCasts;
+    private int _undeadAttackCasts;
     private readonly HashSet<string> _singleDebuffedTargets =
         new(StringComparer.OrdinalIgnoreCase);
     // RawName keys of the mobs present when each AoE debuff cast went out this room.
@@ -98,7 +100,7 @@ public sealed class CombatSpellChooser
     // never trips shows here as a count that never moved.
     public string DescribeCasts()
         => $"multi-attack 1 = {_multiAttackCasts}, multi-attack 2 = {_multiAttack2Casts}, "
-           + $"normal = {_normalAttackCasts}, alternate = {_alternateAttackCasts}, "
+           + $"normal = {_normalAttackCasts}, alternate = {_alternateAttackCasts}, undead = {_undeadAttackCasts}, "
            + $"drain = {_drainCasts}, area debuff = {_areaDebuffCasts}, single debuff = {_singleDebuffCasts}";
 
     // Reset the cast bookkeeping a fresh ROSTER owns — the single-target economy,
@@ -119,6 +121,7 @@ public sealed class CombatSpellChooser
         _normalAttackCasts = 0;
         _alternateAttackCasts = 0;
         _drainCasts = 0;
+        _undeadAttackCasts = 0;
         _singleDebuffedTargets.Clear();
         _attackSpellLatchedOff = false;
         _castSingleTargetAttackThisTarget = false;
@@ -158,6 +161,7 @@ public sealed class CombatSpellChooser
         _normalAttackCasts = 0;
         _alternateAttackCasts = 0;
         _drainCasts = 0;
+        _undeadAttackCasts = 0;
         _attackSpellLatchedOff = false;
         _castSingleTargetAttackThisTarget = false;
     }
@@ -246,7 +250,7 @@ public sealed class CombatSpellChooser
         // party; each rung asks (AttackManaBlock).
         if (preferSpell
             && TryAttackSpellOrEngage(settings, ctx, settings.SpellManaThresholdMode, singleTargetSpent,
-                   new RungCounts(_normalAttackCasts, _alternateAttackCasts), why: null) is { } spell)
+                   new RungCounts(_normalAttackCasts, _alternateAttackCasts, _undeadAttackCasts), why: null) is { } spell)
             return spell;
 
         // The single-target attack cascade could not fire this round. If we'd
@@ -275,7 +279,7 @@ public sealed class CombatSpellChooser
         List<string>? why = null)
     {
         ArgumentNullException.ThrowIfNull(settings);
-        RungCounts counts = currentTarget ? new RungCounts(_normalAttackCasts, _alternateAttackCasts) : default;
+        RungCounts counts = currentTarget ? new RungCounts(_normalAttackCasts, _alternateAttackCasts, _undeadAttackCasts) : default;
         return TryAttackSpellOrEngage(settings, ctx, settings.SpellManaThresholdMode, singleTargetSpent: false,
             counts, why);
     }
@@ -468,10 +472,11 @@ public sealed class CombatSpellChooser
 
     // The single-target cast counts an attack walk reads: the current target's, or
     // none for a monster not being fought yet.
-    private readonly record struct RungCounts(int Normal, int Alternate);
+    private readonly record struct RungCounts(int Normal, int Alternate, int Undead);
 
     // Attack-spell phase: room spell 1 while it qualifies, room spell 2 once slot 1
-    // is spent, then normal, then alternate single-target damage spells. Returns
+    // is spent, then the undead spell at an undead target, then normal, then
+    // alternate single-target damage spells. Returns
     // null when none can fire this round, with why each configured rung was passed
     // over added to why.
     private CombatSpellDecision? TryAttackSpell(
@@ -506,6 +511,15 @@ public sealed class CombatSpellChooser
             why?.Add("single-target attack spells: done with this target (its mana reserve or cast cap ran out)");
             return null;
         }
+
+        // Undead rung: an undead target takes the undead attack spell in place of the
+        // normal and alternate ones (user, 2026-11-02). A per-monster attack override
+        // is this one monster's own choice and wins. A round the undead spell can't
+        // fire in goes on down to normal and alternate.
+        if (ctx.TargetIsUndead && ctx.OverrideAttackSpell is null
+            && SingleRung(settings.UndeadAttackSpell, null, null, CombatSpellAction.UndeadAttackSpell,
+                   counts.Undead, ctx, mode, why) is { } undead)
+            return undead;
 
         // Normal-attack rung. A per-monster override spell (ctx.OverrideAttackSpell)
         // SUBSTITUTES for the configured NormalAttackSpell here and runs the exact
@@ -552,6 +566,7 @@ public sealed class CombatSpellChooser
         CombatSpellAction.MultiAttack2 => "room attack 2",
         CombatSpellAction.NormalAttackSpell => "attack spell",
         CombatSpellAction.AlternateAttackSpell => "alternate attack spell",
+        CombatSpellAction.UndeadAttackSpell => "undead attack spell",
         _ => action.ToString(),
     };
 
@@ -651,6 +666,10 @@ public sealed class CombatSpellChooser
                 break;
             case CombatSpellAction.AlternateAttackSpell:
                 _alternateAttackCasts++;
+                _castSingleTargetAttackThisTarget = true;
+                break;
+            case CombatSpellAction.UndeadAttackSpell:
+                _undeadAttackCasts++;
                 _castSingleTargetAttackThisTarget = true;
                 break;
             case CombatSpellAction.DrainSpell:
@@ -837,6 +856,7 @@ public enum CombatSpellAction
     AlternateAttackSpell,
     Backstab,
     DrainSpell,
+    UndeadAttackSpell,
 }
 
 // One round's chosen combat action plus the cast-code to send (null for
@@ -930,6 +950,10 @@ public readonly record struct CombatSpellContext(
     // them — unwired callers behave exactly as before.
     bool HpBelowDrainTrigger = false,
     bool DrainTargetEligible = false,
+    // The target is undead by game data (Undead column), which puts the undead attack
+    // spell ahead of normal and alternate. False for an unknown monster, so the slot
+    // never fires on a guess.
+    bool TargetIsUndead = false,
     // RawNames of every engageable monster in the room this round — the roster the AoE
     // debuff tags on cast and checks for new (untagged) arrivals to decide a re-fire.
     // null when unwired (weapon-only context), where the AoE degrades to

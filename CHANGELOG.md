@@ -1,5 +1,10 @@
 # Version history
 
+## 3.198.0
+
+- Combat tab: an Undead spell slot, cast at undead monsters in place of the normal and alternate attack spells
+- Quest Status cards: name, then the flag as last read, then a Quest Flags button opening that flag's steps
+
 ## 3.197.1
 
 - A proc on your hit that the monster resists (the weapon's or a class buff's) no longer makes the client give up the fight, and moving resumes right after the kill

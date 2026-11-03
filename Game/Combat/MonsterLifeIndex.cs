@@ -51,6 +51,11 @@ public sealed class MonsterLifeIndex
             || (!life.NonLiving && !life.Undead);
     }
 
+    // Whether the monster is undead by game data. An unknown number reads no: the
+    // undead attack spell is cast only at a monster known to be undead.
+    public bool IsUndead(int monsterNumber) =>
+        monsterNumber >= 0 && Build().TryGetValue(monsterNumber, out MonsterLife life) && life.Undead;
+
     // Whether a spell with the given target-class restriction can affect this monster.
     // Any ⇒ always. The other three are provable from data: a LivingOnly spell can't
     // touch a NonLiving or Undead target; an UndeadOnly spell only an Undead; an

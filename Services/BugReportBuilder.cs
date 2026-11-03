@@ -1667,6 +1667,7 @@ public static class BugReportBuilder
             ("area-debuff", combat.AreaDebuffSpell.SpellName),
             ("single-debuff", combat.SingleTargetDebuffSpell.SpellName),
             ("drain", combat.DrainSpell.SpellName),
+            (Attack("undead-attack", combat.UndeadAttackSpell), combat.UndeadAttackSpell.SpellName),
         });
         Group("Heal & regen", new (string, string?)[]
         {

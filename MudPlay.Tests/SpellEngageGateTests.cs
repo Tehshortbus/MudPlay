@@ -109,6 +109,7 @@ public sealed class SpellEngageGateTests
             AddMonster(506, "lich lord");
             AddMonster(507, "flame wraith");
             AddMonster(509, "barrow wight");
+            AddMonster(510, "shambling zombie");
         }
 
         // A katana with hit magic 3; monsters needing 4 (the rat, slime and golem need
@@ -119,7 +120,8 @@ public sealed class SpellEngageGateTests
         // record sharing the cast-code `blaz` in Paradigm 1.9.1 (the user's Anomaly set
         // carries the same spells): the Druid's blaze (#290, level 20, fire), the
         // Priest's blazing light (#5585, level 56, undead only) and four records no
-        // class learns. The barrow wight is undead, spell immune below level 30.
+        // class learns. The barrow wight is undead, spell immune below level 30; the
+        // shambling zombie is undead (255, the MDB's stored true) with no immunity.
         private static void WriteGameData(string dir)
         {
             Directory.CreateDirectory(dir);
@@ -140,7 +142,8 @@ public sealed class SpellEngageGateTests
                   { "Number": 505, "Name": "iron golem", "Abil-0": 139, "AbilVal-0": 5 },
                   { "Number": 506, "Name": "lich lord", "Abil-0": 28, "AbilVal-0": 4, "Abil-1": 139, "AbilVal-1": 20 },
                   { "Number": 507, "Name": "flame wraith", "Abil-0": 28, "AbilVal-0": 4, "Abil-1": 5, "AbilVal-1": 100 },
-                  { "Number": 509, "Name": "barrow wight", "Undead": 1, "Abil-0": 139, "AbilVal-0": 30 } ]
+                  { "Number": 509, "Name": "barrow wight", "Undead": 1, "Abil-0": 139, "AbilVal-0": 30 },
+                  { "Number": 510, "Name": "shambling zombie", "Undead": 255 } ]
                 """);
             File.WriteAllText(Path.Combine(dir, "Spells.json"), """
                 [ { "Number": 1, "Name": "magic missile", "Short": "mmis", "ReqLevel": 1, "ManaCost": 3,
@@ -261,6 +264,45 @@ public sealed class SpellEngageGateTests
         Assert.True(h.Combat.CanEngageMonster(500));
         Assert.True(h.WalkerHeld);
         Assert.Equal(new[] { "mmis bog wight" }, h.AllSent);
+    }
+
+    // The undead spell slot (user, 2026-11-02): an undead monster takes it in place of
+    // the normal attack spell, a living one the normal spell, under every order that
+    // casts at once.
+    [Theory]
+    [InlineData(CombatActionOrder.SpellsFirst)]
+    [InlineData(CombatActionOrder.AlternateSpellPhysical)]
+    public void UndeadSpellSlot_UndeadMonsterTakesIt_LivingOneTheNormalSpell(CombatActionOrder order)
+    {
+        using Harness zombie = new();
+        zombie.Settings.ActionOrder = order;
+        zombie.Settings.NormalAttackSpell = new CombatSpellSlot { SpellName = "mmis" };
+        zombie.Settings.UndeadAttackSpell = new CombatSpellSlot { SpellName = "turn" };
+        zombie.Server.Line("Also here: shambling zombie.");
+        Assert.Equal(new[] { "turn shambling zombie" }, zombie.AllSent);
+
+        using Harness rat = new();
+        rat.Settings.ActionOrder = order;
+        rat.Settings.NormalAttackSpell = new CombatSpellSlot { SpellName = "mmis" };
+        // An ordinary damage spell in the slot, so only the undead test keeps it off.
+        rat.Settings.UndeadAttackSpell = new CombatSpellSlot { SpellName = "fbal" };
+        rat.Server.Line("Also here: giant rat.");
+        Assert.Equal(new[] { "mmis giant rat" }, rat.AllSent);
+    }
+
+    // A round the undead spell can't be cast in (here its mana reserve) goes to the
+    // normal attack spell as usual.
+    [Fact]
+    public void UndeadSpellSlot_UnderItsManaReserve_TheNormalSpellTakesTheRound()
+    {
+        using Harness h = new();
+        h.Settings.NormalAttackSpell = new CombatSpellSlot { SpellName = "mmis" };
+        h.Settings.UndeadAttackSpell = new CombatSpellSlot { SpellName = "turn", MinManaPerCast = 100 };
+        h.Ma = 20;
+
+        h.Server.Line("Also here: shambling zombie.");
+
+        Assert.Equal(new[] { "mmis shambling zombie" }, h.AllSent);
     }
 
     // A spell typed as the attack command is judged by its level against the

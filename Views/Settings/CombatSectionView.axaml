@@ -649,6 +649,37 @@
                                       IsChecked="{Binding DrainsOverrideAoe, Mode=TwoWay}"
                                       ToolTip.Tip="When checked, the drain overrides the room AoE (multi-attack) too. Off (default): with enough enemies to trigger the AoE, the AoE keeps rooming and the drain only overrides single-target / physical actions."/>
                         </StackPanel>
+
+                        <!-- Undead attack spell (single-target — no Min enemies). -->
+                        <Grid ColumnDefinitions="136,186,100,104,120,62,*" Margin="0,6,0,0">
+                            <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Undead spell"/>
+                            <AutoCompleteBox Grid.Column="1"
+                                             Text="{Binding UndeadAttackSpellName, Mode=TwoWay}"
+                                             Classes.unlearnedSpell="{Binding UndeadAttackSpellUnlearned}"
+                                             ItemsSource="{Binding SpellSuggestions}"
+                                             ValueMemberBinding="{ReflectionBinding Short}"
+                                             ItemFilter="{Binding SpellSuggestionFilter}"
+                                             ItemTemplate="{StaticResource SpellPickItem}"
+                                             PlaceholderText="Type code or name…"
+                                             Width="180" HorizontalAlignment="Left"
+                                             ToolTip.Tip="Damage spell cast at an undead target (the monster's Undead: yes in game data) in place of the normal and alternate attack spells. When it can't be cast (mana, Max casts, a &quot;no effect&quot;), the normal and alternate attack spells take the round as usual. Suggestions come from this class's known spells."/>
+                            <TextBlock Grid.Column="2" Classes="FieldLabel" Text="—" HorizontalAlignment="Center"
+                                       Foreground="{StaticResource ChromeFgMutedBrush}"
+                                       ToolTip.Tip="Single-target — Min enemies doesn't apply."/>
+                            <NumericUpDown Grid.Column="3"
+                                           Value="{Binding UndeadAttackSpellMaxCastsPerRoom, Mode=TwoWay}"
+                                           Minimum="0" Maximum="100" FormatString="0" Increment="1" Width="100" HorizontalAlignment="Left"
+                                           ToolTip.Tip="Casts per target — blank = no limit, 0 = never cast (off), N = at most N."/>
+                            <NumericUpDown Grid.Column="4"
+                                           Value="{Binding UndeadAttackSpellMinManaPerCast, Mode=TwoWay}"
+                                           Minimum="0" Maximum="{Binding SpellManaMax}" FormatString="0" Increment="1" Width="112" HorizontalAlignment="Left"
+                                           ToolTip.Tip="Minimum mana required to cast — the normal and alternate attack spells take the round below this."/>
+                            <TextBlock Grid.Column="5" Classes="FieldLabel" HorizontalAlignment="Center"
+                                       Text="{Binding UndeadAttackSpellMinManaPerCastConverted}"/>
+                            <CheckBox Grid.Column="6" HorizontalAlignment="Center"
+                                      IsChecked="{Binding UndeadAttackSpellFireRegardlessOfMana, Mode=TwoWay}"
+                                      ToolTip.Tip="Fire regardless of current mana. In a party: cast this spell at the target on its turn and ignore mana (Min mana per cast, the spell's cost, your current mana). Max casts still applies. Solo: no effect."/>
+                        </Grid>
                     </StackPanel>
                 </Panel>
 
