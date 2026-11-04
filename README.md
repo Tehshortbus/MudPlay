@@ -1,8 +1,8 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.198.4**
-> - Roomba ignore list: ticked items in the Master List are never picked up or moved by a sweep
+> **Version 3.198.5**
+> - Buff Watchdog: a buff is no longer shown "covered by" a buff that is configured but ticked off everywhere (Paradigm: unholy fanaticism "covered by greater zeal" with greater zeal unticked); the ticked buff is cast again
 <!-- current-version:end -->
 
 A modern Telnet terminal client for **MajorMUD** and other BBS door games, built in C# / .NET 10 with [Avalonia](https://avaloniaui.net/). It renders a faithful CP437 cell grid with full VT100/ANSI parsing, and layers a MegaMUD-style automation suite (combat, party, navigation, healing, and more) on top — all in modeless, dockable windows so the terminal stays live while you configure anything.

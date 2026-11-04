@@ -342,4 +342,65 @@ public sealed class BuffConflictAnalyzerTests
 
         Assert.Empty(BuffConflictAnalyzer.OneDirectionalRemoverCodes(pairs));
     }
+
+    // ----- OverwritePairs (who counts as a winner) -----
+
+    // greater zeal removes unholy fanaticism; unholy fanaticism does not remove it back.
+    private static ConfiguredBuff GreaterZeal(BuffAffectSet affect) =>
+        new("gzea", "greater zeal", 6001, new[] { 6002 }, affect);
+
+    private static ConfiguredBuff UnholyFanaticism(BuffAffectSet affect) =>
+        new("unfa", "unholy fanaticism", 6002, Array.Empty<int>(), affect);
+
+    [Fact]
+    public void OverwritePairs_RemoverTickedOffEverywhere_IsNoWinner()
+    {
+        // Greater zeal is configured but none of its boxes are ticked, so it is never cast
+        // and can't strip unholy fanaticism: nothing is suppressed, the ticked buff stays
+        // castable (Buff Watchdog showed it "covered by greater zeal" and nothing cast it).
+        IReadOnlyList<BuffOverwritePair> pairs = BuffConflictAnalyzer.OverwritePairs(new[]
+        {
+            GreaterZeal(Inert()),
+            UnholyFanaticism(WholeParty()),
+        });
+
+        Assert.Empty(pairs);
+        Assert.Empty(BuffConflictAnalyzer.OneDirectionalLosers(pairs));
+        Assert.Empty(BuffConflictAnalyzer.OneDirectionalRemoverCodes(pairs));
+    }
+
+    [Fact]
+    public void OverwritePairs_RemoverTickedOnSelf_WinsOverWholePartyBuff()
+    {
+        IReadOnlyList<BuffOverwritePair> pairs = BuffConflictAnalyzer.OverwritePairs(new[]
+        {
+            GreaterZeal(SelfOnly()),
+            UnholyFanaticism(WholeParty()),
+        });
+
+        BuffOverwritePair pair = Assert.Single(pairs);
+        Assert.Equal("gzea", pair.RemovingCode);
+        Assert.Equal("unfa", pair.RemovedCode);
+        Assert.Equal("greater zeal", BuffConflictAnalyzer.OneDirectionalLosers(pairs)["unfa"]);
+    }
+
+    [Fact]
+    public void OverwritePairs_RemovedBuffTickedOffEverywhere_NoPair()
+    {
+        Assert.Empty(BuffConflictAnalyzer.OverwritePairs(new[]
+        {
+            GreaterZeal(SelfOnly()),
+            UnholyFanaticism(WholeParty(on: false)),
+        }));
+    }
+
+    [Fact]
+    public void OverwritePairs_MembersOnlyRemoverAndSelfOnlyBuff_CannotCoLand_NoPair()
+    {
+        Assert.Empty(BuffConflictAnalyzer.OverwritePairs(new[]
+        {
+            GreaterZeal(Members("legolas")),
+            UnholyFanaticism(SelfOnly()),
+        }));
+    }
 }

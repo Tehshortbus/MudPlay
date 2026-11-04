@@ -57,6 +57,11 @@ public readonly struct BuffAffectSet
 public readonly record struct BuffOverwritePair(
     string RemovingCode, string RemovingName, string RemovedCode, string RemovedName);
 
+// A configured buff slot reduced to what the conflict pairing needs: its spell, what the
+// spell removes, and who the slot lands on.
+public readonly record struct ConfiguredBuff(
+    string Code, string Name, int Number, IReadOnlyCollection<int> Removes, BuffAffectSet Affect);
+
 // A self-castable buff eligible for the Buff Panel's "Add all blesses" bulk add
 // — self-only or single-target-on-self, alignment-eligible, not already slotted.
 // Removes is its Abil-122 RemovesSpell target numbers. This is a pure record; the
@@ -105,6 +110,24 @@ public static class BuffConflictAnalyzer
         foreach (string m in a.Members)
             if (b.Members.Contains(m)) return true;
         return false;
+    }
+
+    // Every ordered pair of configured buffs where one's spell removes the other's and
+    // their affect sets can land on the same character.
+    public static IReadOnlyList<BuffOverwritePair> OverwritePairs(IReadOnlyList<ConfiguredBuff> buffs)
+    {
+        List<BuffOverwritePair> pairs = new();
+        for (int i = 0; i < buffs.Count; i++)
+        {
+            if (buffs[i].Removes.Count == 0) continue;
+            for (int j = 0; j < buffs.Count; j++)
+            {
+                if (i == j || !buffs[i].Removes.Contains(buffs[j].Number)) continue;
+                if (!CanCoLand(buffs[i].Affect, buffs[j].Affect)) continue;
+                pairs.Add(new BuffOverwritePair(buffs[i].Code, buffs[i].Name, buffs[j].Code, buffs[j].Name));
+            }
+        }
+        return pairs;
     }
 
     // Combines a conflict-pair list into a per-cast-code lookup: the name of another

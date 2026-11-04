@@ -1,5 +1,9 @@
 # Version history
 
+## 3.198.5
+
+- Buff Watchdog: a buff is no longer shown "covered by" a buff that is configured but ticked off everywhere (Paradigm: unholy fanaticism "covered by greater zeal" with greater zeal unticked); the ticked buff is cast again
+
 ## 3.198.4
 
 - Roomba ignore list: ticked items in the Master List are never picked up or moved by a sweep

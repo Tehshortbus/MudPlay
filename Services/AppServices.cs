@@ -13064,7 +13064,7 @@ public sealed class AppServices
         // time, so both can stay — suppress nothing there.
         if (GameData.ActiveRealm != Game.RealmType.ParaMud)
             return new Dictionary<string, string>();
-        return Game.Spells.BuffConflictAnalyzer.OneDirectionalLosers(BuffSlotOverwritePairs());
+        return Game.Spells.BuffConflictAnalyzer.OneDirectionalLosers(BuffSlotOverwritePairs(liveOnly: true));
     }
 
     // STOCK ONLY: the stock counterpart to SuppressedBuffCoverage. On stock a buff's
@@ -13077,7 +13077,7 @@ public sealed class AppServices
     {
         if (GameData.ActiveRealm == Game.RealmType.ParaMud)
             return new Dictionary<string, string>();
-        return Game.Spells.BuffConflictAnalyzer.OneDirectionalRemoverCodes(BuffSlotOverwritePairs());
+        return Game.Spells.BuffConflictAnalyzer.OneDirectionalRemoverCodes(BuffSlotOverwritePairs(liveOnly: true));
     }
 
     // The spell numbers a cast code's spell removes (RemovesSpell, Abil 122 — the same
@@ -13102,46 +13102,39 @@ public sealed class AppServices
     // one-directional loser is never cast) and CollisionOrderConstraints (Stock: the
     // remover is cast first). #item-cast slots don't resolve to a KnownSpell and are
     // skipped, same as SelfBuffCoverage's self-buff collection.
-    public IReadOnlyList<Game.Spells.BuffOverwritePair> BuffSlotOverwritePairs()
+    //
+    // liveOnly = false judges co-landing by SCOPE — what the slot COULD ever land on —
+    // not the live on/off toggles. The Buff Panel's warning is a heads-up about the
+    // configured PAIR: two buffs that remove each other still clobber whenever both are
+    // up, no matter which Self / Party / member boxes are ticked right now. The timer-
+    // side "conflict" call, by contrast, reads the live cast snapshot, so an un-cast buff
+    // never falsely marks another as clobbered.
+    //
+    // liveOnly = true judges by the ticked boxes: a slot toggled off everywhere is never
+    // cast, so it can't strip anything and is no winner. Suppression and ordering act on
+    // the casting itself and use this, or a configured-but-off remover would keep a
+    // buff the player ticked from ever being cast.
+    public IReadOnlyList<Game.Spells.BuffOverwritePair> BuffSlotOverwritePairs(bool liveOnly = false)
     {
-        List<Game.Spells.BuffOverwritePair> pairs = new();
         System.Collections.Generic.List<Models.Profile.BuffSlot>? slots = Profile.Current?.PartyBuffs?.Slots;
-        if (slots is null || slots.Count == 0) return pairs;
+        if (slots is null || slots.Count == 0) return System.Array.Empty<Game.Spells.BuffOverwritePair>();
 
-        List<(Game.Spells.KnownSpell Spell, Game.Spells.BuffAffectSet Affect)> resolved = new();
+        List<Game.Spells.ConfiguredBuff> configured = new();
         foreach (Models.Profile.BuffSlot slot in slots)
         {
             if (string.IsNullOrWhiteSpace(slot.Spell)) continue;
             string code = slot.Spell.Trim();
             if (Spellbook.FindByCastCode(code) is not { } spell) continue;
             bool isWholeParty = IsPartyWideBuff(code);
-            // Judge co-landing by SCOPE — what the slot COULD ever land on — not the live
-            // on/off toggles. The ⚠ is a heads-up about the configured PAIR: two buffs
-            // that remove each other still clobber whenever both are up, no matter which
-            // Self / Party / member boxes are ticked right now. (A whole-party buff can
-            // hit everyone; a self / single-target buff can hit you and/or any member.)
-            // The timer-side "conflict" call, by contrast, reads the live cast snapshot —
-            // so an un-cast buff never falsely marks another as clobbered.
-            Game.Spells.BuffAffectSet affect = isWholeParty
-                ? new Game.Spells.BuffAffectSet { Everyone = true, Members = System.Array.Empty<string>() }
-                : new Game.Spells.BuffAffectSet { Self = true, AllMembers = true, Members = System.Array.Empty<string>() };
-            resolved.Add((spell, affect));
+            Game.Spells.BuffAffectSet affect = liveOnly
+                ? Game.Spells.BuffAffectSet.From(isWholeParty, slot.WholePartyOn, slot.CastOnSelf, slot.AllMembers, slot.Targets)
+                : isWholeParty
+                    ? new Game.Spells.BuffAffectSet { Everyone = true, Members = System.Array.Empty<string>() }
+                    : new Game.Spells.BuffAffectSet { Self = true, AllMembers = true, Members = System.Array.Empty<string>() };
+            configured.Add(new Game.Spells.ConfiguredBuff(
+                spell.Short, spell.Name, spell.Number, RemovedSpellNumbers(spell.Short), affect));
         }
-
-        for (int i = 0; i < resolved.Count; i++)
-        {
-            HashSet<int> removes = RemovedSpellNumbers(resolved[i].Spell.Short);
-            if (removes.Count == 0) continue;
-            for (int j = 0; j < resolved.Count; j++)
-            {
-                if (i == j || !removes.Contains(resolved[j].Spell.Number)) continue;
-                if (!Game.Spells.BuffConflictAnalyzer.CanCoLand(resolved[i].Affect, resolved[j].Affect)) continue;
-                pairs.Add(new Game.Spells.BuffOverwritePair(
-                    resolved[i].Spell.Short, resolved[i].Spell.Name,
-                    resolved[j].Spell.Short, resolved[j].Spell.Name));
-            }
-        }
-        return pairs;
+        return Game.Spells.BuffConflictAnalyzer.OverwritePairs(configured);
     }
 
     // Apply-cast matchers for PartyAilmentTracker's witness-SET path: every Messages

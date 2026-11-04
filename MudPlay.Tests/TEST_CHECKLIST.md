@@ -493,9 +493,9 @@ How to keep it current:
 - Why: user 2026-09-30.
 
 ### BuffConflictAnalyzerTests.cs
-- Covers: Game/Spells/BuffConflictAnalyzer, BuffAffectSet
-- Checks: co-landing; remover resolution and tooltip; Abil-122 removes; self-bless candidate picks and order; one-directional losers/removers.
-- Why: zeal/greater-zeal; RemovesSpell conflicts.
+- Covers: Game/Spells/BuffConflictAnalyzer (incl. OverwritePairs), BuffAffectSet
+- Checks: co-landing; remover resolution and tooltip; Abil-122 removes; self-bless candidate picks and order; one-directional losers/removers; a remover ticked off everywhere forms no pair, so it covers nothing and the ticked buff stays castable.
+- Why: zeal/greater-zeal; RemovesSpell conflicts; unholy fanaticism shown "covered by" an unticked greater zeal and never cast (user, 2026-11-04).
 
 ### BuffDefenseCalculatorTests.cs
 - Covers: Game/Spells/BuffDefenseCalculator
