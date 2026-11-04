@@ -396,8 +396,10 @@ public static class QuestStepGraph
 
     // Auto-shown dialogue blocks the player never types a keyword to reach — a step
     // gated behind one of these has no "ask" command, so it isn't drafted as one.
+    // `message` is typed like any other keyword: the ethereal figure's `ask ethereal
+    // message` is a step of the Mandos quest.
     private static readonly HashSet<string> GreetingKeywords =
-        new(StringComparer.OrdinalIgnoreCase) { "message", "text", "greeting" };
+        new(StringComparer.OrdinalIgnoreCase) { "text", "greeting" };
 
     internal static bool IsAutoShownKeyword(string keyword) => GreetingKeywords.Contains(keyword);
 

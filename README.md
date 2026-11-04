@@ -1,8 +1,9 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.198.4**
-> - Roomba ignore list: ticked items in the Master List are never picked up or moved by a sweep
+> **Version 3.198.6**
+> - Drafted quest checklists buy an item from a shop that restocks it rather than farming a chancy drop or roll (Mandos: buy the opaline crystal, no Giovanni kill)
+> - An NPC's `message` keyword is asked like any other, so Mandos lists `ask ethereal figure message`
 <!-- current-version:end -->
 
 A modern Telnet terminal client for **MajorMUD** and other BBS door games, built in C# / .NET 10 with [Avalonia](https://avaloniaui.net/). It renders a faithful CP437 cell grid with full VT100/ANSI parsing, and layers a MegaMUD-style automation suite (combat, party, navigation, healing, and more) on top — all in modeless, dockable windows so the terminal stays live while you configure anything.
