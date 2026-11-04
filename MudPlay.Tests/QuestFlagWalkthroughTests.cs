@@ -81,7 +81,7 @@ public sealed class QuestFlagWalkthroughTests : IDisposable
         """;
 
     // 500 — the Old Sage's keywords: tale / story → 501, reward → 510, and further down
-    //       reconcile → 900 (shared with the Grey Sage's 520), replace → 530, message → 540.
+    //       reconcile → 900 (shared with the Grey Sage's 520), replace → 530, greeting → 540.
     // 502 — start: without the flag, level 15, sets 1.
     // 511 — turn-in at exactly 2: the Warrior and Mage lines differ only in the class step; the
     //       Thief line has its own level and no reward.
@@ -95,7 +95,7 @@ public sealed class QuestFlagWalkthroughTests : IDisposable
     //       check passes at, one a value it cannot pass at, and one doesn't pin the value.
     // 800 / 810 — a room command that draws from a random table whose line sets flag 310.
     // 900 / 901 — dialogue shared by two NPCs. 530 — a line straight under a keyword.
-    // 540 — a line under the NPC's auto-shown `message` keyword.
+    // 540 — a line under the NPC's auto-shown `greeting` keyword.
     // 750 — the only line of flag 350, and it only runs without it.
     // 760 — conditions written after a give, and after the flag change.
     // 780 / 781, 782 — a random draw or a cast between a pinned value and a check on it.
@@ -105,7 +105,7 @@ public sealed class QuestFlagWalkthroughTests : IDisposable
     //       fixture's rooms, items and spell).
     private const string TBInfoJson = """
         [
-          { "Number": 500, "Action": "tale:501\nstory:501\nreward:510\nreconcile:900\nreplace:530\nmessage:540\nbless:checkability 318 1:giveability 318 2\n", "Called From": "Monster #10" },
+          { "Number": 500, "Action": "tale:501\nstory:501\nreward:510\nreconcile:900\nreplace:530\ngreeting:540\nbless:checkability 318 1:giveability 318 2\n", "Called From": "Monster #10" },
           { "Number": 520, "Action": "reconcile:900\n", "Called From": "Monster #13" },
           { "Number": 530, "Action": "checkability 330 1:giveitem 902\n", "Called From": "Textblock #500" },
           { "Number": 540, "Action": "checkability 340 1:giveability 340 2\n", "Called From": "Textblock #500" },
@@ -800,7 +800,7 @@ public sealed class QuestFlagWalkthroughTests : IDisposable
 
         Assert.Equal(new[]
         {
-            "Reached from the \"message\" keyword of Old Sage (monster 10), listed in textblock #500; "
+            "Reached from the \"greeting\" keyword of Old Sage (monster 10), listed in textblock #500; "
             + "the NPC is in Sage's Hut (1/101) — a keyword the NPC shows by itself, not one you ask",
         }, step.Do);
     }

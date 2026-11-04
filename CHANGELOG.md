@@ -1,5 +1,10 @@
 # Version history
 
+## 3.198.6
+
+- Drafted quest checklists buy an item from a shop that restocks it rather than farming a chancy drop or roll (Mandos: buy the opaline crystal, no Giovanni kill)
+- An NPC's `message` keyword is asked like any other, so Mandos lists `ask ethereal figure message`
+
 ## 3.198.4
 
 - Roomba ignore list: ticked items in the Master List are never picked up or moved by a sweep

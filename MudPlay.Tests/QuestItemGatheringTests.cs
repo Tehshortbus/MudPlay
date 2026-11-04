@@ -54,7 +54,9 @@ public sealed class QuestItemGatheringTests : IDisposable
           { "Number": 693, "Name": "crowbar" },
           { "Number": 694, "Name": "dusty tome" },
           { "Number": 695, "Name": "ancient chalice" },
-          { "Number": 696, "Name": "silver idol" }
+          { "Number": 696, "Name": "silver idol" },
+          { "Number": 697, "Name": "opaline crystal" },
+          { "Number": 698, "Name": "spirit token" }
         ]
         """;
 
@@ -76,7 +78,9 @@ public sealed class QuestItemGatheringTests : IDisposable
           { "Number": 74, "Name": "ghoul", "DeathSpell": 0, "DropItem-0": 692, "DropItem%-0": 10 },
           { "Number": 75, "Name": "Giovanni", "DeathSpell": 0, "DropItem-0": 693, "DropItem%-0": 100 },
           { "Number": 76, "Name": "greater hellion", "DeathSpell": 600 },
-          { "Number": 77, "Name": "lesser hellion", "DeathSpell": 601 }
+          { "Number": 77, "Name": "lesser hellion", "DeathSpell": 601 },
+          { "Number": 78, "Name": "cave bat", "DeathSpell": 0, "DropItem-0": 697, "DropItem%-0": 25 },
+          { "Number": 79, "Name": "ethereal figure", "DeathSpell": 0 }
         ]
         """;
 
@@ -144,6 +148,12 @@ public sealed class QuestItemGatheringTests : IDisposable
           { "Number": 1901, "Action": "reward:minlevel 20:giveability 142 3\n", "Called From": "Room 5/2" },
           { "Number": 1902, "Action": "hand:checkability 142 3:takeitem 691:giveability 142 4\n", "Called From": "Room 5/3" },
 
+          { "Number": 2000, "Action": "message:2001\n", "Called From": "Monster #79" },
+          { "Number": 2001, "Action": "", "Called From": "Textblock #2000" },
+          { "Number": 2002, "Action": "failability 146:giveability 146 1\n", "Called From": "Textblock #2001" },
+          { "Number": 2010, "Action": "trade:checkability 146 1:takeitem 697:giveability 146 2\n", "Called From": "Room 3/10" },
+          { "Number": 2020, "Action": "offer token:takeitem 698:giveability 147 1\n", "Called From": "Room 3/11" },
+
           { "Number": 1800, "Action": "pry coffin:checkitem 693:random 1801\n", "Called From": "Room 17/278" },
           { "Number": 1801, "Action": "100:giveitem 692\n", "Called From": "Textblock(rndm) #1800" },
           { "Number": 1802, "Action": "offer:takeitem 692:giveability 143 1\n", "Called From": "Room 17/300" },
@@ -158,6 +168,22 @@ public sealed class QuestItemGatheringTests : IDisposable
         ]
         """;
 
+    // The slots ahead of Kingsport Gems' crystal never restock, each for one zero of its
+    // own (chance, time, amount); shop 30 is out of the game.
+    private const string ShopsJson = """
+        [
+          { "Number": 10, "Name": "Dwarven Jeweler", "In Game": 1, "Assigned To": "Room 6/1346",
+            "Item-0": 697, "Time-0": 240, "Amount-0": 1, "%-0": 0,
+            "Item-1": 698, "Time-1": 0, "Amount-1": 1, "%-1": 100 },
+          { "Number": 15, "Name": "Pawn Shop", "In Game": 1, "Assigned To": "Room 2/2",
+            "Item-0": 697, "Time-0": 240, "Amount-0": 0, "%-0": 100 },
+          { "Number": 30, "Name": "Boarded Stall", "In Game": 0, "Assigned To": "Room 1/1",
+            "Item-0": 697, "Time-0": 240, "Amount-0": 1, "%-0": 100 },
+          { "Number": 20, "Name": "Kingsport Gems", "In Game": 1, "Assigned To": "Room 14/1785",
+            "Item-0": 697, "Time-0": 500, "Amount-0": 3, "%-0": 6 }
+        ]
+        """;
+
     private GameDataCache NewCache()
     {
         string dir = Path.Combine(_root, "alpha");
@@ -166,6 +192,7 @@ public sealed class QuestItemGatheringTests : IDisposable
         File.WriteAllText(Path.Combine(dir, "Monsters.json"), MonstersJson);
         File.WriteAllText(Path.Combine(dir, "Spells.json"), SpellsJson);
         File.WriteAllText(Path.Combine(dir, "TBInfo.json"), TBInfoJson);
+        File.WriteAllText(Path.Combine(dir, "Shops.json"), ShopsJson);
         GameDataCache cache = new(_root);
         cache.SwitchSet("alpha");
         return cache;
@@ -198,6 +225,7 @@ public sealed class QuestItemGatheringTests : IDisposable
         [74] = new[] { new RoomKey(17, 5) },
         [75] = new[] { new RoomKey(1, 334) },
         [76] = new[] { new RoomKey(2, 2600) },
+        [79] = new[] { new RoomKey(3, 812) },
     };
 
     private static CrawledQuest Quest(GameDataCache cache, int flag) =>
@@ -503,4 +531,36 @@ public sealed class QuestItemGatheringTests : IDisposable
         observed[141] = 2;
         Assert.Single(QuestFlagCompletion.ResolveNewlyComplete(new[] { target }, observed, new HashSet<QuestFlagCompletion.QuestKey>()));
     }
+
+    // The Mandos shape (Paradigm flag 200): the crystal comes off a monster one time in
+    // four and sits on two shelves. A shop that restocks it is the fetch, ahead of the
+    // drop and of a shop that never restocks or is out of the game; and the ethereal
+    // figure's `message` is asked like any other keyword.
+    [Fact]
+    public void ARestockingShop_IsTheFetch_AheadOfAChancyDrop_AndMessageIsAsked()
+    {
+        GameDataCache cache = NewCache();
+        (ItemSourceIndex givers, MonsterDropIndex drops) = Indexes(cache);
+
+        Assert.Equal(new[]
+        {
+            "[] (3/812) `ask ethereal figure message`",
+            "[] (14/1785) `buy opaline crystal` (get opaline crystal) (sold at Kingsport Gems)",
+            "[] (3/10) (opaline crystal required) `trade`",
+        }, QuestTextFormatter.StepLines(cache, Quest(cache, 146), Placement, givers, drops));
+    }
+
+    [Fact]
+    public void AShopThatNeverRestocks_IsStillAFetch_AndSaysSo()
+    {
+        GameDataCache cache = NewCache();
+        (ItemSourceIndex givers, MonsterDropIndex drops) = Indexes(cache);
+
+        Assert.Equal(new[]
+        {
+            "[] (6/1346) `buy spirit token` (get spirit token) (sold at Dwarven Jeweler; never restocked)",
+            "[] (3/11) (spirit token required) `offer token`",
+        }, QuestTextFormatter.StepLines(cache, Quest(cache, 147), Placement, givers, drops));
+    }
 }
+

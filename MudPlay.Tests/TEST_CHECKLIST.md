@@ -3306,8 +3306,8 @@ How to keep it current:
 
 ### QuestItemGatheringTests.cs
 - Covers: ViewModels/CharacterWorkshop/QuestTextFormatter.StepLines/StepEntries/PriorTierLine, QuestTickMigration
-- Checks: drafted checklists add kill and fetch lines for turn-ins; reissue left out; drop versus give versus roll ranking; tier boundaries; ticks migrate.
-- Why: report paradigm-20261011-230844; user, 2026-10-17.
+- Checks: drafted checklists add kill and fetch lines for turn-ins; reissue left out; drop versus give versus roll ranking; a restocking shop's buy ahead of a chancy drop, ahead of a never-restocking or out-of-game shop (each restock field on its own); a never-restocking shop as the last resort, noted; the `message` keyword asked; tier boundaries; ticks migrate.
+- Why: report paradigm-20261011-230844; user, 2026-10-17; user, 2026-11-04 (Mandos: buy the crystal, never kill Giovanni; `ask ethereal message`).
 
 ### QuestQueryTests.cs
 - Covers: Game/Quests/QuestNameResolver, QuestQueryReport
