@@ -2369,6 +2369,9 @@ public static class BugReportBuilder
         Kv(sb, "Roomba recon laps done", svc.GhSweep.CompletedReconLaps.ToString());
         Kv(sb, "Roomba completed sort laps", svc.GhSweep.CompletedSortLaps.ToString());
         Kv(sb, "Roomba searches per room", svc.GhRoomLabels.SearchesPerRoom.ToString());
+        Kv(sb, "Roomba ignored items", svc.GhRoomLabels.IgnoredItems.Count == 0
+            ? "(none)"
+            : string.Join(", ", svc.GhRoomLabels.IgnoredItems.Order(StringComparer.OrdinalIgnoreCase)));
         Kv(sb, "Roomba labeled / actively-managed (this char) / circuit rooms",
             $"{svc.GhRoomLabels.Labels.Count} / {svc.GhManagedRooms.Count} / {svc.GhSweep.CircuitRoomCount}");
         Kv(sb, "Roomba rooms full this sweep",

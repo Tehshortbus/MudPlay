@@ -22,7 +22,8 @@ public static class GhSortQueueBuilder
     public static (IReadOnlyList<GhPendingMove> Moves, IReadOnlyList<GhSweepItemFound> LeftInPlace) Build(
         IReadOnlyDictionary<RoomKey, IReadOnlyList<string>> observedByRoom,
         IReadOnlyCollection<GhRoomLabel> labels,
-        ItemNameStore itemNames)
+        ItemNameStore itemNames,
+        IReadOnlyCollection<string>? ignored = null)
     {
         List<GhPendingMove> moves = new();
         List<GhSweepItemFound> leftInPlace = new();
@@ -53,6 +54,17 @@ public static class GhSortQueueBuilder
                 if (currentLabel is not null
                     && GhItemClassifier.MatchesAny(currentLabel, cls.Value)) continue;   // already correct room
 
+                (int count, string singularName) = CountedCommand.SplitLeadingCount(entry);
+                string canonicalName = itemNames.FindByName(entry) is int number
+                    ? itemNames.GetName(number) ?? singularName
+                    : singularName;
+
+                if (ignored is not null && ignored.Contains(canonicalName))
+                {
+                    leftInPlace.Add(new GhSweepItemFound(room, entry, GhLeftReason.Ignored));
+                    continue;
+                }
+
                 // First matching label, else the catch-all, else nowhere. Already
                 // sitting in the room it resolves to counts as correctly placed.
                 if (GhDestinationResolver.Resolve(cls.Value, labels, nothingFull) is not { } dest)
@@ -61,11 +73,6 @@ public static class GhSortQueueBuilder
                     continue;
                 }
                 if (dest.Equals(room)) continue;
-
-                (int count, string singularName) = CountedCommand.SplitLeadingCount(entry);
-                string canonicalName = itemNames.FindByName(entry) is int number
-                    ? itemNames.GetName(number) ?? singularName
-                    : singularName;
 
                 moves.Add(new GhPendingMove(room, dest, canonicalName, count));
             }

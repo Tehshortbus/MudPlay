@@ -1261,7 +1261,7 @@ public sealed class GhSweepManager : IDisposable
         (IReadOnlyList<GhPendingMove> moves, IReadOnlyList<GhSweepItemFound> leftInPlace) =
             GhSortQueueBuilder.Build(
                 new Dictionary<RoomKey, IReadOnlyList<string>> { [room] = stacks },
-                _labels.Labels, _itemNames);
+                _labels.Labels, _itemNames, _labels.IgnoredItems);
 
         foreach (GhPendingMove move in moves)
         {

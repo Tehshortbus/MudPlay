@@ -196,4 +196,40 @@ public sealed class RoombaMasterListViewModelTests : IDisposable
         // 1/1 (room 1) is listed before 1/2 (room 2).
         Assert.True(header11 < lines.IndexOf("1/2 — Gang House Vault"));
     }
+
+    // The list is edited from the window: a row's box ignores the item in every
+    // room, and by name an item not seen yet goes on under the game data's spelling,
+    // picked from the names the add box offers.
+    [Fact]
+    public void Ignore_FromARow_AndByName_EditsTheRealmsList()
+    {
+        var (locations, labels, itemNames, cache, roomGraph) = Setup();
+        locations.RecordRoom(new RoomKey(1, 1), new[] { "torch" });
+        locations.RecordRoom(new RoomKey(1, 2), new[] { "torch" });
+        using RoombaMasterListViewModel vm = new(locations, labels, itemNames, cache, roomGraph);
+
+        vm.Rows[0].IsIgnored = true;
+        Assert.True(labels.IsIgnored("torch"));
+        Assert.All(vm.Rows, r => Assert.True(r.IsIgnored));
+        Assert.Equal(new[] { "torch" }, vm.IgnoredItems);
+
+        // The add box offers every record's name, so it is picked rather than spelled.
+        Assert.Equal(new[] { "gh only trinket", "torch" }, vm.ItemNameChoices);
+        vm.IgnoreInput = "GH ONLY TRINKET";
+        vm.IgnoreByNameCommand.Execute(null);
+        Assert.True(labels.IsIgnored("gh only trinket"));
+        Assert.Contains("gh only trinket", vm.IgnoredItems);
+        Assert.Null(vm.IgnoreError);
+
+        vm.IgnoreInput = "no such thing";
+        vm.IgnoreByNameCommand.Execute(null);
+        Assert.NotNull(vm.IgnoreError);
+        Assert.Equal(2, labels.IgnoredItems.Count);
+
+        vm.SelectedIgnoredItem = "torch";
+        vm.UnignoreCommand.Execute(null);
+        Assert.False(labels.IsIgnored("torch"));
+        Assert.All(vm.Rows, r => Assert.False(r.IsIgnored));
+    }
 }
+

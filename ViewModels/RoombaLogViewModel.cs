@@ -124,6 +124,7 @@ public sealed partial class RoombaLogViewModel : ObservableObject, IDisposable
         GhLeftReason.AllDestinationsFull => "every room that takes it is full",
         GhLeftReason.NotActuallyCarried => "not in inventory — the pickup never landed",
         GhLeftReason.CouldNotComplete => "couldn't be sorted this sweep — no room or headroom",
+        GhLeftReason.Ignored => "on the ignore list",
         _ => "no matching room",
     };
 
