@@ -1110,6 +1110,7 @@ public static class BugReportBuilder
         Kv(sb, "Announced spell", combat.AnnouncedSpell ?? "(none)");
         Kv(sb, "Spell casts counted (this room / target)", combat.SpellCastTally);
         Kv(sb, "Attack casts seen landing (session)", combat.ConfirmedAttackCasts.ToString());
+        Kv(sb, "Last switch from a spell to the weapon", combat.LastSpellPassedOver ?? "(none this session)");
         // The attack-spell cascade's own latch, surfaced separately — it can go
         // stale relative to CurrentTarget/AnnouncedSpell above (report
         // paradigm-20260824-012300). A CastingSpellTarget the current room doesn't

@@ -45,6 +45,8 @@ namespace MudPlay.Game.Remote;
 //     wiki commands — they're MudPlay-specific extensions.
 //   - QueryQuests — @quest (marked-complete quest state + the live quest-flag step
 //     read via `abil` / `sys god … abil`). Its own category, same extension family.
+//   - QuerySpells — @spells (learned spells, those learnable now, or one spell's
+//     learned state, from the Spell Book). Its own category, same extension family.
 //
 // Party-coordination commands (@wait / @ok / @comeback / @forget / @share / @ptrain) map
 // to PlayerRemoteControls.None — they're gated by the engine's party-whitelist
@@ -95,6 +97,7 @@ public static class RemoteCommandCatalog
             ["@death"]        = PlayerRemoteControls.QueryDeaths,       // own permission — grant unrecovered-death queries separately
             ["@roomba"]       = PlayerRemoteControls.QueryItemLocation, // own permission — grant item-location queries separately
             ["@quest"]        = PlayerRemoteControls.QueryQuests,       // own permission — grant quest-progress queries separately
+            ["@spells"]       = PlayerRemoteControls.QuerySpells,       // own permission — grant spell-book queries separately
             ["@help"]         = PlayerRemoteControls.QueryVersion,
             ["@what"]         = PlayerRemoteControls.QueryInventory,
             ["@wealth"]       = PlayerRemoteControls.QueryInventory,
@@ -261,6 +264,7 @@ public static class RemoteCommandCatalog
             ["@death"]        = new("@death [all]", "unrecovered deaths from the recovery log: the latest, or all of them"),
             ["@roomba"]       = new("@roomba <item>", "where an item was last seen across gang-house rooms; @roomba sync shares the log, by telepath or gangpath only"),
             ["@quest"]        = new("@quest [name|flag|update]", "quest progress: bare lists your completed quests; a name/alias/flag reports that quest and its live flag step (Paradigm, or stock with sys-god); 'update' reads every flag and marks what is done"),
+            ["@spells"]       = new("@spells learned|unlearned|<spell>", "the Spell Book: 'learned' lists learned spells with cast codes, 'unlearned' those learnable at your level, a spell's name or code says whether it's learned"),
             ["@help"]         = new("@help [command|&@]", "the commands you're allowed to use, or one command's syntax; @help &@ describes the relay-back form"),
             ["@what"]         = new("@what", "items on the room floor"),
             ["@wealth"]       = new("@wealth", "your coins and total value"),

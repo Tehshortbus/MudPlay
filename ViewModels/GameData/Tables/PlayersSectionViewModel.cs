@@ -204,6 +204,7 @@ public sealed class PlayersSectionViewModel : GameDataTableSectionViewModel, IEd
         yield return (rc.HasFlag(PlayerRemoteControls.QueryDeaths),         "Query deaths");
         yield return (rc.HasFlag(PlayerRemoteControls.QueryItemLocation),   "Query Roomba");
         yield return (rc.HasFlag(PlayerRemoteControls.QueryQuests),         "Query quests");
+        yield return (rc.HasFlag(PlayerRemoteControls.QuerySpells),         "Query spells");
         yield return (rc.HasFlag(PlayerRemoteControls.RequestInvite),       "Request invite");
         yield return (rc.HasFlag(PlayerRemoteControls.MovePlayer),          "Move player");
         yield return (rc.HasFlag(PlayerRemoteControls.ExecuteCommands),     "Execute commands");

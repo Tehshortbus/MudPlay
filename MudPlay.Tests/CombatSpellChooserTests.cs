@@ -1019,6 +1019,31 @@ public sealed class CombatSpellChooserTests
             sut.Choose(settings, Ctx(mana: 90, maxMana: 100)).Action);
     }
 
+    // Report paradigm-20261106-003158: a fight that left the spell for the weapon
+    // must say why. The rounds the latch skips name what tripped it, not just that
+    // it is on.
+    [Fact]
+    public void Latch_RoundsItSkipsNameWhatTrippedIt()
+    {
+        CombatSpellChooser sut = new();
+        CombatSettings settings = new()
+        {
+            SpellManaThresholdMode = ThresholdMode.Percentage,
+            NormalAttackSpell = Slot("harm", minMana: 50),
+        };
+        CombatSpellDecision r1 = sut.Choose(settings, Ctx(mana: 60, maxMana: 100));
+        sut.MarkCast(r1, "a rat");
+        Assert.Null(sut.SpellPassedOverWhy);
+
+        sut.Choose(settings, Ctx(mana: 40, maxMana: 100));
+        const string tripped = "attack spell harm: mana 40 is under its reserve of 50";
+        Assert.Equal(tripped, sut.SpellPassedOverWhy);
+
+        sut.Choose(settings, Ctx(mana: 90, maxMana: 100));
+        sut.Choose(settings, Ctx(mana: 90, maxMana: 100));
+        Assert.Equal("single-target attack spells: done with this target since " + tripped, sut.SpellPassedOverWhy);
+    }
+
     [Fact]
     public void Latch_ClearsOnNewTarget_ReCastsFresh()
     {

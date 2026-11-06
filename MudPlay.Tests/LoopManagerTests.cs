@@ -553,8 +553,8 @@ public sealed class LoopManagerTests : IDisposable
     [Fact]
     public void ExpandWaypoints_UnreachableSegment_Surfaced()
     {
-        // The cycle closes: when the user picks an unreachable
-        // destination, BOTH the forward leg AND the closing leg fail.
+        // The lap leaves an unreachable waypoint out, so only the leg to it is
+        // named: nothing walks on from a room the lap never reaches.
         LoopManager m = NewManager();
         (var steps, var unreach) = m.ExpandWaypoints(new[]
         {
@@ -563,11 +563,35 @@ public sealed class LoopManagerTests : IDisposable
         });
 
         Assert.Empty(steps);
-        Assert.Equal(2, unreach.Count);
-        Assert.Equal(new RoomKey(1, 1),   unreach[0].From);
-        Assert.Equal(new RoomKey(999, 999), unreach[0].To);
-        Assert.Equal(new RoomKey(999, 999), unreach[1].From);
-        Assert.Equal(new RoomKey(1, 1),   unreach[1].To);
+        (RoomKey from, RoomKey to) = Assert.Single(unreach);
+        Assert.Equal(new RoomKey(1, 1), from);
+        Assert.Equal(new RoomKey(999, 999), to);
+    }
+
+    // Report paradigm-20261106-024151: a relocked door shut the gang house's entrance
+    // off mid-circuit. The lap walks on from the last room it reached to the next
+    // waypoint, its command and all; the missed waypoint's command and its own exits
+    // stay out. Planned from the missed room, the next move was that room's exit,
+    // sent from the room before it.
+    [Fact]
+    public void ExpandWaypoints_UnreachableMiddleWaypoint_LapWalksOnFromTheRoomItReached()
+    {
+        LoopManager m = NewManager();
+        (var steps, var unreach) = m.ExpandWaypoints(new[]
+        {
+            new LoopWaypoint(new RoomKey(1, 1), "here", 0),
+            new LoopWaypoint(new RoomKey(999, 999), "never", 0),
+            new LoopWaypoint(new RoomKey(1, 3), "there", 0),
+        });
+
+        Assert.Equal(new[] { "here", "N", "N", "there", "S", "S" },
+            steps.Select(s => s switch
+            {
+                CommandLoopStep c => c.Command,
+                MoveLoopStep mv => mv.Direction.ToString(),
+                _ => "?",
+            }));
+        Assert.Equal((new RoomKey(1, 1), new RoomKey(999, 999)), Assert.Single(unreach));
     }
 
     // A set's loops are read ahead of its switch, off the UI thread, and the switch

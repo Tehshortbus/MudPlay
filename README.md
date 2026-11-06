@@ -1,8 +1,10 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.198.5**
-> - Buff Watchdog: a buff is no longer shown "covered by" a buff that is configured but ticked off everywhere (Paradigm: unholy fanaticism "covered by greater zeal" with greater zeal unticked); the ticked buff is cast again
+> **Version 3.199.0**
+> - `@spells` remote command: your learned spells with cast codes, the spells you can learn now, or whether one spell is learned (new Query spells permission)
+> - A loop or Roomba sweep that can't reach one of its rooms (a door that locked behind it) walks on to the next room instead of getting lost
+> - When a fight switches from the attack spell to the weapon, the program log and the bug report say why the spell was passed over
 <!-- current-version:end -->
 
 A modern Telnet terminal client for **MajorMUD** and other BBS door games, built in C# / .NET 10 with [Avalonia](https://avaloniaui.net/). It renders a faithful CP437 cell grid with full VT100/ANSI parsing, and layers a MegaMUD-style automation suite (combat, party, navigation, healing, and more) on top — all in modeless, dockable windows so the terminal stays live while you configure anything.

@@ -1112,9 +1112,15 @@ public sealed partial class CombatManager
     // capped). Cleared when the dispatch runs, so the next round may re-arm.
     private (string Target, string Spell)? _pendingSwitch;
 
+    // The bug report's record of the last spell → weapon switch (see DebugState).
+    private string? _lastSpellPassedOver;
+
     private void DeferSwitchDispatch(
         CombatSettings settings, string target, string reason, string? from, string? to)
     {
+        // A switch onto the weapon carries why the spell was given up, read now: the
+        // chooser re-runs before the deferred dispatch and would report that round.
+        string? passedOver = to is null ? _spellChooser.SpellPassedOverWhy : null;
         // Idempotency guard: while a switch to the SAME target→spell is already
         // scheduled, don't arm a second. During SwitchDispatchDelay the announce is
         // still the pre-switch spell, so a re-tick recomputes sameSpell=false and
@@ -1167,7 +1173,9 @@ public sealed partial class CombatManager
                 // A switch off the spells onto the weapon, for a monster the weapon
                 // can't hurt, is a swing that can't land: give it up instead.
                 if (to is null && GaveUpUnengageable(settings, cand)) return;
-                LogSpellReannounce(reason, from, to, target, obs);
+                LogSpellReannounce(reason, from, to, target, obs, passedOver);
+                if (passedOver is not null)
+                    _lastSpellPassedOver = $"{_now().ToLocalTime():HH:mm:ss} {from ?? "?"} at '{target}': {passedOver}";
                 DispatchRoundAction(settings, cand, CountEngageable(obs), obs, bypassRecastInterval: true);
             }
         }
@@ -1246,7 +1254,8 @@ public sealed partial class CombatManager
     // passive physical path, which never re-announces per round). Logs the exact timing
     // relative to the last attack / exp / death so a capture shows whether the re-announce
     // fired ahead of the kill signal. Combat-level — only with combat diagnostics on.
-    private void LogSpellReannounce(string reason, string? from, string? to, string target, RoomEntitiesObservation obs)
+    private void LogSpellReannounce(
+        string reason, string? from, string? to, string target, RoomEntitiesObservation obs, string? passedOver)
     {
         if (_log is null) return;
         DateTimeOffset now = _now();
@@ -1256,7 +1265,8 @@ public sealed partial class CombatManager
             + $"sinceExp={(now - _lastExpGainAt).TotalMilliseconds:F0}ms, "
             + $"sinceDeath={(now - _lastDeathAt).TotalMilliseconds:F0}ms, "
             + $"attackSentSinceDeath={_attackSentSinceDeath}, "
-            + $"targetPresent={TargetPresent(obs, target)}, engageable={CountEngageable(obs)}");
+            + $"targetPresent={TargetPresent(obs, target)}, engageable={CountEngageable(obs)}"
+            + (passedOver is null ? "" : $"; spell passed over: {passedOver}"));
     }
 
     // Give the in-between window its shot BEFORE the attack on engage, so a
