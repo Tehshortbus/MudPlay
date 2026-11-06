@@ -1574,9 +1574,10 @@ public static class BugReportBuilder
         sb.Append('\n');
 
         // Buffs a configured winner PERMANENTLY removes one-directionally (Paradigm continuous
-        // removal) — never maintained, shown "covered by" in the Watchdog. Surfaced so a
-        // "why isn't <buff> casting / holding a timer" report shows it's a deliberate skip.
-        IReadOnlyDictionary<string, string> suppressed = svc.CastDirector.CurrentSuppressedBuffs();
+        // removal) — not maintained on whoever the winner is cast on, shown "covered by" in
+        // the Watchdog. Surfaced so a "why isn't <buff> casting / holding a timer" report
+        // shows it's a deliberate skip, and on whom.
+        IReadOnlyDictionary<string, Game.Spells.BuffSuppression> suppressed = svc.CastDirector.CurrentSuppressedBuffs();
         sb.Append("**Suppressed buffs (permanently removed by a configured buff)**\n\n");
         if (suppressed.Count == 0)
         {
@@ -1584,8 +1585,8 @@ public static class BugReportBuilder
         }
         else
         {
-            foreach (KeyValuePair<string, string> kv in suppressed)
-                sb.Append($"- {kv.Key}: not maintained — covered by {kv.Value}\n");
+            foreach (KeyValuePair<string, Game.Spells.BuffSuppression> kv in suppressed)
+                sb.Append($"- {kv.Key}: not maintained on {kv.Value.Winners.Describe()} — covered by {kv.Value.WinnerName}\n");
         }
         sb.Append('\n');
 

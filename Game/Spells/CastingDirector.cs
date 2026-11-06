@@ -358,9 +358,10 @@ public sealed partial class CastingDirector : IDisposable
     // in a party. DueUnifiedBuffs skips a covered slot; the Buff Watchdog labels it.
     private Func<IReadOnlyDictionary<string, string>>? _selfBuffCoverage;
     // Configured buffs another configured buff PERMANENTLY removes (Paradigm continuous
-    // removal, one-directional): loser cast code → winning buff name. Never maintained (the
-    // winner keeps stripping them), for ANY target; the watchdog labels them "covered by".
-    private Func<IReadOnlyDictionary<string, string>>? _suppressedBuffs;
+    // removal, one-directional): loser cast code → the winner's name and who it's cast on.
+    // Not maintained on those characters (the winner keeps stripping them there); the
+    // watchdog labels their rows "covered by".
+    private Func<IReadOnlyDictionary<string, BuffSuppression>>? _suppressedBuffs;
     // STOCK one-directional conflicts: loser cast code → remover cast code. Both are
     // maintained (not suppressed); DueUnifiedBuffs orders each remover before the losers it
     // removes so the at-cast strip doesn't knock them off. Empty off stock.
@@ -1032,21 +1033,56 @@ public sealed partial class CastingDirector : IDisposable
     public IReadOnlyDictionary<string, string> CurrentSelfBuffCoverage()
         => _selfBuffCoverage?.Invoke() ?? _emptyCoverage;
 
-    // Wire the permanently-suppressed-buff source: loser cast code → winning buff name for
-    // one-directional conflicts (Paradigm continuous removal). DueUnifiedBuffs skips a
-    // suppressed slot for any target so we never waste rounds casting a buff the winner
-    // re-strips; the Buff Watchdog labels it "covered by".
-    public void SetSuppressedBuffs(Func<IReadOnlyDictionary<string, string>> suppressed)
+    // Wire the permanently-suppressed-buff source: loser cast code → the winner's name and
+    // who it's cast on, for one-directional conflicts (Paradigm continuous removal).
+    // DueUnifiedBuffs skips the loser on each character the winner covers (a whole-party
+    // loser only when that's everyone it reaches) so we never waste rounds casting a buff
+    // the winner re-strips; the Buff Watchdog labels those rows "covered by".
+    public void SetSuppressedBuffs(Func<IReadOnlyDictionary<string, BuffSuppression>> suppressed)
     {
         ArgumentNullException.ThrowIfNull(suppressed);
         _suppressedBuffs = suppressed;
     }
 
-    // The current permanently-suppressed-buff map (loser code → winning buff name) — the
-    // Buff Watchdog reads this to label a suppressed buff "covered by". Empty off Paradigm
-    // or unwired.
-    public IReadOnlyDictionary<string, string> CurrentSuppressedBuffs()
-        => _suppressedBuffs?.Invoke() ?? _emptyCoverage;
+    // The current permanently-suppressed-buff map — the Buff Watchdog reads this to label
+    // a suppressed buff's covered rows "covered by". Empty off Paradigm or unwired.
+    public IReadOnlyDictionary<string, BuffSuppression> CurrentSuppressedBuffs()
+        => _suppressedBuffs?.Invoke() ?? _noSuppression;
+
+    private static readonly IReadOnlyDictionary<string, BuffSuppression> _noSuppression =
+        new Dictionary<string, BuffSuppression>();
+
+    // The configured buff slots resolve gives a spell for, each with who the buff pass
+    // casts it on right now (BuffAffectSet.Casting, by the same party, whole-party and
+    // others-only checks it casts by). resolve turns a cast code into its spell with an
+    // empty affect set, or null for one it can't place (a #item-cast token).
+    public IReadOnlyList<ConfiguredBuff> CastingBuffs(Func<string, ConfiguredBuff?> resolve)
+    {
+        ArgumentNullException.ThrowIfNull(resolve);
+        if (_readPartyBuffs?.Invoke() is not { } buffs) return Array.Empty<ConfiguredBuff>();
+        bool inParty = _party?.IsInParty == true;
+        IReadOnlyList<string> members = MemberTargetKeys();
+        List<ConfiguredBuff> casting = new();
+        foreach (Models.Profile.BuffSlot slot in buffs.Slots)
+        {
+            if (string.IsNullOrWhiteSpace(slot.Spell)) continue;
+            string code = slot.Spell.Trim();
+            if (resolve(code) is not { } buff) continue;
+            casting.Add(buff with
+            {
+                Affect = BuffAffectSet.Casting(slot, _isPartyWideBuff?.Invoke(code) == true,
+                    _isOthersOnlyBuff?.Invoke(code) == true, inParty, members),
+            });
+        }
+        return casting;
+    }
+
+    // The recast keys of the other party members a member buff can go to: their given
+    // names, lower-cased, as the member pass keys them. Empty solo or unwired.
+    private IReadOnlyList<string> MemberTargetKeys() =>
+        _party is null
+            ? Array.Empty<string>()
+            : _party.Members.Where(m => !m.IsSelf).Select(m => GivenName(m.Name).ToLowerInvariant()).ToList();
 
     // Wire the STOCK collision-free ordering source: loser cast code → remover cast code for
     // one-directional conflicts, where (unlike Paradigm) removes fire only at cast so both
@@ -3446,10 +3482,12 @@ public sealed partial class CastingDirector : IDisposable
         IReadOnlyDictionary<string, string>? covered = _selfBuffCoverage?.Invoke();
 
         // A buff another configured buff PERMANENTLY removes (one-directional, Paradigm
-        // continuous removal — e.g. greater bless keeps stripping chant) is never
-        // maintained on ANY target: the winner re-strips it, so casting it just burns
-        // rounds. Empty off Paradigm and for mutual pairs (those are last-cast-wins).
-        IReadOnlyDictionary<string, string>? suppressed = _suppressedBuffs?.Invoke();
+        // continuous removal — e.g. greater bless keeps stripping chant) isn't maintained
+        // on a character the winner is cast on: the winner re-strips it there, so casting
+        // it just burns rounds. Empty off Paradigm and for mutual pairs (those are
+        // last-cast-wins).
+        IReadOnlyDictionary<string, BuffSuppression>? suppressed = _suppressedBuffs?.Invoke();
+        IReadOnlyList<string>? memberKeys = null;
 
         // STOCK collision-free ordering: loser cast code → remover cast code. Empty off
         // stock (Paradigm suppresses instead). Applied as a stable reorder below so each
@@ -3479,9 +3517,10 @@ public sealed partial class CastingDirector : IDisposable
             if (string.IsNullOrWhiteSpace(slot.Spell)) continue;
             if (slot.PriorityBuff != priority) continue;
 
-            // Permanently removed by another configured buff — never maintain it (the
-            // winner keeps stripping it). Skips self, member, and whole-party casts alike.
-            if (suppressed is not null && suppressed.ContainsKey(slot.Spell)) continue;
+            // Permanently removed by another configured buff on the characters the winner
+            // is cast on; the self, whole-party and member casts below each skip those.
+            BuffSuppression? stripped = suppressed is not null
+                && suppressed.TryGetValue(slot.Spell, out BuffSuppression sup) ? sup : null;
 
             // Only-when-dark light spells are cast reactively by the auto-light system
             // on entering a dark room, not maintained here — skip them entirely.
@@ -3521,10 +3560,14 @@ public sealed partial class CastingDirector : IDisposable
             // skip applies only to a self-cast (a whole-party cast IS the covering buff,
             // never superseded). Self is resolved BEFORE the per-member loop below, so we
             // always bless ourselves first.
+            // A whole-party loser is one cast for everyone, so it's skipped only when the
+            // winner covers everyone it would reach; members the winner misses still need it.
             bool wantSelfCast = partyWide
                 ? slot.WholePartyOn && (inParty ? partyAllowed : slot.CastSolo && selfEligible)
+                  && stripped?.CoversWholeParty(memberKeys ??= MemberTargetKeys()) != true
                 : slot.CastOnSelf && selfEligible && (covered is null || !covered.ContainsKey(slot.Spell))
-                  && _isOthersOnlyBuff?.Invoke(slot.Spell) != true;
+                  && _isOthersOnlyBuff?.Invoke(slot.Spell) != true
+                  && stripped?.Covers("") != true;
             if (wantSelfCast
                 && (IsRecastDue("", slot.Spell) || (partyWide && inParty && CarriedBuffRanOutOnParty(slot.Spell)))
                 && CanPayFor(slot.Spell, priority, peek))
@@ -3545,6 +3588,7 @@ public sealed partial class CastingDirector : IDisposable
                     string key = given.ToLowerInvariant();
                     if (!slot.AllMembers && !slot.Targets.Contains(key)) continue;
                     if (slot.NegatedTargets.Contains(key)) continue;
+                    if (stripped?.Covers(key) == true) continue;
                     if (_hiddenTargets.Contains(key))
                     {
                         if (_isMemberInRoom?.Invoke(given) != true) continue;

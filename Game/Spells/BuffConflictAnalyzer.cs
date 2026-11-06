@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using MudPlay.Models.Profile;
 
 namespace MudPlay.Game.Spells;
 
@@ -48,12 +49,79 @@ public readonly struct BuffAffectSet
                 : targets.Select(t => t.Trim().ToLowerInvariant()).ToArray(),
         };
     }
+
+    // Who the slot casts on right now, by the gates CastingDirector applies before it
+    // sends one: a whole-party buff needs its Party box, and while solo its Solo box; a
+    // buff aimed at others is never cast on us; members are cast on only in a party,
+    // and only those present, ticked and not negated. presentMembers: the lower-cased
+    // given names of the other party members. Unlike From, a slot whose boxes are
+    // ticked for no one here comes out empty.
+    public static BuffAffectSet Casting(
+        BuffSlot slot, bool isWholePartySpell, bool isOthersOnlySpell, bool inParty,
+        IReadOnlyCollection<string> presentMembers)
+    {
+        ArgumentNullException.ThrowIfNull(slot);
+        ArgumentNullException.ThrowIfNull(presentMembers);
+        if (isWholePartySpell)
+            return slot.WholePartyOn && (inParty || slot.CastSolo)
+                ? new BuffAffectSet { Everyone = true, Members = Array.Empty<string>() }
+                : None;
+        return new BuffAffectSet
+        {
+            Self = slot.CastOnSelf && !isOthersOnlySpell,
+            Members = inParty
+                ? presentMembers.Where(m => (slot.AllMembers || slot.Targets.Contains(m)) && !slot.NegatedTargets.Contains(m))
+                    .ToArray()
+                : Array.Empty<string>(),
+        };
+    }
+
+    // Whether the set lands on one target: "" is us, anything else a member's
+    // lower-cased given name.
+    public bool Includes(string targetKey) =>
+        Everyone || (targetKey.Length == 0 ? Self : AllMembers || Members.Contains(targetKey));
+
+    // Whether the set lands on us and on every other member present.
+    public bool IncludesAll(IEnumerable<string> presentMembers) =>
+        Everyone || (Self && presentMembers.All(Includes));
+
+    // Who the set lands on, for a bug report.
+    public string Describe()
+    {
+        if (Everyone) return "everyone";
+        List<string> who = new();
+        if (Self) who.Add("you");
+        if (AllMembers) who.Add("every member");
+        who.AddRange(Members);
+        return who.Count == 0 ? "no one" : string.Join(", ", who);
+    }
+
+    // Every character either set lands on.
+    public BuffAffectSet Union(in BuffAffectSet other) => new()
+    {
+        Everyone = Everyone || other.Everyone,
+        Self = Self || other.Self,
+        AllMembers = AllMembers || other.AllMembers,
+        Members = Members.Union(other.Members).ToArray(),
+    };
+}
+
+// A buff a one-directional winner keeps stripping: the winner's name, for "covered by",
+// and every character the winners are cast on. The loser is skipped on those characters
+// only, so a member the winner never reaches still gets it.
+public readonly record struct BuffSuppression(string WinnerName, BuffAffectSet Winners)
+{
+    public bool Covers(string targetKey) => Winners.Includes(targetKey);
+
+    // One untargeted cast lands on the whole party, so it's skipped only when every
+    // character it would reach is covered.
+    public bool CoversWholeParty(IEnumerable<string> presentMembers) => Winners.IncludesAll(presentMembers);
 }
 
 // Cross-references two configured buff slots against the spellbook's RemovesSpell
-// (Abil 122) relation. Purely informational — see AppServices.BuffSlotOverwritePairs
-// for the caller that builds these from live BuffSettings, and SelfBuffCoverage for
-// the one case (self superseded by a whole-party buff) that also drives automation.
+// (Abil 122) relation. AppServices.BuffSlotOverwritePairs builds these by scope for the
+// warnings; SuppressedBuffCoverage and CollisionOrderConstraints build them from who
+// each slot is cast on right now, and those drive the casting.
 public readonly record struct BuffOverwritePair(
     string RemovingCode, string RemovingName, string RemovedCode, string RemovedName);
 
@@ -168,6 +236,32 @@ public static class BuffConflictAnalyzer
             if (!losers.ContainsKey(p.RemovedCode)) losers[p.RemovedCode] = p.RemovingName;
         }
         return losers;
+    }
+
+    // OneDirectionalLosers with who each loser is skipped on: loser cast code → the first
+    // winner's name and every character its one-directional winners are cast on.
+    public static IReadOnlyDictionary<string, BuffSuppression> OneDirectionalSuppressions(
+        IReadOnlyList<ConfiguredBuff> buffs)
+    {
+        IReadOnlyList<BuffOverwritePair> pairs = OverwritePairs(buffs);
+        IReadOnlyDictionary<string, string> losers = OneDirectionalLosers(pairs);
+        Dictionary<string, BuffSuppression> suppressed = new(StringComparer.OrdinalIgnoreCase);
+        foreach ((string loser, string winnerName) in losers)
+        {
+            BuffAffectSet winners = BuffAffectSet.None;
+            foreach (BuffOverwritePair p in pairs)
+            {
+                if (!string.Equals(p.RemovedCode, loser, StringComparison.OrdinalIgnoreCase)) continue;
+                if (pairs.Any(q => string.Equals(q.RemovingCode, loser, StringComparison.OrdinalIgnoreCase)
+                                   && string.Equals(q.RemovedCode, p.RemovingCode, StringComparison.OrdinalIgnoreCase)))
+                    continue;   // mutual → last-cast-wins
+                foreach (ConfiguredBuff b in buffs)
+                    if (string.Equals(b.Code, p.RemovingCode, StringComparison.OrdinalIgnoreCase))
+                        winners = winners.Union(b.Affect);
+            }
+            suppressed[loser] = new BuffSuppression(winnerName, winners);
+        }
+        return suppressed;
     }
 
     // The one-directional loser → REMOVER cast-code map, the ordering counterpart to

@@ -4943,6 +4943,17 @@ public sealed class CastingDirectorTests
         // reflection idiom used elsewhere in this file).
         public void Confirm(string casterLine) => Server.Line(casterLine);
 
+        // Paradigm's one-way removals, wired as AppServices wires them: the director's
+        // own view of who each slot is cast on, paired by Removes.
+        public void WireOneWayRemovals()
+        {
+            static int Number(string code) => StringComparer.OrdinalIgnoreCase.GetHashCode(code);
+            Director.SetSuppressedBuffs(() => BuffConflictAnalyzer.OneDirectionalSuppressions(Director.CastingBuffs(
+                code => new ConfiguredBuff(code, SpellNames.GetValueOrDefault(code, code), Number(code),
+                    Removes.TryGetValue(code, out string[]? r) ? r.Select(Number).ToArray() : Array.Empty<int>(),
+                    BuffAffectSet.None))));
+        }
+
         public void Dispose()
         {
             Director.Dispose();
@@ -4982,6 +4993,128 @@ public sealed class CastingDirectorTests
         h.Director.Evaluate();
 
         Assert.Equal(new[] { "renw Raijin" }, h.CastsSent);
+    }
+
+    // ----- Paradigm one-way removals: skipped only where the winner is cast -----
+    // greater zeal (gzea) removes unholy fanaticism (unfa) and bless (bles); neither
+    // removes it back. The loser is left off a character only when greater zeal is
+    // cast on that character right now (user, 2026-11-04: unholy fanaticism "covered
+    // by" a greater zeal ticked off everywhere, and never cast).
+
+    private static PartyBlessHarness OneWayHarness()
+    {
+        PartyBlessHarness h = new();
+        h.ManaFloor = 0;
+        h.SpellNames["gzea"] = "greater zeal";
+        h.Removes["gzea"] = new[] { "unfa", "bles" };
+        h.BuffInfo["gzea"] = (string.Empty, 600);
+        h.BuffInfo["unfa"] = (string.Empty, 600);
+        h.BuffInfo["bles"] = ("You cast {s} on {s}!", 300);
+        h.WireOneWayRemovals();
+        return h;
+    }
+
+    [Fact]
+    public void OneWayRemoval_WinnerTickedForNoOne_LoserIsCast()
+    {
+        using PartyBlessHarness h = OneWayHarness();
+        h.PartyBuffs.Slots.Add(new BuffSlot { Spell = "gzea" });
+        h.AddWholePartySlot("unfa");
+        h.AddMember("Raijin");
+
+        h.Director.Evaluate();
+
+        Assert.Equal(new[] { "unfa" }, h.CastsSent);
+        Assert.Empty(h.Director.CurrentSuppressedBuffs());
+    }
+
+    [Fact]
+    public void OneWayRemoval_WinnerForAMemberWhoLeft_LoserIsCast()
+    {
+        using PartyBlessHarness h = OneWayHarness();
+        h.AddTargetSlot("gzea", "Legolas");
+        h.AddWholePartySlot("unfa");
+        h.AddMember("Raijin");
+
+        h.Director.Evaluate();
+
+        Assert.Equal(new[] { "unfa" }, h.CastsSent);
+    }
+
+    [Fact]
+    public void OneWayRemoval_SelfOnlyWinner_WholePartyLoserStillCastForTheMembers()
+    {
+        using PartyBlessHarness h = OneWayHarness();
+        h.SelfBuff("gzea");
+        h.Director.NoteManualBuffCast("gzea");
+        h.AddWholePartySlot("unfa");
+        h.AddMember("Raijin");
+
+        h.Director.Evaluate();
+
+        Assert.Equal(new[] { "unfa" }, h.CastsSent);
+        BuffSuppression sup = h.Director.CurrentSuppressedBuffs()["unfa"];
+        Assert.True(sup.Covers(""));
+        Assert.False(sup.Covers("raijin"));
+    }
+
+    [Fact]
+    public void OneWayRemoval_SelfOnlyWinner_Solo_WholePartyLoserNotCast()
+    {
+        using PartyBlessHarness h = OneWayHarness();
+        h.SelfBuff("gzea");
+        h.Director.NoteManualBuffCast("gzea");
+        h.AddWholePartySlot("unfa");
+
+        h.Director.Evaluate();
+
+        Assert.Empty(h.CastsSent);
+        Assert.Equal("greater zeal", h.Director.CurrentSuppressedBuffs()["unfa"].WinnerName);
+    }
+
+    [Fact]
+    public void OneWayRemoval_SelfOnlyWinner_SingleTargetLoserSkipsOnlyUs()
+    {
+        using PartyBlessHarness h = OneWayHarness();
+        h.SelfBuff("gzea");
+        h.Director.NoteManualBuffCast("gzea");
+        h.AddTargetSlot("bles", "Raijin").CastOnSelf = true;
+        h.AddMember("Raijin");
+
+        h.Director.Evaluate();
+        h.Confirm("You cast bless on Raijin!");
+        h.Director.Evaluate();
+
+        Assert.Equal(new[] { "bles Raijin" }, h.CastsSent);
+    }
+
+    [Fact]
+    public void OneWayRemoval_WinnerOnAMember_LoserSkipsThatMember()
+    {
+        using PartyBlessHarness h = OneWayHarness();
+        h.AddTargetSlot("bles", "Raijin");
+        h.AddAllMembersSlot("gzea");
+        h.AddMember("Raijin");
+
+        h.Director.Evaluate();
+
+        Assert.Equal(new[] { "gzea Raijin" }, h.CastsSent);
+    }
+
+    [Fact]
+    public void OneWayRemoval_OthersOnlyWinnerWithSelfTicked_DoesNotCoverUs()
+    {
+        using PartyBlessHarness h = OneWayHarness();
+        h.SelfBuff("bles");
+        h.OthersOnly.Add("gzea");
+        h.AddAllMembersSlot("gzea").CastOnSelf = true;
+        h.AddMember("Raijin");
+
+        h.Director.Evaluate();
+
+        // greater zeal only ever lands on Raijin, bless only on us: they never meet.
+        Assert.Equal("bles", h.CastsSent.First());
+        Assert.False(h.Director.CurrentSuppressedBuffs().ContainsKey("bles"));
     }
 
     [Fact]

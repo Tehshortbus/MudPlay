@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using MudPlay.Game.Spells;
+using MudPlay.Models.Profile;
 using Xunit;
 
 namespace MudPlay.Tests;
@@ -402,5 +403,64 @@ public sealed class BuffConflictAnalyzerTests
             GreaterZeal(Members("legolas")),
             UnholyFanaticism(SelfOnly()),
         }));
+    }
+
+    // ----- Casting (who a slot is cast on right now) -----
+
+    private static readonly string[] Present = { "raijin" };
+
+    [Fact]
+    public void Casting_WholePartySlotWithSoloOff_WhileSolo_IsNoOne()
+    {
+        BuffSlot slot = new() { Spell = "unfa", WholePartyOn = true, CastSolo = false };
+
+        Assert.True(BuffAffectSet.Casting(slot, true, false, inParty: false, Array.Empty<string>()).IsEmpty);
+        Assert.True(BuffAffectSet.Casting(slot, true, false, inParty: true, Present).Everyone);
+    }
+
+    [Fact]
+    public void Casting_AllMembersWhileSolo_IsNoOne()
+    {
+        BuffSlot slot = new() { Spell = "gzea", AllMembers = true };
+
+        Assert.True(BuffAffectSet.Casting(slot, false, false, inParty: false, Present).IsEmpty);
+        Assert.True(BuffAffectSet.Casting(slot, false, false, inParty: true, Present).Includes("raijin"));
+    }
+
+    [Fact]
+    public void Casting_OnlyPresentTickedMembersNotNegated()
+    {
+        BuffSlot slot = new() { Spell = "gzea", Targets = { "raijin", "legolas" } };
+        Assert.Equal(new[] { "raijin" }, BuffAffectSet.Casting(slot, false, false, true, Present).Members);
+
+        slot.NegatedTargets.Add("raijin");
+        Assert.True(BuffAffectSet.Casting(slot, false, false, true, Present).IsEmpty);
+    }
+
+    [Fact]
+    public void Casting_OthersOnlySpell_NeverOnUs()
+    {
+        BuffSlot slot = new() { Spell = "renw", CastOnSelf = true };
+
+        Assert.False(BuffAffectSet.Casting(slot, false, isOthersOnlySpell: true, true, Present).Self);
+        Assert.True(BuffAffectSet.Casting(slot, false, isOthersOnlySpell: false, true, Present).Self);
+    }
+
+    // Two buffs that each remove the loser, one cast on us and one on Raijin, between
+    // them cover the whole party, so the whole-party loser is left off.
+    [Fact]
+    public void OneDirectionalSuppressions_WinnersTogetherCoverTheParty()
+    {
+        IReadOnlyDictionary<string, BuffSuppression> suppressed = BuffConflictAnalyzer.OneDirectionalSuppressions(new[]
+        {
+            GreaterZeal(SelfOnly()),
+            new ConfiguredBuff("zeal", "zeal", 6003, new[] { 6002 }, Members("raijin")),
+            UnholyFanaticism(WholeParty()),
+        });
+
+        BuffSuppression sup = suppressed["unfa"];
+        Assert.Equal("greater zeal", sup.WinnerName);
+        Assert.True(sup.CoversWholeParty(Present));
+        Assert.False(sup.CoversWholeParty(new[] { "raijin", "legolas" }));
     }
 }

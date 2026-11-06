@@ -13045,28 +13045,29 @@ public sealed class AppServices
     }
 
     // Configured buffs that can never stay up because another configured buff PERMANENTLY
-    // removes them: loser cast code → the winning buff's name (for a "covered by" label).
-    // A one-directional conflict only (Y removes X, X does NOT remove Y back) — Y is up, so
-    // X is stripped and re-stripped forever; the client shouldn't waste casts maintaining it
-    // or show a live timer for it. Mutual pairs (each removes the other, e.g. bless ↔ greater
-    // bless) are NOT suppressed — those are last-cast-wins, left to the normal clobber-clear.
+    // removes them: loser cast code → the winning buff's name (for a "covered by" label)
+    // and the characters the winner is cast on. A one-directional conflict only (Y removes
+    // X, X does NOT remove Y back) — Y is up, so X is stripped and re-stripped forever on
+    // whoever carries Y; the client shouldn't waste casts maintaining it there or show a
+    // live timer for it. Mutual pairs (each removes the other, e.g. bless ↔ greater bless)
+    // are NOT suppressed — those are last-cast-wins, left to the normal clobber-clear.
     //
     // PARADIGM ONLY: Paradigm re-enforces a buff's RemovesSpell continuously (~3s), so the
     // loser truly can't coexist. Stock checks RemovesSpell only at cast time, so cast order
     // lets both stay (CollisionOrderConstraints) — this returns empty off Paradigm.
     //
+    // Judged by who each slot is cast on right now (CastingBuffs): a winner ticked for no
+    // one here is never cast, so it strips nothing and covers nothing.
+    //
     // Distinct from SelfBuffCoverage (which is the in-party, whole-party-covers-self case,
     // including mutual pairs): this is the general one-directional winner, self-cast winners
-    // and solo included. The picker skips a suppressed slot for ANY target; the Buff Watchdog
-    // shows the loser as "covered by" instead of a stuck "conflict".
-    public IReadOnlyDictionary<string, string> SuppressedBuffCoverage()
+    // and solo included. The picker skips the loser on each character the winner covers;
+    // the Buff Watchdog shows those rows "covered by" instead of a stuck "conflict".
+    public IReadOnlyDictionary<string, Game.Spells.BuffSuppression> SuppressedBuffCoverage()
     {
-        // PARADIGM ONLY: only there is a buff's RemovesSpell re-enforced continuously (~3s),
-        // so the one-directional loser truly can't coexist. Stock checks it only at cast
-        // time, so both can stay — suppress nothing there.
         if (GameData.ActiveRealm != Game.RealmType.ParaMud)
-            return new Dictionary<string, string>();
-        return Game.Spells.BuffConflictAnalyzer.OneDirectionalLosers(BuffSlotOverwritePairs(liveOnly: true));
+            return new Dictionary<string, Game.Spells.BuffSuppression>();
+        return Game.Spells.BuffConflictAnalyzer.OneDirectionalSuppressions(CastingBuffs());
     }
 
     // STOCK ONLY: the stock counterpart to SuppressedBuffCoverage. On stock a buff's
@@ -13075,11 +13076,13 @@ public sealed class AppServices
     // re-applied after each remover recast. This map (loser cast-code → remover cast-code)
     // lets CastingDirector order the remover ahead of the loser instead of dropping it.
     // Empty on Paradigm (SuppressedBuffCoverage owns that realm) and for mutual pairs.
+    // Judged by who each slot is cast on right now, as SuppressedBuffCoverage is.
     public IReadOnlyDictionary<string, string> CollisionOrderConstraints()
     {
         if (GameData.ActiveRealm == Game.RealmType.ParaMud)
             return new Dictionary<string, string>();
-        return Game.Spells.BuffConflictAnalyzer.OneDirectionalRemoverCodes(BuffSlotOverwritePairs(liveOnly: true));
+        return Game.Spells.BuffConflictAnalyzer.OneDirectionalRemoverCodes(
+            Game.Spells.BuffConflictAnalyzer.OverwritePairs(CastingBuffs()));
     }
 
     // The spell numbers a cast code's spell removes (RemovesSpell, Abil 122 — the same
@@ -13098,46 +13101,47 @@ public sealed class AppServices
 
     // Every pair of configured, resolvable buff slots where one's spell removes the
     // other's via RemovesSpell (Abil 122) and their targeting can land on the same
-    // character (self, a shared member, or anyone via a whole-party cast). Besides
-    // the Buff Panel's per-row warning and the Buff Watchdog's "covered by" label, it
-    // drives CastingDirector through SuppressedBuffCoverage (Paradigm: a
-    // one-directional loser is never cast) and CollisionOrderConstraints (Stock: the
-    // remover is cast first). #item-cast slots don't resolve to a KnownSpell and are
-    // skipped, same as SelfBuffCoverage's self-buff collection.
+    // character (self, a shared member, or anyone via a whole-party cast), for the Buff
+    // Panel's per-row warning and the Buff Watchdog's conflict tooltip and clobber call.
     //
-    // liveOnly = false judges co-landing by SCOPE — what the slot COULD ever land on —
-    // not the live on/off toggles. The Buff Panel's warning is a heads-up about the
-    // configured PAIR: two buffs that remove each other still clobber whenever both are
-    // up, no matter which Self / Party / member boxes are ticked right now. The timer-
-    // side "conflict" call, by contrast, reads the live cast snapshot, so an un-cast buff
-    // never falsely marks another as clobbered.
-    //
-    // liveOnly = true judges by the ticked boxes: a slot toggled off everywhere is never
-    // cast, so it can't strip anything and is no winner. Suppression and ordering act on
-    // the casting itself and use this, or a configured-but-off remover would keep a
-    // buff the player ticked from ever being cast.
-    public IReadOnlyList<Game.Spells.BuffOverwritePair> BuffSlotOverwritePairs(bool liveOnly = false)
+    // Judges co-landing by SCOPE — what the slot COULD ever land on — not the live
+    // on/off toggles. The warning is a heads-up about the configured PAIR: two buffs that
+    // remove each other still clobber whenever both are up, no matter which Self / Party
+    // / member boxes are ticked right now. The timer-side "conflict" call reads the live
+    // cast snapshot, so an un-cast buff never falsely marks another as clobbered. The
+    // casting itself goes by CastingBuffs instead.
+    public IReadOnlyList<Game.Spells.BuffOverwritePair> BuffSlotOverwritePairs()
     {
-        System.Collections.Generic.List<Models.Profile.BuffSlot>? slots = Profile.Current?.PartyBuffs?.Slots;
-        if (slots is null || slots.Count == 0) return System.Array.Empty<Game.Spells.BuffOverwritePair>();
-
         List<Game.Spells.ConfiguredBuff> configured = new();
-        foreach (Models.Profile.BuffSlot slot in slots)
+        foreach (Models.Profile.BuffSlot slot in Profile.Current?.PartyBuffs?.Slots ?? new List<Models.Profile.BuffSlot>())
         {
             if (string.IsNullOrWhiteSpace(slot.Spell)) continue;
             string code = slot.Spell.Trim();
-            if (Spellbook.FindByCastCode(code) is not { } spell) continue;
-            bool isWholeParty = IsPartyWideBuff(code);
-            Game.Spells.BuffAffectSet affect = liveOnly
-                ? Game.Spells.BuffAffectSet.From(isWholeParty, slot.WholePartyOn, slot.CastOnSelf, slot.AllMembers, slot.Targets)
-                : isWholeParty
+            if (ConfiguredBuffOf(code) is not { } buff) continue;
+            configured.Add(buff with
+            {
+                Affect = IsPartyWideBuff(code)
                     ? new Game.Spells.BuffAffectSet { Everyone = true, Members = System.Array.Empty<string>() }
-                    : new Game.Spells.BuffAffectSet { Self = true, AllMembers = true, Members = System.Array.Empty<string>() };
-            configured.Add(new Game.Spells.ConfiguredBuff(
-                spell.Short, spell.Name, spell.Number, RemovedSpellNumbers(spell.Short), affect));
+                    : new Game.Spells.BuffAffectSet { Self = true, AllMembers = true, Members = System.Array.Empty<string>() },
+            });
         }
         return Game.Spells.BuffConflictAnalyzer.OverwritePairs(configured);
     }
+
+    // The configured buffs with who each is cast on right now (CastingDirector.CastingBuffs):
+    // a slot ticked for no one here is never cast, so it strips nothing. Suppression and
+    // ordering act on the casting itself and use this, or a configured-but-off remover
+    // would keep a buff the player ticked from ever being cast.
+    private IReadOnlyList<Game.Spells.ConfiguredBuff> CastingBuffs() => CastDirector.CastingBuffs(ConfiguredBuffOf);
+
+    // A buff slot's spell for the conflict pairing, its affect set left to the caller.
+    // A #item-cast token doesn't resolve to a KnownSpell and is skipped, same as
+    // SelfBuffCoverage's self-buff collection.
+    private Game.Spells.ConfiguredBuff? ConfiguredBuffOf(string code) =>
+        Spellbook.FindByCastCode(code) is { } spell
+            ? new Game.Spells.ConfiguredBuff(spell.Short, spell.Name, spell.Number,
+                Game.Spells.BuffConflictAnalyzer.RemovedSpellNumbers(spell.Formula), Game.Spells.BuffAffectSet.None)
+            : null;
 
     // Apply-cast matchers for PartyAilmentTracker's witness-SET path: every Messages
     // record that inflicts a witnessable ailment (blind / confuse / disease / held —

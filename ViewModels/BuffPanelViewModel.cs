@@ -742,7 +742,7 @@ public sealed partial class BuffPanelViewModel : ObservableObject, IDisposable
         // A Paradigm-suppressed loser is never maintained (cost 0); a STOCK collision-
         // order loser is re-cast on its remover's cadence, so its effective duration is
         // capped at the remover's. Both are empty off their respective realm.
-        IReadOnlyDictionary<string, string> suppressed = AppServices.Current.SuppressedBuffCoverage();
+        IReadOnlyDictionary<string, Game.Spells.BuffSuppression> suppressed = AppServices.Current.SuppressedBuffCoverage();
         IReadOnlyDictionary<string, string> collisionOrder = AppServices.Current.CollisionOrderConstraints();
         double DurationSecondsOf(string c) =>
             ResolveSpellOrItem(c) is { } rr
@@ -756,9 +756,9 @@ public sealed partial class BuffPanelViewModel : ObservableObject, IDisposable
             string code = dto.Spell.Trim();
             if (ResolveSpellOrItem(code) is not { } r) continue;
 
-            // Suppressed (Paradigm): the winner keeps stripping it, so we never cast it —
-            // it adds nothing to the mana budget.
-            if (suppressed.ContainsKey(code)) continue;
+            // Suppressed (Paradigm): the winner keeps stripping it on whoever the winner is
+            // cast on, so it isn't cast there — those casts add nothing to the mana budget.
+            Game.Spells.BuffSuppression? stripped = suppressed.TryGetValue(code, out Game.Spells.BuffSuppression sup) ? sup : null;
 
             long manaCost = Game.Spells.SpellCalculator.ManaCost(r.Formula);
             double durationSeconds = Game.Spells.SpellCalculator.Duration(r.Formula, _spellbook.Level)
@@ -772,16 +772,19 @@ public sealed partial class BuffPanelViewModel : ObservableObject, IDisposable
 
             int casts;
             if (BuffClassifier.IsWholeParty(r.Targets))
-                casts = dto.WholePartyOn && (hasParty || dto.CastSolo) ? 1 : 0;
+                casts = dto.WholePartyOn && (hasParty || dto.CastSolo)
+                        && stripped?.CoversWholeParty(members.Select(m => m.Given)) != true ? 1 : 0;
             else if (BuffClassifier.IsSingleTargetBuff(r.Targets) || BuffClassifier.IsOthersOnlyBuff(r.Targets))
             {
                 int memberCasts = dto.AllMembers
-                    ? members.Count
-                    : dto.Targets.Count(t => members.Any(m => string.Equals(m.Given, t, StringComparison.OrdinalIgnoreCase)));
-                casts = (dto.CastOnSelf && BuffClassifier.IsSingleTargetBuff(r.Targets) ? 1 : 0) + memberCasts;
+                    ? members.Count(m => stripped?.Covers(m.Given) != true)
+                    : dto.Targets.Count(t => members.Any(m => string.Equals(m.Given, t, StringComparison.OrdinalIgnoreCase))
+                                             && stripped?.Covers(t) != true);
+                casts = (dto.CastOnSelf && BuffClassifier.IsSingleTargetBuff(r.Targets) && stripped?.Covers("") != true ? 1 : 0)
+                        + memberCasts;
             }
             else
-                casts = dto.CastOnSelf ? 1 : 0;
+                casts = dto.CastOnSelf && stripped?.Covers("") != true ? 1 : 0;
 
             if (casts == 0) continue;
             upkeep.Add(new Game.Spells.BuffManaUpkeepCalculator.SlotUpkeep(manaCost, durationSeconds, casts));
