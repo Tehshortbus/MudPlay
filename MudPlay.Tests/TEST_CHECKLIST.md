@@ -900,8 +900,8 @@ How to keep it current:
 
 ### CorpseHandoffTests.cs
 - Covers: Game/Recovery/CorpseHandoffManager, CorpseRecoveryLines, CorpseHandoffPlan; BugReportScrub; SentCommandTrail; CommandHistory; DoHandler.
-- Checks: another player's corpse is recorded from the recovery lines; the command is read in the short form the game takes (`recover <name> <password>`) , the long form and `recover corpse of <name> <password>`, each arming the record, never the owner's `recover corpse <name>` or `recover corpse of <name>`; the password stays out of storage, log, trail and history, the short form masked where a command stands and prose with "recover" left alone; gives are planned per realm and struck off on confirmation.
-- Why: handing a friend's gear back without leaking their password; report `bug-report-recover-corpse-for-another-player` (the game refuses the long form, and the short one was neither recorded nor masked).
+- Checks: another player's corpse is recorded from the recovery lines; the command is read in the short form the game takes (`recover <name> <password>`) , the long form and `recover corpse of <name> <password>`, each arming the record, never the owner's `recover corpse <name>` or `recover corpse of <name>`; an arm survives a move typed before the command that lands before the recovery's lines, and the game's refusal drops it; the password stays out of storage, log, trail and history, the short form masked where a command stands and prose with "recover" left alone; gives are planned per realm and struck off on confirmation.
+- Why: handing a friend's gear back without leaking their password; report `bug-report-recover-corpse-for-another-player` (the game refuses the long form, and the short one was neither recorded nor masked); report `paradigm-20261106-102704` (`nw`, the recover and `se` sent together: the `nw` arrival wiped the arm and nothing was recorded).
 
 ### CountedCommandTests.cs
 - Covers: Game/Inventory/CountedCommand.

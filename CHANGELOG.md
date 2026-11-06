@@ -1,5 +1,10 @@
 # Version history
 
+## 3.199.2
+
+- A friend's corpse recovered right after a move sent with it (`nw`, then the recover) is recorded under Corpses to hand back again
+- bug reports addressed: paradigm-20261106-102704
+
 ## 3.199.1
 
 - Paradigm one-way buff removals: a buff is skipped only on the characters its remover is actually cast on, so a remover ticked for no one (or for members who left) no longer keeps it from being cast, and members the remover misses still get it

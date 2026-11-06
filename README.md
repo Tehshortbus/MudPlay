@@ -1,8 +1,8 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.199.1**
-> - Paradigm one-way buff removals: a buff is skipped only on the characters its remover is actually cast on, so a remover ticked for no one (or for members who left) no longer keeps it from being cast, and members the remover misses still get it
+> **Version 3.199.2**
+> - A friend's corpse recovered right after a move sent with it (`nw`, then the recover) is recorded under Corpses to hand back again
 <!-- current-version:end -->
 
 A modern Telnet terminal client for **MajorMUD** and other BBS door games, built in C# / .NET 10 with [Avalonia](https://avaloniaui.net/). It renders a faithful CP437 cell grid with full VT100/ANSI parsing, and layers a MegaMUD-style automation suite (combat, party, navigation, healing, and more) on top — all in modeless, dockable windows so the terminal stays live while you configure anything.

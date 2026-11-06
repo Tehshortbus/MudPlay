@@ -245,6 +245,43 @@ public sealed class CorpseHandoffTests
     }
 
     [Fact]
+    public void AMoveTypedBeforeTheCommand_LandingFirst_KeepsTheArm()
+    {
+        // `nw`, `recover blasta <password>` and `se` sent together: the `nw` arrival
+        // prints after the command went out and before the recovery's lines
+        // (report `paradigm-20261106-102704`).
+        Harness h = new();
+        h.Manager.ObserveCommand($"recover corpse blasta {Password}", usersOwn: true);
+        h.Manager.NoteRoomChanged();
+        h.Manager.OnLine("You begin to pick through the corpse of Blasta...");
+        h.Manager.OnLine("You took storm crown.");
+        h.Manager.OnLine("You have recovered the corpse of Blasta.");
+        h.Manager.NoteRoomChanged();
+
+        CorpseHandoffRecord r = Assert.Single(h.Manager.Records);
+        Assert.Equal("Blasta", r.Owner);
+        Assert.Equal(new[] { "storm crown" }, r.Items.Select(i => i.Name));
+        Assert.Null(r.Note);
+    }
+
+    [Fact]
+    public void ARefusedRecovery_DropsItsArm()
+    {
+        Harness h = new();
+        h.Log.Diagnostics = new LogDiagnosticState { DebugDiagnostics = true };
+        h.Manager.ObserveCommand("recover corpse raijin stalepass", usersOwn: true);
+        h.Manager.OnLine("You may not recover the corpse of Raijin.");
+        Assert.Contains(h.Log.Snapshot(), e => e.Message == "Raijin's corpse: the game refused the recovery, nothing to record");
+        Assert.Null(h.Manager.DescribePending());
+
+        // A recovery of the same corpse the user didn't type (a macro's) is not taken.
+        h.Manager.OnLine("You begin to pick through the corpse of Raijin...");
+        h.Manager.OnLine("You took thorned whip.");
+        h.Manager.OnLine("You have recovered the corpse of Raijin.");
+        Assert.Empty(h.Manager.Records);
+    }
+
+    [Fact]
     public void SeveralCorpsesInARow_AreEachRecorded()
     {
         // `recover corpse raijin p1;recover corpse ermias p2`: both go out before
