@@ -1,10 +1,8 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.199.0**
-> - `@spells` remote command: your learned spells with cast codes, the spells you can learn now, or whether one spell is learned (new Query spells permission)
-> - A loop or Roomba sweep that can't reach one of its rooms (a door that locked behind it) walks on to the next room instead of getting lost
-> - When a fight switches from the attack spell to the weapon, the program log and the bug report say why the spell was passed over
+> **Version 3.199.1**
+> - Paradigm one-way buff removals: a buff is skipped only on the characters its remover is actually cast on, so a remover ticked for no one (or for members who left) no longer keeps it from being cast, and members the remover misses still get it
 <!-- current-version:end -->
 
 A modern Telnet terminal client for **MajorMUD** and other BBS door games, built in C# / .NET 10 with [Avalonia](https://avaloniaui.net/). It renders a faithful CP437 cell grid with full VT100/ANSI parsing, and layers a MegaMUD-style automation suite (combat, party, navigation, healing, and more) on top — all in modeless, dockable windows so the terminal stays live while you configure anything.

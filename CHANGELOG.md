@@ -1,5 +1,9 @@
 # Version history
 
+## 3.199.1
+
+- Paradigm one-way buff removals: a buff is skipped only on the characters its remover is actually cast on, so a remover ticked for no one (or for members who left) no longer keeps it from being cast, and members the remover misses still get it
+
 ## 3.199.0
 
 - `@spells` remote command: your learned spells with cast codes, the spells you can learn now, or whether one spell is learned (new Query spells permission)

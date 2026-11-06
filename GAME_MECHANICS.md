@@ -3661,8 +3661,11 @@ How one damage spell cast against a monster is worked out.
 - **The reliable signal is what we actually sent** (the distinct "You cast <spell> on …" / the pending
   self-buff short).
 - **Client use:**
-  - Paradigm: `BuffConflictAnalyzer.OneDirectionalLosers` flags a one-way loser, which is dropped rather
-    than cast into a remover that re-strips it every tick. Mutual pairs stay last-cast-wins. This is
+  - Paradigm: `BuffConflictAnalyzer.OneDirectionalSuppressions` flags a one-way loser, which is dropped rather
+    than cast into a remover that re-strips it every tick. Mutual pairs stay last-cast-wins. Since the strip
+    acts on the character the remover is on, the loser is left off only on the characters the remover is
+    cast on right now (`CastingDirector.CastingBuffs`): a remover ticked for no one present covers nothing,
+    and a whole-party loser is still cast while any member the remover misses needs it (user, 2026-11-04: unholy fanaticism "covered by" a greater zeal ticked off everywhere). This is
     exactly why **#540's "suppress the loser" is correct on Paradigm** (don't waste rounds maintaining
     chant under a maintained gbls) and **correctly does nothing on stock** (where cast-order lets you
     hold both).

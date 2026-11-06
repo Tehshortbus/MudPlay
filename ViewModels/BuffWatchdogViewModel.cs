@@ -336,9 +336,9 @@ public sealed partial class BuffWatchdogViewModel : ObservableObject, IDisposabl
         // that buff instead of a timer (the director suppresses self-casting it).
         IReadOnlyDictionary<string, string> coverage = _castDirector.CurrentSelfBuffCoverage();
         // Buffs a configured winner PERMANENTLY removes (Paradigm continuous removal, one-
-        // directional) are never maintained — show them "covered by" the winner on every
-        // row (self + members) instead of a stale timer or a stuck "conflict".
-        IReadOnlyDictionary<string, string> suppressed = _castDirector.CurrentSuppressedBuffs();
+        // directional) aren't maintained on whoever the winner is cast on — those rows show
+        // "covered by" the winner instead of a stale timer or a stuck "conflict".
+        IReadOnlyDictionary<string, Game.Spells.BuffSuppression> suppressed = _castDirector.CurrentSuppressedBuffs();
         // Stock counterpart: a one-directional loser the director KEEPS by casting the
         // remover first (loser code → remover code). Its timer bar is genuine (it's still
         // maintained), so we don't replace it — we annotate "both kept" and, because the
@@ -389,13 +389,14 @@ public sealed partial class BuffWatchdogViewModel : ObservableObject, IDisposabl
             (string? removedBy, string? removes) = Game.Spells.BuffConflictAnalyzer.Resolve(overwritePairs, row.CastCode);
             row.SetOverwriteWarning(Game.Spells.BuffConflictAnalyzer.FormatTooltip(removedBy, removes));
 
-            // Permanently removed by a configured winner (one-directional, Paradigm): the
-            // engine never maintains it, so every row of it (self + members) reads
-            // "covered by" the winner rather than a stale timer or a stuck "conflict".
-            if (suppressed.TryGetValue(row.CastCode, out string? suppressedBy))
+            // Permanently removed by a configured winner (one-directional, Paradigm) on the
+            // characters the winner is cast on: the engine doesn't maintain it there, so
+            // those rows read "covered by" the winner rather than a stale timer or a stuck
+            // "conflict". A member the winner misses keeps a live row.
+            if (suppressed.TryGetValue(row.CastCode, out Game.Spells.BuffSuppression sup) && sup.Covers(row.MemberKey))
             {
                 row.SetOverwriteWarning(null);
-                row.Update(null, now, coveredBy: suppressedBy);
+                row.Update(null, now, coveredBy: sup.WinnerName);
                 continue;
             }
 

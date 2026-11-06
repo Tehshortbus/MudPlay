@@ -493,9 +493,9 @@ How to keep it current:
 - Why: user 2026-09-30.
 
 ### BuffConflictAnalyzerTests.cs
-- Covers: Game/Spells/BuffConflictAnalyzer, BuffAffectSet
-- Checks: co-landing; remover resolution and tooltip; Abil-122 removes; self-bless candidate picks and order; one-directional losers/removers.
-- Why: zeal/greater-zeal; RemovesSpell conflicts.
+- Covers: Game/Spells/BuffConflictAnalyzer (incl. OverwritePairs, OneDirectionalSuppressions), BuffAffectSet (incl. Casting)
+- Checks: co-landing; remover resolution and tooltip; Abil-122 removes; self-bless candidate picks and order; one-directional losers/removers; a remover ticked off everywhere forms no pair, so it covers nothing and the ticked buff stays castable; who a slot is cast on right now (a whole-party slot with Solo off while solo, all-members while solo, only present ticked members not negated, never self for an others-only spell); several winners of one loser cover the party together.
+- Why: zeal/greater-zeal; RemovesSpell conflicts; unholy fanaticism shown "covered by" an unticked greater zeal and never cast (user, 2026-11-04).
 
 ### BuffDefenseCalculatorTests.cs
 - Covers: Game/Spells/BuffDefenseCalculator
@@ -636,8 +636,8 @@ How to keep it current:
 
 ### CastingDirectorTests.cs
 - Covers: Game/Spells/CastingDirector (+ CastCoordinator, ConditionTracker, TickEngine)
-- Checks: heal tiers and priorities; mana gates; cures; buff slot walk, timers and margins; burst-settle; pause/resume and restore; party heal, cure and bless; a requested heal: a party member's Major heal once whatever `par` shows, a stranger's only once the party (us included) needs none and they're in the room, the Minor when the Major is whole-party, dropped after its window; an others-only buff (Targets 0) with self ticked cast on the member only; negates; draw items; item casts; a between-round cast sent just ahead of a projected round leaves the slot doubted (BetweenRoundSlotMayBeSpent) until the next tick, on a real TickEngine; the rest-time heal goes out while resting, meditating or idle, and standing it is held only while our own walk or loop moves us (logged once, flagged RestHealHeldForMovement), never for a follower.
-- Why: dozens of reports cited inline (the doubted slot: paradigm-20261023-001124; the follower's standing heal: paradigm-20261027-094915, paradigm-20261027-123536); user rulings 2026-10-10 and 2026-10-17.
+- Checks: heal tiers and priorities; mana gates; cures; buff slot walk, timers and margins; burst-settle; pause/resume and restore; party heal, cure and bless; a requested heal: a party member's Major heal once whatever `par` shows, a stranger's only once the party (us included) needs none and they're in the room, the Minor when the Major is whole-party, dropped after its window; an others-only buff (Targets 0) with self ticked cast on the member only; negates; draw items; item casts; a between-round cast sent just ahead of a projected round leaves the slot doubted (BetweenRoundSlotMayBeSpent) until the next tick, on a real TickEngine; the rest-time heal goes out while resting, meditating or idle, and standing it is held only while our own walk or loop moves us (logged once, flagged RestHealHeldForMovement), never for a follower. Paradigm one-way removals, wired as AppServices wires them (`WireOneWayRemovals`, from `CastingDirector.CastingBuffs`): the loser is skipped only on the characters the winner is cast on now: a winner ticked for no one or for a member who left covers nothing, a self-only winner leaves a whole-party loser cast for the members (and skipped solo), a single-target loser skips us or the covered member only, and an others-only winner with Self ticked doesn't cover us.
+- Why: dozens of reports cited inline (unholy fanaticism "covered by" a greater zeal ticked off everywhere: user, 2026-11-04; the doubted slot: paradigm-20261023-001124; the follower's standing heal: paradigm-20261027-094915, paradigm-20261027-123536); user rulings 2026-10-10 and 2026-10-17.
 
 ### CharacterCalculatorMatchupProfileTests.cs
 - Covers: Game/Calculators/CharacterCalculator.BuildNormalAttackProfile, MonsterMatchupCalculator
