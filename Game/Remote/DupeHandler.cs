@@ -32,8 +32,8 @@ namespace MudPlay.Game.Remote;
 // RemoteCommandCatalog.IsPathChannelOnly, before this handler runs.
 public sealed class DupeHandler : IDisposable
 {
-    // The read-only query categories plus @roomba (QueryItemLocation) and @quest
-    // (QueryQuests). Widening this widens what any Elevated player can hand out
+    // The read-only query categories plus @roomba (QueryItemLocation), @quest
+    // (QueryQuests) and @spells (QuerySpells). Widening this widens what any Elevated player can hand out
     // without the user's say-so.
     internal const PlayerRemoteControls Shareable =
         PlayerRemoteControls.QueryVersion
@@ -44,7 +44,8 @@ public sealed class DupeHandler : IDisposable
         | PlayerRemoteControls.QueryBossTimers
         | PlayerRemoteControls.QueryDeaths
         | PlayerRemoteControls.QueryItemLocation
-        | PlayerRemoteControls.QueryQuests;
+        | PlayerRemoteControls.QueryQuests
+        | PlayerRemoteControls.QuerySpells;
 
     private readonly RemoteCommandManager _engine;
     private readonly PlayerDatabase _players;

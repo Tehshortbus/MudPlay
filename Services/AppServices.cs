@@ -567,6 +567,7 @@ public sealed class AppServices
 
     // @uses [item] — read-only remaining-charges report off CarriedCharges.
     public Game.Remote.ItemUsesQueryHandler ItemUsesQuery { get; private set; } = null!;
+    public Game.Remote.SpellsQueryHandler SpellsQuery { get; private set; } = null!;
 
     // Write-side consumer of RemoteCommands for the inventory /
     // cash action commands — @get-all / @drop-all /
@@ -6868,6 +6869,7 @@ public sealed class AppServices
 
         // @uses [item] — remaining charges of a carried limited-use item; bare lists all.
         ItemUsesQuery = new Game.Remote.ItemUsesQueryHandler(RemoteCommands, CarriedCharges);
+        SpellsQuery = new Game.Remote.SpellsQueryHandler(RemoteCommands, Spellbook);
 
         // @timer — read-only report of the boss respawn timers being tracked. Reads
         // the boss catalog + persisted kill-times; no wire output beyond its reply.

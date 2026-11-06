@@ -40,9 +40,15 @@ public static class LoopExpander
         var detours = new List<LeverDetour>();
         var unroutable = new List<UnroutableLeverLeg>();
 
+        // A waypoint no route reaches is left out of the lap, and the next leg is
+        // planned from the last room the lap does reach. Planned from the missed
+        // waypoint instead, that leg's first move was sent from the wrong room (report
+        // paradigm-20261106-024151: a relocked door shut the gang-house entrance off,
+        // and every Roomba lap walked the entrance's own exit from the room inside it).
+        LoopWaypoint here = waypoints[0];
+        bool arrived = true;
         for (int i = 0; i < waypoints.Count; i++)
         {
-            LoopWaypoint here = waypoints[i];
             LoopWaypoint next = waypoints[(i + 1) % waypoints.Count];
 
             // Per-waypoint command fires on arrival, BEFORE the legs
@@ -50,19 +56,26 @@ public static class LoopExpander
             // Subsequent laps: W[0]'s command fires after the closing
             // leg lands back at W[0] (i.e. the next iteration of the
             // outer wrap inside the runner).
-            if (!string.IsNullOrEmpty(here.Command))
-                steps.Add(new CommandLoopStep(here.Command!, here.DelayMs));
-            // The lap wait comes after the command: the command goes out on arrival,
-            // then the room holds until the lap clock reaches the wait.
-            if (here.LapWaitMs > 0)
-                steps.Add(new LapWaitLoopStep(here.LapWaitMs));
+            if (arrived)
+            {
+                if (!string.IsNullOrEmpty(here.Command))
+                    steps.Add(new CommandLoopStep(here.Command!, here.DelayMs));
+                // The lap wait comes after the command: the command goes out on arrival,
+                // then the room holds until the lap clock reaches the wait.
+                if (here.LapWaitMs > 0)
+                    steps.Add(new LapWaitLoopStep(here.LapWaitMs));
+            }
 
             // A zero-length leg — the same room listed twice in a row — is a
             // deliberate "stay put": no movement, just run the next waypoint's
             // command in place. So it's valid, NOT unreachable. Users add it to fire
             // several commands in one room (e.g. hand pies to the barmaid, then
             // convert the coin, without leaving).
-            if (here.Key.Equals(next.Key)) continue;
+            if (here.Key.Equals(next.Key))
+            {
+                here = next;
+                continue;
+            }
 
             LoopLeg leg = memo?.Get(here.Key, next.Key, filter) is { } kept
                 ? kept
@@ -72,10 +85,13 @@ public static class LoopExpander
             if (!leg.Reaches)
             {
                 unreachable.Add((here.Key, next.Key));
+                arrived = false;
                 continue;
             }
             foreach (LeverDetour detour in leg.Detours) detours.Add(detour.Offset(steps.Count));
             steps.AddRange(leg.Steps);
+            here = next;
+            arrived = true;
         }
 
         return new LoopExpansion(steps, unreachable, detours, unroutable);

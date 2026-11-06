@@ -1439,7 +1439,11 @@ public sealed partial class CombatManager : IDisposable
         // casts have been seen landing this session. A cap that never trips shows as
         // a tally that never moved (report paradigm-20261006-051627).
         string SpellCastTally,
-        int ConfirmedAttackCasts);
+        int ConfirmedAttackCasts,
+        // The last time a spell switch went to the weapon: when, from which spell, at
+        // what, and each attack rung's reason for not firing (report
+        // paradigm-20261106-003158).
+        string? LastSpellPassedOver);
 
     // UI-thread only (router handlers + the capture both run there), so no lock.
     public DebugState Snapshot() => new(
@@ -1454,7 +1458,7 @@ public sealed partial class CombatManager : IDisposable
             : _arrivalSettleCarriedRelease is { } ended
                 ? $"{ended} hold ended; engaging when the arrival settle elapses"
             : null,
-        _spellChooser.DescribeCasts(), ConfirmedAttackCastCount);
+        _spellChooser.DescribeCasts(), ConfirmedAttackCastCount, _lastSpellPassedOver);
 
     // Wire the backstab gating delegates: isStealthed reports whether the character
     // holds any stealth that opens a backstab — sneaking OR (optimistically) hidden

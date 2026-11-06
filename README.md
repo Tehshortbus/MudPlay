@@ -1,9 +1,10 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.198.6**
-> - Drafted quest checklists buy an item from a shop that restocks it rather than farming a chancy drop or roll (Mandos: buy the opaline crystal, no Giovanni kill)
-> - An NPC's `message` keyword is asked like any other, so Mandos lists `ask ethereal figure message`
+> **Version 3.199.0**
+> - `@spells` remote command: your learned spells with cast codes, the spells you can learn now, or whether one spell is learned (new Query spells permission)
+> - A loop or Roomba sweep that can't reach one of its rooms (a door that locked behind it) walks on to the next room instead of getting lost
+> - When a fight switches from the attack spell to the weapon, the program log and the bug report say why the spell was passed over
 <!-- current-version:end -->
 
 A modern Telnet terminal client for **MajorMUD** and other BBS door games, built in C# / .NET 10 with [Avalonia](https://avaloniaui.net/). It renders a faithful CP437 cell grid with full VT100/ANSI parsing, and layers a MegaMUD-style automation suite (combat, party, navigation, healing, and more) on top — all in modeless, dockable windows so the terminal stays live while you configure anything.

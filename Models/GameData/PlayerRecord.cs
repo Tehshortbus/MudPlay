@@ -335,11 +335,16 @@ public enum PlayerRemoteControls
     // from the rest.
     QueryQuests         = 1 << 15,
 
+    // Spell Book queries — @spells: the learned spells, the ones learnable at the
+    // character's level, or whether one spell is learned. Its own category, like the
+    // other MudPlay-specific query extensions.
+    QuerySpells         = 1 << 16,
+
     // Convenience — every category above flipped on.
     All = QueryVersion | QueryExperience | QueryHealthStatus | QueryLocation
         | QueryInventory | RequestInvite | MovePlayer | ExecuteCommands
         | HangupDisconnect | AlterSettings | DivertConversations | SysopCommands
-        | QueryBossTimers | QueryDeaths | QueryItemLocation | QueryQuests,
+        | QueryBossTimers | QueryDeaths | QueryItemLocation | QueryQuests | QuerySpells,
 }
 
 // One equipment slot's contents from a look <player> response. SlotLabel

@@ -1469,6 +1469,28 @@ public sealed class CombatManagerSpellsTests
         Assert.Equal("mmis small animated tree", h.LastSent);
     }
 
+    // Report paradigm-20261106-003158: the engine gave up its attack spell for the
+    // weapon mid-fight and nothing said why. The switch onto the weapon now logs each
+    // attack rung's reason for not firing, and the bug report keeps the last one.
+    [Fact]
+    public void SwitchToWeapon_LogsAndReportsWhyTheSpellWasPassedOver()
+    {
+        using Harness h = new();
+        h.Log.Diagnostics = new LogDiagnosticState { CombatDiagnostics = true };
+        h.Settings.NormalAttackSpell = new CombatSpellSlot { SpellName = "lbol", MinEnemies = 0, MaxCastsPerRoom = 1 };
+        h.AddMonster(1, "small animated tree");
+
+        h.Feed("Also here: small animated tree.");
+        Assert.Equal("lbol small animated tree", h.LastSent);
+        h.TickFast();
+        Assert.Equal("a small animated tree", h.LastSent);
+
+        const string why = "attack spell lbol: its 1 cast(s) at this target are spent";
+        Assert.Contains(h.Log.Snapshot(), e => e.Message.Contains("spell cap-switch lbol→?", StringComparison.Ordinal)
+                                               && e.Message.EndsWith("; spell passed over: " + why, StringComparison.Ordinal));
+        Assert.EndsWith("lbol at 'small animated tree': " + why, h.Combat.Snapshot().LastSpellPassedOver);
+    }
+
     // Report paradigm-20260822-003106 (second instance): a spell that fires more than
     // one damage line per cast (a "You cast X at Y for N damage!" line per projectile)
     // must count as ONE cast toward MaxCasts, not one per line — and a genuinely later,

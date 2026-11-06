@@ -770,7 +770,7 @@ How to keep it current:
 
 ### CombatManagerSpellsTests.cs
 - Covers: Game/Combat/CombatManager (spell economy) + CastCoordinator, MonsterDeathWatcher, TickEngine
-- Checks: spell vs weapon choice; room-channel lifetime; arrival settle and moves in flight; MaxCasts counting; corpse-cast guards; resumes after interrupts; manual overrides; overrides and immunity; alternating/cycle orders; self-defence; attack timing; room-spell kills as deaths; a follow Target Priority stays on our running room attack when the followed player names a monster, and follows once the room no longer calls for it (user, 2026-10-31); a pre-attack debuff refused `You have already cast a spell this round!` still lets the room attack out that round (report paradigm-20261023-001124). Attack Not Last and follow-leader holds with spells: the first announce engages, a party member's or the leader's damage line releases, the deadline attacks once before the projected round, and a drag, a refused move or a late line from the room we left never ends the next room's hold.
+- Checks: spell vs weapon choice; room-channel lifetime; arrival settle and moves in flight; MaxCasts counting; corpse-cast guards; resumes after interrupts; manual overrides; overrides and immunity; alternating/cycle orders; self-defence; attack timing; room-spell kills as deaths; a follow Target Priority stays on our running room attack when the followed player names a monster, and follows once the room no longer calls for it (user, 2026-10-31); a pre-attack debuff refused `You have already cast a spell this round!` still lets the room attack out that round (report paradigm-20261023-001124). Attack Not Last and follow-leader holds with spells: the first announce engages, a party member's or the leader's damage line releases, the deadline attacks once before the projected round, and a drag, a refused move or a late line from the room we left never ends the next room's hold. A switch from the attack spell onto the weapon logs each rung's reason for not firing, and the bug report keeps the latest (report paradigm-20261106-003158).
 - Time: one `ManualClock` read by every component in the harness (combat manager, classifier, cast coordinator, death watcher, and the state tracker the room-spell tests build); each fed line or arrival lands 1 ms after the last, Tick() is a 5 s round, and nothing waits on real time. A fight that runs past its opening round is fed the game's `*Combat Engaged*`, or the engage-verify window (5 s) re-displays the room as it would live. No private member is reached by reflection.
 - Why: dozens of paradigm reports cited inline.
 
@@ -808,8 +808,8 @@ How to keep it current:
 
 ### CombatSpellChooserTests.cs
 - Covers: Game/Combat/CombatSpellChooser.
-- Checks: backstab gate, multi-attack 1→2 hand-off, normal→alternate→weapon cascade, mana gating and caps, per-target latch, debuff once-per-room/target, level/resist/target-type blocks, overrides, drain, the undead rung (an undead target takes it up to its per-target cap, never a living one, a per-monster override wins, a block passes the round on), entry-debuff reserve.
-- Why: per-round spell choice (paradigm-20260908-210406, -20260902-160110, -20260820-082741, …).
+- Checks: backstab gate, multi-attack 1→2 hand-off, normal→alternate→weapon cascade, mana gating and caps, per-target latch (the rounds it skips name what tripped it), debuff once-per-room/target, level/resist/target-type blocks, overrides, drain, the undead rung (an undead target takes it up to its per-target cap, never a living one, a per-monster override wins, a block passes the round on), entry-debuff reserve.
+- Why: per-round spell choice (paradigm-20260908-210406, -20260902-160110, -20260820-082741, paradigm-20261106-003158, …).
 
 ### CombatSpellIndexTests.cs
 - Covers: Game/Combat/CombatSpellIndex.
@@ -2291,8 +2291,8 @@ How to keep it current:
 
 ### LoopManagerTests.cs
 - Covers: Game/Map/LoopManager
-- Checks: load/save/delete under the set's Loops folder, events, ordering, illegal names, shared vs character settings, lair-wait mode by name or number, v2 → v3 migration, numbered names, waypoint expansion; loops read ahead of a set switch are taken by the load unless their file changed since.
-- Why: loop file format and catalogue; Hang-20261101-201809 (639 loop files read inside the switch on the UI thread).
+- Checks: load/save/delete under the set's Loops folder, events, ordering, illegal names, shared vs character settings, lair-wait mode by name or number, v2 → v3 migration, numbered names, waypoint expansion (a waypoint no route reaches is left out of the lap, which walks on from the last room it reached); loops read ahead of a set switch are taken by the load unless their file changed since.
+- Why: loop file format and catalogue; Hang-20261101-201809 (639 loop files read inside the switch on the UI thread); `paradigm-20261106-024151` (a Roomba lap walked a locked-off entrance's exit from the room inside it).
 
 ### LoopOutsideChangeTests.cs
 - Covers: Game/Map/NavFolderWatcher, LoopManager, LairManager, NavFolderManager
@@ -4037,6 +4037,11 @@ How to keep it current:
 - Covers: Game/Spells/SpellbookState, Game/Spells/KnownSpellCatalog
 - Checks: The class list ignores the level gate; alignment gating with learned spells surviving drift; word-spell siblings ruled out once one is learned. The obtained set is name-backed and survives a set renumber (Reseed) and an early profile load (SeedObtainedNames). A same-named twin resolves to the class's own row. A trainer's `learnspell` step puts a spell with no Learnable record in the class list, and a learned spell the data gives the class no way to learn is held in the book until a reroll. While the server's spell list (GMCP) stands, the class's spells still to learn stay listed beside the server's learned ones, less a twin of a learned spell's cast code. Also AvailablePicks with the Learned flag, and Changed events.
 - Why: Reports `paradigm-20261003-215442` (alignment lag), `paradigm-20261030-111436` (Buy spells found nothing to buy while the server's list stood) and `paradigm-20260820-055007` (learned spells lost on upgrade); the set-swap renumber bug; the warlock's trainer-bought chaos shield, missing from the book on the AMud data.
+
+### SpellsQueryHandlerTests.cs
+- Covers: Game/Remote/SpellsQueryHandler (through the remote-command engine, on a Spell Book built from fixture data)
+- Checks: `@spells learned` lists the learned spells with cast codes; `unlearned` only those learnable now (level reached, a trainer's higher level counted, alignment allowing); one spell by code or name answers learned / not learned, a shared code resolving to the alignment's spell and a learned spell winning an equal name match; no match is refused.
+- Why: the @spells remote command (user, 2026-11-05).
 
 ### SpellsGameDataTabTests.cs
 - Covers: ViewModels/GameData/Edit/MessageEditDialogViewModel (InitialTabIndex); ViewModels/GameData/Tables/SpellsSectionViewModel → ViewModels/GameData/Edit/SpellInfoRowsBuilder

@@ -1,5 +1,12 @@
 # Version history
 
+## 3.199.0
+
+- `@spells` remote command: your learned spells with cast codes, the spells you can learn now, or whether one spell is learned (new Query spells permission)
+- A loop or Roomba sweep that can't reach one of its rooms (a door that locked behind it) walks on to the next room instead of getting lost
+- When a fight switches from the attack spell to the weapon, the program log and the bug report say why the spell was passed over
+- bug reports addressed: paradigm-20261106-024151
+
 ## 3.198.6
 
 - Drafted quest checklists buy an item from a shop that restocks it rather than farming a chancy drop or roll (Mandos: buy the opaline crystal, no Giovanni kill)
