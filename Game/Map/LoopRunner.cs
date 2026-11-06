@@ -1621,6 +1621,9 @@ public sealed class LoopRunner : IRecoverableEngine
     {
         _circleStartRoom = anchor ?? loop.Waypoints[0].Key;
         ExpandSteps();
+        // A lap that leaves a waypoint out lists only the rooms it does reach; the
+        // nearest of those may be far beyond the one a gated approach should open.
+        if (_unreachableLeg is not null) return false;
         Dictionary<RoomKey, int> entryIndex = CycleEntryIndices();
         if (entryIndex.Count == 0) return false;
 

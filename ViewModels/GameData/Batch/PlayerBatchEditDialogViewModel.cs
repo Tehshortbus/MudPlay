@@ -102,6 +102,7 @@ public sealed partial class PlayerBatchEditDialogViewModel
             new PlayerBatchPermissionRow("Query deaths", PlayerRemoteControls.QueryDeaths),
             new PlayerBatchPermissionRow("Query item location (@roomba)", PlayerRemoteControls.QueryItemLocation),
             new PlayerBatchPermissionRow("Query quests (@quest)", PlayerRemoteControls.QueryQuests),
+            new PlayerBatchPermissionRow("Query spells (@spells)", PlayerRemoteControls.QuerySpells),
         };
     }
 

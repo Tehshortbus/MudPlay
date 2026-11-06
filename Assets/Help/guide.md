@@ -1126,7 +1126,7 @@ Your client goes through these checks in this order. The first one that stops a 
 7. **The suicide rules,** for a sender who holds the permission: `@do` with the word `suicide`, and the lives rule of `@suicide`. See **Always refused** and **@suicide**.
 8. **The command itself.** It is carried out, or it answers why it couldn't be.
 
-**Permissions** are granted per player, and saved with your character. Open **Game Data Browser → Players**, open the player, and tick boxes in the remote-control grid. There are sixteen:
+**Permissions** are granted per player, and saved with your character. Open **Game Data Browser → Players**, open the player, and tick boxes in the remote-control grid. There are seventeen:
 
 | Permission | Commands it allows |
 |---|---|
@@ -1139,6 +1139,7 @@ Your client goes through these checks in this order. The first one that stops a 
 | Query deaths | `@death` |
 | Query Roomba | `@roomba`, `@roomba sync` |
 | Query quests | `@quest` |
+| Query spells | `@spells` |
 | Request invite | `@invite`, `@join` |
 | Move player | `@goto`, `@loop`, `@loop send`, `@lair`, `@stop`, `@rego` |
 | Execute commands | `@do`, `@kill`, `@heal`, `@trap`, `@train`, `@equip`, `@get-all`, `@get-stash`, `@drop-all`, `@hide-all`, `@deposit-all`, and relaying a `&@` command |
@@ -1147,7 +1148,7 @@ Your client goes through these checks in this order. The first one that stops a 
 | Divert conversations | `@divert` |
 | Elevated Commands | `@suicide`, `@dupe` |
 
-A player your client has never seen has no box ticked, so every command in the table is refused. The Players batch editor's **Set all permissions** ticks or clears all sixteen for the selected players.
+A player your client has never seen has no box ticked, so every command in the table is refused. The Players batch editor's **Set all permissions** ticks or clears all seventeen for the selected players.
 
 **What Alter settings allows through `@relation`.** A player who holds **Alter settings** can set any monster to **Hangup**, and your client then disconnects whenever that monster appears, or to **Flee**, and your client runs from it. Only grant Alter settings to players you trust with that. See **@relation**.
 
@@ -1285,6 +1286,7 @@ One row per command. **Needs** is the box the sender must have ticked on your Pl
 | `@level` | `@level` | Query experience | Level, exp, and exp to the next level. |
 | `@death` | `@death` · `@death all` | Query deaths | Your deaths that are not yet recovered. |
 | `@quest` | `@quest` · `@quest <name or flag>` · `@quest update` | Query quests | Quest progress. |
+| `@spells` | `@spells learned` · `@spells unlearned` · `@spells <name or cast code>` | Query spells | Your learned spells, the ones you can learn now, or one spell. |
 | `@settings` | `@settings` | Alter settings | Your eleven auto toggles, on or off. |
 | `@timer` | `@timer` · `@timer <name>` · `@timer sync` | Query boss timers | Your boss timers; `sync` hands them to the sender's client. |
 | `@roomba` | `@roomba <item>` · `@roomba sync` | Query Roomba | Where an item was last seen; `sync` hands over your whole log. |
@@ -2563,6 +2565,34 @@ Reports quest progress: which quests are marked complete on your Quests tab and,
 - **Stock:** the flag can be read only with sys-god access for this board (tick Settings → BBS + Display → **Sysop god lives / abil**); it uses `sys god <name> abil`. Without it the reply is the marked state alone.
 - **A reading marks what it proves.** A flag that has reached the value a part completes at means that part is done: it is ticked on your Quests tab and the reply shows the updated marks.
 - **`@quest update` is not held to once a day**, unlike the login sync, since someone asked.
+
+#### @spells
+
+Reports your Spell Book: what you have learned, what you could learn now, or whether you know one spell.
+
+**Forms:**
+
+- `@spells learned`: every learned spell, with its cast code.
+- `@spells unlearned`: every spell you could learn at your level and haven't: one your class learns, your alignment allows, and whose level you have reached (a trainer's own level for it included).
+- `@spells word`, `@spells exalted word`, `@spells exal`: one spell, by cast code or name.
+
+**How a name finds a spell.** A cast code first, then the whole name, then the start of a name, then a name containing the text; case is ignored. Among equal matches a spell you have learned answers first, then one your alignment allows, so a cast code two spells share means yours.
+
+**Who may send it:** a player with **Query spells**, on any channel remote commands are read on.
+
+| Reply | When |
+|---|---|
+| `learned: magic missile (mmis), …` | `learned`. A long list comes in parts: `learned (1/3): …`. |
+| `no spells learned` | `learned`, with nothing learned. |
+| `learnable now: fireball (fbal), …` | `unlearned`. A long list comes in parts the same way. |
+| `nothing left to learn at level <n>` | `unlearned`, with nothing to learn yet. |
+| `<spell> (<code>): learned` / `<spell> (<code>): not learned` | One spell. |
+| `no spell matches '<text>'` | **Refusal:** nothing matched. |
+| `usage: @spells learned \| unlearned \| <spell name or cast code>` | **Refusal:** sent bare. |
+| `spell book not read yet` | **Refusal:** your Spell Book isn't built yet, because your class isn't known. |
+| the Failure message | **Refusal:** the sender doesn't hold Query spells. |
+
+**Situations:** what counts as learned is the Spell Book's own list, kept from the game's `sp` list and its learn lines.
 
 #### @settings
 
@@ -5575,6 +5605,7 @@ Only **one 0-energy between-round spell** fires per combat round (the game's own
 - **Custom round cycle** — spend a set number of rounds swinging, then a set number of rounds casting, on repeat (see *Round cycle* below).
 **When you might change it:** *Physical first* for a melee build that shouldn't burn mana on trash mobs; *Spells first* (default) for a caster; *Custom round cycle* for something like "swing twice, then nuke until it dies."
 **Important notes:** Two things always sit above this choice: a backstab opener always fires first when eligible, and debuff spells (the Debuff rows under *Combat spell slots* below; where they rank among between-round casts is set on the Spells tab) are a separate "extra" action that can land the same round as your main choice. Applies live, mid-fight.
+**Why it swung instead of casting:** when a fight moves from your attack spell onto the weapon, the program log's combat line for that switch (`spell cap-switch … →?`, with Combat diagnostics on) ends with `spell passed over:` and each attack spell's reason for not firing: its casts spent, mana under its reserve or cost, the monster immune or resisting, and so on. A bug report keeps the latest one as **Last switch from a spell to the weapon**, whether or not Combat diagnostics are on.
 
 ### Round cycle (Physical rounds / Spell rounds / Start on spell)
 

@@ -98,6 +98,8 @@
                                           ToolTip.Tip="{Binding RcQueryItemLocationTip}"/>
                                 <CheckBox Content="Query quests"  IsChecked="{Binding RcQueryQuests, Mode=TwoWay}"
                                           ToolTip.Tip="{Binding RcQueryQuestsTip}"/>
+                                <CheckBox Content="Query spells"  IsChecked="{Binding RcQuerySpells, Mode=TwoWay}"
+                                          ToolTip.Tip="{Binding RcQuerySpellsTip}"/>
                                 <CheckBox Content="Request invite"       IsChecked="{Binding RcRequestInvite, Mode=TwoWay}"
                                           ToolTip.Tip="{Binding RcRequestInviteTip}"/>
                                 <CheckBox Content="Move player"          IsChecked="{Binding RcMovePlayer, Mode=TwoWay}"

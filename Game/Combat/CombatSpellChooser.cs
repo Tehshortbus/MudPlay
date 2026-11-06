@@ -95,6 +95,17 @@ public sealed class CombatSpellChooser
     // wait for mana rather than swing uselessly.
     private bool _attackSpellLatchedOff;
     private bool _castSingleTargetAttackThisTarget;
+    // What held each rung back when the latch went on, so the rounds it later skips
+    // still name the cause.
+    private string? _latchedOffWhy;
+
+    // Why the latest round that reached for the attack-spell cascade swung the weapon
+    // instead: each configured rung and what held it back. Null once a spell is
+    // picked again. The log's spell switches and the bug report carry it, so a
+    // "why is it attacking instead of casting" report names the gate that tripped
+    // (report paradigm-20261106-003158).
+    public string? SpellPassedOverWhy { get; private set; }
+    private readonly List<string> _chooseWhy = new();
 
     // The cast tallies the caps are checked against, for a bug report: a cap that
     // never trips shows here as a count that never moved.
@@ -124,6 +135,7 @@ public sealed class CombatSpellChooser
         _undeadAttackCasts = 0;
         _singleDebuffedTargets.Clear();
         _attackSpellLatchedOff = false;
+        _latchedOffWhy = null;
         _castSingleTargetAttackThisTarget = false;
     }
 
@@ -163,6 +175,7 @@ public sealed class CombatSpellChooser
         _drainCasts = 0;
         _undeadAttackCasts = 0;
         _attackSpellLatchedOff = false;
+        _latchedOffWhy = null;
         _castSingleTargetAttackThisTarget = false;
     }
 
@@ -173,14 +186,16 @@ public sealed class CombatSpellChooser
         ctx.BackstabPending && !ctx.TargetDontBackstab
         && !(settings.SkipBackstabIfMultiAttack && MultiAttackRoomQualifies(settings, ctx));
 
-    // Pick the round's combat action. Pure — does not mutate counters; the caller
-    // commits the choice via MarkCast only when the cast actually reaches the
-    // wire. The backstab opener fires first when eligible; otherwise
+    // Pick the round's combat action. Counts nothing — the caller commits the
+    // choice via MarkCast only when the cast actually reaches the wire — but a call
+    // that falls to the weapon can latch the target off the spell and records why
+    // (SpellPassedOverWhy). The backstab opener fires first when eligible; otherwise
     // CombatSettings.ActionOrder decides between the attack-spell cascade and the
     // weapon swing (the swing is always available, so the method always resolves).
     public CombatSpellDecision Choose(CombatSettings settings, in CombatSpellContext ctx)
     {
         ArgumentNullException.ThrowIfNull(settings);
+        SpellPassedOverWhy = null;
 
         // Backstab is the round's opener or nothing — a mid-round attempt is a
         // guaranteed fail — so it fires only as the engagement's very first
@@ -248,9 +263,10 @@ public sealed class CombatSpellChooser
         // override exists for the physical rounds.
         // With no mana nothing casts but a slot that fires regardless of mana in a
         // party; each rung asks (AttackManaBlock).
+        _chooseWhy.Clear();
         if (preferSpell
             && TryAttackSpellOrEngage(settings, ctx, settings.SpellManaThresholdMode, singleTargetSpent,
-                   new RungCounts(_normalAttackCasts, _alternateAttackCasts, _undeadAttackCasts), why: null) is { } spell)
+                   new RungCounts(_normalAttackCasts, _alternateAttackCasts, _undeadAttackCasts), _chooseWhy) is { } spell)
             return spell;
 
         // The single-target attack cascade could not fire this round. If we'd
@@ -259,10 +275,17 @@ public sealed class CombatSpellChooser
         // weapon for the rest of this target so a mana regen can't flip us back
         // mid-fight. Skipped when the weapon can't hit (we stay on the spell and
         // wait for mana instead of committing to a useless swing).
+        string? why = preferSpell
+            ? _chooseWhy.Count > 0 ? string.Join("; ", _chooseWhy) : "no attack spell is set"
+            : null;
         if (preferSpell && ctx.SpellsAvailable
-            && _castSingleTargetAttackThisTarget && !ctx.WeaponIneffective)
+            && _castSingleTargetAttackThisTarget && !ctx.WeaponIneffective && !_attackSpellLatchedOff)
+        {
             _attackSpellLatchedOff = true;
+            _latchedOffWhy = why;
+        }
 
+        SpellPassedOverWhy = why;
         return CombatSpellDecision.Weapon;
     }
 
@@ -508,7 +531,7 @@ public sealed class CombatSpellChooser
         // reserve is spent or its MaxCasts rounds elapsed) — skip to the weapon.
         if (singleTargetSpent)
         {
-            why?.Add("single-target attack spells: done with this target (its mana reserve or cast cap ran out)");
+            why?.Add($"single-target attack spells: done with this target since {_latchedOffWhy ?? "its mana reserve or cast cap ran out"}");
             return null;
         }
 
