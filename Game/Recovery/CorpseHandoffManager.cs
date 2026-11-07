@@ -14,7 +14,8 @@ namespace MudPlay.Game.Recovery;
 // `You picked up N <coin>.` per denomination, a `You took <item>.` per copy, and
 // `You have recovered the corpse of <Name>.`) fill the record, which is kept on the
 // character until it is handed back or cleared. A failed recovery prints none of
-// them, so nothing is recorded and the arm just runs out. Our own corpse never
+// them, so nothing is recorded: a refusal (`You may not recover the corpse of
+// <Name>.`) drops the arm, and an arm nothing answers runs out. Our own corpse never
 // needs a password and is never handed back (GAME_MECHANICS "Corpse recovery
 // (`recover corpse`)").
 //
@@ -190,6 +191,15 @@ public sealed class CorpseHandoffManager
             });
             return;
         }
+        if (CorpseRecoveryLines.Refused(text) is { } refused)
+        {
+            string who = CorpseRecoveryLines.GivenName(refused);
+            int at = _armed.FindIndex(a => who.StartsWith(a.Name, StringComparison.OrdinalIgnoreCase));
+            if (at < 0) return;
+            _armed.RemoveAt(at);
+            _log?.Debug(LogCategory, $"{refused}'s corpse: the game refused the recovery, nothing to record");
+            return;
+        }
         if (_collecting is not { } c) return;
         if (CorpseRecoveryLines.Took(text) is { } took)
         {
@@ -209,13 +219,11 @@ public sealed class CorpseHandoffManager
         c.Coins = CorpseHandoffPlan.Add(c.Coins, _canonicalCurrency(currency), count);
     }
 
-    // A recovery is over by the time the character walks on; an arm that never
-    // drew a recovery is dropped.
-    public void NoteRoomChanged()
-    {
-        _armed.Clear();
-        FinishCollecting("the character moved on");
-    }
+    // A recovery is over by the time the character walks on. An arm is not dropped
+    // here: a move typed just before the command (`nw` then the recover) lands after
+    // the arm and before the recovery's lines. An arm that draws nothing runs out, or
+    // goes with the game's refusal.
+    public void NoteRoomChanged() => FinishCollecting("the character moved on");
 
     // missing: why the closing line was not seen, or null when it was.
     private void FinishCollecting(string? missing)

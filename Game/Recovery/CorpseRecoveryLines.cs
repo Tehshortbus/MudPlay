@@ -70,6 +70,11 @@ public static partial class CorpseRecoveryLines
     public static string? Completed(string line) =>
         CompletedRegex().Match(line) is { Success: true } m ? m.Groups["name"].Value : null;
 
+    // `You may not recover the corpse of <Name>.`, a wrong or missing password: the
+    // name, or null.
+    public static string? Refused(string line) =>
+        RefusedRegex().Match(line) is { Success: true } m ? m.Groups["name"].Value : null;
+
     // `You took <item>.`: the item, or null. One line per copy out of a corpse; a
     // Stock ground `get` prints the same line. "You took N damage." is the engine's
     // damage report, not a pickup.
@@ -103,6 +108,9 @@ public static partial class CorpseRecoveryLines
 
     [GeneratedRegex(@"^You have recovered the corpse of (?<name>.+?)\.$", RegexOptions.CultureInvariant)]
     private static partial Regex CompletedRegex();
+
+    [GeneratedRegex(@"^You may not recover the corpse of (?<name>.+?)\.$", RegexOptions.CultureInvariant)]
+    private static partial Regex RefusedRegex();
 
     [GeneratedRegex(@"^You took (?!\d+ damage\.$)(?<item>.+?)\.$", RegexOptions.CultureInvariant)]
     private static partial Regex YouTookRegex();
