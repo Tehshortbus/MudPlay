@@ -241,6 +241,8 @@ public sealed class AppServices
     // GlobalSettings.AutoCheckForUpdates) set its availability flag; the splash banner
     // and the main window's title-bar crawl read it. It never installs on its own.
     public Services.Update.UpdateService Update { get; }
+    // The Bug report window's Github submit: the sign-in and the gist + issue it sends.
+    public Services.GitHub.GitHubBugReporter GitHubReports { get; }
     // A Windows client's unpacked copy, held open for the client's life so a temp-file
     // clean-up can't remove an assembly it hasn't loaded yet. Null on a build that
     // isn't running unpacked, and until startup has taken it.
@@ -3037,6 +3039,8 @@ public sealed class AppServices
         // Self-update checker. Constructed early (only needs Log); the startup check
         // itself is kicked off at the end of construction, gated on the setting.
         Update = new Services.Update.UpdateService(Log);
+        GitHubReports = new Services.GitHub.GitHubBugReporter(new Services.GitHub.GitHubClient(),
+            AppPaths.GitHubSignInFile, AppPaths.GitHubUploadsFile, Log);
         // Files earlier versions left beside the program, removed now that the log
         // can say so. Only for a real install: a dev or test run's executable sits in
         // a build folder, or is the dotnet host itself.
@@ -11339,6 +11343,9 @@ public sealed class AppServices
         // reporting whatever was true at launch. Armed unconditionally and gated per
         // tick, so toggling the setting takes effect without a restart.
         Update.StartAutoChecks(() => Settings.Current.AutoCheckForUpdates);
+
+        // Github submit's reports: a gist whose issue has closed is deleted, now and daily.
+        GitHubReports.StartCleanUps();
     }
 
     private void ApplyToolbarFromActiveProfile(bool userEdit = false)

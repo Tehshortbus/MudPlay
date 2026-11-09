@@ -61,6 +61,12 @@ public static class AppPaths
     // Distinct from GlobalSettingsFile (the settings tier).
     public static string DefaultProfileFile { get; }
 
+    // The GitHub sign-in the Bug report window keeps between launches.
+    public static string GitHubSignInFile => Path.Combine(DataRoot, "Global", "github.json");
+
+    // The reports Github submit sent whose gists wait for their issues to close.
+    public static string GitHubUploadsFile => Path.Combine(DataRoot, "Global", "github-reports.json");
+
     // The marker that the default profile was put back to the installed defaults
     // (ProfileService.ResetDefaultProfileOnce).
     public static string DefaultProfileResetMarker => Path.Combine(DataRoot, "Global", ".default-profile-reset");

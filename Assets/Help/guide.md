@@ -4780,7 +4780,7 @@ Reach for this when reporting a display or parsing glitch — it shows exactly w
 
 ## Bug Report
 
-**Bug Report** (the **Bug Report** item at the right end of the menu bar, or right-click the terminal → *Bug report…*) freezes the client's state at the moment you click, asks you what went wrong, and writes a Markdown file to your Desktop named for the realm and the time. Attach that file to an issue. Click it as soon as you see the problem: the report reaches back several minutes, not hours.
+**Bug Report** (the **Bug Report** item at the right end of the menu bar, or right-click the terminal → *Bug report…*) freezes the client's state at the moment you click, asks you what went wrong, and writes a Markdown file to your Desktop named for the realm and the time. Attach that file to an issue, or let **Github submit** file it for you (*Filing a bug report*). Click it as soon as you see the problem: the report reaches back several minutes, not hours.
 
 **What it contains**, in this order:
 
@@ -7910,6 +7910,14 @@ Open the **Program Log** (F4) — it records what the engines decided and why. M
 ## Filing a bug report
 
 Use the menu-bar **Bug Report** button, or right-click the terminal → **Bug report…**. A small window asks what went wrong; type a line or two and press **Write report**. It writes a Markdown snapshot of your current state — movement, player, settings, program log, and scrollback — to your Desktop, ready to attach to a GitHub issue, so a problem can be diagnosed from the exact moment it happened.
+
+**Github submit** (bottom left of the same window) files it for you instead. The full report goes up as a **secret gist** on your GitHub account, and a **public issue** opens on the MudPlay repository with your description and the gist's link. The issue opens in your browser when it's done, and nothing is written to your Desktop. A secret gist is unlisted, not private: anyone with its link can read it. The report is masked as described under *Bug Report*.
+
+- **Signing in.** The first time, MudPlay shows a short code and opens `github.com/login/device` in your browser. Enter the code there and approve **MudPlay Reporter**; the report then goes up. MudPlay never sees your GitHub password. The sign-in is kept in MudPlay's app folder (`Global/github.json`, readable only by your own account on Linux and macOS) and renews itself for up to 6 months. After that, or if you revoke it on GitHub (Settings → Applications), you are asked to sign in again.
+- **Your own token.** **Use my own token…** takes a personal access token (classic) you make yourself on GitHub (Settings → Developer settings), with the **public_repo** and **gist** scopes. MudPlay checks it with GitHub before keeping it, and uses it until you sign out.
+- **Sign out** forgets the sign-in or token at once.
+- **Cleaning up.** Once a report's issue is closed (or deleted), MudPlay deletes its gist from your account. It checks when it starts and once a day while it runs, only for reports it sent from this computer (kept in `Global/github-reports.json`), and only while you're signed in as the account that sent them. Nothing is checked if you've never used **Github submit**. You can still delete a gist yourself at any time on gist.github.com.
+- **If GitHub fails** (no connection, the sign-in declined or expired, a token without the right scopes), the window says why and writes the report to your Desktop as **Write report** would, so nothing is lost. A gist uploaded for an issue GitHub then refused is deleted again, so retries don't leave copies on your account. Each step is in the program log under `GitHub`; tokens never are.
 
 
 **Help → Report an issue…** opens the project's GitHub issues page in your browser, where you file the report and attach that snapshot. **Help → About MudPlay** shows the version, license, and bundled-component credits — handy when a report needs the exact build you're on.

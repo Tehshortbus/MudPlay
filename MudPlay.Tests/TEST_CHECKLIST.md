@@ -1625,6 +1625,12 @@ How to keep it current:
 - Checks: hidden stacks not taken while visible copies lie there; split stacks; Stock re-search misses; knocked-away echoes; custom statline; counted-get refusals; latest display wins; one log line per room; linear floor counts.
 - Why: each case once lost items or their record.
 
+### GitHubBugReporterTests.cs
+- Covers: Services/GitHub/GitHubBugReporter, GitHubClient, GitHubSignIn
+- Checks: the device sign-in waits out pending and slow-down polls (the wait lengthened as asked) and is kept for the next launch; a lapsed sign-in is renewed with no client secret, and one past renewing is let go with its file; an own token is checked with GitHub before it is kept and never expires; the report goes up as a secret gist under its report id and the issue carries the description, the gist link and the id; a sign-in GitHub turns down (401) is let go; a refusal (403) names the step that failed and keeps the sign-in; a gist whose issue GitHub refuses is deleted again; a sent report's gist is deleted once its issue closes, checked at launch and again each day, and the sent reports are kept for the next launch; the clean-up leaves another account's reports alone, matches the login without regard to case, and counts a deleted issue (410) or an already-deleted gist (404) as finished.
+- Why: the Bug report window's Github submit (user, 2026-11-09)
+- Named seam: GitHubClient's optional handler, delay and now stand in for GitHub, the wait between polls and the clock; GitHubBugReporter's optional now and arm for the clock and the daily timer; GitHubBugReporter.CleanUpRun is the completion barrier for the clean-up the timer starts.
+
 ### GlobalSettingsFileCollection.cs
 - Test infrastructure.
 - Covers: (xUnit collection definition, no production class)

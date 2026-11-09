@@ -1,5 +1,12 @@
 # Version history
 
+## 3.202.0
+
+- Bug report window: Github submit files the report as an issue, with the full report in a secret gist
+- Sign in with GitHub's device code, or use your own token; the sign-in is kept and renews itself
+- If GitHub fails, the report is written to the Desktop instead
+- A sent report's gist is deleted once its issue is closed, checked at launch and daily
+
 ## 3.201.0
 
 - Anomaly gang satchel: the client looks in it and counts its house keys, emblems and keyrings as held (doors, routes, Max to get, `@have`)

@@ -555,6 +555,17 @@ public static class BugReportBuilder
         // The TOKEN IS NEVER INCLUDED — a bug report gets attached to public
         // issues, and the token grants control of the character.
         Kv(sb, "Local API", DescribeLocalApi(svc));
+        // Github submit's sign-in: which kind, and whose. Never the token.
+        Kv(sb, "GitHub sign-in", svc.GitHubReports switch
+        {
+            { IsSignedIn: false } => "not signed in",
+            { UsesOwnToken: true } g => $"own token, for {g.Login}",
+            var g => $"MudPlay Reporter, as {g.Login}",
+        });
+        // Reports it sent whose gists are deleted once these issues close.
+        Kv(sb, "GitHub reports awaiting close", svc.GitHubReports.IssuesAwaitingClose is { Count: > 0 } open
+            ? string.Join(", ", open.Select(n => $"#{n}"))
+            : "none");
         // Direct-input (character) mode: on while a trainer / character-creation
         // stat box owns the keyboard, so arrow keys pass to the wire instead of
         // recalling command history. An "arrows don't move between stat fields"
