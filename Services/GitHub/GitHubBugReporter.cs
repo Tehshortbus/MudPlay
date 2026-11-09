@@ -10,6 +10,10 @@ namespace MudPlay.Services.GitHub;
 // The sign-in is the MudPlay Reporter app's, approved on github.com, or a token of
 // the player's own. It is kept in the app folder so later reports go straight up,
 // readable only by the player's account where the system allows it. Never logged.
+//
+// Each report sent is remembered (its gist and issue) until its issue is closed;
+// then its gist is deleted, so the player's account doesn't keep every report
+// forever. Checked at launch and once a day after.
 // Read and changed on the UI thread.
 public sealed class GitHubBugReporter
 {
@@ -18,25 +22,39 @@ public sealed class GitHubBugReporter
     // of it, the gist holds the rest.
     private const int MaxDescriptionChars = 60_000;
     private const int MaxTitleChars = 80;
+    private static readonly TimeSpan CleanUpEvery = TimeSpan.FromDays(1);
 
     private readonly GitHubClient _client;
     private readonly string _file;
+    private readonly string _uploadsFile;
     private readonly LogService? _log;
     private readonly Func<DateTimeOffset> _now;
+    private readonly Func<TimeSpan, Action, IDisposable> _arm;
     private GitHubSignIn? _signIn;
+    private List<Upload> _uploads;
+    private IDisposable? _cleanUpTick;
 
     public readonly record struct Submitted(int Number, string IssueUrl);
 
-    // file: where the sign-in is kept between launches.
-    public GitHubBugReporter(GitHubClient client, string file, LogService? log = null, Func<DateTimeOffset>? now = null)
+    // A report sent: Login is the account its gist is on, the only one that can delete it.
+    private sealed record Upload(string ReportId, string GistId, string GistUrl, int Issue, string? Login);
+
+    // file: where the sign-in is kept between launches; uploadsFile: the reports whose
+    // gists wait for their issues to close. arm stands in for the dispatcher's timer.
+    public GitHubBugReporter(GitHubClient client, string file, string uploadsFile, LogService? log = null,
+        Func<DateTimeOffset>? now = null, Func<TimeSpan, Action, IDisposable>? arm = null)
     {
         ArgumentNullException.ThrowIfNull(client);
         ArgumentException.ThrowIfNullOrWhiteSpace(file);
+        ArgumentException.ThrowIfNullOrWhiteSpace(uploadsFile);
         _client = client;
         _file = file;
+        _uploadsFile = uploadsFile;
         _log = log;
         _now = now ?? (() => DateTimeOffset.UtcNow);
+        _arm = arm ?? DispatcherTicks.Once;
         _signIn = Load();
+        _uploads = LoadUploads();
     }
 
     public event Action? SignInChanged;
@@ -44,6 +62,12 @@ public sealed class GitHubBugReporter
     public bool IsSignedIn => _signIn is not null;
     public string? Login => _signIn?.Login;
     public bool UsesOwnToken => _signIn?.OwnToken == true;
+
+    // The issues whose reports' gists are still up, waiting for them to close.
+    public IReadOnlyList<int> IssuesAwaitingClose => _uploads.Select(u => u.Issue).ToList();
+
+    // Named seam: the clean-up running now, or the last one, finished.
+    public Task CleanUpRun { get; private set; } = Task.CompletedTask;
 
     // ----- sign-in ------------------------------------------------------
 
@@ -119,6 +143,8 @@ public sealed class GitHubBugReporter
                 throw;
             }
             _log?.Info(LogCategory, $"Opened issue #{issue.Number} for bug report {reportId} ({issue.Url}; report at {gist.Url}).");
+            _uploads.Add(new Upload(reportId, gist.Id, gist.Url, issue.Number, signIn.Login));
+            SaveUploads();
             return new Submitted(issue.Number, issue.Url);
         }
         catch (GitHubException ex)
@@ -147,6 +173,56 @@ public sealed class GitHubBugReporter
             _log?.Warn(LogCategory, $"Couldn't remove the gist {gist.Url}, which no issue links: {ex.Message}");
         }
     }
+
+    // ----- clean-up -----------------------------------------------------
+
+    // Now, then every day while the client runs. Does nothing without a sign-in or a
+    // report waiting, so a player who never used Github submit never reaches GitHub.
+    public void StartCleanUps()
+    {
+        if (_cleanUpTick is not null) return;
+        CleanUpTick();
+    }
+
+    private void CleanUpTick()
+    {
+        _cleanUpTick = _arm(CleanUpEvery, CleanUpTick);
+        if (CleanUpRun.IsCompleted) CleanUpRun = CleanUpAsync();
+    }
+
+    // Only the signed-in account's reports: another account's gists wait until it signs
+    // in again. Stops at the first failure and tries again on the next round.
+    private async Task CleanUpAsync()
+    {
+        if (_signIn is not { } signIn || !_uploads.Any(u => IsTheirs(u, signIn))) return;
+        try
+        {
+            if (!await ResumeAsync(CancellationToken.None) || _signIn is not { } current) return;
+            foreach (Upload upload in _uploads.Where(u => IsTheirs(u, current)).ToList())
+            {
+                if (!await _client.IssueIsClosedAsync(current.AccessToken, upload.Issue, CancellationToken.None)) continue;
+                try
+                {
+                    await _client.DeleteGistAsync(current.AccessToken, upload.GistId, CancellationToken.None);
+                    _log?.Info(LogCategory, $"Removed the gist of bug report {upload.ReportId} ({upload.GistUrl}): issue #{upload.Issue} is closed.");
+                }
+                catch (GitHubException ex) when (ex.Status == 404)
+                {
+                    _log?.Info(LogCategory, $"The gist of bug report {upload.ReportId} was already gone; issue #{upload.Issue} is closed.");
+                }
+                _uploads.Remove(upload);
+                SaveUploads();
+            }
+        }
+        catch (Exception ex) when (ex is GitHubException or HttpRequestException or OperationCanceledException)
+        {
+            _log?.Warn(LogCategory, $"Couldn't clean up the gists of closed bug reports; tries again tomorrow: {ex.Message}");
+            if (ex is GitHubException { Unauthorized: true }) Forget(ex.Message);
+        }
+    }
+
+    private static bool IsTheirs(Upload upload, GitHubSignIn signIn) =>
+        string.Equals(upload.Login, signIn.Login, StringComparison.OrdinalIgnoreCase);
 
     public static string IssueTitle(string description)
     {
@@ -189,6 +265,30 @@ public sealed class GitHubBugReporter
         {
             _log?.Warn(LogCategory, $"Couldn't read the saved GitHub sign-in, so it is ignored: {ex.Message}");
             return null;
+        }
+    }
+
+    private List<Upload> LoadUploads()
+    {
+        if (!File.Exists(_uploadsFile)) return new();
+        try { return JsonSerializer.Deserialize<List<Upload>>(File.ReadAllText(_uploadsFile)) ?? new(); }
+        catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
+        {
+            _log?.Warn(LogCategory, $"Couldn't read the bug reports sent to GitHub, so their gists aren't cleaned up: {ex.Message}");
+            return new();
+        }
+    }
+
+    private void SaveUploads()
+    {
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(_uploadsFile)!);
+            File.WriteAllText(_uploadsFile, JsonSerializer.Serialize(_uploads));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _log?.Warn(LogCategory, $"Couldn't save the bug reports sent to GitHub: {ex.Message}");
         }
     }
 

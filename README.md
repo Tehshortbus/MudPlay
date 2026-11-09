@@ -5,6 +5,7 @@
 > - Bug report window: Github submit files the report as an issue, with the full report in a secret gist
 > - Sign in with GitHub's device code, or use your own token; the sign-in is kept and renews itself
 > - If GitHub fails, the report is written to the Desktop instead
+> - A sent report's gist is deleted once its issue is closed, checked at launch and daily
 <!-- current-version:end -->
 
 A modern Telnet terminal client for **MajorMUD** and other BBS door games, built in C# / .NET 10 with [Avalonia](https://avaloniaui.net/). It renders a faithful CP437 cell grid with full VT100/ANSI parsing, and layers a MegaMUD-style automation suite (combat, party, navigation, healing, and more) on top — all in modeless, dockable windows so the terminal stays live while you configure anything.

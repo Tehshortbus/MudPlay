@@ -3039,7 +3039,8 @@ public sealed class AppServices
         // Self-update checker. Constructed early (only needs Log); the startup check
         // itself is kicked off at the end of construction, gated on the setting.
         Update = new Services.Update.UpdateService(Log);
-        GitHubReports = new Services.GitHub.GitHubBugReporter(new Services.GitHub.GitHubClient(), AppPaths.GitHubSignInFile, Log);
+        GitHubReports = new Services.GitHub.GitHubBugReporter(new Services.GitHub.GitHubClient(),
+            AppPaths.GitHubSignInFile, AppPaths.GitHubUploadsFile, Log);
         // Files earlier versions left beside the program, removed now that the log
         // can say so. Only for a real install: a dev or test run's executable sits in
         // a build folder, or is the dotnet host itself.
@@ -11342,6 +11343,9 @@ public sealed class AppServices
         // reporting whatever was true at launch. Armed unconditionally and gated per
         // tick, so toggling the setting takes effect without a restart.
         Update.StartAutoChecks(() => Settings.Current.AutoCheckForUpdates);
+
+        // Github submit's reports: a gist whose issue has closed is deleted, now and daily.
+        GitHubReports.StartCleanUps();
     }
 
     private void ApplyToolbarFromActiveProfile(bool userEdit = false)

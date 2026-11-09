@@ -19,15 +19,16 @@ public sealed class GitHubBugReporterTests : IDisposable
     private readonly List<TimeSpan> _waits = new();
 
     private string File => Path.Combine(_dir, "github.json");
+    private string Uploads => Path.Combine(_dir, "github-reports.json");
 
     public void Dispose()
     {
         if (Directory.Exists(_dir)) Directory.Delete(_dir, recursive: true);
     }
 
-    private GitHubBugReporter Reporter() =>
+    private GitHubBugReporter Reporter(ManualTimers? timers = null) =>
         new(new GitHubClient(_server, delay: (wait, _) => { _waits.Add(wait); return Task.CompletedTask; }, now: () => _now),
-            File, now: () => _now);
+            File, Uploads, now: () => _now, arm: timers is null ? null : timers.Arm);
 
     // ----- the scripted server ------------------------------------------
 
@@ -62,6 +63,17 @@ public sealed class GitHubBugReporterTests : IDisposable
             $$"""{"access_token":"{{token}}","expires_in":28800,"refresh_token":"ghr_one","refresh_token_expires_in":15897600}""");
         _server.Answer("/user", """{"login":"thunder"}""");
     }
+
+    private async Task Send(GitHubBugReporter reporter, string gistId, int issue)
+    {
+        _server.Answer("/gists", $$"""{"id":"{{gistId}}","html_url":"https://gist.github.com/thunder/{{gistId}}"}""", HttpStatusCode.Created);
+        _server.Answer($"/repos/{GitHubClient.Repository}/issues",
+            $$"""{"number":{{issue}},"html_url":"https://github.com/Tehshortbus/MudPlay/issues/{{issue}}"}""", HttpStatusCode.Created);
+        await reporter.SubmitAsync($"report-{issue}", "report", "text", CancellationToken.None);
+    }
+
+    private void AnswerIssue(int issue, string state) =>
+        _server.Answer($"/repos/{GitHubClient.Repository}/issues/{issue}", $$"""{"number":{{issue}},"state":"{{state}}"}""");
 
     private static async Task SignIn(GitHubBugReporter reporter)
     {
@@ -204,5 +216,70 @@ public sealed class GitHubBugReporterTests : IDisposable
             () => reporter.SubmitAsync("id", "report", "text", CancellationToken.None));
         Assert.StartsWith("GitHub refused opening the issue: 403", ex.Message);
         Assert.Equal(("DELETE", "/gists/abc"), (_server.Requests[^1].Method, _server.Requests[^1].Path));
+    }
+
+    // ----- clean-up -----------------------------------------------------
+
+    [Fact]
+    public async Task AReportsGist_IsDeletedOnceItsIssueCloses_CheckedAtLaunchAndDaily()
+    {
+        GitHubBugReporter reporter = Reporter();
+        AnswerDeviceSignIn();
+        await SignIn(reporter);
+        await Send(reporter, "abc", 1300);
+        await Send(reporter, "def", 1301);
+
+        ManualTimers timers = new();
+        GitHubBugReporter nextLaunch = Reporter(timers);
+        Assert.Equal(new[] { 1300, 1301 }, nextLaunch.IssuesAwaitingClose);
+        AnswerIssue(1300, "open");
+        AnswerIssue(1301, "closed");
+        _server.Answer("/gists/def", "", HttpStatusCode.NoContent);
+        nextLaunch.StartCleanUps();
+        await nextLaunch.CleanUpRun;
+        Assert.Equal(("DELETE", "/gists/def"), (_server.Requests[^1].Method, _server.Requests[^1].Path));
+        Assert.Equal(new[] { 1300 }, nextLaunch.IssuesAwaitingClose);
+
+        AnswerIssue(1300, "closed");
+        _server.Answer("/gists/abc", "", HttpStatusCode.NoContent);
+        timers.Advance(TimeSpan.FromDays(1));
+        await nextLaunch.CleanUpRun;
+        Assert.Equal(("DELETE", "/gists/abc"), (_server.Requests[^1].Method, _server.Requests[^1].Path));
+        Assert.Empty(Reporter().IssuesAwaitingClose);
+
+        int asked = _server.Requests.Count;
+        timers.Advance(TimeSpan.FromDays(1));
+        await nextLaunch.CleanUpRun;
+        Assert.Equal(asked, _server.Requests.Count);
+    }
+
+    [Fact]
+    public async Task TheCleanUp_LeavesAnotherAccountsReports_AndADeletedIssueOrGistIsFinished()
+    {
+        GitHubBugReporter reporter = Reporter();
+        AnswerDeviceSignIn();
+        await SignIn(reporter);
+        await Send(reporter, "abc", 1300);
+        reporter.SignOut();
+        _server.Answer("/user", """{"login":"raijin"}""");
+        await reporter.UseOwnTokenAsync("ghp_raijin", CancellationToken.None);
+
+        GitHubBugReporter asRaijin = Reporter(new ManualTimers());
+        int asked = _server.Requests.Count;
+        asRaijin.StartCleanUps();
+        await asRaijin.CleanUpRun;
+        Assert.Equal(asked, _server.Requests.Count);
+
+        asRaijin.SignOut();
+        _server.Answer("/user", """{"login":"Thunder"}""");
+        await asRaijin.UseOwnTokenAsync("ghp_thunder", CancellationToken.None);
+        _server.Answer($"/repos/{GitHubClient.Repository}/issues/1300", """{"message":"This issue was deleted"}""", HttpStatusCode.Gone);
+        _server.Answer("/gists/abc", """{"message":"Not Found"}""", HttpStatusCode.NotFound);
+        GitHubBugReporter asThunder = Reporter(new ManualTimers());
+        asThunder.StartCleanUps();
+        await asThunder.CleanUpRun;
+        Assert.Equal(("DELETE", "/gists/abc"), (_server.Requests[^1].Method, _server.Requests[^1].Path));
+        Assert.Empty(asThunder.IssuesAwaitingClose);
+        Assert.Empty(Reporter().IssuesAwaitingClose);
     }
 }

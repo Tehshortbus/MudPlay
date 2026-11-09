@@ -6,7 +6,8 @@ using System.Text.Json;
 namespace MudPlay.Services.GitHub;
 
 // The GitHub calls a bug report needs: the device sign-in of the MudPlay Reporter
-// app, renewing its sign-in, the signed-in login, a secret gist and an issue.
+// app, renewing its sign-in, the signed-in login, a secret gist and an issue, and
+// later the issue's state and the gist's removal.
 //
 // The device flow runs on the app's public client ID alone: a desktop app can't
 // keep a secret, and GitHub renews a device-flow sign-in without one. The player
@@ -152,6 +153,21 @@ public sealed class GitHubClient : IDisposable
     public Task DeleteGistAsync(string token, string id, CancellationToken ct) =>
         SendApiAsync("removing the gist", HttpMethod.Delete, $"/gists/{id}", token, body: null, ct);
 
+    // An issue deleted on the repository answers 410 Gone: as finished as a closed one.
+    public async Task<bool> IssueIsClosedAsync(string token, int number, CancellationToken ct)
+    {
+        try
+        {
+            JsonElement json = await SendApiAsync($"reading issue #{number}", HttpMethod.Get,
+                $"/repos/{Repository}/issues/{number}", token, body: null, ct).ConfigureAwait(false);
+            return Text(json, "state") == "closed";
+        }
+        catch (GitHubException ex) when (ex.Status == (int)HttpStatusCode.Gone)
+        {
+            return true;
+        }
+    }
+
     public async Task<Issue> CreateIssueAsync(string token, string title, string body, CancellationToken ct)
     {
         var payload = new Dictionary<string, string> { ["title"] = title, ["body"] = body };
@@ -188,13 +204,15 @@ public sealed class GitHubClient : IDisposable
         if (response.IsSuccessStatusCode) return text.Length == 0 ? default : Parse(text);
 
         string? message = TryParse(text) is { } error ? Text(error, "message") : null;
-        string reason = $"GitHub refused {step}: {(int)response.StatusCode}{(message is null ? "" : $" ({message})")}";
+        int status = (int)response.StatusCode;
+        string reason = $"GitHub refused {step}: {status}{(message is null ? "" : $" ({message})")}";
         throw response.StatusCode switch
         {
-            HttpStatusCode.Unauthorized => new GitHubException($"{reason}. The GitHub sign-in is no longer valid.", unauthorized: true),
+            HttpStatusCode.Unauthorized => new GitHubException($"{reason}. The GitHub sign-in is no longer valid.", unauthorized: true, status),
             HttpStatusCode.Forbidden or HttpStatusCode.NotFound => new GitHubException(
-                $"{reason}. The sign-in isn't allowed to do this: sign out and sign in again, or use a token of your own with the public_repo and gist scopes."),
-            _ => new GitHubException(reason + "."),
+                $"{reason}. The sign-in isn't allowed to do this: sign out and sign in again, or use a token of your own with the public_repo and gist scopes.",
+                status: status),
+            _ => new GitHubException(reason + ".", status: status),
         };
     }
 
