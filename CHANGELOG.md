@@ -1,5 +1,10 @@
 # Version history
 
+## 3.201.0
+
+- Anomaly gang satchel: the client looks in it and counts its house keys, emblems and keyrings as held (doors, routes, Max to get, `@have`)
+- Gang satchel is treated as loyal: never dropped or hidden, never expected in a deathpile
+
 ## 3.200.0
 
 - Local API `GET /stats`: Session Stats as JSON numbers (exp/hr, kills/hr, time to level, collected, time analysis, combat)

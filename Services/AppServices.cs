@@ -647,6 +647,7 @@ public sealed class AppServices
 
     // The `i` a refused toll or fare asks for, kept owed while it can't be sent.
     public Game.Inventory.OwedPurseRead PurseRead { get; private set; } = null!;
+    public Game.Inventory.GangSatchel GangSatchel { get; private set; } = null!;
 
     // A leader's check at a toll exit: every follower's purse asked, the short
     // ones paid for when we can spare it, the exit closed to the party otherwise.
@@ -9727,6 +9728,16 @@ public sealed class AppServices
         {
             if (inGame) SendOwedInventoryReads();
         };
+        // Anomaly's gang satchel: `i` lists the satchel, not the house keys, emblems
+        // and keyrings in it, so it is looked in and its contents join the snapshot.
+        // Its look is held and sent as the inventory reads are.
+        GangSatchel = new Game.Inventory.GangSatchel(
+            held: () => AutoModeController.Blocks("Info polls") || EngineGate.IsLocked || !InGameCapture.InGame,
+            send: command => SendGameCommand(command),
+            log: Log);
+        GangSatchel.Follow(Inventory);
+        Profile.ProfileLoaded += _ => GangSatchel.Reset();
+
         // A walk's or a loop's re-plan after a refused toll waits for that read.
         Walker.SetPurseReadWait(PurseRead.WaitForAnswer);
         LoopRunner.SetPurseReadWait(PurseRead.WaitForAnswer);
@@ -13454,6 +13465,7 @@ public sealed class AppServices
         if (deathReadDue && RoomTracker.State.CurrentRoom is not null) InventoryAfterDeath.OnRoomKnown();
         if (deathReadDue && !InventoryAfterDeath.Due) PurseRead.CoveredByAnotherRead();
         else PurseRead.Retry();
+        GangSatchel.Retry();
     }
 
     // A Grab-All boss's loot just hit the floor: fire a blind `get <item>` for every
@@ -14699,11 +14711,15 @@ public sealed class AppServices
         return count;
     }
 
-    private int CountOnKeyRing(Game.Inventory.InventorySnapshot snap, int itemId)
+    // The key ring, and the gang satchel's unworn contents listed the same way.
+    private int CountOnKeyRing(Game.Inventory.InventorySnapshot snap, int itemId) =>
+        CountListed(snap.Keys, itemId) + CountListed(snap.Satchel, itemId);
+
+    private int CountListed(IReadOnlyList<string>? entries, int itemId)
     {
         int count = 0;
-        if (snap.Keys is { } keys)
-            foreach (string entry in keys)
+        if (entries is not null)
+            foreach (string entry in entries)
             {
                 (int quantity, string name) = Game.Inventory.InventorySnapshot.ParseKeyEntry(entry);
                 if (ItemNames.FindByName(name) == itemId) count += quantity;
@@ -14711,8 +14727,8 @@ public sealed class AppServices
         return count;
     }
 
-    // How many copies of itemId the player holds, counting the key ring on top
-    // of carried + worn. KEY-type items live in the dump's separate "You have
+    // How many copies of itemId the player holds, counting the key ring and the
+    // gang satchel on top of carried + worn. KEY-type items live in the dump's separate "You have
     // the following keys:" trailer (InventorySnapshot.Keys), not the pack, so
     // CountItemCarried alone under-reads them — which let the auto-get MaxToGet
     // cap collect past its limit. Backs AutoGetItemsManager's held-count seam.
@@ -15265,9 +15281,9 @@ public sealed class AppServices
         if (!Inventory.IsLoaded) return false;
         string want = NormalizeItemName(name);
         Game.Inventory.InventorySnapshot snap = Inventory.Snapshot;
-        if (snap.Keys is { } keys)
-            foreach (string k in keys)
-                if (NormalizeItemName(k) == want) return true;
+        // A house key in the gang satchel opens its door as one on the ring does.
+        foreach (string k in (snap.Keys ?? []).Concat(snap.Satchel ?? []))
+            if (NormalizeItemName(k) == want) return true;
         foreach (string c in snap.CarriedItems)
             if (NormalizeItemName(c) == want) return true;
         return false;
@@ -16801,13 +16817,14 @@ public sealed class AppServices
     private System.Collections.Generic.IReadOnlyList<string> HeldItemNames()
     {
         Game.Inventory.InventorySnapshot snap = Inventory.Snapshot;
-        int keyCount = snap.Keys?.Count ?? 0;
+        int keyCount = (snap.Keys?.Count ?? 0) + (snap.Satchel?.Count ?? 0);
         var names = new System.Collections.Generic.List<string>(
             snap.CarriedItems.Count + snap.EquippedItems.Count + keyCount);
         names.AddRange(snap.CarriedItems);
         foreach (Game.Inventory.EquippedItem e in snap.EquippedItems) names.Add(e.Name);
-        if (snap.Keys is { } keys)
-            foreach (string k in keys) names.Add(Game.Inventory.InventorySnapshot.ParseKeyEntry(k).Name);
+        // The gang satchel's keyrings are charged items used straight from it.
+        foreach (string k in (snap.Keys ?? []).Concat(snap.Satchel ?? []))
+            names.Add(Game.Inventory.InventorySnapshot.ParseKeyEntry(k).Name);
         return names;
     }
 
@@ -16815,6 +16832,8 @@ public sealed class AppServices
     // An item the game data doesn't know is sent, and the game decides.
     private bool GameRefusesToDrop(string name, bool worn)
     {
+        // Loyal, and newer than the imported data (GAME_MECHANICS "Gang satchel").
+        if (IsGangSatchel(name)) return true;
         if (string.IsNullOrWhiteSpace(name) || GameData.FindRowByName("Items", name) is not { } row) return false;
         bool notDroppable = row.TryGetProperty("Not Droppable", out GameValue nd)
             && nd.ValueKind == System.Text.Json.JsonValueKind.Number && nd.GetInt32() != 0;
@@ -16827,6 +16846,7 @@ public sealed class AppServices
     // name whose first item does stay.
     private bool EveryItemOfThisNameStaysOnDeath(string name)
     {
+        if (IsGangSatchel(name)) return true;
         if (string.IsNullOrWhiteSpace(name) || GameData.FindRowByName("Items", name) is not { } first) return false;
         if (!Game.Recovery.DeathPileRules.StaysWithCharacter(ItemAbilityCodes(first))) return false;
         if (GameData.GetTable("Items") is not { } items) return true;
@@ -16837,6 +16857,9 @@ public sealed class AppServices
                 && string.Equals(n.GetString()?.Trim(), wanted, StringComparison.OrdinalIgnoreCase))
             .Select(ItemAbilityCodes));
     }
+
+    private static bool IsGangSatchel(string name) =>
+        string.Equals(name?.Trim(), Game.Inventory.GangSatchel.ItemName, StringComparison.OrdinalIgnoreCase);
 
     // The ability codes an item carries, by name; empty for an item the game data
     // doesn't know.

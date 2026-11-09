@@ -1977,7 +1977,19 @@ public static class BugReportBuilder
         string state = svc.Inventory.IsLoaded
             ? "read"
             : svc.InventoryAfterDeath.Due ? "stale since a death; a re-read is owed" : "not read yet";
-        return $"- **Inventory record**: {state}\n\n" + Json(snapshot);
+        return $"- **Inventory record**: {state}\n" + GangSatchelLines(svc.GangSatchel) + "\n" + Json(snapshot);
+    }
+
+    // Anomaly's gang satchel, house by house as the last look listed it.
+    private static string GangSatchelLines(GangSatchel satchel)
+    {
+        if (!satchel.IsCarried && !satchel.IsRead && !satchel.LookOwed) return "";
+        var sb = new StringBuilder();
+        string state = satchel.IsRead ? "read" : satchel.LookOwed ? "carried; a look is owed" : "carried; not looked in yet";
+        sb.Append("- **Gang satchel**: ").Append(state).Append('\n');
+        foreach (GangSatchel.House house in satchel.Houses)
+            sb.Append("  - ").Append(house.Name).Append(": ").Append(string.Join(", ", house.Items)).Append('\n');
+        return sb.ToString();
     }
 
     // The Character Workshop's persisted, per-character artifacts — the gear

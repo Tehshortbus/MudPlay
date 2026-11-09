@@ -98,8 +98,8 @@ public sealed class InventoryQueryHandler : IDisposable
         ctx.Reply($"Encumbrance {e.CurrentWeight}/{e.MaxWeight} ({e.Percentage}%) - {e.Category}");
     }
 
-    // @have <item> — case-insensitive substring match across carried, worn, AND
-    // key-ring items (wearing a piece still counts as having it; keys live on the
+    // @have <item> — case-insensitive substring match across carried, worn, key-ring
+    // AND gang-satchel items (wearing a piece still counts as having it; keys live on the
     // ring's own list, not in the pack), replying yes + the match count or no.
     // Substring rather than exact so a sender can ask "@have dagger" against "a
     // rusty dagger".
@@ -129,6 +129,14 @@ public sealed class InventoryQueryHandler : IDisposable
         foreach (string key in snap.Keys ?? Array.Empty<string>())
         {
             (int qty, string name) = InventorySnapshot.ParseKeyEntry(key);
+            if (name.Contains(query, StringComparison.OrdinalIgnoreCase))
+                count += qty;
+        }
+        // Anomaly's gang satchel holds the house keys, emblems and keyrings `i`
+        // doesn't list; a worn emblem is counted with the worn gear.
+        foreach (string held in snap.Satchel ?? Array.Empty<string>())
+        {
+            (int qty, string name) = InventorySnapshot.ParseKeyEntry(held);
             if (name.Contains(query, StringComparison.OrdinalIgnoreCase))
                 count += qty;
         }

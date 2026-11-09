@@ -270,10 +270,18 @@ public sealed partial class InventoryManager : IDisposable
                     _carried,
                     _lastUpdated,
                     _readiedLight,
-                    _keys);
+                    _keys,
+                    SatchelContents?.Invoke());
             }
         }
     }
+
+    // What the gang satchel holds besides worn gear (GangSatchel.Unworn), for the
+    // snapshot; null leaves it out. The satchel is read by a look, not by `i`.
+    public Func<IReadOnlyList<string>?>? SatchelContents { get; set; }
+
+    // The gang satchel's contents changed: the snapshot did too.
+    public void NoteSatchelChanged() => RaiseChanged();
 
     // Bind the per-session LineExtractor so the manager can watch the line
     // stream. Idempotent for the same instance; swapping extractors detaches
