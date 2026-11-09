@@ -1627,7 +1627,7 @@ How to keep it current:
 
 ### GitHubBugReporterTests.cs
 - Covers: Services/GitHub/GitHubBugReporter, GitHubClient, GitHubSignIn
-- Checks: the device sign-in waits out pending and slow-down polls (the wait lengthened as asked) and is kept for the next launch; a lapsed sign-in is renewed with no client secret, and one past renewing is let go with its file; an own token is checked with GitHub before it is kept and never expires; the report goes up as a secret gist under its report id and the issue carries the description, the gist link and the id; a sign-in GitHub turns down (401) is let go.
+- Checks: the device sign-in waits out pending and slow-down polls (the wait lengthened as asked) and is kept for the next launch; a lapsed sign-in is renewed with no client secret, and one past renewing is let go with its file; an own token is checked with GitHub before it is kept and never expires; the report goes up as a secret gist under its report id and the issue carries the description, the gist link and the id; a sign-in GitHub turns down (401) is let go; a refusal (403) names the step that failed and keeps the sign-in.
 - Why: the Bug report window's Github submit (user, 2026-11-09)
 - Named seam: GitHubClient's optional handler, delay and now stand in for GitHub, the wait between polls and the clock; GitHubBugReporter's optional now for the clock.
 

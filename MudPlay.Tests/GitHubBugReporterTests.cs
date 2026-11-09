@@ -174,4 +174,18 @@ public sealed class GitHubBugReporterTests : IDisposable
         Assert.False(reporter.IsSignedIn);
         Assert.False(System.IO.File.Exists(File));
     }
+
+    [Fact]
+    public async Task ARefusal_NamesTheStepThatFailed_AndKeepsTheSignIn()
+    {
+        GitHubBugReporter reporter = Reporter();
+        AnswerDeviceSignIn();
+        await SignIn(reporter);
+        _server.Answer("/gists", """{"message":"Resource not accessible by integration"}""", HttpStatusCode.Forbidden);
+
+        GitHubException ex = await Assert.ThrowsAsync<GitHubException>(
+            () => reporter.SubmitAsync("id", "report", "text", CancellationToken.None));
+        Assert.StartsWith("GitHub refused uploading the report as a gist: 403 (Resource not accessible by integration).", ex.Message);
+        Assert.True(reporter.IsSignedIn);
+    }
 }

@@ -131,7 +131,7 @@ public sealed class GitHubClient : IDisposable
 
     public async Task<string> LoginAsync(string token, CancellationToken ct)
     {
-        JsonElement json = await SendApiAsync(HttpMethod.Get, "/user", token, body: null, ct).ConfigureAwait(false);
+        JsonElement json = await SendApiAsync("reading your GitHub account", HttpMethod.Get, "/user", token, body: null, ct).ConfigureAwait(false);
         return Text(json, "login") ?? throw Malformed("login");
     }
 
@@ -144,14 +144,14 @@ public sealed class GitHubClient : IDisposable
             ["public"] = false,
             ["files"] = new Dictionary<string, object> { [fileName] = new Dictionary<string, string> { ["content"] = content } },
         };
-        JsonElement json = await SendApiAsync(HttpMethod.Post, "/gists", token, body, ct).ConfigureAwait(false);
+        JsonElement json = await SendApiAsync("uploading the report as a gist", HttpMethod.Post, "/gists", token, body, ct).ConfigureAwait(false);
         return Text(json, "html_url") ?? throw Malformed("html_url");
     }
 
     public async Task<Issue> CreateIssueAsync(string token, string title, string body, CancellationToken ct)
     {
         var payload = new Dictionary<string, string> { ["title"] = title, ["body"] = body };
-        JsonElement json = await SendApiAsync(HttpMethod.Post, $"/repos/{Repository}/issues", token, payload, ct)
+        JsonElement json = await SendApiAsync("opening the issue", HttpMethod.Post, $"/repos/{Repository}/issues", token, payload, ct)
             .ConfigureAwait(false);
         return new Issue((int)(Number(json, "number") ?? throw Malformed("number")), Text(json, "html_url") ?? throw Malformed("html_url"));
     }
@@ -170,7 +170,8 @@ public sealed class GitHubClient : IDisposable
         return Parse(text);
     }
 
-    private async Task<JsonElement> SendApiAsync(HttpMethod method, string path, string token, object? body, CancellationToken ct)
+    // step names the call in the player's words, so a refusal says which one failed.
+    private async Task<JsonElement> SendApiAsync(string step, HttpMethod method, string path, string token, object? body, CancellationToken ct)
     {
         using HttpRequestMessage request = new(method, ApiBase + path);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
@@ -182,12 +183,12 @@ public sealed class GitHubClient : IDisposable
         if (response.IsSuccessStatusCode) return Parse(text);
 
         string? message = TryParse(text) is { } error ? Text(error, "message") : null;
-        string reason = $"GitHub answered {(int)response.StatusCode}{(message is null ? "" : $" ({message})")}";
+        string reason = $"GitHub refused {step}: {(int)response.StatusCode}{(message is null ? "" : $" ({message})")}";
         throw response.StatusCode switch
         {
-            HttpStatusCode.Unauthorized => new GitHubException($"{reason}: the GitHub sign-in is no longer valid.", unauthorized: true),
+            HttpStatusCode.Unauthorized => new GitHubException($"{reason}. The GitHub sign-in is no longer valid.", unauthorized: true),
             HttpStatusCode.Forbidden or HttpStatusCode.NotFound => new GitHubException(
-                $"{reason}: the sign-in isn't allowed to do this. A token of your own needs the public_repo and gist scopes."),
+                $"{reason}. The sign-in isn't allowed to do this: sign out and sign in again, or use a token of your own with the public_repo and gist scopes."),
             _ => new GitHubException(reason + "."),
         };
     }

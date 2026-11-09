@@ -110,9 +110,15 @@ public sealed class GitHubBugReporter
             _log?.Info(LogCategory, $"Opened issue #{issue.Number} for bug report {reportId} ({issue.Url}; report at {gist}).");
             return new Submitted(issue.Number, issue.Url);
         }
-        catch (GitHubException ex) when (ex.Unauthorized)
+        catch (GitHubException ex)
         {
-            Forget(ex.Message);
+            _log?.Warn(LogCategory, $"Bug report {reportId} wasn't sent: {ex.Message}");
+            if (ex.Unauthorized) Forget(ex.Message);
+            throw;
+        }
+        catch (HttpRequestException ex)
+        {
+            _log?.Warn(LogCategory, $"Bug report {reportId} wasn't sent: couldn't reach GitHub: {ex.Message}");
             throw;
         }
     }
