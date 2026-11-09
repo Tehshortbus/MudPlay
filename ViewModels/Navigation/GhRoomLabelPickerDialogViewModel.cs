@@ -43,17 +43,18 @@ public sealed partial class GhRuleEditRowViewModel : ObservableObject
         new(7, "Chainmail"), new(8, "Scalemail"), new(9, "Platemail"),
     };
 
-    // Equip-slot options for Worn-slot rules — physical wear locations only.
-    // Codes 0/1/16 (Nowhere / Everywhere / Worn) are MDB bookkeeping values,
-    // not slots a player would sort a room by, so they're left off. One
-    // representative code per displayed name (4 not 13 for "Finger", 14 not
-    // 17 for "Wrist" — LookupEnums.FormatWornSlot collapses the pairs).
+    // Equip-slot options for Worn-slot rules. Codes 0/1 (Nowhere / Everywhere)
+    // are left off: they are what most items carry, so a room sorted by them
+    // would take almost anything. 16 (Worn) stays: it marks a small set of its
+    // own (severed heads, emblems) a house keeps together. One representative
+    // code per displayed name (4 not 13 for "Finger", 14 not 17 for "Wrist" —
+    // LookupEnums.FormatWornSlot collapses the pairs).
     public static readonly GhCategoryOption[] WornSlots =
     {
         new(2, "Head"), new(3, "Hands"),  new(4, "Finger"), new(5, "Feet"),
         new(6, "Arms"), new(7, "Back"),   new(8, "Neck"),   new(9, "Legs"),
         new(10, "Waist"), new(11, "Torso"), new(12, "Off-Hand"), new(14, "Wrist"),
-        new(15, "Ears"), new(18, "Eyes"), new(19, "Face"),
+        new(15, "Ears"), new(18, "Eyes"), new(19, "Face"), new(16, "Worn"),
     };
 
     private static readonly GhRuleKindOption[] KindOptions =
