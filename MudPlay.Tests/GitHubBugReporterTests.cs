@@ -140,7 +140,7 @@ public sealed class GitHubBugReporterTests : IDisposable
         GitHubBugReporter reporter = Reporter();
         AnswerDeviceSignIn();
         await SignIn(reporter);
-        _server.Answer("/gists", """{"html_url":"https://gist.github.com/thunder/abc"}""", HttpStatusCode.Created);
+        _server.Answer("/gists", """{"id":"abc","html_url":"https://gist.github.com/thunder/abc"}""", HttpStatusCode.Created);
         _server.Answer($"/repos/{GitHubClient.Repository}/issues",
             """{"number":1300,"html_url":"https://github.com/Tehshortbus/MudPlay/issues/1300"}""", HttpStatusCode.Created);
 
@@ -187,5 +187,22 @@ public sealed class GitHubBugReporterTests : IDisposable
             () => reporter.SubmitAsync("id", "report", "text", CancellationToken.None));
         Assert.StartsWith("GitHub refused uploading the report as a gist: 403 (Resource not accessible by integration).", ex.Message);
         Assert.True(reporter.IsSignedIn);
+    }
+
+    [Fact]
+    public async Task AnIssueGitHubRefuses_TakesItsGistBack()
+    {
+        GitHubBugReporter reporter = Reporter();
+        AnswerDeviceSignIn();
+        await SignIn(reporter);
+        _server.Answer("/gists", """{"id":"abc","html_url":"https://gist.github.com/thunder/abc"}""", HttpStatusCode.Created);
+        _server.Answer($"/repos/{GitHubClient.Repository}/issues",
+            """{"message":"Resource not accessible by integration"}""", HttpStatusCode.Forbidden);
+        _server.Answer("/gists/abc", "", HttpStatusCode.NoContent);
+
+        GitHubException ex = await Assert.ThrowsAsync<GitHubException>(
+            () => reporter.SubmitAsync("id", "report", "text", CancellationToken.None));
+        Assert.StartsWith("GitHub refused opening the issue: 403", ex.Message);
+        Assert.Equal(("DELETE", "/gists/abc"), (_server.Requests[^1].Method, _server.Requests[^1].Path));
     }
 }

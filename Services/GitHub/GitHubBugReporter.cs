@@ -103,11 +103,22 @@ public sealed class GitHubBugReporter
         if (_signIn is not { } signIn) throw new GitHubException("Not signed in to GitHub.");
         try
         {
-            string gist = await _client.CreateGistAsync(signIn.AccessToken, reportId + ".md", report,
+            GitHubClient.Gist gist = await _client.CreateGistAsync(signIn.AccessToken, reportId + ".md", report,
                 $"MudPlay bug report {reportId}", ct);
-            GitHubClient.Issue issue = await _client.CreateIssueAsync(signIn.AccessToken,
-                IssueTitle(description), IssueBody(reportId, description, gist), ct);
-            _log?.Info(LogCategory, $"Opened issue #{issue.Number} for bug report {reportId} ({issue.Url}; report at {gist}).");
+            GitHubClient.Issue issue;
+            try
+            {
+                issue = await _client.CreateIssueAsync(signIn.AccessToken,
+                    IssueTitle(description), IssueBody(reportId, description, gist.Url), ct);
+            }
+            catch (Exception ex) when (ex is GitHubException or HttpRequestException or OperationCanceledException)
+            {
+                // Each retry uploads the report again: a gist no issue links is taken
+                // back, or the player's account fills with copies.
+                await RemoveGistAsync(signIn.AccessToken, gist);
+                throw;
+            }
+            _log?.Info(LogCategory, $"Opened issue #{issue.Number} for bug report {reportId} ({issue.Url}; report at {gist.Url}).");
             return new Submitted(issue.Number, issue.Url);
         }
         catch (GitHubException ex)
@@ -120,6 +131,20 @@ public sealed class GitHubBugReporter
         {
             _log?.Warn(LogCategory, $"Bug report {reportId} wasn't sent: couldn't reach GitHub: {ex.Message}");
             throw;
+        }
+    }
+
+    // Not cancelled with the submit: the window closing mid-issue still takes the gist back.
+    private async Task RemoveGistAsync(string token, GitHubClient.Gist gist)
+    {
+        try
+        {
+            await _client.DeleteGistAsync(token, gist.Id, CancellationToken.None);
+            _log?.Info(LogCategory, $"Removed the gist {gist.Url}: no issue links it.");
+        }
+        catch (Exception ex) when (ex is GitHubException or HttpRequestException or OperationCanceledException)
+        {
+            _log?.Warn(LogCategory, $"Couldn't remove the gist {gist.Url}, which no issue links: {ex.Message}");
         }
     }
 

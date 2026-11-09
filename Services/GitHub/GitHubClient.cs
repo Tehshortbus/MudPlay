@@ -31,6 +31,7 @@ public sealed class GitHubClient : IDisposable
         string Device, string UserCode, string VerificationUri, TimeSpan Interval, DateTimeOffset ExpiresAt);
 
     public readonly record struct Issue(int Number, string Url);
+    public readonly record struct Gist(string Id, string Url);
 
     // Named seam: handler, delay and now stand in for the network, the wait between
     // polls and the clock. The client passes none of them.
@@ -136,7 +137,7 @@ public sealed class GitHubClient : IDisposable
     }
 
     // A secret gist: unlisted, read by anyone holding its link.
-    public async Task<string> CreateGistAsync(string token, string fileName, string content, string description, CancellationToken ct)
+    public async Task<Gist> CreateGistAsync(string token, string fileName, string content, string description, CancellationToken ct)
     {
         var body = new Dictionary<string, object>
         {
@@ -145,8 +146,11 @@ public sealed class GitHubClient : IDisposable
             ["files"] = new Dictionary<string, object> { [fileName] = new Dictionary<string, string> { ["content"] = content } },
         };
         JsonElement json = await SendApiAsync("uploading the report as a gist", HttpMethod.Post, "/gists", token, body, ct).ConfigureAwait(false);
-        return Text(json, "html_url") ?? throw Malformed("html_url");
+        return new Gist(Text(json, "id") ?? throw Malformed("id"), Text(json, "html_url") ?? throw Malformed("html_url"));
     }
+
+    public Task DeleteGistAsync(string token, string id, CancellationToken ct) =>
+        SendApiAsync("removing the gist", HttpMethod.Delete, $"/gists/{id}", token, body: null, ct);
 
     public async Task<Issue> CreateIssueAsync(string token, string title, string body, CancellationToken ct)
     {
@@ -180,7 +184,8 @@ public sealed class GitHubClient : IDisposable
         if (body is not null) request.Content = JsonContent.Create(body);
         using HttpResponseMessage response = await _http.SendAsync(request, ct).ConfigureAwait(false);
         string text = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-        if (response.IsSuccessStatusCode) return Parse(text);
+        // A delete answers 204 with no body.
+        if (response.IsSuccessStatusCode) return text.Length == 0 ? default : Parse(text);
 
         string? message = TryParse(text) is { } error ? Text(error, "message") : null;
         string reason = $"GitHub refused {step}: {(int)response.StatusCode}{(message is null ? "" : $" ({message})")}";
