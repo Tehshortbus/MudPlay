@@ -87,6 +87,103 @@ public static class LocalApiState
         };
     }
 
+    // Session Stats as numbers: the figures the bug report's Session activity and
+    // Session combat stats sections print as sentences, for a program to read
+    // without parsing wording that can change. Durations are seconds, rates per
+    // hour over the rate window.
+    public static object Stats(AppServices svc)
+    {
+        ArgumentNullException.ThrowIfNull(svc);
+        (Game.Calculators.TimeToLevelEstimator.Result estimate, TimeSpan? levelIn) = svc.SelfTimeToLevel();
+        return Stats(svc.PlayerStats.Name, svc.PlayerStats.Level, svc.SessionActivity.Snapshot(), estimate, levelIn,
+            svc.TimeAnalysis.Snapshot(), svc.CombatSession.Snapshot(), svc.CombatSession.RecognisedSpells);
+    }
+
+    public static object Stats(string? character, int level, Game.Combat.SessionActivityStats a,
+        Game.Calculators.TimeToLevelEstimator.Result estimate, TimeSpan? levelIn,
+        Game.Combat.TimeAnalysisStats t, Game.Combat.CombatSessionStats c, IReadOnlyList<string> recognisedSpells)
+    {
+        ArgumentNullException.ThrowIfNull(recognisedSpells);
+        static double R(double v) => Math.Round(v, 2);
+        static double S(TimeSpan span) => Math.Round(span.TotalSeconds, 1);
+        bool levelKnown = estimate.TargetLevel > 0;
+        return new
+        {
+            capturedAt = DateTimeOffset.Now,
+            character,
+            level,
+            session = new
+            {
+                rateWindowSeconds = S(a.TimeOnline),
+                kills = a.MonstersKilled,
+                killsPerHour = R(a.KillsPerHour),
+                experience = a.ExperienceEarned,
+                experiencePerHour = R(a.ExperiencePerHour),
+                // Null when the exp table can't say what the next level costs.
+                experienceNeeded = levelKnown ? estimate.ExpNeeded : (long?)null,
+                nextLevel = levelKnown ? estimate.TargetLevel : (int?)null,
+                levelsBanked = estimate.BankableLevels,
+                // Null while there is no exp rate to project from.
+                levelInSeconds = levelIn is { } eta ? S(eta) : (double?)null,
+                copperCollected = a.CurrencyCollected,
+                copperPerHour = R(a.CurrencyPerHour),
+                coinsCollected = a.CoinsCollected,
+                coinsPerHour = R(a.CoinsPerHour),
+                itemsCollected = a.ItemsCollected,
+                copperDeposited = a.CurrencyDeposited,
+                itemsSold = a.ItemsSold,
+                copperStashed = a.CurrencyStashed,
+                coinsStashed = a.CoinsStashed,
+                itemsStashed = a.ItemsStashed,
+                sneakEntries = a.SneakEntries,
+                sneakHeld = a.SneakHeld,
+                disarmAttempts = a.DisarmAttempts,
+                trapsDisarmed = a.TrapsDisarmed,
+                stepsTimed = a.Steps,
+                averageStepSeconds = a.AverageStep is { } step ? Math.Round(step.TotalSeconds, 2) : (double?)null,
+            },
+            time = new
+            {
+                onSeconds = S(t.TimeOn),
+                movingSeconds = S(t.Moving),
+                attackingSeconds = S(t.Attacking),
+                restingHpSeconds = S(t.RestingHp),
+                restingMaSeconds = S(t.RestingMa),
+                waitingSeconds = S(t.Waiting),
+                waitingBy = t.WaitingBy.Select(w => new { cause = w.Cause, seconds = S(w.Time) }).ToArray(),
+                blindedSeconds = S(t.Blinded),
+                poisonedSeconds = S(t.Poisoned),
+                diseasedSeconds = S(t.Diseased),
+                confusedSeconds = S(t.Confused),
+                heldSeconds = S(t.Held),
+            },
+            combat = new
+            {
+                attacks = c.TotalSwings,
+                hits = c.Hits,
+                crits = c.Crits,
+                misses = c.Misses,
+                hitPercent = R(c.HitPercent),
+                critPercent = R(c.CritPercent),
+                backstabs = new { attempts = c.BackstabAttempts, landed = c.Backstabs, failed = c.BackstabFails, percent = R(c.BackstabPercent) },
+                swingDamage = new { min = c.PhysicalMinDamage, max = c.PhysicalMaxDamage, average = R(c.PhysicalAvgDamage), total = c.PhysicalTotalDamage },
+                procs = new { hits = c.ProcHits, min = c.ProcMinDamage, max = c.ProcMaxDamage, total = c.ProcTotalDamage },
+                spells = c.Spells.Select(s => new
+                {
+                    name = s.Name, landed = s.Landed, resisted = s.Misses,
+                    min = s.MinDamage, max = s.MaxDamage, total = s.TotalDamage,
+                }).ToArray(),
+                hitBy = new
+                {
+                    hits = c.MobHits, min = c.HitTakenMinDamage, max = c.HitTakenMaxDamage, average = R(c.HitTakenAvgDamage),
+                    avoided = c.AvoidedAttacks, incoming = c.IncomingAttacks,
+                },
+                roundsWithDamage = new { count = c.RoundsWithDamage, min = c.RoundMinDamage, max = c.RoundMaxDamage, average = R(c.RoundAvgDamage) },
+                recognisedSpells,
+            },
+        };
+    }
+
     // Recent gate transitions, newest last, straight from the coordinator's own
     // 200-entry history. This is the answer to "who paused movement, and when" —
     // which no bug report could previously produce.
@@ -185,8 +282,10 @@ public static class LocalApiState
     // report's scrollback is held to: a board's login screen, with the account
     // name as typed, is not sent. scrubber masks the saved login name and
     // passwords in what is left. The caller builds it for this one response.
+    // nextSince: the newest game line's number, the cursor a caller polls
+    // ScrollbackSince from to carry on where this screen tail leaves off.
     public static object Scrollback(TerminalEmulator emulator, CaptureWindow only,
-        BugReportScrub.Scrubber scrubber, int lines)
+        BugReportScrub.Scrubber scrubber, int lines, long nextSince)
     {
         ArgumentNullException.ThrowIfNull(emulator);
         ArgumentNullException.ThrowIfNull(only);
@@ -205,7 +304,31 @@ public static class LocalApiState
         var rows = tail
             .Select((l, i) => new { at = l.Timestamp, text = texts[i] })
             .ToArray();
-        return new { requested = lines, count = rows.Length, inGameNow = only.IsOn, lines = rows };
+        return new { requested = lines, count = rows.Length, inGameNow = only.IsOn, nextSince, lines = rows };
+    }
+
+    // The game's lines numbered after since, oldest first, for a caller polling
+    // for what is new. Paged like GET /log with a cursor: at most limit lines, and
+    // nextSince stops at the last one sent when more are waiting. A line written
+    // outside the time in the game is skipped but still passed by the cursor.
+    // since past the newest number means MudPlay was restarted and numbered from 1
+    // again: everything kept is sent, flagged restarted.
+    public static object ScrollbackSince(LocalApiLines lines, CaptureWindow only,
+        BugReportScrub.Scrubber scrubber, long since, int limit)
+    {
+        ArgumentNullException.ThrowIfNull(lines);
+        ArgumentNullException.ThrowIfNull(only);
+        ArgumentNullException.ThrowIfNull(scrubber);
+        bool restarted = since > lines.NewestSeq;
+        if (restarted) since = 0;
+        (IReadOnlyList<LocalApiLines.Entry> after, long lost) = lines.After(since);
+        List<LocalApiLines.Entry> page = after.Take(limit).ToList();
+        long nextSince = page.Count < after.Count ? page[^1].Seq : lines.NewestSeq;
+        var rows = page
+            .Where(e => only.Covers(e.At))
+            .Select(e => new { seq = e.Seq, at = e.At, text = scrubber.Apply(e.Text), prompt = e.IsPrompt, chat = e.IsChat })
+            .ToArray();
+        return new { since, nextSince, restarted, lost, count = rows.Length, inGameNow = only.IsOn, lines = rows };
     }
 
     // How long a capture is reused before a fresh one is built. One call costs

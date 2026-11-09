@@ -2209,6 +2209,16 @@ How to keep it current:
 - Checks: monotonic sequence across ring wrap and Clear, limit cursor resumes without skipping, severity set parsing.
 - Why: tailing the program log without gaps.
 
+### LocalApiScrollbackSinceTests.cs
+- Covers: Services/Api/LocalApiLines, LocalApiState.ScrollbackSince
+- Checks: game lines fed through the emulator and LineExtractor come out once each across a scroll, wrapped lines joined, chat and prompt flagged; a short page stops the cursor at its last line; lines dropped from the ring are counted as lost; lines from outside the game are skipped but passed by the cursor; account details masked; a cursor from before a restart gets everything kept.
+- Why: a program polling `/scrollback?since=` for what the game printed must see every line once (issue #1198).
+
+### LocalApiStatsTests.cs
+- Covers: Services/Api/LocalApiState.Stats
+- Checks: session, time-analysis and combat figures come out as JSON numbers under their names (kills/exp per hour from SessionActivityTracker over its rate window, exp needed, time to level in seconds, waiting by cause, hit/crit %, spell landed/resisted); a figure that isn't known yet is left out rather than sent as 0.
+- Why: a program reading `/stats` gets numbers it doesn't have to parse out of sentences (issue #1197).
+
 ### LocalApiPrivacyTests.cs
 - Covers: Services/Api/LocalApiState, LocalApiMaskedEvents, Services/BugReportScrub
 - Checks: /log, /scrollback, /events, /gates mask login/passwords (also JSON-escaped values), scrollback limited to in-game time, events masked on the pump in order, lost events reported.

@@ -1,5 +1,10 @@
 # Version history
 
+## 3.200.0
+
+- Local API `GET /stats`: Session Stats as JSON numbers (exp/hr, kills/hr, time to level, collected, time analysis, combat)
+- Local API `/scrollback?since=`: the game's lines since the last poll, each line once, numbered, with chat and prompts flagged
+
 ## 3.199.3
 
 - Roomba rooms can sort by the Worn slot (severed heads, emblems)

@@ -4850,9 +4850,11 @@ All of this is stored under a single MudPlay data folder (`~/.local/share/MudPla
 | `/health` | Whether MudPlay is up. The only endpoint that needs no token. |
 | `/state` | Whether it's **connected** (and whether a redial is armed), live vitals, room and tracker confidence, engine states, **which pause gates are asserted**, combat target. |
 | `/state/full` | Every section a bug report captures, as JSON — add `?format=markdown` for the familiar rendered form. Builds the whole report, so repeat calls within a second reuse the previous one; poll `/state` instead if you want a fast tick. |
+| `/stats` | Session Stats as numbers: kills and exp, each in total and per hour; exp needed and the time to the next level; coins, copper and items collected, stashed, deposited and sold; sneak and disarm counts; the Time Analysis split (moving, attacking, resting, waiting and what it waited on); and the combat figures (attacks, hit and crit %, backstabs, swing, proc and spell damage, hits taken, damage per round). Durations are in seconds and rates are per hour over the rate window. A figure that can't be known yet (the time to level with no exp rate, the exp needed with no table entry for the next level) is left out rather than sent as 0. |
 | `/gates` | Recent pause/resume history: which gate, **who asserted it**, why, and when. |
 | `/log` | The program log, filterable by `severity=` (comma-separated names) and `source=`, with a `since=` cursor for tailing and `limit=` for how many entries (default 500, at most 5000). |
-| `/scrollback` | The terminal transcript tail, with per-line timestamps; `lines=` sets how many (default 750, at most 5000). Only rows written **while in the game**, as in a bug report: a board's login screen is never sent. |
+| `/scrollback` | The terminal transcript tail, with per-line timestamps; `lines=` sets how many (default 750, at most 5000). Only rows written **while in the game**, as in a bug report: a board's login screen is never sent. The answer carries a `nextSince` cursor to poll from. |
+| `/scrollback?since=` | **What the game printed since your last poll**, for a program that reacts to it. Each line the game finishes gets a number (`seq`) as it arrives, so every line comes out exactly once, however far the screen has scrolled between polls. A line the terminal wrapped comes back as the one line the game sent. Each line says whether it is a `prompt` and whether it is `chat` (a say, telepath, gossip and the like). Pass back the `nextSince` from the previous answer. `lines=` caps how many come back (oldest first); when more are waiting, `nextSince` stops at the last one sent, so nothing is skipped. MudPlay keeps the last 5,000 lines: a poller further behind than that is told how many it missed (`lost`). A cursor from before MudPlay was restarted (numbers start again from 1) gets everything kept, flagged `restarted`. A line still being written, such as the prompt waiting for a command, comes out once the game finishes it. Lines from outside the game are skipped, as above. |
 | `/events` | A live stream (Server-Sent Events) of log entries and gate changes as they happen. If the stream has to leave events out it says so with a `lost` event carrying the count and the reason. With too many streams already open it answers *503*. |
 | `/loops` | Every saved loop with its area, room and lair-room counts, median and max exp of what spawns on it, the hardest-hitting monster, and the toughest three. |
 | `/loops/{name}` | One loop in full — each waypoint with its room name and the monsters at that stop. |
@@ -4875,7 +4877,14 @@ curl -H "Authorization: Bearer $(cat ~/.local/share/MudPlay/.apitoken)" \
 
 (On macOS the path is `~/Library/Application Support/MudPlay/.apitoken`.)
 
-**Account details are masked here too.** The login name, login password and suicide password saved in MudPlay are written as `[redacted]` in `/state/full`, `/gates`, `/log`, `/scrollback` and `/events`, exactly as in a bug report (see *Bug Report*). The masks are made fresh for each answer from what is saved at that moment and are not kept (`/events` makes them once for each batch of events, a fraction of a second apart). If the saved details can't be read, `/gates`, `/log` and `/scrollback` answer *503* rather than send text they couldn't mask, and `/events` leaves those events out and says so. Chat is not censored here: that is for reports posted in public.
+Polling for the game's new lines: start with `since=0` (or the `nextSince` from a plain `/scrollback`), then send back each answer's `nextSince`:
+
+```
+curl -H "Authorization: Bearer $(cat ~/.local/share/MudPlay/.apitoken)" \
+     'http://127.0.0.1:6683/scrollback?since=0'
+```
+
+**Account details are masked here too.** The login name, login password and suicide password saved in MudPlay are written as `[redacted]` in `/state/full`, `/gates`, `/log`, `/scrollback` (with or without `since=`) and `/events`, exactly as in a bug report (see *Bug Report*). The masks are made fresh for each answer from what is saved at that moment and are not kept (`/events` makes them once for each batch of events, a fraction of a second apart). If the saved details can't be read, `/gates`, `/log` and `/scrollback` answer *503* rather than send text they couldn't mask, and `/events` leaves those events out and says so. Chat is not censored here: that is for reports posted in public.
 
 **Issuing commands.** Beyond reading, the API can act:
 
