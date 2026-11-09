@@ -1,8 +1,9 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.199.3**
-> - Roomba rooms can sort by the Worn slot (severed heads, emblems)
+> **Version 3.200.0**
+> - Local API `GET /stats`: Session Stats as JSON numbers (exp/hr, kills/hr, time to level, collected, time analysis, combat)
+> - Local API `/scrollback?since=`: the game's lines since the last poll, each line once, numbered, with chat and prompts flagged
 <!-- current-version:end -->
 
 A modern Telnet terminal client for **MajorMUD** and other BBS door games, built in C# / .NET 10 with [Avalonia](https://avaloniaui.net/). It renders a faithful CP437 cell grid with full VT100/ANSI parsing, and layers a MegaMUD-style automation suite (combat, party, navigation, healing, and more) on top — all in modeless, dockable windows so the terminal stays live while you configure anything.

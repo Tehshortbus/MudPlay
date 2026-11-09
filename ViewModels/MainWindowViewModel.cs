@@ -1430,6 +1430,8 @@ public partial class MainWindowViewModel : ObservableObject
         AppServices.Current.DeathRecovery.AttachLineExtractor(Lines);
         // Another player's corpse recovered for them: its lines fill the handoff record.
         AppServices.Current.CorpseHandoff.AttachLineExtractor(Lines);
+        // Numbered for the Local API's /scrollback?since=.
+        AppServices.Current.LocalApi.Lines.AttachLineExtractor(Lines);
         // The Emulator lives here, so hand death-recovery a provider for the
         // backscroll tail it snapshots at each death ("How did I Die?").
         AppServices.Current.DeathRecovery.AttachTranscriptTail(

@@ -37,6 +37,10 @@ public sealed class LocalApiServer : IAsyncDisposable
     private readonly LogService _log;
     private readonly Func<TerminalEmulator?> _emulator;
 
+    // The game's lines, numbered for /scrollback?since=. Fed by the main view
+    // model's LineExtractor, which is built after us.
+    public LocalApiLines Lines { get; } = new();
+
     private HttpListener? _listener;
     private CancellationTokenSource? _cts;
     private Task? _acceptLoop;
@@ -324,6 +328,10 @@ public sealed class LocalApiServer : IAsyncDisposable
                 return;
             }
 
+            case "/stats":
+                WriteJson(res, 200, await OnUiAsync(() => LocalApiState.Stats(_services)).ConfigureAwait(false));
+                return;
+
             case "/gates":
             {
                 if (await ScrubberOrRefuseAsync(res, "the gate history").ConfigureAwait(false) is not { } scrubber) return;
@@ -374,8 +382,15 @@ public sealed class LocalApiServer : IAsyncDisposable
                 }
                 int lines = Math.Clamp(ParseInt(req.QueryString["lines"], 750), 1, 5000);
                 if (await ScrubberOrRefuseAsync(res, "the scrollback").ConfigureAwait(false) is not { } scrubber) return;
+                if (req.QueryString["since"] is { } sinceText)
+                {
+                    long since = Math.Max(0, ParseLong(sinceText, 0));
+                    WriteJson(res, 200, await OnUiAsync(() =>
+                        LocalApiState.ScrollbackSince(Lines, _services.InGameCapture.Window, scrubber, since, lines)).ConfigureAwait(false));
+                    return;
+                }
                 WriteJson(res, 200, await OnUiAsync(() =>
-                    LocalApiState.Scrollback(emu, _services.InGameCapture.Window, scrubber, lines)).ConfigureAwait(false));
+                    LocalApiState.Scrollback(emu, _services.InGameCapture.Window, scrubber, lines, Lines.NewestSeq)).ConfigureAwait(false));
                 return;
             }
 

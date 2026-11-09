@@ -107,7 +107,7 @@ public sealed class LocalApiPrivacyTests
         WriteRow(screen, 3, $"You say \"{Suicide}\"", T0.AddSeconds(6));
         WriteRow(screen, 4, "[HP=100/MA=50]:", T0.AddSeconds(7));
 
-        string json = Json(LocalApiState.Scrollback(emulator, inGame, Scrubber(), lines: 750));
+        string json = Json(LocalApiState.Scrollback(emulator, inGame, Scrubber(), lines: 750, nextSince: 0));
 
         Assert.DoesNotContain("handtyped", json);
         Assert.DoesNotContain("user-ID", json);
@@ -124,7 +124,7 @@ public sealed class LocalApiPrivacyTests
         TerminalEmulator emulator = new(80, 4);
         WriteRow(emulator.Screen, 0, $"Enter your user-ID: {Login}", T0);
 
-        string json = Json(LocalApiState.Scrollback(emulator, new CaptureWindow(on: false), Scrubber(), lines: 750));
+        string json = Json(LocalApiState.Scrollback(emulator, new CaptureWindow(on: false), Scrubber(), lines: 750, nextSince: 0));
 
         Assert.Contains("\"count\": 0", json);
         Assert.Contains("\"inGameNow\": false", json);
@@ -144,7 +144,7 @@ public sealed class LocalApiPrivacyTests
         WriteRow(screen, 2, "after", T0.AddSeconds(2));
 
         using JsonDocument doc = JsonDocument.Parse(
-            Json(LocalApiState.Scrollback(emulator, inGame, Scrubber(), lines: 750)));
+            Json(LocalApiState.Scrollback(emulator, inGame, Scrubber(), lines: 750, nextSince: 0)));
 
         JsonElement[] rows = doc.RootElement.GetProperty("lines").EnumerateArray().ToArray();
         Assert.Equal(3, rows.Length);
