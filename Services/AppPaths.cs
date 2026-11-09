@@ -63,6 +63,9 @@ public static class AppPaths
 
     // The marker that the default profile was put back to the installed defaults
     // (ProfileService.ResetDefaultProfileOnce).
+    // The GitHub sign-in the Bug report window keeps between launches.
+    public static string GitHubSignInFile => Path.Combine(DataRoot, "Global", "github.json");
+
     public static string DefaultProfileResetMarker => Path.Combine(DataRoot, "Global", ".default-profile-reset");
 
     // Written once a Windows client has removed every folder versions before 3.186.9

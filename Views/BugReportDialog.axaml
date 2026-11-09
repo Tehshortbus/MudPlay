@@ -3,18 +3,18 @@
         xmlns:vm="using:MudPlay.ViewModels"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="460" d:DesignHeight="320"
+        mc:Ignorable="d" d:DesignWidth="560" d:DesignHeight="400"
         x:Class="MudPlay.Views.BugReportDialog"
         x:DataType="vm:BugReportDialogViewModel"
         Title="Bug report"
-        Width="460" Height="320"
+        Width="560" Height="400"
         WindowStartupLocation="CenterOwner">
 
     <Border Background="{StaticResource ChromeBgBrush}" Padding="14">
-        <Grid RowDefinitions="Auto,*,Auto" RowSpacing="10">
+        <Grid RowDefinitions="Auto,*,Auto,Auto,Auto" RowSpacing="10">
 
             <TextBlock Grid.Row="0"
-                       Text="Describe what went wrong. The current client state (recent screen, program log, settings, engine + player state) is captured automatically and written alongside your notes to a file on your Desktop."
+                       Text="Describe what went wrong. The current client state (recent screen, program log, settings, engine + player state) is captured automatically. Write report saves it with your notes to a file on your Desktop; Github submit opens a public issue on the MudPlay repository, with the full report in a secret gist linked from it."
                        Foreground="{StaticResource ChromeFgMutedBrush}"
                        FontSize="11" TextWrapping="Wrap"/>
 
@@ -27,14 +27,57 @@
                      VerticalContentAlignment="Top"
                      FontSize="12"/>
 
-            <StackPanel Grid.Row="2" Orientation="Horizontal"
-                        HorizontalAlignment="Right" Spacing="8">
-                <Button Content="Write report" Command="{Binding SubmitCommand}"
-                        IsEnabled="{Binding CanSubmit}"
-                        IsDefault="True" MinWidth="100"/>
-                <Button Content="Cancel" Command="{Binding CancelCommand}"
-                        IsCancel="True" MinWidth="80"/>
+            <!-- What the GitHub submit is doing; the sign-in code while it waits for one. -->
+            <StackPanel Grid.Row="2" Spacing="6" IsVisible="{Binding HasStatus}">
+                <TextBlock Text="{Binding Status}" FontSize="11" TextWrapping="Wrap"/>
+                <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding HasSignInCode}">
+                    <TextBox Text="{Binding SignInCode}" IsReadOnly="True"
+                             FontFamily="monospace" FontSize="16" FontWeight="Bold" MinWidth="130"/>
+                    <Button Content="Open GitHub" Command="{Binding OpenSignInPageCommand}"/>
+                </StackPanel>
             </StackPanel>
+
+            <!-- A token of the player's own, in place of signing in. -->
+            <StackPanel Grid.Row="3" Spacing="6" IsVisible="{Binding ShowOwnToken}">
+                <TextBlock FontSize="11" TextWrapping="Wrap"
+                           Foreground="{StaticResource ChromeFgMutedBrush}"
+                           Text="Paste a personal access token (classic) from GitHub → Settings → Developer settings, with the public_repo and gist scopes. It is kept in MudPlay's app folder until you sign out."/>
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                    <TextBox Grid.Column="0" PasswordChar="•"
+                             Text="{Binding OwnToken, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                             PlaceholderText="ghp_…"/>
+                    <Button Grid.Column="1" Content="Use token" Command="{Binding UseOwnTokenCommand}"
+                            IsEnabled="{Binding CanChangeSignIn}"/>
+                </Grid>
+            </StackPanel>
+
+            <Grid Grid.Row="4" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8"
+                            IsVisible="{Binding OffersGitHub}">
+                    <Button Content="Github submit" Command="{Binding GitHubSubmitCommand}"
+                            IsEnabled="{Binding CanSubmit}" MinWidth="110"/>
+                    <StackPanel VerticalAlignment="Center" Spacing="2">
+                        <TextBlock Text="{Binding SignInText}" FontSize="10"
+                                   Foreground="{StaticResource ChromeFgMutedBrush}"/>
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Button Content="Sign out" FontSize="10" Padding="6,1"
+                                    Command="{Binding SignOutCommand}"
+                                    IsVisible="{Binding IsSignedIn}" IsEnabled="{Binding CanChangeSignIn}"/>
+                            <Button Content="Use my own token…" FontSize="10" Padding="6,1"
+                                    Command="{Binding ToggleOwnTokenCommand}"
+                                    IsEnabled="{Binding CanChangeSignIn}"/>
+                        </StackPanel>
+                    </StackPanel>
+                </StackPanel>
+
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Bottom">
+                    <Button Content="Write report" Command="{Binding SubmitCommand}"
+                            IsEnabled="{Binding CanSubmit}"
+                            IsDefault="True" MinWidth="100"/>
+                    <Button Content="Cancel" Command="{Binding CancelCommand}"
+                            IsCancel="True" MinWidth="80"/>
+                </StackPanel>
+            </Grid>
         </Grid>
     </Border>
 </Window>

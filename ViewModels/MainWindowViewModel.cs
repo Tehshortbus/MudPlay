@@ -4707,10 +4707,22 @@ public partial class MainWindowViewModel : ObservableObject
             return;
         }
 
-        string? description = await svc.Dialogs
-            .OpenWindowAsync<BugReportDialogViewModel, string>(new BugReportDialogViewModel());
+        // Github submit sends the report from the window and closes it with nothing
+        // left to write; it writes to the Desktop itself only when GitHub fails.
+        BugReportDialogViewModel dialog = new(
+            svc.GitHubReports,
+            describe => (Path.GetFileNameWithoutExtension(BugReportBuilder.FileName(capture)),
+                BugReportBuilder.Render(capture, describe)),
+            describe => WriteBugReportAsync(capture, describe));
+        string? description = await svc.Dialogs.OpenWindowAsync<BugReportDialogViewModel, string>(dialog);
         if (string.IsNullOrWhiteSpace(description)) return;
+        await WriteBugReportAsync(capture, description);
+    }
 
+    // The report on the Desktop: its path, or null when it couldn't be written.
+    private async Task<string?> WriteBugReportAsync(BugReportBuilder.BugReportCapture capture, string description)
+    {
+        Services.AppServices svc = Services.AppServices.Current;
         try
         {
             string desktop = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
@@ -4718,10 +4730,12 @@ public partial class MainWindowViewModel : ObservableObject
             await File.WriteAllTextAsync(path, BugReportBuilder.Render(capture, description));
             svc.Log.Info("BugReport", $"Wrote bug report to {path}");
             Guide.NotifyActionDone(GuideActions.BugReportWritten);
+            return path;
         }
         catch (Exception ex)
         {
             svc.Log.Error("BugReport", $"Failed to write bug report: {ex.Message}");
+            return null;
         }
     }
 
