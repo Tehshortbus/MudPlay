@@ -1,5 +1,9 @@
 # Version history
 
+## 3.199.3
+
+- Roomba rooms can sort by the Worn slot (severed heads, emblems)
+
 ## 3.199.2
 
 - A friend's corpse recovered right after a move sent with it (`nw`, then the recover) is recorded under Corpses to hand back again
