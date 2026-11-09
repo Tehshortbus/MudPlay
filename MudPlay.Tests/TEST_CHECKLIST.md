@@ -1505,6 +1505,11 @@ How to keep it current:
 - Checks: compact table reads equal JsonDocument (awkward values, one-byte texts, field order); malformed/invalid UTF-8 refused; block/limit handling; lookups; thread safety; memory footprint; in-place search.
 - Why: the compact game-data store must match the document it replaced.
 
+### GangSatchelTests.cs
+- Covers: Game/Inventory/GangSatchel (with InventoryManager)
+- Checks: an `i` listing the satchel sends one look, and no second while the first is unanswered; the look's rows (a wrapped one included) join the snapshot, with the worn emblem left out; a held look goes out on Retry; a pickup missing from the next `i` looks again; a drop takes the item out; an `i` without the satchel lets its contents go.
+- Why: Anomaly's gang satchel hides house keys from `i`, so key doors read as locked (user, 2026-11-09)
+
 ### GatePickSourcesTests.cs
 - Covers: Services/GatePickSources
 - Checks: the route card's source tail per pick: giver/shop/dropper only for what the pick fetches; trades only for door keys; carried and stopping picks name none.

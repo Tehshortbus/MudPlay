@@ -1425,6 +1425,7 @@ public partial class MainWindowViewModel : ObservableObject
         // Wealth, Encumbrance) so CashManager's gate has live carry
         // weight; it buffers the wrapped deposit echo too.
         AppServices.Current.Inventory.AttachLineExtractor(Lines);
+        AppServices.Current.GangSatchel.AttachLineExtractor(Lines);
         // Death-recovery watches for `You pick up ...` confirmations
         // to drive the deathpile Partial → Recovered transition + re-equip.
         AppServices.Current.DeathRecovery.AttachLineExtractor(Lines);

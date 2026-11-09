@@ -18,7 +18,9 @@ namespace MudPlay.Game.Inventory;
 // "… (Readied/N)", null when nothing is readied; it is reported here, not in
 // CarriedItems. Keys are the ring's contents from the dump's "You have the
 // following keys: …" trailer — a carry list the game tracks apart from the pack;
-// null (never observed) reads the same as empty.
+// null (never observed) reads the same as empty. Satchel is what Anomaly's gang
+// satchel holds besides worn gear (GangSatchel.Unworn): items `i` doesn't list but
+// the character holds and uses like any other; null when none was read.
 public readonly record struct InventorySnapshot(
     CurrencyHoldings Currency,
     EncumbranceReading Encumbrance,
@@ -26,7 +28,8 @@ public readonly record struct InventorySnapshot(
     System.Collections.Generic.IReadOnlyList<string> CarriedItems,
     System.DateTimeOffset LastUpdated,
     ReadiedLight? ReadiedLight = null,
-    System.Collections.Generic.IReadOnlyList<string>? Keys = null)
+    System.Collections.Generic.IReadOnlyList<string>? Keys = null,
+    System.Collections.Generic.IReadOnlyList<string>? Satchel = null)
 {
     // Never-observed snapshot.
     public static InventorySnapshot Empty => new(
@@ -36,7 +39,8 @@ public readonly record struct InventorySnapshot(
         System.Array.Empty<string>(),
         System.DateTimeOffset.MinValue);
 
-    // True when the pack currently holds — carried, worn, or on the key-ring — an item
+    // True when the pack currently holds — carried, worn, on the key-ring or in the gang
+    // satchel — an item
     // whose name contains itemName (case-insensitive), the same loose match @have uses
     // (Remote.InventoryQueryHandler). Existence only, stack counts ignored. Meaningful
     // only once a full 'i' dump has loaded the pack (InventoryManager.IsLoaded); an
@@ -53,6 +57,9 @@ public readonly record struct InventorySnapshot(
         if (Keys is { } keys)
             foreach (string k in keys)
                 if (k.Contains(needle, System.StringComparison.OrdinalIgnoreCase)) return true;
+        if (Satchel is { } satchel)
+            foreach (string s in satchel)
+                if (s.Contains(needle, System.StringComparison.OrdinalIgnoreCase)) return true;
         return false;
     }
 

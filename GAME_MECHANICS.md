@@ -8045,6 +8045,7 @@ There is no room to drop amethyst pendant here.
   - `You have the following keys: ` and the keys joined by `,`, a counted key as `<count> <name>s` (an `s` is added to a counted key), or `You have no keys`.
   - `Wealth: <N> copper farthings`, always with that noun.
   - `Encumbrance: <carried>/<max> - <band> [<pct>%]`.
+  - On Anomaly, the gang items in a `gang satchel` are left out of `i`: *Gang satchel*.
 - **The slot word comes from the item's `Worn` code** *([OBSERVED] 2026-10-09, same routine, table @0x4801dc; Realm: Stock, Paradigm not recorded)*: 1 `Worn`, 2 `Head`, 3 `Hands`, 4 `Finger`, 5 `Feet`, 6 `Arms`, 7 `Back`, 8 `Neck`, 9 `Legs`, 10 `Waist`, 11 `Torso`, 12 `Off-Hand`, 13 `Finger`, 14 `Wrist`, 15 `Ears`, 16 `Worn`, 17 `Wrist`, 18 `Eyes`, 19 `Face`.
 - **The encumbrance bands are 0–16 `None`, 17–33 `Light`, 34–66 `Medium`, 67 and up `Heavy`** *([OBSERVED] 2026-10-09, Stock 1.11p `wccmmud.dll` `_display_inventory_items` @0x439de8; Realm: Stock, Paradigm not recorded)*.
 - **Encumbrance % = (coin weight + weight carried) × 100 / max weight, rounded down** *([OBSERVED] 2026-10-09, Stock 1.11p `wccmmud.dll` `_get_encumbrance_percent` @0x41f44f–0x41f474; Realm: Stock, Paradigm not recorded)*. A move is refused only above 100 (*Movement & navigation → Per-hop movement speed*).
@@ -8522,6 +8523,25 @@ There is no room to drop amethyst pendant here.
 - An emblem item must never be treated as disposable clutter by automation that picks up and relocates items inside a gang house. Moving it away from the player, even temporarily mid-sweep, risks the guards turning hostile.
 - Until a more precise data field is identified, automation should treat any item name matching `"<Color> Emblem"` as categorically excluded from being picked up/moved.
 - Automation should never disturb items the player was already carrying before it started. This is a stronger, simpler guarantee that also protects a worn emblem without needing to recognize it specifically.
+
+### Gang satchel
+*Status: CONFIRMED 2026-11-09 (user; capture) · Realm: Anomaly (not in the imported Anomaly v0.65.0 data)*
+
+- **The `gang satchel` holds every gang-house item the character has, and only those** *([CONFIRMED] 2026-11-09, user)*: the emblems not being worn, the house keys, vault keys and keyrings, the deeds and the stars. Its look says it "never leaves you". An item that isn't gang-house related, a `black star key` for one, stays on the key ring or in the pack.
+- **`i` lists only the satchel itself** (`gang satchel`, among the carried items). Of the gang items in it, only a worn emblem shows in `i`, with the worn gear (`sapphire emblem (Worn)`). The house keys never appear in the `You have the following keys:` line while they're in the satchel *([CONFIRMED] 2026-11-09, user)*. (An earlier note read the capture's `2 black star key` on the ring as a star the satchel left out; superseded 2026-11-09: it isn't a gang-house item.)
+- **Every item in it is used exactly as before** *([CONFIRMED] 2026-11-09, user)*: a key opens its door, a keyring is used, an emblem is worn, all straight from the satchel.
+- **A gang item picked up goes straight into the satchel, with the ordinary `You took <item>.` line** *([CONFIRMED] 2026-11-09, user)*.
+- **The satchel and everything in it stay with the character through a death** *([CONFIRMED] 2026-11-09, user)*. The satchel is loyal (user, 2026-11-09), so it can't be dropped either (*`drop`: targeting, refusals and worn items*). The emblems and keyrings in the data carry LoyalItem (100) of their own.
+- **Its contents show only on a look** (`l satch` in the capture). The look prints the description, then `Your gang satchel holds:`, then one row per house, `<area> <house name>: <items>` *([OBSERVED] 2026-11-09, user's capture)*:
+  - `Arlysia Silver House: silver emblem, silver key, silver keyring`
+  - `Fellgate Sapphire Tent: blue key, blue keyring, sapphire emblem (worn)`
+  - The emblem being worn is marked `(worn)` in its house's row.
+  - `[NEEDS CONFIRMATION]` What an empty satchel prints, and how a row longer than the screen wraps, aren't in the capture. The client takes a row the game wrapped to go on with an item's lower-case name.
+
+**Client use:**
+- `GangSatchel` sends `l gang satchel` once when an `i` lists the satchel and its contents aren't known, and again when an item picked up since the last look is missing from the next `i`. One unanswered look is the most it sends. The look is held, like the client's own inventory reads, while the master switch is off, the send gate is held or the character is out of the game (**Client policy**, user 2026-11-09).
+- The satchel's unworn contents join the inventory snapshot (`InventorySnapshot.Satchel`): door keys (`AppServices.HoldsKeyItem`), held counts for Auto-Get's Max to get and route item gates (`CountItemHeld`), trade hand-overs (`CountItemUnworn`), charge tracking (`HeldItemNames`) and `@have` all count them. A drop, sale, give or hide of one takes it out.
+- `AppServices.GameRefusesToDrop` and `EveryItemOfThisNameStaysOnDeath` take `gang satchel` as loyal by name, since the imported data doesn't have it.
 
 ---
 
