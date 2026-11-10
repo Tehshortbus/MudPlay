@@ -2558,7 +2558,15 @@ public sealed class LoopRunner : IRecoverableEngine
             _teleportResolver, _isLeaderWithFollowers,
             out string? syncFail,
             onLeaderPartySplitTeleport: _onLeaderPartySplit);
-        if (sync == SpecialExitSend.Sent) return;
+        if (sync == SpecialExitSend.Sent)
+        {
+            // A text exit or teleport can go unconfirmed like a cardinal can: watched
+            // the same way, or the loop sat on it (issue #1204, report
+            // stock-20261109-225059: `move rubble` held 34 s).
+            _movesSent++;
+            ArmStallWatchdog($"step {_index + 1} special exit sent");
+            return;
+        }
         if (sync == SpecialExitSend.Failed)
         {
             _log?.Debug("LoopRunner",
@@ -2611,16 +2619,16 @@ public sealed class LoopRunner : IRecoverableEngine
             ? $"move {direction} → {target}"
             : $"move {direction} ({note})";
         Write(bytes, reason);
-        _cardinalsSent++;
+        _movesSent++;
         ArmStallWatchdog($"step {_index + 1} move sent");
     }
 
-    // Counts the cardinals put on the wire, so the stall watchdog can tell whether
+    // Counts the moves put on the wire, so the stall watchdog can tell whether
     // the move it asked about is still the one in flight when the answer comes
     // (a reroute can leave the step index where it was).
-    private int _cardinalsSent;
+    private int _movesSent;
 
-    // The send (by _cardinalsSent) the stall watchdog has already taken its one
+    // The send (by _movesSent) the stall watchdog has already taken its one
     // extra wait for.
     private int _stallRearmedForSend = -1;
 
@@ -3315,7 +3323,7 @@ public sealed class LoopRunner : IRecoverableEngine
         // reverse-walk, and a timer is no ground for walking a stock realm's loop
         // backwards. With nobody to ask, everything stays as it was.
         if (!IsPlainMoveSentWhileUnsure(out EngineRecoveryGate? gate)) return;
-        int askedForSend = _cardinalsSent;
+        int askedForSend = _movesSent;
         _log?.Warn("LoopRunner",
             $"step {_index + 1} in-flight stall: sent with the tracker {_tracker.State.Confidence}, nothing for {StallWatchdogInterval.TotalSeconds:F0}s — asking the game where we are");
         if (gate.TryResyncOnce?.Invoke(
@@ -3347,7 +3355,7 @@ public sealed class LoopRunner : IRecoverableEngine
     // nothing else would act on.
     private void OnStallLocateAnswered(int askedForSend, RoomKey key)
     {
-        if (State != LoopState.Running || !_stepInFlight || _cardinalsSent != askedForSend) return;
+        if (State != LoopState.Running || !_stepInFlight || _movesSent != askedForSend) return;
         if (_tracker.State.CurrentRoom?.Key.Equals(key) != true) return;   // a room the map doesn't have
         if (key.Equals(_expectedMoveTarget))
         {
@@ -3362,7 +3370,7 @@ public sealed class LoopRunner : IRecoverableEngine
     // throttle, or a confusion fumble eating the `rm`, may be all that was in the way.
     private void WaitOnceMoreForStalledMove(int askedForSend, string why)
     {
-        if (State != LoopState.Running || !_stepInFlight || _cardinalsSent != askedForSend) return;
+        if (State != LoopState.Running || !_stepInFlight || _movesSent != askedForSend) return;
         if (_stallRearmedForSend == askedForSend)
         {
             _log?.Info("LoopRunner", $"step {_index + 1}: {why}, again; leaving the step in flight");
@@ -3640,13 +3648,13 @@ public sealed class LoopRunner : IRecoverableEngine
                 + $"last attempt; too soon to be a fresh chance — ignoring. reason={reason}");
             if (_stepInFlight && State == LoopState.Running)
             {
-                int step = _index, sent = _cardinalsSent;
+                int step = _index, sent = _movesSent;
                 TimeSpan wait = RecoveryAttemptSpacing - (now - _lastRecoveryAttemptAt);
                 _echoRetry?.Dispose();
                 _echoRetry = _schedule(wait > TimeSpan.Zero ? wait : TimeSpan.Zero, () =>
                 {
                     _echoRetry = null;
-                    if (State == LoopState.Running && _stepInFlight && _index == step && _cardinalsSent == sent)
+                    if (State == LoopState.Running && _stepInFlight && _index == step && _movesSent == sent)
                         EnterRecovery(reason);
                 });
             }

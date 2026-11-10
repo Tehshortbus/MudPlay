@@ -962,6 +962,25 @@ public sealed class CombatManagerTests
         Assert.Equal("a golden mist", h.LastSent);
     }
 
+    // A monster the game data can't name is classed by its arrival's colour; the
+    // room's re-display inside the arrival's settle wait, which has no such hint,
+    // keeps it a monster and it is attacked (reports stock-20261107-164322,
+    // stock-20261108-101445, the Newhaven arena with no game-data set).
+    [Fact]
+    public void UnknownArrival_ReDisplayedBeforeTheSettleWait_IsStillAttacked()
+    {
+        using Harness h = new(wireRoomEntry: true);
+        List<Action> settle = new();
+        h.Combat.SetArrivalSettleScheduler((_, cb) => settle.Add(cb));
+
+        h.Server.Raw("\u001b[1;33mA small carrion beast\u001b[0;32m creeps in the room from nowhere.\r\n");
+        h.Server.Raw("\u001b[0;35mAlso here: \u001b[1;35msmall carrion beast\u001b[0;35m.\r\n");
+        foreach (Action fire in settle.ToList()) fire();
+
+        Assert.Equal("a small carrion beast", h.LastSent);
+        Assert.Equal(0, h.CrRefreshSends);
+    }
+
     // A line four spheres share can't say which came: the roster stays short and
     // the room is asked for.
     [Fact]

@@ -10047,10 +10047,19 @@ Hidden items: 1845(0) 14(0) 894(0) 223(0) 879(0) 870(0) 897(1) 876(1) 402(0) 430
 - **[CONFIRMED, live capture 2026-09-02]** **The header often lands on the prompt row** — the server frequently prints the block's first line onto the row the prompt already occupies: `[HP=639/MA=268]:Room 3551  Map: 1`. Any parser that treats a prompt as the block terminator must ignore prompts seen **before** the room header, or it drops the entire dump.
 - **The lists wrap at the terminal margin mid-token** — `47` + `0(0)` is item `470`, `430` + `(0)` splits an id from its value. Rejoin the block before tokenizing.
 - **The dump carries no `Obvious exits:` line**, so it is not mistakable for a room display.
+- **MMUD Reborn answers `sys stat` in a shape of its own** *([CONFIRMED] 2026-11-10, user screenshot; Realm: MMUD Reborn)*: no `Room N  Map: M` header and no item lists, just a room-name line and three `values:` lines:
+  ```
+  Info: Black House, Foyer
+  values: map=1 room=1313 light=-75 monstertype=8 delay=0
+  values: players=1 monsters=2 npc=0 cmd=0 shop=0 spell=0
+  values: exits=north, east, open door west
+  ```
+  `map=` then `room=` on the first `values:` line is the room's identity, the same `map/room` pair as the Stock header. The other fields aren't read.
 - **[CONFIRMED, live capture 2026-09-02, report stock-20260902-203631]** **A full `sys st` dump is heavy** — ~8–9 lines (`Room N  Map: M`, `This room as Area:`, `Min/Max/Group/Lair`, `Room Max/Current/Last Killed/Delay`, controlling-room, `Monsters:`, `Items:`, `Hidden items:`) — far heavier than Paradigm's three-line `rm` reply, and the item/hidden lists grow with room contents.
 - **Client use:**
   - The client **throttles** repeated locates to keep the dump from flooding the screen: the give-up boundary fires unthrottled, but the eager tier-2 / loop-one-shot / no-engine / `@where` mirror sites reuse the 15s locate throttle (report stock-20260902-203631).
   - Only `Room N  Map: M` is needed for position; the rest is future roomba content-sync fodder.
+  - `SysRoomStatusParser` reads Reborn's `values: map=N room=M` line as the header, so a Reborn sysop's position recovery works; the block reads as a room with no item lists (user request 2026-11-10).
 
 ### `sys map` — ASCII area map
 *Status: CONFIRMED 2026-09-05 (user + live captures)*

@@ -1,5 +1,16 @@
 # Version history
 
+## 3.202.7
+
+- A loop no longer stalls on a text exit (`move rubble`) into a room that looks like the one it left
+- A loop step through a text exit or teleport is watched for a stall like any move
+- A `look` refused at a shut door no longer reads as a refused move
+- A monster the game data can't name stays a monster after the room redisplays, and is attacked
+- Profile Management follows a BBS renamed or removed in Settings
+- Scrollback holds up to 1,000,000 lines, with memory taken only as it fills
+- MMUD Reborn's `sys stat` reply is read for the room
+- bug reports addressed: stock-20261109-225059 (issue #1204), stock-20261107-160125, stock-20261107-160203, stock-20261107-164322, stock-20261108-101329, stock-20261108-101445
+
 ## 3.202.0
 
 - Bug report window: Github submit files the report as an issue, with the full report in a secret gist

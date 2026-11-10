@@ -142,7 +142,7 @@ public sealed class BbsProfile
     // How many scrolled-off rows the backscroll ring retains. A change applies
     // at once: the ring is resized in place, dropping the oldest rows when it
     // shrinks.
-    [SettingRange(100, 100_000)]
+    [SettingRange(100, 1_000_000)]
     public int ScrollbackLines { get; set; } = 4_000;
 
     // How many rows one mouse-wheel notch scrolls in the Backscroll window.

@@ -64,6 +64,15 @@ public sealed partial class MovementRefusalDetector : IDisposable
         // than bonk the shut door again (the mid-combat door-closed bonk loop).
         if (DoorIsClosed().IsMatch(text))
         {
+            // On Stock that wording is `look`'s refusal alone (GAME_MECHANICS "`look
+            // <dir>` — peeking an adjacent room"). Read as a move's, a recovery peek at
+            // a shut door undid the text exit still in flight and put the map back in
+            // the room just left (issue #1204, report stock-20261109-225059).
+            if (LookRefusal().IsMatch(text) && _tracker.LookAwaitsAnswer(when))
+            {
+                _log?.Info("MoveRefusal", $"a look was refused, not a move: {text.Trim()}");
+                return;
+            }
             // Read before the move is reverted: the refusal is of this move.
             if (ShutDoorBonked is not null && _tracker.CardinalInFlight() is { } bonk
                 && ShutDoorKind(text) is { } bashable)
@@ -385,6 +394,10 @@ public sealed partial class MovementRefusalDetector : IDisposable
         @"^\s*(?:The (?:door|gate) is closed(?: in that direction)?|There is a closed door in that direction)[.!]?\s*$",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex DoorIsClosed();
+
+    [GeneratedRegex(@"^\s*The door is closed in that direction!\s*$",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex LookRefusal();
 
     // A door or gate in this room changed from the other side or by itself: "The
     // door to the north just closed.", "…just opened.", "The gate to the east just

@@ -5339,9 +5339,9 @@ You can edit **several boards in one visit**: click between them freely and ever
 ### Scrollback (lines)
 
 **Default:** `4000`
-**Available options:** 100–100,000
+**Available options:** 100–1,000,000
 **What it does:** How many scrolled-off lines the Backscroll window's history buffer keeps.
-**Important notes:** Applied when you press **OK** or **Apply**: the live buffer resizes, dropping the oldest lines when it shrinks.
+**Important notes:** Applied when you press **OK** or **Apply**: the live buffer resizes, dropping the oldest lines when it shrinks. A deep scrollback costs memory as it fills: at most about 1 MB per thousand lines, and usually half that, since a line is kept only as far as its last character. A million lines, once filled, can take several hundred MB; a high setting costs nothing until then.
 
 ### Wheel scroll (lines)
 
@@ -5367,7 +5367,7 @@ You can edit **several boards in one visit**: click between them freely and ever
 **Default:** all off
 **What it does:** Declares which elevated sysop commands this character can actually use on this specific board — three independent checkboxes, saved per-character per-BBS. None of them touch `@goto`: that remote command is gated purely by the per-player **Move player** permission on the Players tab, not by anything here. Only tick a power if you genuinely have that sysop access on the board — the underlying command is refused on an ordinary account.
 
-**Sysop status** — lets MudPlay use the game's **`sysop status`** command (`sys st`), which prints the server's own debug dump for a room — including its **true map and room number**. That exact number is the fastest possible answer to "where am I?": without it, a client that loses track has to walk you backwards one room at a time until only one room fits, and if that fails you're left right-clicking **I am here** on the map. With this power, one command replaces all of that.
+**Sysop status** — lets MudPlay use the game's **`sysop status`** command (`sys st`), which prints the server's own debug dump for a room — including its **true map and room number**. MMUD Reborn's shorter reply (an `Info:` line and `values: map=… room=…` lines) is read the same way. That exact number is the fastest possible answer to "where am I?": without it, a client that loses track has to walk you backwards one room at a time until only one room fits, and if that fails you're left right-clicking **I am here** on the map. With this power, one command replaces all of that.
 
 MudPlay asks at every point it would otherwise start reversing moves or give up — the first sign of a mismatch, a wedged engine, the moment before backtracking, the last resort before declaring **Lost**, a loop blocked because it lost its place, and a `@where` re-fix — mirroring how the Paradigm `room` command is used on that realm. If the answer doesn't come back (refused, too slow, or naming a room your active game-data set doesn't contain) nothing changes: you get the same walk-backwards recovery and **Lost** dialog you'd get without it. It never guesses.
 
@@ -7698,7 +7698,7 @@ This section is a compact, technical lookup table for every setting documented a
 | Board disconnect line | `null` | pattern string | `DisconnectPattern` | Models/Settings/BbsProfile.cs |
 | Runic currency name | `"runic"` | string (blank = `runic`) | `RunicCurrencyName` | Models/Settings/RealmProfile.cs |
 | Columns / Rows (NAWS) | `80` / `25` | 40–200 / 20–100 | `TerminalCols` / `TerminalRows` | Models/Settings/BbsProfile.cs |
-| Scrollback (lines) | `4000` | 100–100,000 | `ScrollbackLines` | Models/Settings/BbsProfile.cs |
+| Scrollback (lines) | `4000` | 100–1,000,000 | `ScrollbackLines` | Models/Settings/BbsProfile.cs |
 | Wheel scroll (lines) | `5` | 1–50 | `BackscrollWheelLines` | Models/Settings/BbsProfile.cs |
 | Username / Password (per-char) | `null` | encrypted string | `EncryptedUsername` / `EncryptedPassword` | Models/Profile/BbsCredentials.cs |
 | Sysop powers — status / god lives / goto (per-char) | `false` ×3; goto list = starter set | bool ×3; list of Sys Goto locations | `SysopStatus` / `SysopGodLives` / `SysopGoto` / `SysopGotos` | Models/Profile/BbsCredentials.cs |

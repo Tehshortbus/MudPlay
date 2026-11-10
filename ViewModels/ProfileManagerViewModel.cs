@@ -132,6 +132,10 @@ public sealed partial class ProfileManagerViewModel : ObservableObject, IDisposa
         _profile.ProfileClosed += OnProfileClosedHandler;
         // A realm edit in Settings → BBS re-pins; pick up the renamed / added realms.
         _profile.BbsPinApplied += OnProfileChanged;
+        // A BBS renamed in Settings → BBS (where Add BBS hands its "New BBS" for
+        // naming) or removed there.
+        _profile.BbsRenamed += OnBbsRenamed;
+        _profile.BbsDeleted += OnBbsDeleted;
         AppServices.Current.TourActionChanged += OnTourActionChanged;
         OnTourActionChanged();
 
@@ -153,6 +157,8 @@ public sealed partial class ProfileManagerViewModel : ObservableObject, IDisposa
         _profile.ProfileMutated -= OnProfileChanged;
         _profile.ProfileClosed -= OnProfileClosedHandler;
         _profile.BbsPinApplied -= OnProfileChanged;
+        _profile.BbsRenamed -= OnBbsRenamed;
+        _profile.BbsDeleted -= OnBbsDeleted;
         AppServices.Current.TourActionChanged -= OnTourActionChanged;
     }
 
@@ -165,6 +171,16 @@ public sealed partial class ProfileManagerViewModel : ObservableObject, IDisposa
 
     private void OnProfileChanged(CharacterProfile _) { RefreshCurrentLabel(); ReloadRealms(keep: SelectedRealm); }
     private void OnProfileClosedHandler() { RefreshCurrentLabel(); ReloadRealms(keep: SelectedRealm); }
+
+    private void OnBbsRenamed(string oldName, string newName)
+    {
+        bool wasSelected = string.Equals(SelectedBbs, oldName, StringComparison.OrdinalIgnoreCase);
+        ReloadBbses();
+        if (wasSelected) SelectedBbs = newName;
+        RefreshCurrentLabel();
+    }
+
+    private void OnBbsDeleted(string _) => ReloadBbses();
 
     partial void OnSelectedBbsChanged(string? value)
     {

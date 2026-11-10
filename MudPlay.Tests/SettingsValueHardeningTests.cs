@@ -75,7 +75,7 @@ public sealed class SettingsValueHardeningTests : IDisposable
 
         Assert.Equal(200, bbs.TerminalCols);
         Assert.Equal(100, bbs.TerminalRows);
-        Assert.Equal(100_000, bbs.ScrollbackLines);
+        Assert.Equal(1_000_000, bbs.ScrollbackLines);
         List<string> warns = WarnsAbout(path);
         Assert.Contains(warns, w => w.Contains("BBS setting TerminalCols", StringComparison.Ordinal)
                                   && w.Contains("was 100000", StringComparison.Ordinal)

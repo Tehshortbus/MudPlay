@@ -384,4 +384,34 @@ public sealed class SysRoomStatusParserTests
 
         Assert.Empty(captured);
     }
+
+    // MMUD Reborn's reply, verbatim from a live screen (user, 2026-11-10).
+    [Fact]
+    public void RebornsValuesReply_ReadsTheRoomFromItsMapAndRoomValues()
+    {
+        (SysRoomStatusParser parser, List<SysRoomStatus> captured) = NewParser();
+
+        Arm(parser, "sys stat");
+        _feed.Line("Info: Black House, Foyer");
+        _feed.Line("values: map=1 room=1313 light=-75 monstertype=8 delay=0");
+        _feed.Line("values: players=1 monsters=2 npc=0 cmd=0 shop=0 spell=0");
+        _feed.Line("values: exits=north, east, open door west");
+        _feed.Line("[HP=151]:");
+
+        SysRoomStatus s = Assert.Single(captured);
+        Assert.Equal(new RoomKey(1, 1313), s.Room);
+        Assert.Empty(s.Items);
+        Assert.Empty(s.HiddenItems);
+    }
+
+    [Fact]
+    public void ARebornValuesLine_IsIgnoredWithoutASysStatusSent()
+    {
+        (SysRoomStatusParser _, List<SysRoomStatus> captured) = NewParser();
+
+        _feed.Line("values: map=1 room=1313 light=-75 monstertype=8 delay=0");
+        _feed.Line("[HP=151]:");
+
+        Assert.Empty(captured);
+    }
 }

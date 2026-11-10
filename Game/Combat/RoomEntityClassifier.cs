@@ -351,6 +351,7 @@ public sealed class RoomEntityClassifier : IDisposable
 
     private void TakeTextRoster(RoomEntitiesObservation obs)
     {
+        obs = obs with { Entities = obs.Entities.Select(KeepEarlierVerdict).ToArray() };
         TextObserved?.Invoke(obs);
         if (GmcpOwnsOccupants?.Invoke() == true)
         {
@@ -361,6 +362,21 @@ public sealed class RoomEntityClassifier : IDisposable
         _lastAlsoHereAt = obs.At;
         SetRosterWhole(true);
         EntitiesObserved?.Invoke(obs);
+    }
+
+    // An arrival the game data can't name is classed by its colour
+    // (RoomEntryWatcher); the room's re-display a moment later has no such hint.
+    // Read Unknown there, it replaced the monster the arrival had put on the roster,
+    // and the client stood while it swung (reports stock-20261107-164322,
+    // stock-20261108-101445). A name the room's roster already classed keeps that.
+    private RoomEntity KeepEarlierVerdict(RoomEntity seen)
+    {
+        if (seen.Kind != EntityKind.Unknown || Current is not { } roster) return seen;
+        foreach (RoomEntity known in roster.Entities)
+            if (known.Kind != EntityKind.Unknown
+                && string.Equals(known.RawName, seen.RawName, StringComparison.OrdinalIgnoreCase))
+                return known;
+        return seen;
     }
 
     // The server's list for the room we step into can leave out a monster its
