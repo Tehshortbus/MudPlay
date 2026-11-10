@@ -3573,6 +3573,7 @@ public partial class MainWindowViewModel : ObservableObject
                 IsConnected = true;
                 // A new session starts at the login, never inside a trainer screen.
                 AppServices.Current.TrainerMenu.ForceExit("connected");
+                AppServices.Current.WarnIfNoGameData();
                 // Fresh session — drop any cleanup-watcher state carried
                 // over and clear any pending auto-reconnect schedule.
                 // Do NOT zero _reactiveReconnectCount here: a BBS in

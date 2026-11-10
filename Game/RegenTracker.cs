@@ -165,6 +165,12 @@ public sealed class RegenTracker : IDisposable
     // Whether an HP gain seen in this posture sits on the round grid: a standing gain
     // does on both realms, a resting one only where rest rides the grid. Meditating
     // is left out: no capture has shown its HP gains cleanly.
+    // A meditate gain is counted from the command on Stock; on Paradigm it falls on
+    // the combat round (GAME_MECHANICS "Meditating: …", confirmed by the user
+    // 2026-11-10), the made-up second's early round included.
+    public bool MaGainIsOnRoundGrid(PlayerPosition position) =>
+        position != PlayerPosition.Meditating || _cadence.MeditatingOnManaGrid;
+
     public bool HpGainIsOnRoundGrid(PlayerPosition position) => position switch
     {
         PlayerPosition.Standing => true,

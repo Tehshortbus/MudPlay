@@ -3401,6 +3401,21 @@ public sealed class LoopRunnerTests : IDisposable
         Assert.Equal("go boat\r", Encoding.Latin1.GetString(h.Sent[0]));
     }
 
+    // A text exit can go unconfirmed like a cardinal, and is watched the same way:
+    // unwatched, the loop sat on `move rubble` (issue #1204, report
+    // stock-20261109-225059).
+    [Fact]
+    public void Circuit_TextExit_ArmsTheStallWatchdog()
+    {
+        Harness h = NewHarness(TextExitGraphJson);
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+
+        h.Runner.Start(new Loop("docks", new[] { new RoomKey(1, 1), new RoomKey(1, 2) }));
+
+        Assert.Equal("borrow skiff\r", Encoding.Latin1.GetString(h.Sent[0]));
+        Assert.Contains(LoopRunner.StallWatchdogInterval, h.Ticks.PendingDelays);
+    }
+
     [Fact]
     public void Circuit_TextExit_LandsAtTarget_Advances()
     {

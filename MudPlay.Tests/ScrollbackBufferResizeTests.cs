@@ -120,4 +120,52 @@ public sealed class ScrollbackBufferResizeTests
         Assert.Throws<ArgumentOutOfRangeException>(() => buf.SetCapacity(0));
         Assert.Throws<ArgumentOutOfRangeException>(() => buf.SetCapacity(-5));
     }
+
+    // A deep scrollback's memory goes on rows: a row is kept only as far as its last
+    // cell that isn't a plain blank, so a coloured bar still reaches the margin.
+    [Fact]
+    public void Append_KeepsARowOnlyAsFarAsItsLastCellThatIsntAPlainBlank()
+    {
+        ScrollbackBuffer buf = new(capacity: 4);
+        Cell[] text = new Cell[80];
+        Array.Fill(text, Cell.Blank);
+        text[0] = new Cell('h', CellAttributes.Default);
+        text[1] = new Cell('i', CellAttributes.Default);
+        Cell[] bar = new Cell[80];
+        Array.Fill(bar, new Cell(' ', CellAttributes.Default.WithBackground(TerminalColor.Indexed(4))));
+        Cell[] empty = new Cell[80];
+        Array.Fill(empty, Cell.Blank);
+
+        buf.Append(text, DateTimeOffset.Now);
+        buf.Append(bar, DateTimeOffset.Now);
+        buf.Append(empty, DateTimeOffset.Now);
+
+        Assert.Equal("hi", new string(buf[0].Cells.Select(c => c.Char).ToArray()));
+        Assert.Equal(80, buf[1].Cells.Length);
+        Assert.Empty(buf[2].Cells);
+    }
+
+    // The ring's array grows as rows arrive (a million-row setting costs nothing
+    // until it fills) and, once full, drops the oldest rows in order.
+    [Fact]
+    public void Append_PastEveryGrowthStep_KeepsTheNewestRowsInOrder()
+    {
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        _ = new ScrollbackBuffer(capacity: 1_000_000);
+        Assert.InRange(GC.GetAllocatedBytesForCurrentThread() - before, 0, 1024 * 1024);
+
+        ScrollbackBuffer buf = new(capacity: 3_000);
+        for (int i = 0; i < 5_000; i++)
+            buf.Append(new[] { new Cell((char)('0' + i % 10), CellAttributes.Default) }, DateTimeOffset.Now.AddTicks(i));
+
+        Assert.Equal(3_000, buf.Count);
+        Assert.Equal(Enumerable.Range(2_000, 3_000).Select(i => (char)('0' + i % 10)),
+            buf.Enumerate().Select(r => r.Cells[0].Char));
+
+        buf.SetCapacity(1_000_000);
+        buf.Append(new[] { new Cell('x', CellAttributes.Default) }, DateTimeOffset.Now);
+        Assert.Equal(3_001, buf.Count);
+        Assert.Equal('0', buf[0].Cells[0].Char);
+        Assert.Equal('x', buf[3_000].Cells[0].Char);
+    }
 }

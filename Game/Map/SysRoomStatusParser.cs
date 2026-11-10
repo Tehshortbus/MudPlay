@@ -28,6 +28,16 @@ namespace MudPlay.Game.Map;
 //   Hidden items: 1845(0) ... 430
 //   (0) 264(0) ...
 //
+// MMUD Reborn answers in a shape of its own, with no item lists:
+//
+//   Info: Black House, Foyer
+//   values: map=1 room=1313 light=-75 monstertype=8 delay=0
+//   values: players=1 monsters=2 npc=0 cmd=0 shop=0 spell=0
+//   values: exits=north, east, open door west
+//
+// Its `values: map= room=` line stands in for the header, and the block reads
+// as a room with no item or monster lists.
+//
 // The item lists wrap at the terminal margin, and the break lands wherever it
 // lands — mid-id ("47" + "0(0)" is item 470) or between an id and its value
 // ("430" + "(0)"). LineExtractor stitches rows the emulator marked soft-wrapped,
@@ -162,7 +172,9 @@ public sealed partial class SysRoomStatusParser : IDisposable
             return;
         }
 
-        if (HeaderPattern().Match(text) is { Success: true } header)
+        Match header = HeaderPattern().Match(text);
+        if (!header.Success) header = RebornHeaderPattern().Match(text);
+        if (header.Success)
         {
             Flush();
             _room = new RoomKey(
@@ -288,6 +300,10 @@ public sealed partial class SysRoomStatusParser : IDisposable
     [GeneratedRegex(@"^Room\s+(?<room>\d+)\s+Map:\s*(?<map>\d+)\s*$",
         RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
     private static partial Regex HeaderPattern();
+
+    [GeneratedRegex(@"^values:\s+map=(?<map>\d+)\s+room=(?<room>\d+)\b",
+        RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
+    private static partial Regex RebornHeaderPattern();
 
     [GeneratedRegex(@"^[\d()\s]+$", RegexOptions.CultureInvariant)]
     private static partial Regex ContinuationPattern();

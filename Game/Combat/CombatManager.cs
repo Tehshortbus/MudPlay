@@ -77,6 +77,12 @@ public sealed partial class CombatManager : IDisposable
     // landed. Session Stats keeps backstabs' own hit / miss rate off it.
     public event Action<string, bool>? BackstabResolved;
 
+    // Our attack-slot spell's own line confirmed it landed: the round's action, so
+    // printed on the combat round (user, 2026-11-10). Its wording ("Pure energy rips
+    // through nasty pinion rat, ravaging them for 186 damage!") is no hit line the
+    // round clock reads.
+    public event Action? AttackCastLanded;
+
     private readonly MessageRouter _router;
     private readonly RoomEntityClassifier _classifier;
     private readonly MonsterMessageStore _monsters;
@@ -4026,6 +4032,7 @@ public sealed partial class CombatManager : IDisposable
         _log?.Combat(LogCategory,
             $"attack-cast confirmed spell={_announcedSpellCode ?? "?"} target='{target}' "
             + $"confirmedCount={ConfirmedAttackCastCount}");
+        AttackCastLanded?.Invoke();
 
         // Do not wait for TickEngine's next CombatTickElapsed to consume this
         // confirmation. A mob hit/miss commonly opens the server's round burst and

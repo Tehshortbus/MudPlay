@@ -247,10 +247,10 @@
                         <TextBlock Grid.Row="2" Grid.Column="0" Classes="FieldLabel" Text="Scrollback (lines):"/>
                         <NumericUpDown Grid.Row="2" Grid.Column="1"
                                        Value="{Binding ScrollbackLines, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
-                                       Minimum="100" Maximum="100000" Increment="500"
+                                       Minimum="100" Maximum="1000000" Increment="500"
                                        FormatString="0" Width="140"
                                        HorizontalAlignment="Left"
-                                       ToolTip.Tip="Lines the scrollback keeps. Applied on OK / Apply: the live buffer resizes, dropping the oldest lines when it shrinks."/>
+                                       ToolTip.Tip="Lines the scrollback keeps, up to 1,000,000. Applied on OK / Apply: the live buffer resizes, dropping the oldest lines when it shrinks. A deep scrollback costs memory: roughly 1 MB per thousand lines at most, often half that."/>
 
                         <TextBlock Grid.Row="3" Grid.Column="0" Classes="FieldLabel" Text="Wheel scroll (lines):"/>
                         <NumericUpDown Grid.Row="3" Grid.Column="1"

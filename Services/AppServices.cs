@@ -138,6 +138,18 @@ public sealed class AppServices
         if (!string.IsNullOrWhiteSpace(text)) _terminalNotice?.Invoke(text);
     }
 
+    // Connected with no game-data set: no monster, room or item can be named, so
+    // combat stands while unknown monsters swing and maps can't place anyone. Said
+    // at each connect, where the player will see it (reports stock-20261107-164322,
+    // stock-20261108-101445: a session's worth of that with no set active).
+    public void WarnIfNoGameData()
+    {
+        if (GameData.ActiveSet is not null) return;
+        Log.Warn("GameData", "Connected with no game-data set loaded: monsters, rooms and items can't be recognised.");
+        WriteTerminalNotice("[No game data is loaded: MudPlay can't recognise monsters, rooms or items, "
+            + "so auto-combat and navigation won't work properly. Import or pick a set from the Game Data menu.]");
+    }
+
     // The hang-up carve-out as the engines read it (the character's own tier),
     // for the bug report.
     public bool AllowHangupInAllOffMode =>
@@ -3224,19 +3236,7 @@ public sealed class AppServices
             if (seen && Tick.LastCombatTick is { } at) Regen.NoteRound(at);
         };
         Tick.DamageOffTheRound += TickTiming.NoteDamageOffTheRound;
-        // The game pays passive regen on a round boundary, so a gain keeps the round
-        // grid true while no fight is printing damage lines. A meditate tick is
-        // counted from the command on Stock and untimed on Paradigm: left out.
-        Regen.MaTickObserved += sample =>
-        {
-            if (sample.Position != Game.PlayerPosition.Meditating)
-                Tick.NoteGridTick(sample.Timestamp, authoritative: true);
-        };
-        Regen.HpTickObserved += sample =>
-        {
-            if (Regen.HpGainIsOnRoundGrid(sample.Position))
-                Tick.NoteGridTick(sample.Timestamp, authoritative: false);
-        };
+        Tick.FollowRegen(Regen);
         RegenDiagnostics = new Game.RegenDiagnosticsRecorder(Regen, PlayerState, Log,
             () => TickTiming.SinceLastSeenRound);
         Triggers = new TriggerEngine(Profile, Chat, Log, ProfileGameDataSet)
@@ -6503,6 +6503,7 @@ public sealed class AppServices
         RoundDamage.SetOwnSpellLineCheck(CombatSession.MatchesOwnSpell, CombatSession.MatchesOwnRoomSpell);
         RoundDamage.SetOwnSpellRepeating(() => Combat.IsRepeatingSpell);
         Combat.BackstabResolved += CombatSession.OnBackstabResolved;
+        Combat.AttackCastLanded += Tick.NoteRoundLine;
         Profile.ProfileLoaded  += _ => { CombatSession.Reset(); CombatSession.RefreshMatchers(); _attackSpellMatcherCache.Clear(); };
         Profile.ProfileMutated += _ => { CombatSession.RefreshMatchers(); _attackSpellMatcherCache.Clear(); };
         GameData.ActiveSetChanged += _ => { _ownSpellLineCache.Clear(); CombatSession.RefreshMatchers(); _attackSpellMatcherCache.Clear(); };

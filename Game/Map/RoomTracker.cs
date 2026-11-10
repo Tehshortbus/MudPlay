@@ -1152,6 +1152,11 @@ public sealed partial class RoomTracker
         return !(_pending.TryPeek(out PendingMove head) && head.SentAt <= _lookSentAt && HeadMoveEchoed(head));
     }
 
+    // A `look <dir>` sent and not yet answered by a room: a shut barrier answers it
+    // with `The door is closed in that direction!` and no room.
+    public bool LookAwaitsAnswer(DateTimeOffset? whenUtc = null) =>
+        _suppressObservationUntil is { } until && (whenUtc ?? _now()) <= until;
+
     // ----- Crossing a cast-on-walk teleport ---------------------------
     // The game shows such a step as two rooms: the room the exit names, which it
     // puts us in and displays before casting the exit's spell, and then the landing
@@ -3429,13 +3434,17 @@ public sealed partial class RoomTracker
 
     // Does an echoed command string name the head pending move? A cardinal move
     // echoes its wire token ("e", "ne", "u"); a text-exit move ("go path") echoes
-    // the verbatim command. Case-insensitive.
+    // the verbatim command. Case-insensitive. A text exit or teleport the engine
+    // crosses carries its cardinal too, for prediction, but the wire carries its
+    // command, so the command decides: matched on the cardinal, `move rubble` into a
+    // room named and exited like the one left was held as a re-look (issue #1204,
+    // report stock-20261109-225059).
     private static bool EchoMatchesHead(string echoed, PendingMove head)
     {
-        if (head.Cardinal is { } dir)
-            return DirectionExtensions.TryFromToken(echoed, out Direction d) && d == dir;
         if (head.Command is { } cmd)
             return string.Equals(echoed, cmd, StringComparison.OrdinalIgnoreCase);
+        if (head.Cardinal is { } dir)
+            return DirectionExtensions.TryFromToken(echoed, out Direction d) && d == dir;
         return false;
     }
 
