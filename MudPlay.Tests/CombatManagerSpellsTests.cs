@@ -1568,6 +1568,27 @@ public sealed class CombatManagerSpellsTests
         Assert.Equal("turn fierce wraith", h.LastSent);   // the cap of one is spent
     }
 
+    // Our attack spell landing is the round's action, printed on the combat round
+    // (user, 2026-11-10): the round clock is told, once for a cast's projectiles.
+    // Report paradigm-20261109-224453: the round `aslt` landed on wasn't counted,
+    // and the between-round cast slot read free a round late.
+    [Fact]
+    public void AttackSpellLanding_TellsTheRoundClock_OncePerCast()
+    {
+        using Harness h = new();
+        h.Settings.NormalAttackSpell = new CombatSpellSlot { SpellName = "disr", MinEnemies = 0 };
+        h.AddMonster(1, "fierce wraith");
+        int rounds = 0;
+        h.Combat.AttackCastLanded += () => rounds++;
+
+        h.Feed("Also here: fierce wraith.");
+        h.Feed("You cast disrupt at fierce wraith for 75 damage!");
+        h.AdvanceClock(TimeSpan.FromMilliseconds(300));
+        h.Feed("You cast disrupt at fierce wraith for 88 damage!");
+
+        Assert.Equal(1, rounds);
+    }
+
     [Fact]
     public void MaxCasts2_ConfirmedCastCount_GroupsProjectiles_CountsSeparateCasts_NoRoundCloseNeeded()
     {

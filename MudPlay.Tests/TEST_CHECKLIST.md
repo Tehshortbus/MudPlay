@@ -770,7 +770,7 @@ How to keep it current:
 
 ### CombatManagerSpellsTests.cs
 - Covers: Game/Combat/CombatManager (spell economy) + CastCoordinator, MonsterDeathWatcher, TickEngine
-- Checks: spell vs weapon choice; room-channel lifetime; arrival settle and moves in flight; MaxCasts counting; corpse-cast guards; resumes after interrupts; manual overrides; overrides and immunity; alternating/cycle orders; self-defence; attack timing; room-spell kills as deaths; a follow Target Priority stays on our running room attack when the followed player names a monster, and follows once the room no longer calls for it (user, 2026-10-31); a pre-attack debuff refused `You have already cast a spell this round!` still lets the room attack out that round (report paradigm-20261023-001124). Attack Not Last and follow-leader holds with spells: the first announce engages, a party member's or the leader's damage line releases, the deadline attacks once before the projected round, and a drag, a refused move or a late line from the room we left never ends the next room's hold. A switch from the attack spell onto the weapon logs each rung's reason for not firing, and the bug report keeps the latest (report paradigm-20261106-003158).
+- Checks: spell vs weapon choice; room-channel lifetime; arrival settle and moves in flight; MaxCasts counting; corpse-cast guards; resumes after interrupts; manual overrides; overrides and immunity; alternating/cycle orders; self-defence; attack timing; room-spell kills as deaths; a follow Target Priority stays on our running room attack when the followed player names a monster, and follows once the room no longer calls for it (user, 2026-10-31); a pre-attack debuff refused `You have already cast a spell this round!` still lets the room attack out that round (report paradigm-20261023-001124). Attack Not Last and follow-leader holds with spells: the first announce engages, a party member's or the leader's damage line releases, the deadline attacks once before the projected round, and a drag, a refused move or a late line from the room we left never ends the next room's hold. A switch from the attack spell onto the weapon logs each rung's reason for not firing, and the bug report keeps the latest (report paradigm-20261106-003158); our attack spell landing tells the round clock once per cast (report `paradigm-20261109-224453`).
 - Time: one `ManualClock` read by every component in the harness (combat manager, classifier, cast coordinator, death watcher, and the state tracker the room-spell tests build); each fed line or arrival lands 1 ms after the last, Tick() is a 5 s round, and nothing waits on real time. A fight that runs past its opening round is fed the game's `*Combat Engaged*`, or the engage-verify window (5 s) re-displays the room as it would live. No private member is reached by reflection.
 - Why: dozens of paradigm reports cited inline.
 
@@ -4354,9 +4354,9 @@ How to keep it current:
 - Why: Hang reports `Hang-20261030-151023` and `Hang-20261030-205313` froze outside every measured scope and couldn't name the code (user, 2026-10-30).
 
 ### TickEngineTests.cs
-- Covers: Game/TickEngine
-- Checks: damage lines start a round, but room heat doesn't (it raises DamageOffTheRound); the timer fallback round; the regen grid (mana sets it, HP only fine-tunes it); the round length is measured from regen passes; the "placed" flag; the combat-tick anchor; dispose.
-- Why: reports `paradigm-20260904-214056`, `paradigm-20261007-141844` and `paradigm-20261009-120757`.
+- Covers: Game/TickEngine (and its FollowRegen of RegenTracker)
+- Checks: damage lines start a round, but room heat doesn't (it raises DamageOffTheRound); a round line from the combat engine (NoteRoundLine) is a round seen; the timer fallback round; the regen grid (mana sets it, HP only fine-tunes it); a meditating mana gain fed through a real RegenTracker places the round on Paradigm and not on Stock; the round length is measured from regen passes; the "placed" flag; the combat-tick anchor; dispose.
+- Why: reports `paradigm-20260904-214056`, `paradigm-20261007-141844`, `paradigm-20261009-120757` and `paradigm-20261109-224453` (an unplaced early round while meditating freed the cast slot late and `isto` was refused).
 
 ### TickTimingLogTests.cs
 - Covers: Game/TickTimingLog (with RegenTracker)

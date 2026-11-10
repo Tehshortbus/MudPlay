@@ -3983,7 +3983,11 @@ The same applies to the **starter navigation loops** that come bundled with each
 
 ## Importing and switching sets
 
-The top **Game Data** menu (in the menu bar) manages your data sets:
+The top **Game Data** menu (in the menu bar) manages your data sets.
+
+**Playing with no set loaded.** Without game data MudPlay can't name any monster, room or item: auto-combat only attacks a monster it saw walk in, and the map can't place you. Each time you connect with no set active, a yellow line on the terminal says so (and the program log keeps a warning), until you import or pick one here.
+
+The menu has:
 
 - **Import .mdb…** — pick a MajorMUD `.MDB` file; MudPlay imports it as a new named set and switches to it. This populates the tables the engines read from — the terminal itself works without it. If you import after launch, the startup splash is dismissed so the import's progress and any errors show on the terminal. The **MDB IMPORT COMPLETE** line names the set, its table and entry counts, and what that export carries: **lairs table: yes / no** (newer exports add a Lairs table) and **room commands: yes (N items) / no** (item sources by room command, written by Nightmare Redux for Linux). An export can have either, both or neither. A table named like one of MudPlay's own files in the set (a `Messages` table, which newer Anomaly exports carry, would land on the set's own `messages.json` on Windows and macOS) is left out, and the completion message lists it under **Not imported**: nothing reads such a table. Importing switches the game data, and importing over the active set reads it in again: either stops a loop, Auto-Lair or walk in progress (see **Switching game data, or importing the active set again, stops what is walking** under *Building and running a loop*).
   - **"No game tables found"** means the MDB's internal catalog is damaged — usually from being opened and edited in Microsoft Access without a *Compact and Repair* afterward, which detaches the game tables from the database's object list. MudPlay won't switch to an empty set; to fix it, run Access's **Database Tools → Compact and Repair Database**, or re-export a fresh MDB from Nightmare Redux, then import again. (The Program Log records the catalog scan so you can confirm what the database reported.)

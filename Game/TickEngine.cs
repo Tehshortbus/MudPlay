@@ -272,6 +272,36 @@ public sealed partial class TickEngine : ObservableObject, IDisposable
         _lastPlaced = at;
     }
 
+    // The game pays regen on a round boundary, so a gain keeps the round grid true
+    // while no fight is printing damage lines: a mana gain placing it, an HP gain
+    // fine-tuning it, each only where the realm pays that gain on the round.
+    public void FollowRegen(RegenTracker regen)
+    {
+        ArgumentNullException.ThrowIfNull(regen);
+        _regen = regen;
+        regen.MaTickObserved += OnMaGain;
+        regen.HpTickObserved += OnHpGain;
+    }
+
+    private RegenTracker? _regen;
+
+    private void OnMaGain(RegenSample sample)
+    {
+        if (_regen!.MaGainIsOnRoundGrid(sample.Position)) NoteGridTick(sample.Timestamp, authoritative: true);
+    }
+
+    private void OnHpGain(RegenSample sample)
+    {
+        if (_regen!.HpGainIsOnRoundGrid(sample.Position)) NoteGridTick(sample.Timestamp, authoritative: false);
+    }
+
+    // A line the combat engine knows for the round's own action (our attack spell
+    // landing), worded as no hit pattern reads.
+    public void NoteRoundLine()
+    {
+        if (!_disposed) RecordCombatTick();
+    }
+
     // Damage-line callback. Stamps LastCombatTick at now and fires
     // CombatTickElapsed the first time per debounce window. Subsequent damage
     // hits for the same physical line (the UserHits regex is broad enough to
@@ -363,5 +393,10 @@ public sealed partial class TickEngine : ObservableObject, IDisposable
         _poll = null;
         foreach (IDisposable sub in _patternSubs) sub.Dispose();
         _patternSubs.Clear();
+        if (_regen is not null)
+        {
+            _regen.MaTickObserved -= OnMaGain;
+            _regen.HpTickObserved -= OnHpGain;
+        }
     }
 }

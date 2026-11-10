@@ -1,6 +1,6 @@
 # Version history
 
-## 3.202.7
+## 3.202.9
 
 - A loop no longer stalls on a text exit (`move rubble`) into a room that looks like the one it left
 - A loop step through a text exit or teleport is watched for a stall like any move
@@ -9,7 +9,9 @@
 - Profile Management follows a BBS renamed or removed in Settings
 - Scrollback holds up to 1,000,000 lines, with memory taken only as it fills
 - MMUD Reborn's `sys stat` reply is read for the room
-- bug reports addressed: stock-20261109-225059 (issue #1204), stock-20261107-160125, stock-20261107-160203, stock-20261107-164322, stock-20261108-101329, stock-20261108-101445
+- A between-round cast no longer goes out into a round already spent when the game's clock jumps (while meditating, or on an attack spell's round)
+- Connecting with no game data loaded says so on the terminal
+- bug reports addressed: stock-20261109-225059 (issue #1204), stock-20261107-160125, stock-20261107-160203, stock-20261107-164322, stock-20261108-101329, stock-20261108-101445, paradigm-20261109-224453
 
 ## 3.202.0
 

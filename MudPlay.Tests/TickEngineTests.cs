@@ -313,6 +313,47 @@ public sealed class TickEngineTests
 
     // ----- the round as this board runs it ---------------------------------
 
+    // On Paradigm a mana gain while meditating falls on the combat round (user,
+    // 2026-11-10), a second early when the game makes up its lost second; on Stock it
+    // is counted from the command. Report paradigm-20261109-224453: the early round
+    // went unplaced, the projection ran a second late, and `isto` was refused.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void AMeditatingManaGain_PlacesTheRoundOnParadigmOnly(bool paradigm)
+    {
+        var (router, tick, now, advance) = SetupClocked();
+        PlayerState state = new();
+        using RegenTracker regen = new(state, now);
+        if (paradigm) regen.SetRealm(RealmType.ParaMud);
+        tick.FollowRegen(regen);
+        state.Ma = 95;
+        router.Dispatch(Line("The nasty pinion rat lunges at you!"));
+        DateTimeOffset seen = now();
+
+        state.Position = PlayerPosition.Meditating;
+        advance(9.089);
+        state.Ma = 575;
+        _polls.RunAll();
+
+        Assert.Equal(paradigm ? now() : seen + tick.RoundLength, tick.LastCombatTick);
+        tick.Dispose();
+    }
+
+    // A line the combat engine knows for the round's own action is a round seen.
+    [Fact]
+    public void ARoundLine_IsARoundSeenOnTheWire()
+    {
+        var (_, tick, now, advance) = SetupClocked();
+        advance(1);
+
+        tick.NoteRoundLine();
+
+        Assert.Equal(now(), tick.LastCombatTick);
+        Assert.True(tick.LastCombatTickWasDamageDriven);
+        tick.Dispose();
+    }
+
     // Report paradigm-20261007-141844: mana gains 30.33 s apart are six rounds of
     // 5.055 s. Projected at five seconds flat, the sixth round was a third of a
     // second ahead of the real one, and a cast sent on it was refused.
