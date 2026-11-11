@@ -160,6 +160,18 @@ public sealed class AutoLightProvisioner
     // when we ready a fresh light.
     private bool _readiedLightBurnedOut;
 
+    // The game called a room dark that the light we believe is lit should light, so
+    // the belief is stale: a burn-out line we never read, or a `use` the game never
+    // answered. Nothing else retires it short of an `i`, so the loop walked a dark
+    // circuit for half an hour, its light "lit" (report stock-20261110-180204).
+    // _litCheckAgainst is the snapshot time the `i` sent to check must beat, null
+    // when none is out. _litCheckSpent holds once a check has gone out for the light
+    // believed lit, so a room that stays dark under a light that really is lit costs
+    // one read, not one per can't-see line; readying another light or Forget clears
+    // it.
+    private DateTimeOffset? _litCheckAgainst;
+    private bool _litCheckSpent;
+
     // A light-making spell cast whose item hasn't shown in a dump yet: the item's
     // name, the spell's name and caster line, the snapshot it was cast against, and
     // whether the `i` that reads the item went out. The game gives the item with
@@ -315,6 +327,8 @@ public sealed class AutoLightProvisioner
         _pendingReadyName = null;
         _autoReadiedName = null;
         _readiedLightBurnedOut = false;
+        _litCheckAgainst = null;
+        _litCheckSpent = false;
         _madeItem = null;
         _spellShort = null;
         _reorderRequestedFor = null;
@@ -331,6 +345,8 @@ public sealed class AutoLightProvisioner
         RoomLightSpell? spell = _roomLightSpell();
         string lit = snap.ReadiedLight is { } r ? $"{r.Name} (Readied/{r.Readied})" : "nothing";
         if (_readiedLightBurnedOut) lit += ", burned out since the last `i`";
+        if (_litCheckAgainst is not null) lit += ", contradicted by a dark room, `i` out to check";
+        else if (_litCheckSpent) lit += ", checked after a dark room";
         string spellText = spell is { } s
             ? $"{s.CastCode} ({s.Name}, {s.Kind}, illu {s.Strength}{(s.IsBuff ? (_roomLightSpellUp(s.CastCode) ? ", up" : ", not up") : string.Empty)})"
             : "none";
@@ -549,6 +565,7 @@ public sealed class AutoLightProvisioner
         _readiedLightBurnedOut = false;
         RetireReorderLatch(snap.ReadiedLight);
         TakeMadeItem(snap);
+        TakeLitCheck(snap);
         if (EngineRunning) RequestEngineCheck(null, "the pack changed");
         if (snap.ReadiedLight is null) return;
 
@@ -713,6 +730,8 @@ public sealed class AutoLightProvisioner
                 }
             }
         }
+
+        if (!spellOnly) CheckLitLight(here);
 
         if (!spellOnly && TryReadyBestCarried("dark room observed: ready carried light", only: null))
         {
@@ -943,6 +962,41 @@ public sealed class AutoLightProvisioner
             _wire.Send(string.Empty);
     }
 
+    // A can't-see line in a room that needs a light, where what we believe is lit
+    // (a `use` in flight, or the last dump's readied light) should be enough: read
+    // the inventory once to find out what is really lit.
+    private void CheckLitLight(Room? here)
+    {
+        if (_litCheckSpent || here is null) return;
+        InventorySnapshot snap = _snapshot();
+        RetirePendingReady(snap);
+        int lit = LitStrength(snap, _catalogue());
+        int seen = _wornIllu() + BuffStrength(_roomLightSpell());
+        // A room seeable without the light (a stale room the tracker hasn't left)
+        // says nothing about it; one the light can't cover is just too dark.
+        if (LightModel.IlluGapToSee(seen, here.Light) == 0
+            || LightModel.IlluGapToSee(seen + lit, here.Light) != 0)
+            return;
+        string name = _pendingReadyName ?? snap.ReadiedLight?.Name ?? "light";
+        _litCheckAgainst = snap.LastUpdated;
+        _litCheckSpent = true;
+        _wire.Send("i");
+        _log?.Info(LogCategory,
+            $"{here.Key} is dark though the {name} believed lit should light it — reading the inventory");
+    }
+
+    // The dump the lit-light check asked for: what it says is lit now stands, so
+    // standing in the dark lights a carried one at once.
+    private void TakeLitCheck(InventorySnapshot snap)
+    {
+        if (_litCheckAgainst is not { } against || snap.LastUpdated <= against) return;
+        _litCheckAgainst = null;
+        _log?.Info(LogCategory, snap.ReadiedLight is { } lit
+            ? $"inventory read: {lit.Name} is lit"
+            : "inventory read: nothing is lit");
+        if (_inDarkRoom()) OnDarkRoomObserved();
+    }
+
     // Whether the spell is lighting us right now: the buff's timer is running, or
     // the item it makes is lit by the last `i` — a `use` or a making still in flight
     // doesn't count, so an unconfirmed light never latches the spell.
@@ -1157,6 +1211,7 @@ public sealed class AutoLightProvisioner
         _pendingSnapshotTime = snapTime;
         _autoReadiedName = name;
         _readiedLightBurnedOut = false;
+        _litCheckSpent = false;
         _log?.Info(LogCategory, $"readied {name} ({reason})");
     }
 

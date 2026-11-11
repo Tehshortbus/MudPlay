@@ -1,5 +1,11 @@
 # Version history
 
+## 3.202.11
+
+- Auto-Light reads the inventory when a room stays dark under a light it thinks is lit, and lights a spare
+- A class with no mana no longer sends `stat` every minute looking for a mana line it never prints
+- bug reports addressed: stock-20261110-180204 (issue #1206)
+
 ## 3.202.10
 
 - A highlighted line no longer pulls the Conversation window (or the program log) back up to it as new lines arrive

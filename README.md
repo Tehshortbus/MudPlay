@@ -1,9 +1,10 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.202.10**
+> **Version 3.202.11**
 >
-> - A highlighted line no longer pulls the Conversation window (or the program log) back up to it as new lines arrive
+> - Auto-Light reads the inventory when a room stays dark under a light it thinks is lit, and lights a spare
+> - A class with no mana no longer sends `stat` every minute looking for a mana line it never prints
 <!-- current-version:end -->
 
 A modern Telnet terminal client for **MajorMUD** and other BBS door games, built in C# / .NET 10 with [Avalonia](https://avaloniaui.net/). It renders a faithful CP437 cell grid with full VT100/ANSI parsing, and layers a MegaMUD-style automation suite (combat, party, navigation, healing, and more) on top — all in modeless, dockable windows so the terminal stays live while you configure anything.
