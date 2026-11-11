@@ -356,6 +356,94 @@ public sealed class AutoLightProvisionerTests
         Assert.Empty(h.Sent);
     }
 
+    // Report stock-20261110-180204: a loop walked a dark circuit for half an hour
+    // with spare torches in the pack, because the last dump said a torch was lit.
+    [Fact]
+    public void Reactive_DarkWhereTheLitLightShouldSee_ReadsTheInventoryOnce_ThenLightsASpare()
+    {
+        Harness h = new()
+        {
+            Here = RoomAt(A, -175), InDark = true,
+            Snapshot = Snap(carried: new[] { "2 torch" }, readied: new ReadiedLight("torch", 30)),
+        };
+        h.Dark();
+        h.Dark();   // the read is on its way: nothing more goes out
+        Assert.Equal(new[] { "i" }, h.Sent);
+
+        h.Snapshot = Snap(carried: new[] { "2 torch" }, stamp: 2);
+        h.Poll();
+        Assert.Equal(new[] { "i", "use torch", "" }, h.Sent);
+    }
+
+    [Fact]
+    public void Reactive_DarkAfterAUseTheGameNeverAnswered_ReadsTheInventory()
+    {
+        Harness h = new() { Here = RoomAt(A, -175), InDark = true, Snapshot = Snap(carried: new[] { "2 torch" }) };
+        h.Dark();
+        Assert.Equal(new[] { "use torch", "" }, h.Sent);
+
+        h.Dark();   // the CR's answer: still dark, so the `use` didn't light it
+        Assert.Equal(new[] { "use torch", "", "i" }, h.Sent);
+
+        h.Snapshot = Snap(carried: new[] { "2 torch" }, stamp: 2);
+        h.Poll();
+        Assert.Equal(new[] { "use torch", "", "i", "use torch", "" }, h.Sent);
+    }
+
+    [Fact]
+    public void Reactive_DarkWhileTheLightReallyIsLit_ReadsTheInventoryOnlyOnce()
+    {
+        Harness h = new()
+        {
+            Here = RoomAt(A, -175), InDark = true,
+            Snapshot = Snap(carried: new[] { "torch" }, readied: new ReadiedLight("torch", 30)),
+        };
+        h.Dark();
+        h.Snapshot = Snap(carried: new[] { "torch" }, readied: new ReadiedLight("torch", 30), stamp: 2);
+        h.Poll();
+        h.Dark();
+        Assert.Equal(new[] { "i" }, h.Sent);
+    }
+
+    [Fact]
+    public void Reactive_ALightReadiedAfterACheck_IsCheckedAgainWhenTheRoomStaysDark()
+    {
+        Harness h = new()
+        {
+            Here = RoomAt(A, -175), InDark = true,
+            Snapshot = Snap(carried: new[] { "lantern" }, readied: new ReadiedLight("torch", 30)),
+        };
+        h.Dark();
+        Assert.Equal(new[] { "i", "rem torch", "use lantern", "" }, h.Sent);
+
+        h.Dark();   // the lantern's `use` went unanswered too
+        Assert.Equal(new[] { "i", "rem torch", "use lantern", "", "i" }, h.Sent);
+    }
+
+    [Fact]
+    public void Reactive_DarkWhileTheTrackerStillHoldsALitRoom_ReadsNothing()
+    {
+        Harness h = new()
+        {
+            Here = RoomAt(A, 0), InDark = true,
+            Snapshot = Snap(carried: new[] { "torch" }, readied: new ReadiedLight("torch", 30)),
+        };
+        h.Dark();
+        Assert.Empty(h.Sent);
+    }
+
+    [Fact]
+    public void Reactive_DarkTooDeepForTheLitLight_ReadsNothing()
+    {
+        Harness h = new()
+        {
+            Here = RoomAt(A, -300), InDark = true,
+            Snapshot = Snap(carried: new[] { "torch" }, readied: new ReadiedLight("torch", 30)),
+        };
+        h.Dark();
+        Assert.Empty(h.Sent);
+    }
+
     [Fact]
     public void Reactive_DarkObserved_Disabled_SendsNothing()
     {

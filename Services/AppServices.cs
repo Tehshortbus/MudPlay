@@ -3586,7 +3586,10 @@ public sealed class AppServices
                 Stats.LastCaptureReadPool ? snapshot.MaxMana : 0);
             NotePoolType(snapshot.MaxMana, snapshot.MaxKai);
             // A full `stat` with the Default set on records the rest engine's basis.
-            if (Stats.LastCaptureReadHits && Stats.LastCaptureReadPool)
+            // A class with no magery prints no pool line at all, so for it Hits is the
+            // whole screen; waiting for a pool there re-sent `stat` every minute for
+            // the whole session (report stock-20261110-180204, a Witchunter).
+            if (Stats.LastCaptureReadHits && (Stats.LastCaptureReadPool || ClassHasNoPool(snapshot.Class)))
             {
                 PoolBaseline.OnStatScreen(snapshot.MaxHits,
                     snapshot.MaxMana > 0 ? snapshot.MaxMana : snapshot.MaxKai);
@@ -14561,6 +14564,13 @@ public sealed class AppServices
         Log.Info("Spellbook", $"no learned spells are known for this character — sending `{command}` to read them");
         SendGameCommand(command);
     }
+
+    // The class's game-data row gives it no magery, so it has no Mana or Kai pool.
+    // False when the class or its row isn't known.
+    private bool ClassHasNoPool(string? className)
+        => !string.IsNullOrWhiteSpace(className)
+           && GameData.FindRowByName("Classes", className) is not null
+           && Game.Calculators.StatContext.Resolve(GameData, className, null, GameData.ActiveRealm).MageryType == 0;
 
     // Whether the character's pool is mana or kai, from its stat screen — how a custom
     // statline's %m reads when no MA= / KAI= label sits in front of it.
