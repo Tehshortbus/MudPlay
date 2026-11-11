@@ -1,16 +1,9 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.202.9**
-> - A loop no longer stalls on a text exit (`move rubble`) into a room that looks like the one it left
-> - A loop step through a text exit or teleport is watched for a stall like any move
-> - A `look` refused at a shut door no longer reads as a refused move
-> - A monster the game data can't name stays a monster after the room redisplays, and is attacked
-> - Profile Management follows a BBS renamed or removed in Settings
-> - Scrollback holds up to 1,000,000 lines, with memory taken only as it fills
-> - MMUD Reborn's `sys stat` reply is read for the room
-> - A between-round cast no longer goes out into a round already spent when the game's clock jumps (while meditating, or on an attack spell's round)
-> - Connecting with no game data loaded says so on the terminal
+> **Version 3.202.10**
+>
+> - A highlighted line no longer pulls the Conversation window (or the program log) back up to it as new lines arrive
 <!-- current-version:end -->
 
 A modern Telnet terminal client for **MajorMUD** and other BBS door games, built in C# / .NET 10 with [Avalonia](https://avaloniaui.net/). It renders a faithful CP437 cell grid with full VT100/ANSI parsing, and layers a MegaMUD-style automation suite (combat, party, navigation, healing, and more) on top — all in modeless, dockable windows so the terminal stays live while you configure anything.

@@ -156,11 +156,15 @@
         </Border>
 
         <!-- ============ Entries list ============ -->
+        <!-- AutoScrollToSelectedItem off: once the list is full, trimming the oldest row
+             moves the selection's index on every new entry, and the list scrolled back
+             to the selected row each time, fighting the tail-follow. -->
         <ListBox x:Name="RowsList"
                  ItemsSource="{Binding Rows}"
                  Background="{StaticResource ChromeBgSunkenBrush}"
                  BorderThickness="0"
-                 SelectionMode="Multiple">
+                 SelectionMode="Multiple"
+                 AutoScrollToSelectedItem="False">
             <ListBox.ItemTemplate>
                 <DataTemplate DataType="vm:LogPaneRowViewModel">
                     <Grid ColumnDefinitions="Auto,Auto,Auto,*" Margin="4,2">

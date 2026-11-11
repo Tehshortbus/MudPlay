@@ -1,5 +1,9 @@
 # Version history
 
+## 3.202.10
+
+- A highlighted line no longer pulls the Conversation window (or the program log) back up to it as new lines arrive
+
 ## 3.202.9
 
 - A loop no longer stalls on a text exit (`move rubble`) into a room that looks like the one it left
