@@ -215,12 +215,17 @@
              build the rows at the TOP of the history, only for the open to jump
              straight to the newest line and build that end as well. The open's
              first pin moves the view to the end and then lifts it (OnOpened). -->
+        <!-- AutoScrollToSelectedItem off: the list scrolls to its selection whenever the
+             selection's index moves, and trimming the oldest row moves it on every new
+             line, so a highlighted line far up the history dragged the view to it and the
+             tail pin dragged it back, flickering. Arrow keys scroll through the panel. -->
         <ListBox x:Name="RowsList"
                  ItemsSource="{Binding Rows}"
                  Background="{StaticResource ChromeBgSunkenBrush}"
                  BorderThickness="0"
                  Padding="4"
                  SelectionMode="Multiple,Toggle"
+                 AutoScrollToSelectedItem="False"
                  MaxHeight="0"
                  KeyDown="OnRowsKeyDown">
             <ListBox.Styles>
