@@ -1,4 +1,5 @@
 using System.Text.Json;
+using MudPlay.Game.GameData;
 using MudPlay.Game.Inventory;
 using MudPlay.Models.Profile;
 using MudPlay.Services;
@@ -49,11 +50,6 @@ public sealed class MaxStrengthIndex
     // Ability slots on an Items row (Abil-0..19).
     private const int ItemAbilitySlots = 20;
 
-    // Item ability code 188 (AbilityNames "Unique Pool"): flags a "held"
-    // item whose stats apply just by being carried, and whose AbilVal is
-    // the pool id — only one item may be held per pool.
-    private const int UniquePoolCode = 188;
-
     private readonly GameDataCache _cache;
     private int? _max;
 
@@ -94,7 +90,7 @@ public sealed class MaxStrengthIndex
         {
             int bonus = StrengthBonus(row, ItemAbilitySlots);
 
-            if (TryUniquePool(row, out int pool))
+            if (AbilityNames.TryUniquePool(row, out int pool, ItemAbilitySlots))
             {
                 if (!bestPerPool.TryGetValue(pool, out int best) || bonus > best)
                     bestPerPool[pool] = bonus;
@@ -169,21 +165,6 @@ public sealed class MaxStrengthIndex
             sum += ReadInt(row, $"AbilVal-{i}");
         }
         return sum;
-    }
-
-    // A Unique-Pool (code 188) item's stats apply while carried, not worn; its AbilVal is
-    // the pool id, and only one item per pool may be held. Returns false when the row
-    // carries no such flag (so it flows through the normal worn/wielded gear path).
-    private static bool TryUniquePool(GameRow row, out int pool)
-    {
-        for (int i = 0; i < ItemAbilitySlots; i++)
-        {
-            if (ReadInt(row, $"Abil-{i}") != UniquePoolCode) continue;
-            pool = ReadInt(row, $"AbilVal-{i}");
-            return true;
-        }
-        pool = 0;
-        return false;
     }
 
     private static int ReadInt(GameRow row, string property)

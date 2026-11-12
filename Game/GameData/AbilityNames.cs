@@ -315,6 +315,28 @@ public static class AbilityNames
         return false;
     }
 
+    // Item ability 188 (Unique Pool): a character carries one item of a pool at a time,
+    // the AbilVal being the pool id (GAME_MECHANICS "One-per-pool items (ability 188
+    // `Unique Pool`)"). Items rows have 20 ability slots.
+    private const int UniquePoolCode = 188;
+
+    // The Unique Pool an Items row belongs to; false when it carries no such ability.
+    public static bool TryUniquePool(MudPlay.Services.GameRow element, out int pool, int slots = 20)
+    {
+        for (int i = 0; i < slots; i++)
+        {
+            if (!element.TryGetProperty($"Abil-{i}", out MudPlay.Services.GameValue codeEl)) continue;
+            if (codeEl.ValueKind != System.Text.Json.JsonValueKind.Number) continue;
+            if (!codeEl.TryGetInt32(out int code) || code != UniquePoolCode) continue;
+            pool = element.TryGetProperty($"AbilVal-{i}", out MudPlay.Services.GameValue valEl)
+                   && valEl.ValueKind == System.Text.Json.JsonValueKind.Number
+                   && valEl.TryGetInt32(out int v) ? v : 0;
+            return true;
+        }
+        pool = 0;
+        return false;
+    }
+
     // Render one decoded ability slot — "AC +10", "Slowness -5", or "RaceStealth"
     // (name only, value 0).
     private static string FormatPart(string name, int value)

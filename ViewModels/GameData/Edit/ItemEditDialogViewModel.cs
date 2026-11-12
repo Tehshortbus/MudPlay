@@ -95,6 +95,7 @@ public sealed partial class ItemEditDialogViewModel : ObservableObject, IDialogV
     private readonly HashSet<string> _sellShops = new(StringComparer.Ordinal);
     [ObservableProperty] private bool _autoStash;
     [ObservableProperty] private bool _cannotBeTaken;
+    [ObservableProperty] private bool _carryOnlyOne;
     [ObservableProperty] private bool _mustHaveMinimum;
     [ObservableProperty] private bool _loyalItem;
 
@@ -316,6 +317,7 @@ public sealed partial class ItemEditDialogViewModel : ObservableObject, IDialogV
         SellDetourAbove = existing?.SellDetourAbove ?? string.Empty;
         AutoStash       = existing?.AutoStash       ?? false;
         CannotBeTaken   = existing?.CannotBeTaken   ?? false;
+        CarryOnlyOne    = existing?.CarryOnlyOne    ?? false;
         MustHaveMinimum = existing?.MustHaveMinimum ?? false;
         LoyalItem       = existing?.LoyalItem       ?? false;
 
@@ -426,14 +428,14 @@ public sealed partial class ItemEditDialogViewModel : ObservableObject, IDialogV
         string.Equals(Name.Trim(), _mdbName, StringComparison.Ordinal) ? string.Empty : Name,
         AutoCollect, AutoDiscard, AutoOpen, AutoBuy, AutoSell,
         SellDetour, SellDetourAbove, SellShopsWire(), AutoStash,
-        CannotBeTaken, MustHaveMinimum, LoyalItem, AutoObtainForPath, MinToKeep, MaxToGet);
+        CannotBeTaken, CarryOnlyOne, MustHaveMinimum, LoyalItem, AutoObtainForPath, MinToKeep, MaxToGet);
 
     // The record as the boxes leave it: what the chosen tier is to yield, with a
     // box left clear as unset. GameDataOverrideApplier.ApplyItemAsync saves it.
     private static ItemOverlay Compose(
         string name, bool autoCollect, bool autoDiscard, bool autoOpen, bool autoBuy,
         bool autoSell, bool sellDetour, string sellDetourAbove, string sellShops,
-        bool autoStash, bool cannotBeTaken, bool mustHaveMinimum,
+        bool autoStash, bool cannotBeTaken, bool carryOnlyOne, bool mustHaveMinimum,
         bool loyalItem, bool autoObtainForPath, string minToKeep, string maxToGet)
         => new()
         {
@@ -449,6 +451,7 @@ public sealed partial class ItemEditDialogViewModel : ObservableObject, IDialogV
             SellShops         = string.IsNullOrWhiteSpace(sellShops) ? null : sellShops,
             AutoStash         = autoStash       ? true : null,
             CannotBeTaken     = cannotBeTaken   ? true : null,
+            CarryOnlyOne      = carryOnlyOne    ? true : null,
             MustHaveMinimum   = mustHaveMinimum ? true : null,
             LoyalItem         = loyalItem       ? true : null,
             AutoObtainForPath = autoObtainForPath ? true : null,

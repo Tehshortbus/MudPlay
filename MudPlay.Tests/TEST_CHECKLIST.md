@@ -1597,8 +1597,8 @@ How to keep it current:
 
 ### GhSweepManagerIntegrationTests.cs
 - Covers: Game/Map/GhSweepManager end to end
-- Checks: recon/search/sort/deliver; paced dispatch and rate-limit resend; refusal handling; capacity resync; resume from a persisted queue (refused across sets); stalled-sort finish; multi-unit confirms; full destinations; inventory-only mode; managed-room gate.
-- Why: many Roomba field reports (120-room flood, 70-lap bug, 42× get).
+- Checks: recon/search/sort/deliver; paced dispatch and rate-limit resend; refusal handling; capacity resync; resume from a persisted queue (refused across sets); stalled-sort finish; multi-unit confirms; full destinations; inventory-only mode; managed-room gate. An item the game lets you hold only one of: unmarked, the carry-limit refusal of a counted get turns it into one copy a trip (one asked for at once, the next only after delivery), and a refused single copy leaves the pile; marked Carry only one, it is got one copy at a time from the start; already held outside the sweep, it is left with no get sent.
+- Why: many Roomba field reports (120-room flood, 70-lap bug, 42× get); `get 6 glass orb` refused every lap (user, 2026-11-12).
 
 ### GhSweepReconRecordTests.cs
 - Covers: Game/Map/GhSweepManager recon records (via RoombaHouse)
@@ -1950,9 +1950,14 @@ How to keep it current:
 - Checks: lookup by number; IsRecordName; the off-hand and slot lists and their clearing on a null set; PackStealthOf.
 - Why: item name resolution
 
+### ItemOverlaySeedStoreTests.cs
+- Covers: Services/ItemOverlaySeedStore (with AbilityNames.TryUniquePool)
+- Checks: an item of a Unique Pool (ability 188) in the set's Items table starts as Carry only one in the installed defaults; an item without one doesn't.
+- Why: the game lets a character carry one item of a pool at a time, so Roomba plans the orbs one copy a trip with nothing set up (user, 2026-11-12).
+
 ### ItemOverrideSaveTests.cs
 - Covers: Services/GameDataOverrideApplier.ApplyItemAsync / ApplyFieldsAt, driven by ItemEditDialogViewModel's Save and ItemBatchChanges (with SettingsResolver.ResolveGameDataBelow / ReadGameDataAt)
-- Checks: a character-tier untick over a Global tick is off; a record set back to its installed defaults over a differing Global still yields the defaults, holding only the boxes that differ below; set back with nothing below it clears the override; one box changed leaves the others resolving as before; only changed boxes are saved, so a character save doesn't copy a Global value up and a Global save doesn't copy a character's value down; a realm record set back to its defaults clears; the batch editor saves only its chosen fields, its off over a realm tick is off, back to defaults clears, and its Auto-sell off turns a Global sell detour off too. A save builds on the override file as it stands on disk, not a copy cached before another client changed it. Use moved to another tier copies the shown values there, and OK on the same tier with nothing changed saves nothing. A save that fails to reach the disk leaves the cached record as the file has it. The tiers not saved at are never written.
+- Checks: a character-tier untick over a Global tick is off; a record set back to its installed defaults over a differing Global still yields the defaults, holding only the boxes that differ below; set back with nothing below it clears the override; one box changed leaves the others resolving as before; only changed boxes are saved, so a character save doesn't copy a Global value up and a Global save doesn't copy a character's value down; a realm record set back to its defaults clears; the batch editor saves only its chosen fields, its off over a realm tick is off, back to defaults clears, and its Auto-sell off turns a Global sell detour off too. Carry only one, ticked by the installed defaults, is saved as off when unticked and cleared from the tier when ticked back. A save builds on the override file as it stands on disk, not a copy cached before another client changed it. Use moved to another tier copies the shown values there, and OK on the same tier with nothing changed saves nothing. A save that fails to reach the disk leaves the cached record as the file has it. The tiers not saved at are never written.
 - Why: an untick at the character tier left a Global tick showing, and a record set back to its defaults didn't return to them (user, 2026-10-17).
 
 ### ItemRecordDialogServiceTests.cs

@@ -4046,7 +4046,7 @@ public sealed class AppServices
         // Parallel of MonsterOverlaySeed — same Info.Legit-driven realm
         // pick + per-set reload; consumers retrieve baselines via
         // ItemOverlaySeed.GetOverlay(number).
-        ItemOverlaySeed = new ItemOverlaySeedStore(Log);
+        ItemOverlaySeed = new ItemOverlaySeedStore(GameData, Log);
         GameData.ActiveSetChanged += ItemOverlaySeed.Load;
         // Coverage audit — fires on every set switch + every Messages
         // CollectionChanged; emits a summary LogEntry tagged
@@ -9575,6 +9575,8 @@ public sealed class AppServices
             // items can't outrun the game's command-rate limit and have the whole
             // batch — plus the loop's next move — silently dropped.
             promptScanner: PromptScanner,
+            // Items the game lets us hold only one of are moved one copy a trip.
+            carryOnlyOneGroup: CarryOnlyOneGroup,
             // Carries an interrupted sweep forward: the items it was holding are
             // still in the pack with only its queue knowing where each belonged,
             // and its remaining plan is a full lap of the circuit to rebuild.
@@ -15485,6 +15487,19 @@ public sealed class AppServices
             number, name, ResolveItemOverlay(number).AutoOpen ?? false);
     }
 
+    // Where Roomba keeps an item's hold-only-one limit: its Unique Pool, whose items
+    // share the one (GAME_MECHANICS "One-per-pool items (ability 188 `Unique Pool`)"),
+    // else the item itself. Null when the item's record isn't Carry only one.
+    private string? CarryOnlyOneGroup(string itemName)
+    {
+        if (ItemNames.FindByName(itemName) is not int number
+            || ResolveItemOverlay(number).CarryOnlyOne != true) return null;
+        return GameData.FindRowByNumber("Items", number) is { } row
+               && Game.GameData.AbilityNames.TryUniquePool(row, out int pool)
+            ? $"pool {pool}"
+            : $"item {number}";
+    }
+
     // The 4-tier ItemOverlay for an item Number (Defaults seed → Global → BBS →
     // Char). Shared by the auto-collect / stash / discard / buy / sell resolvers.
     private Models.GameData.ItemOverlay ResolveItemOverlay(int number) =>
@@ -16405,11 +16420,15 @@ public sealed class AppServices
     private static int KeepFloor(Models.GameData.ItemOverlay overlay) =>
         (overlay.MustHaveMinimum ?? false) ? Models.GameData.ItemOverlay.ParseCount(overlay.MinToKeep, 0) : 0;
 
-    // Acquisition cap for the buy engine: MaxToGet as an int, with the "All"
-    // sentinel and blank / non-numeric strings meaning unbounded (int.MaxValue →
-    // buy the whole affordable stock).
-    private static int MaxCap(Models.GameData.ItemOverlay overlay) =>
-        Models.GameData.ItemOverlay.ParseCount(overlay.MaxToGet, int.MaxValue);
+    // Acquisition cap for the collect and buy engines: MaxToGet as an int, with the
+    // "All" sentinel and blank / non-numeric strings meaning unbounded (int.MaxValue →
+    // buy the whole affordable stock), and never above one for an item the game lets
+    // us hold only one of: a second get or buy would only be refused.
+    private static int MaxCap(Models.GameData.ItemOverlay overlay)
+    {
+        int cap = Models.GameData.ItemOverlay.ParseCount(overlay.MaxToGet, int.MaxValue);
+        return overlay.CarryOnlyOne == true ? Math.Min(cap, 1) : cap;
+    }
 
     // Resolve a single carried-inventory entry for Stash: map the loose carry
     // wording to an item Number, read its verbatim Name, and resolve the

@@ -81,6 +81,27 @@ public sealed class ItemOverrideSaveTests : IDisposable
             result!.WccNoStr, result.Tier, result.Overlay, seed, result.Changed, result.MovedFrom);
     }
 
+    // Carry only one starts ticked for a Unique Pool item (its installed defaults),
+    // so an untick is saved as off: left unset, the tick would come back.
+    [Fact]
+    public async Task AnUntick_OfAnInstalledDefaultsCarryOnlyOne_IsOff_AndATickBackClearsIt()
+    {
+        ItemOverlay seed = new() { CarryOnlyOne = true };
+        ItemEditDialogViewModel vm = Editor(seed);
+        Assert.True(vm.CarryOnlyOne);
+
+        vm.CarryOnlyOne = false;
+        await Save(vm, seed);
+        Assert.False(Resolved(seed).CarryOnlyOne);
+
+        ItemEditDialogViewModel again = Editor(seed);
+        Assert.False(again.CarryOnlyOne);
+        again.CarryOnlyOne = true;
+        await Save(again, seed);
+        Assert.True(Resolved(seed).CarryOnlyOne);
+        Assert.Empty(HeldAt(SettingsTier.Character));
+    }
+
     [Fact]
     public async Task AnUntick_AtTheCharacterTier_OverAGlobalTick_IsOff()
     {

@@ -14,6 +14,10 @@ public enum GhLeftReason
     // The game refused the `get` outright ("A strange force stops you from getting
     // this item."). It will refuse it every time, so the item stays where it lies.
     RefusedByGame,
+    // The game lets a character hold only one of it at a time, and one is held
+    // already that the sweep didn't pick up ("An unseen force prevents you from
+    // grabbing that item!"), so no copy can be taken until that one is gone.
+    OneAlreadyHeld,
     // Too heavy to ever carry within the working encumbrance budget, so no
     // delivery could free enough room to move it.
     TooHeavy,

@@ -7784,6 +7784,10 @@ A `get <item>` that can't succeed replies with one of these shapes:
 - **Stock: `A strange force stops you from getting this item.`** is a second refusal from the same routine *([OBSERVED] 2026-10-09, Stock 1.11p `wccmmud.dll` `_add_item_to_inventory` @0x41b15f; Realm: Stock, Paradigm not recorded)*. It prints when the engine's `_add_logical_to_user` test refuses the item; what that test checks wasn't traced. A `buy` goes through the same routine and can print either line (*Money, banks & shops → Buy / sell result lines*).
   - **The refusal is permanent for that item** *([CONFIRMED] 2026-10-09, user: "yes" to treating it as permanent for the item and skipping it)*. **Client policy:** an item refused this way is left where it lies and not asked for again.
 
+- **Paradigm: `An unseen force prevents you from grabbing that item!`** is the refusal of a get that would leave you holding more than one of an item you may hold only one of *([OBSERVED] 2026-11-12, scrollback capture: `get 6 glass orb`, `get 5 marble orb` and `get 2 crystal orb` each answered with it, and nothing was taken; [CONFIRMED] 2026-11-12, user: "some items you cant carry more then 1 of"; Realm: Paradigm, Stock not recorded)*. The rule is *One-per-pool items (ability 188 `Unique Pool`)*.
+  - No item name is echoed, and the counted get is refused whole.
+  - **Client use:** `GhSweepManager.OnGetRefusedPastCarryLimit`, attributed to the get just sent as the strange-force refusal is. An item its record doesn't mark *Carry only one* is moved one copy a trip for the rest of the sweep (`_learnedCarryOne`), with one copy asked for at once when none of its pool is carried; a refusal while the sweep carries one of the pool waits for that delivery; a single copy refused with none carried leaves every pickup of the pool, `GhLeftReason.OneAlreadyHeld`. Before this the line matched nothing and the same counted get was sent every lap (user report, 2026-11-12).
+
 **Client use (Roomba Mode):**
 - **The first two shapes mean retrying is futile**: the item is gone or un-gettable by that name, so drop it from the sort queue. Correlate to the outstanding get by the echoed word, falling back to the sole pending get for a truncated/absent echo.
 - **The capacity refusal keeps the item queued.** It means our tracked working-weight has drifted low (we thought it fit and it didn't).
@@ -8074,6 +8078,20 @@ There is no room to drop amethyst pendant here.
 - **So a single-slot swap needs no explicit `rem` first.**
 - **For a light the swap is Paradigm's only**: on Stock a second light is refused, not swapped in (*Movement & navigation → Light sources*; user 2026-10-09).
 - **Stock: the usability test comes before anything is taken off** *([OBSERVED] 2026-10-09, Stock 1.11p `wccmmud.dll` `_wear_armour` @0x41c846 and `_ready_weapon` @0x46db3f; Realm: Stock, Paradigm not recorded)*, which is why a refused swap changes nothing. The order of every check is in *Equip / swap result lines*.
+
+### One-per-pool items (ability 188 `Unique Pool`)
+*Status: CONFIRMED 2026-11-12 (user; scrollback capture) · Realm: Paradigm; Stock not recorded*
+
+- **An item with ability 188 can be held only one at a time per pool** *([CONFIRMED] 2026-11-12, user: "yes" to ability 188 meaning you can carry only one item from that pool at a time)*. The `AbilVal` is the pool id. Items sharing a pool id are one pool: holding one of them, you can take none of the others.
+- **A get past the limit answers `An unseen force prevents you from grabbing that item!`** (see *`get` failure responses*).
+- **Paradigm 1.9.1's pools** *([OBSERVED] 2026-11-12, imported Items)*: 0 `token of Silvermere` (3381); 1 `floating red sphere`, `floating green sphere`, `floating yellow sphere` (3539–3541, the only pool with more than one item); 2 `coin bag` (2143); 3 `token of Arlysia` (3388); 4 `glass orb` (1103); 5 `crystal orb` (1104); 6 `granite orb` (1105); 7 `marble orb` (1106); 8 `stone rook key` (1902, a key); 10 `token of Rhudaur` (3385); 11 `token of Khazarad` (3386); 12 `token of the Lost City` (3387); 13 `token of Port Blackwater` (3402); 14 `token of Kingsport` (3709).
+
+**Client use:**
+- `AbilityNames.TryUniquePool` reads the pool off an Items row.
+- `ItemOverlaySeedStore.MarkUniquePoolItems` starts each such item ticked *Carry only one* (`ItemOverlay.CarryOnlyOne`) in the installed defaults; the user can untick it. **Client policy** (user, 2026-11-12): the tick is on the item record, so an item the data doesn't flag can be marked by hand.
+- Roomba (`GhSweepManager`) moves a *Carry only one* item one copy a trip, never picks up one of a pool it carries (`CarryOneGroupsCarried`, from `AppServices.CarryOnlyOneGroup`: the pool, else the item), and leaves a pool the character already holds outside the sweep (`StrandHeldOutsideTheSweep`, `GhLeftReason.OneAlreadyHeld`).
+- `AppServices.MaxCap` caps Auto-collect and Auto-buy at one for a *Carry only one* item (per item, not per pool).
+- `MaxStrengthIndex` counts one item per pool toward the highest Strength a build can reach.
 
 ### Named-item uniqueness and paired slots (finger / wrist)
 *Status: CONFIRMED 2026-09-03 (user in-game tests; report `paradigm-20260903-111522`) · Realm: both (eviction slot differs per realm)*

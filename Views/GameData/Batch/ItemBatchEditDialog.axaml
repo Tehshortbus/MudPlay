@@ -75,6 +75,10 @@
                         <ComboBox Grid.Column="1" HorizontalAlignment="Stretch" ItemsSource="{Binding ToggleOptions}" SelectedItem="{Binding CannotBeTaken, Mode=TwoWay}"/>
                     </Grid>
                     <Grid ColumnDefinitions="160,*" ColumnSpacing="8">
+                        <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Carry only one"/>
+                        <ComboBox Grid.Column="1" HorizontalAlignment="Stretch" ItemsSource="{Binding ToggleOptions}" SelectedItem="{Binding CarryOnlyOne, Mode=TwoWay}"/>
+                    </Grid>
+                    <Grid ColumnDefinitions="160,*" ColumnSpacing="8">
                         <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Must have minimum"/>
                         <ComboBox Grid.Column="1" HorizontalAlignment="Stretch" ItemsSource="{Binding ToggleOptions}" SelectedItem="{Binding MustHaveMinimum, Mode=TwoWay}"/>
                     </Grid>
