@@ -36,6 +36,8 @@ public static class SessionStatsLogFormatter
         sb.AppendLine(Row("Backstab", Count(combat.Backstabs), Range(combat.BackstabMinDamage, combat.BackstabMaxDamage), Avg(combat.BackstabAvgDamage, combat.Backstabs), Pct(combat.BackstabPercent, combat.BackstabAttempts)));
         sb.AppendLine(Row("BS miss", Count(combat.BackstabFails), "", "", Pct(combat.BackstabFailPercent, combat.BackstabAttempts)));
         sb.AppendLine(Row("Round", Count(combat.RoundsWithDamage), Range(combat.RoundMinDamage, combat.RoundMaxDamage), Avg(combat.RoundAvgDamage, combat.RoundsWithDamage), ""));
+        sb.AppendLine(Row("Rounds/kill", Count(combat.TimedKills), Range(combat.RoundsToKillMin, combat.RoundsToKillMax),
+            combat.TimedKills <= 0 ? "" : combat.AvgRoundsToKill.ToString("F1", CultureInfo.InvariantCulture), ""));
         if (combat.ProcHits > 0)
             sb.AppendLine(Row("Proc", Count(combat.ProcHits), Range(combat.ProcMinDamage, combat.ProcMaxDamage), Avg(combat.ProcAvgDamage, combat.ProcHits), ""));
         foreach (SpellCombatStat spell in combat.Spells)

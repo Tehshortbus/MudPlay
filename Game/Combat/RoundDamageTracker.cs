@@ -60,7 +60,7 @@ public sealed class RoundDamageTracker : IDisposable
     // or when a round opens this long after the previous one closed — a fight InCombat
     // never covered, like a party member's while we stood by. Back-to-back rounds of
     // one fight open within one round of each other.
-    private static readonly TimeSpan FightGap = TimeSpan.FromSeconds(7);
+    internal static readonly TimeSpan FightGap = TimeSpan.FromSeconds(7);
 
     // How long a cast we sent can still own a caster's-eye spell line: the round it
     // lands in, with slack for the line arriving just after the tick.
@@ -134,6 +134,9 @@ public sealed class RoundDamageTracker : IDisposable
     // a round — MonsterHpTracker's running estimates and CombatSessionTracker's own
     // statistics.
     public event Action<AttributedLine>? Attributed;
+
+    // A round has opened and not yet closed: a line read now is still part of it.
+    public bool RoundOpen => _current is not null;
 
     // Snapshot of the ring buffer, oldest first.
     public IReadOnlyList<RoundSummary> Recent

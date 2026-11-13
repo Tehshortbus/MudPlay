@@ -414,6 +414,13 @@
                         <TextBlock Grid.Column="2" Classes="dimr" Text="{Binding RoundRangeText}"/>
                         <TextBlock Grid.Column="3" Classes="dimr" Text="{Binding Combat.RoundAvgDamage, StringFormat='{}{0:F0}'}"/>
                     </Grid>
+                    <Grid ColumnDefinitions="*,30,52,28,44">
+                        <TextBlock Grid.Column="0" Classes="lbl" Text="Rounds/kill"
+                                   ToolTip.Tip="Combat rounds each monster took to die, counted from the start of the fight or the previous kill: how many kills, the fewest and most rounds, and the average."/>
+                        <TextBlock Grid.Column="1" Classes="dimr" Text="{Binding Combat.TimedKills, StringFormat='{}×{0}'}"/>
+                        <TextBlock Grid.Column="2" Classes="dimr" Text="{Binding RoundsToKillRangeText}"/>
+                        <TextBlock Grid.Column="3" Classes="dimr" Text="{Binding RoundsToKillAvgText}"/>
+                    </Grid>
 
                     <!-- Proc / spell rows — surface only once recognised. -->
                     <Grid ColumnDefinitions="*,30,52,28,44" IsVisible="{Binding HasProcs}">
