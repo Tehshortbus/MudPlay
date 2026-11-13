@@ -82,6 +82,7 @@ public static class StatusBarItemCatalogue
         new("backstabpct", Fight, "Backstab rate", "The share of your backstabs that landed; empty until you try one.", "BS 71%"),
         new("avghit", Fight, "Average hit", "Your average damage per landed swing.", "Avg hit 41"),
         new("avground", Fight, "Average round", "Your average damage in a round that did damage.", "Round 132"),
+        new("roundstokill", Fight, "Rounds to kill", "The average number of combat rounds a monster took to die this session.", "1.5 rds/kill"),
         new("dodgepct", Fight, "Dodge rate", "The share of attacks on you that you dodged.", "Dodge 23%"),
         new("hittakenpct", Fight, "Hit-taken rate", "The share of attacks on you that landed.", "Hit by 41%"),
 

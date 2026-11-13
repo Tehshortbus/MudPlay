@@ -179,6 +179,7 @@ public static class LocalApiState
                     avoided = c.AvoidedAttacks, incoming = c.IncomingAttacks,
                 },
                 roundsWithDamage = new { count = c.RoundsWithDamage, min = c.RoundMinDamage, max = c.RoundMaxDamage, average = R(c.RoundAvgDamage) },
+                roundsToKill = new { kills = c.TimedKills, min = c.RoundsToKillMin, max = c.RoundsToKillMax, average = R(c.AvgRoundsToKill) },
                 recognisedSpells,
             },
         };

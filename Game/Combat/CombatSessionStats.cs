@@ -52,6 +52,11 @@ public readonly record struct CombatSessionStats(
     int SpellMinDamage,
     int SpellMaxDamage,
     long SpellTotalDamage,
+    // ----- Rounds to kill: kills timed, and the rounds each took -----
+    int TimedKills,
+    int RoundsToKillMin,
+    int RoundsToKillMax,
+    long RoundsToKillTotal,
     // Per-spell breakdown (name, damage extent, landed / resisted casts). Empty until
     // one of our spells lands or is resisted.
     System.Collections.Generic.IReadOnlyList<SpellCombatStat> Spells)
@@ -138,6 +143,9 @@ public readonly record struct CombatSessionStats(
 
     // Mean damage we dealt per round that did damage.
     public double RoundAvgDamage => Avg(RoundTotalDamage, RoundsWithDamage);
+
+    // Mean rounds of ours a monster took to die: 1 when every kill falls in one round.
+    public double AvgRoundsToKill => Avg(RoundsToKillTotal, TimedKills);
 
     // Mean damage per proc that fired.
     public double ProcAvgDamage => Avg(ProcTotalDamage, ProcHits);

@@ -20,6 +20,17 @@ namespace MudPlay.Game.Combat;
 // the swing extents. Every damage line the ledger credits to someone hitting us is a
 // blow taken; misses and dodges come from the fixed patterns.
 //
+// Rounds to kill: each monster death (OnMonsterDied) is charged the rounds we took
+// part in since the previous kill, or since the fight began, the death's own round
+// included. We fight one target at a time, so that is the rounds spent on the
+// monster that died. A round is ours when we dealt damage in it or swung and missed:
+// the round's Engaged flag can't say, as any blow in the room puts us in combat.
+// Monsters that die in the same round, as under a room spell, share its
+// count. A death with no round of ours behind it (a party member's kill while we
+// stood by) isn't counted, and a fight that ends without a kill doesn't carry its
+// rounds into the next one: a round of ours opening more than a fight gap after the
+// last one starts the count over.
+//
 // Backstabs keep their own rate: CombatManager reports each `bs` it sees answered
 // (OnBackstabResolved). A stab answered without "surprise" failed; when the answer
 // was a whiff, that miss is the stab's, not a regular attack's, so it leaves the
@@ -65,6 +76,18 @@ public sealed class CombatSessionTracker : IDisposable
     private DamageTally _round;
     private DamageTally _proc;
     private DamageTally _hitTaken;
+    // Count = kills timed, Min / Max / Sum = rounds each took.
+    private DamageTally _roundsToKill;
+    private int _roundsSinceKill;
+    // We swung and missed since the last round closed: the round is ours though it
+    // carries no damage of ours. A miss opens no round, so it may precede the round.
+    private bool _missedSinceRoundClosed;
+    private DateTimeOffset? _lastFoughtRoundEnd;
+    // Deaths raised while their round was still open, charged when it closes.
+    private int _killsAwaitingRound;
+    private int _lastClosedRound;
+    private int _lastKillRound;
+    private int _lastKillRounds;
     // The last counted miss may actually be a spell-cast EMOTE ("You scatter some
     // ashes in a sweeping motion!") — a self-emote ending in "!" the miss skeleton
     // can't tell from a real whiff. Set when a miss is counted; a spell that lands
@@ -253,6 +276,10 @@ public sealed class CombatSessionTracker : IDisposable
             SpellMinDamage:      spell.Count == 0 ? 0 : spell.Min,
             SpellMaxDamage:      spell.Max,
             SpellTotalDamage:    spell.Sum,
+            TimedKills:          _roundsToKill.Count,
+            RoundsToKillMin:     _roundsToKill.Count == 0 ? 0 : _roundsToKill.Min,
+            RoundsToKillMax:     _roundsToKill.Max,
+            RoundsToKillTotal:   _roundsToKill.Sum,
             Spells:              BuildSpellStats());
     }
 
@@ -266,6 +293,14 @@ public sealed class CombatSessionTracker : IDisposable
         _round = default;
         _proc = default;
         _hitTaken = default;
+        _roundsToKill = default;
+        _roundsSinceKill = 0;
+        _missedSinceRoundClosed = false;
+        _lastFoughtRoundEnd = null;
+        _killsAwaitingRound = 0;
+        _lastClosedRound = 0;
+        _lastKillRound = 0;
+        _lastKillRounds = 0;
         _perSpell.Clear();
         _spellOrder.Clear();
         _lastSpell = null;
@@ -294,6 +329,7 @@ public sealed class CombatSessionTracker : IDisposable
     {
         if (landed) return;
         _backstabFails++;
+        _missedSinceRoundClosed = true;
         if (string.Equals(line, _lastMissLine, StringComparison.Ordinal))
         {
             _misses--;
@@ -398,6 +434,7 @@ public sealed class CombatSessionTracker : IDisposable
         // line seen while combat is engaged is a real swing whiff.
         if (!_engaged) return;
         _misses++;
+        _missedSinceRoundClosed = true;
         _lastMissLine = match.Text;
         // This miss might be a spell-cast emote, not a whiff — a spell landing right
         // after retracts it (OnAttributed); an un-retracted one is resolved at
@@ -439,8 +476,43 @@ public sealed class CombatSessionTracker : IDisposable
         _engaged = engaged;
     }
 
+    // A monster died. Its round may still be open (the exp line and *Combat Off*
+    // arrive inside the killing burst), so it's charged when that round closes;
+    // otherwise its round is the one just closed.
+    public void OnMonsterDied(MonsterDeathEvent death)
+    {
+        if (_rounds.RoundOpen) { _killsAwaitingRound++; return; }
+        ChargeKill(_lastClosedRound, death.At);
+    }
+
+    private void ChargeKill(int round, DateTimeOffset at)
+    {
+        int rounds = round == _lastKillRound ? _lastKillRounds : _roundsSinceKill;
+        // A death well after our last round is no kill of a fight we were in, and the
+        // rounds still counted belong to one we broke off.
+        if (_lastFoughtRoundEnd is not { } end || at - end > RoundDamageTracker.FightGap) rounds = 0;
+        if (rounds == 0) return;
+        _roundsToKill.Add(rounds);
+        _roundsSinceKill = 0;
+        _lastKillRound = round;
+        _lastKillRounds = rounds;
+        Changed?.Invoke();
+    }
+
     private void OnRoundComplete(RoundSummary summary)
     {
+        _lastClosedRound = summary.RoundNumber;
+        bool ours = summary.DamageDealt > 0 || _missedSinceRoundClosed;
+        _missedSinceRoundClosed = false;
+        if (ours)
+        {
+            if (_lastFoughtRoundEnd is { } prev && summary.StartedAt - prev > RoundDamageTracker.FightGap)
+                _roundsSinceKill = 0;
+            _lastFoughtRoundEnd = summary.EndedAt;
+            _roundsSinceKill++;
+        }
+        for (; _killsAwaitingRound > 0; _killsAwaitingRound--) ChargeKill(summary.RoundNumber, summary.EndedAt);
+
         // "Characters per round" damage = total damage WE dealt in the round;
         // skip rounds where we dealt nothing (pure-defence rounds) so they
         // don't drag the min to 0.

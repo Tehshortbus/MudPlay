@@ -1382,6 +1382,7 @@ public static class BugReportBuilder
             Kv(sb, $"Spell {sp.Name}", $"{sp.Landed} landed, {sp.Misses} resisted ({sp.RangeText}, total {sp.TotalDamage})");
         Kv(sb, "Hit by", $"{c.MobHits} ({c.HitTakenMinDamage}-{c.HitTakenMaxDamage}, avg {c.HitTakenAvgDamage:F0}); avoided {c.AvoidedAttacks} of {c.IncomingAttacks}");
         Kv(sb, "Rounds with damage", $"{c.RoundsWithDamage} ({c.RoundMinDamage}-{c.RoundMaxDamage}, avg {c.RoundAvgDamage:F0})");
+        Kv(sb, "Rounds to kill", $"{c.TimedKills} kills ({c.RoundsToKillMin}-{c.RoundsToKillMax}, avg {c.AvgRoundsToKill:F1})");
         IReadOnlyList<string> spells = svc.CombatSession.RecognisedSpells;
         Kv(sb, "Recognised spells", spells.Count == 0 ? "(none)" : string.Join(", ", spells));
         return sb.ToString();

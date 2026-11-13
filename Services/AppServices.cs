@@ -6506,6 +6506,7 @@ public sealed class AppServices
         RoundDamage.SetOwnSpellLineCheck(CombatSession.MatchesOwnSpell, CombatSession.MatchesOwnRoomSpell);
         RoundDamage.SetOwnSpellRepeating(() => Combat.IsRepeatingSpell);
         Combat.BackstabResolved += CombatSession.OnBackstabResolved;
+        MonsterDeath.MonsterDied += CombatSession.OnMonsterDied;
         Combat.AttackCastLanded += Tick.NoteRoundLine;
         Profile.ProfileLoaded  += _ => { CombatSession.Reset(); CombatSession.RefreshMatchers(); _attackSpellMatcherCache.Clear(); };
         Profile.ProfileMutated += _ => { CombatSession.RefreshMatchers(); _attackSpellMatcherCache.Clear(); };

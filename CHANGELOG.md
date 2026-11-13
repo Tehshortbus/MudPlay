@@ -7,6 +7,10 @@
 - Roomba recognises `An unseen force prevents you from grabbing that item!` instead of re-sending the same `get` every lap
 - Roomba leaves a one-only pile alone when you already hold one it didn't pick up
 
+## 3.202.12
+
+- Session Stats: new Rounds/kill row, the average combat rounds a monster took to die this session (also a status-bar item)
+
 ## 3.202.11
 
 - Auto-Light reads the inventory when a room stays dark under a light it thinks is lit, and lights a spare

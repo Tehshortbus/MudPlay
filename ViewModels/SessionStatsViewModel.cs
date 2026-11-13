@@ -86,7 +86,8 @@ public sealed partial class SessionStatsViewModel : ObservableObject, IDisposabl
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HitRangeText), nameof(CritRangeText), nameof(BackstabRangeText),
         nameof(RoundRangeText), nameof(ProcRangeText), nameof(SpellRangeText),
-        nameof(HitTakenRangeText), nameof(HasProcs), nameof(HasSpells))]
+        nameof(HitTakenRangeText), nameof(RoundsToKillRangeText), nameof(RoundsToKillAvgText),
+        nameof(HasProcs), nameof(HasSpells))]
     private CombatSessionStats _combat;
 
     [ObservableProperty]
@@ -390,6 +391,9 @@ public sealed partial class SessionStatsViewModel : ObservableObject, IDisposabl
     public string ProcRangeText     => Range(Combat.ProcMinDamage, Combat.ProcMaxDamage);
     public string SpellRangeText    => Range(Combat.SpellMinDamage, Combat.SpellMaxDamage);
     public string HitTakenRangeText => Range(Combat.HitTakenMinDamage, Combat.HitTakenMaxDamage);
+    public string RoundsToKillRangeText => Range(Combat.RoundsToKillMin, Combat.RoundsToKillMax);
+    // One decimal: a session of one- and two-round kills reads 1.5, not 2.
+    public string RoundsToKillAvgText => Combat.TimedKills == 0 ? string.Empty : Combat.AvgRoundsToKill.ToString("F1");
 
     // Drives the proc row's visibility — hidden until one of our procs fires.
     public bool HasProcs => Combat.ProcHits > 0;

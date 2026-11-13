@@ -91,6 +91,7 @@ public static class StatusBarValues
             "backstabpct" => Combat(svc) is { BackstabAttempts: > 0 } c ? $"BS {c.BackstabPercent:0}%" : string.Empty,
             "avghit" => Combat(svc) is { LandedSwings: > 0 } c ? $"Avg hit {c.PhysicalAvgDamage:0}" : string.Empty,
             "avground" => Combat(svc) is { RoundsWithDamage: > 0 } c ? $"Round {c.RoundAvgDamage:0}" : string.Empty,
+            "roundstokill" => Combat(svc) is { TimedKills: > 0 } c ? $"{c.AvgRoundsToKill:0.0} rds/kill" : string.Empty,
             "dodgepct" => Combat(svc) is { IncomingAttacks: > 0 } c ? $"Dodge {c.DodgePercent:0}%" : string.Empty,
             "hittakenpct" => Combat(svc) is { IncomingAttacks: > 0 } c ? $"Hit by {c.HitTakenPercent:0}%" : string.Empty,
 
