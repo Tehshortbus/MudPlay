@@ -2579,9 +2579,10 @@ public sealed class GhSweepManager : IDisposable
                     GhLeftReason.RefusedByGame);
             return;
         }
-        // Names no item either. A refusal for a get whose move was settled already
-        // is an answer to one of the copies Stock sends a `get` each, not to another
-        // pickup still outstanding.
+        // Names no item either. The line is recorded on Paradigm only. Should it
+        // answer a stack sent one `get` a copy, a refusal for a get whose move was
+        // settled already answers one of those copies, not another pickup still
+        // outstanding, so it is never handed to the sole outstanding get.
         if (GetPastCarryLimitRegex.IsMatch(line.Text))
         {
             PendingSortMove? refused = _lastQueuedCommand is { Verb: "get", Move: { } sent }
@@ -2601,7 +2602,7 @@ public sealed class GhSweepManager : IDisposable
     //     didn't pick up, so every pickup of the group is left where it is.
     private void OnGetRefusedPastCarryLimit(PendingSortMove move)
     {
-        // Copies Stock took before the refusal are in the pack.
+        // A stack sent one `get` a copy may have had copies taken before the refusal.
         KeepWhatWasTaken(move);
         string name = GhSurveyMerger.Canonical(move.ItemName, _itemNames);
         bool marked = CarryOneGroup(name) is not null;

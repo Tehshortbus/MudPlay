@@ -2794,6 +2794,7 @@ The same box is read elsewhere. Auto-buy buys up to it: with `max 0` it buys non
 |---|---|
 | `large shield: auto-get on, max 2` | The item's rules after the command, whether or not anything changed. `max none` when it has no Max to get. |
 | any of the above, ending `(cannot be taken)` | The item is marked *Cannot be taken*, so it is never picked up whatever the rules say. |
+| any of the above, ending `(carry only one)` | The item is marked *Carry only one*, so Auto-Get Items stops at one whatever its Max to get says. |
 | `no item named '<text>'` | **Refusal:** no item's name fits. |
 | `item name '<text>' matches 3: 'large shield', 'large sword', 'small shield'` | **Refusal:** the name fits more than one item. Up to four names are given, fewer when they are long, then `+5 more` for the rest. Nothing is changed. |
 | `bad max '<text>': give a number or none` | **Refusal:** the word after `max` is neither a whole number from 0 to 9999 nor `none`. |

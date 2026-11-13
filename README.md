@@ -7,6 +7,7 @@
 > - Carry only one starts ticked for every Unique Pool item in the game data (the orbs, city tokens, coin bag)
 > - Roomba recognises `An unseen force prevents you from grabbing that item!` instead of re-sending the same `get` every lap
 > - Roomba leaves a one-only pile alone when you already hold one it didn't pick up
+> - `@auto-get <item>` ends its reply with `(carry only one)` for such an item
 <!-- current-version:end -->
 
 A modern Telnet terminal client for **MajorMUD** and other BBS door games, built in C# / .NET 10 with [Avalonia](https://avaloniaui.net/). It renders a faithful CP437 cell grid with full VT100/ANSI parsing, and layers a MegaMUD-style automation suite (combat, party, navigation, healing, and more) on top — all in modeless, dockable windows so the terminal stays live while you configure anything.

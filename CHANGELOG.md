@@ -6,6 +6,7 @@
 - Carry only one starts ticked for every Unique Pool item in the game data (the orbs, city tokens, coin bag)
 - Roomba recognises `An unseen force prevents you from grabbing that item!` instead of re-sending the same `get` every lap
 - Roomba leaves a one-only pile alone when you already hold one it didn't pick up
+- `@auto-get <item>` ends its reply with `(carry only one)` for such an item
 
 ## 3.202.12
 

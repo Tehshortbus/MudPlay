@@ -32,8 +32,9 @@ public sealed class AutoGetItemRules
     }
 
     // An item's rules as they resolve. Max is null when there is none (blank, or
-    // "All"): the engine then collects every copy it sees.
-    public readonly record struct State(bool AutoCollect, int? Max, bool CannotBeTaken);
+    // "All"): the engine then collects every copy it sees. CarryOnlyOne holds the
+    // engine to one whatever Max says.
+    public readonly record struct State(bool AutoCollect, int? Max, bool CannotBeTaken, bool CarryOnlyOne);
 
     // The items the typed name stands for (ItemNameStore.FindAllByName).
     public IReadOnlyList<int> Find(string typed) => _names.FindAllByName(typed);
@@ -76,6 +77,7 @@ public sealed class AutoGetItemRules
     private static State StateOf(ItemOverlay o)
     {
         int cap = ItemOverlay.ParseCount(o.MaxToGet, int.MaxValue);
-        return new State(o.AutoCollect ?? false, cap == int.MaxValue ? null : cap, o.CannotBeTaken ?? false);
+        return new State(o.AutoCollect ?? false, cap == int.MaxValue ? null : cap, o.CannotBeTaken ?? false,
+            o.CarryOnlyOne ?? false);
     }
 }

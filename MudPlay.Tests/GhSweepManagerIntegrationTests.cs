@@ -1409,7 +1409,77 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
         h.Dispose();
     }
 
-    // Unmarked, and refused for one copy as well: one is held that the sweep didn't
+    // Items sharing a pool are held one at a time between them: carrying the war
+    // hammer, the sweep leaves its pool-mate on the floor until the hammer is
+    // delivered, then comes back for it.
+    [Fact]
+    public void ItemsOfOnePool_AreCarriedOneAtATime_BetweenThem()
+    {
+        SweepHarness h = NewSweepHarness(_root, _realm, paradigm: true,
+            carryOnlyOneGroup: name => name is "war hammer" or "battle axe" ? "pool 1" : null);
+        const string floor = "You notice a war hammer, a battle axe here.";
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        Assert.True(h.Sweep.Start());
+        h.Feed(floor);
+        h.Observe("C", Direction.N, Direction.S);
+        h.Observe("B", Direction.S);
+        h.Feed(floor);
+        h.Observe("C", Direction.N, Direction.S);
+        h.Observe("A", Direction.N);
+        Assert.Equal(GhSweepManager.SweepPhase.Sorting, h.Sweep.Phase);
+
+        h.Observe("C", Direction.N, Direction.S);
+        string item = h.Sent[^1]["get ".Length..];
+        Assert.Contains(item, new[] { "war hammer", "battle axe" });
+        h.Feed($"You took {item}.");
+        PaceOut();
+        Assert.Equal(1, h.Sent.Count(c => c.StartsWith("get ", StringComparison.Ordinal)));
+
+        h.Observe("A", Direction.N);
+        Assert.Equal($"drop {item}", h.Sent[^1]);
+        h.Feed($"You dropped {item}.");
+
+        h.Observe("C", Direction.N, Direction.S);
+        Assert.Equal(item == "war hammer" ? "get battle axe" : "get war hammer", h.Sent[^1]);
+
+        h.Dispose();
+    }
+
+        // A fresh `i` mid-sort lists the copy the sweep itself is carrying. That copy is
+    // the sweep's own, not one held apart from it, so the rest of the pile stays
+    // queued instead of being left as "one already held".
+    [Fact]
+    public void CarryOnlyOneItem_TheSweepsOwnCopy_InAFreshInventory_IsNotHeldOutsideIt()
+    {
+        SweepHarness h = NewSweepHarness(_root, _realm, currentWeight: 3513, maxWeight: 5280,
+            carryOnlyOneGroup: name => name == "war hammer" ? "pool 4" : null);
+        const string floor = "You notice 2 war hammer, an adamantite hauberk here.";
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        Assert.True(h.Sweep.Start());
+        h.Feed(floor);
+        h.Observe("C", Direction.N, Direction.S);
+        h.Observe("B", Direction.S);
+        h.Feed(floor);
+        h.Observe("C", Direction.N, Direction.S);
+        h.Observe("A", Direction.N);
+        Assert.Equal(GhSweepManager.SweepPhase.Sorting, h.Sweep.Phase);
+
+        h.Observe("C", Direction.N, Direction.S);
+        Assert.Equal("get war hammer", h.Sent[^1]);
+        h.Feed("You took war hammer.");
+        PaceOut();
+        Assert.Equal("get adamantite hauberk", h.Sent[^1]);
+        h.Feed("You cannot carry that much!");
+        Assert.Equal("i", h.Sent[^1]);
+        FeedInventory(h.InventoryFeed, "war hammer", currentWeight: 4514, maxWeight: 5280);
+
+        Assert.DoesNotContain(h.Sweep.LeftInPlace, l => l.Reason == GhLeftReason.OneAlreadyHeld);
+        Assert.Contains(h.Sweep.PendingMoves, m => m.ItemName == "war hammer" && !m.Carried);
+
+        h.Dispose();
+    }
+
+        // Unmarked, and refused for one copy as well: one is held that the sweep didn't
     // pick up. The pile is left, and neither get is sent again.
     [Fact]
     public void GetRefusedPastTheCarryLimit_ForOneCopy_LeavesThePile()
@@ -1875,7 +1945,8 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
         File.WriteAllText(Path.Combine(root, "alpha", "Items.json"), """
             [
               { "Number": 1, "Name": "war hammer", "ItemType": 1, "Encum": 1 },
-              { "Number": 2, "Name": "adamantite hauberk", "ItemType": 1, "Encum": 800 }
+              { "Number": 2, "Name": "adamantite hauberk", "ItemType": 1, "Encum": 800 },
+              { "Number": 3, "Name": "battle axe", "ItemType": 1, "Encum": 1 }
             ]
             """);
 
