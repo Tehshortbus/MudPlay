@@ -3667,6 +3667,11 @@ How to keep it current:
 - Checks: Attribution of each damage line to dealer and taker: swings, monster hits, party spells, room spells spread over every foe, shield and spine reflects, weapon procs, caster-eye spell lines, and casterless or unknown damage. Damage capped at monster HP, with both cap choices kept per round. Round boundaries (tick, settle timer, Combat Off, room clearing, fight-round numbering), Reset, the recent-round ring, and the terminal table and line formats.
 - Why: Reports `paradigm-20260929-063213`, `paradigm-20261006-051627`, `paradigm-20260929-161536`, `paradigm-20261009-023430`, `paradigm-20260929-003750`, `paradigm-20261009-120757`, `paradigm-20260929-043055`, `paradigm-20260928-231225`, `paradigm-20260928-232024`; user, 2026-09-29 (HP cap).
 
+### RoundsToKillTests.cs
+- Covers: Game/Combat/CombatSessionTracker.OnMonsterDied (with RoundDamageTracker, CombatStateTracker, MonsterDeathWatcher).
+- Checks: each kill is charged the rounds of ours since the fight began or the previous kill, whether its death arrives before or after its round closes; a round we only missed in counts; kills in one round share its count; a broken-off fight doesn't carry into the next kill; a party member's kill while we stood by isn't timed; Reset clears the count.
+- Why: Session Stats → Player Statistics → Rounds/kill.
+
 ### RoundTotalsBoardTests.cs
 - Covers: Game/Combat/RoundTotalsBoard, RoundTotalsFormatter
 - Checks: The Round Totals window's rows follow its own show options and cap choice. Row slots and name width grow at once and shrink only after the remembered rounds age out. Clear resets them. Rows agree with the terminal table.
@@ -3833,7 +3838,7 @@ How to keep it current:
 
 ### SessionStatsLogTests.cs
 - Covers: Services/SessionStatsLog, Services/SessionStatsLogFormatter, LogDiagnosticState
-- Checks: The log is off by default with no file. When on, it writes one block per interval to a single file, only while in the game, plus one last block on leaving. The interval is clamped. Switching off closes the file, and a failed write stops the log. The block's header and sections match the window.
+- Checks: The log is off by default with no file. When on, it writes one block per interval to a single file, only while in the game, plus one last block on leaving. The interval is clamped. Switching off closes the file, and a failed write stops the log. The block's header and sections match the window, the Rounds/kill average to one decimal.
 - Why: Program Log → "Log session statistics".
 
 ### SetIndexTimingsTests.cs

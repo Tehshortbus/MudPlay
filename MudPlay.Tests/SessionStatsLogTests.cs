@@ -152,6 +152,7 @@ public sealed class SessionStatsLogTests
             RoundsWithDamage: 12, RoundMinDamage: 40, RoundMaxDamage: 310, RoundTotalDamage: 1800,
             ProcHits: 0, ProcMinDamage: 0, ProcMaxDamage: 0, ProcTotalDamage: 0,
             SpellHits: 3, SpellMinDamage: 20, SpellMaxDamage: 40, SpellTotalDamage: 90,
+            TimedKills: 4, RoundsToKillMin: 1, RoundsToKillMax: 3, RoundsToKillTotal: 6,
             Spells: new[] { new SpellCombatStat("lightning bolt", Landed: 3, Misses: 1, MinDamage: 20, MaxDamage: 40, TotalDamage: 90) });
         var time = new TimeAnalysisStats(
             TimeOn: TimeSpan.FromMinutes(90), Waiting: TimeSpan.FromMinutes(5), Moving: TimeSpan.FromMinutes(40),
@@ -192,6 +193,7 @@ public sealed class SessionStatsLogTests
         Assert.Matches(@"Miss\s+×10\s+20%", block);
         Assert.Matches(@"Crit\s+×10\s+60–120\s+90\s+25%", block);
         Assert.Matches(@"lightning bolt\s+×4\s+20–40\s+30\s+75%", block);
+        Assert.Matches(@"Rounds/kill\s+×4\s+1–3\s+1\.5", block);       // a decimal, unlike the damage averages
         Assert.Matches(@"Hit by\s+×5\s+3–22\s+12\s+25%", block);
         Assert.DoesNotContain("Proc", block);                             // none fired
 
@@ -216,7 +218,7 @@ public sealed class SessionStatsLogTests
     public void AnEmptySession_ShowsZeroCounts_AndNoMadeUpRates()
     {
         string block = Block(new CombatSessionStats(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, Array.Empty<SpellCombatStat>()));
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, Array.Empty<SpellCombatStat>()));
         Assert.Matches(@"Hit\s+×0\s+—\r?\n", block);
         Assert.DoesNotContain("NaN", block);
     }

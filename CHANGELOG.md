@@ -1,5 +1,9 @@
 # Version history
 
+## 3.202.12
+
+- Session Stats: new Rounds/kill row, the average combat rounds a monster took to die this session (also a status-bar item)
+
 ## 3.202.11
 
 - Auto-Light reads the inventory when a room stays dark under a light it thinks is lit, and lights a spare
