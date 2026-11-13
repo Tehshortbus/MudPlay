@@ -26,6 +26,8 @@ public sealed class ItemsSectionViewModelFlagKeywordTests
         Assert.True(Kw["keep"](new ItemOverlay { MustHaveMinimum = true }) == true);
         Assert.True(Kw["loyal"](new ItemOverlay { LoyalItem = true }) == true);
         Assert.True(Kw["notake"](new ItemOverlay { CannotBeTaken = true }) == true);
+        Assert.True(Kw["one"](new ItemOverlay { CarryOnlyOne = true }) == true);
+        Assert.True(Kw["only-one"](new ItemOverlay { CarryOnlyOne = true }) == true);
         Assert.True(Kw["path"](new ItemOverlay { AutoObtainForPath = true }) == true);
     }
 

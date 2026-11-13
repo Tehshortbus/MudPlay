@@ -6,8 +6,8 @@ namespace MudPlay.Services;
 
 // In-memory cache of the active game-data set's ItemOverlay seed — the
 // Defaults-tier baseline for per-item automation behaviour (the 9 Options
-// checkboxes + MinToKeep / MaxToGet) before any user Global / BBS /
-// Character override is applied.
+// checkboxes + MinToKeep / MaxToGet, and Carry only one taken from the set's own
+// Items table) before any user Global / BBS / Character override is applied.
 //
 // Seeds are realm-flavored. Each realm family (stock MajorMUD, Paradigm, …)
 // ships its own decoded-from-Items.md seed file under
@@ -35,6 +35,9 @@ namespace MudPlay.Services;
 public sealed class ItemOverlaySeedStore
 {
     private readonly LogService? _log;
+    // The active set's tables, read on each Load for what the seed file can't hold
+    // (CarryOnlyOne); without them the seed file alone is the baseline.
+    private readonly GameDataCache? _gameData;
     private readonly Dictionary<int, ItemOverlay> _byNumber = new();
 
     // Realm flavor currently sourcing the cache, or null when none loaded.
@@ -45,11 +48,9 @@ public sealed class ItemOverlaySeedStore
 
     public int Count => _byNumber.Count;
 
-    public ItemOverlaySeedStore() { }
-
-    public ItemOverlaySeedStore(LogService log)
+    public ItemOverlaySeedStore(GameDataCache? gameData = null, LogService? log = null)
     {
-        ArgumentNullException.ThrowIfNull(log);
+        _gameData = gameData;
         _log = log;
     }
 
@@ -68,6 +69,12 @@ public sealed class ItemOverlaySeedStore
         string realm = ResolveRealm(setName);
         ActiveRealm = realm;
 
+        ReadSeedFile(realm);
+        MarkUniquePoolItems(setName);
+    }
+
+    private void ReadSeedFile(string realm)
+    {
         string path = AppPaths.ItemOverlaySeedFile(realm);
         if (!File.Exists(path))
         {
@@ -111,6 +118,25 @@ public sealed class ItemOverlaySeedStore
                 $"Failed to load '{path}': {ex.Message}");
             _byNumber.Clear();
         }
+    }
+
+    // The game lets a character carry one item of a Unique Pool at a time (GAME_MECHANICS
+    // "One-per-pool items (ability 188 `Unique Pool`)"), so such an item starts out
+    // Carry only one; the user can untick it at any tier.
+    private void MarkUniquePoolItems(string setName)
+    {
+        if (_gameData?.GetTable("Items") is not { } items) return;
+        int marked = 0;
+        foreach (GameRow row in items.Rows)
+        {
+            if (!Game.GameData.AbilityNames.TryUniquePool(row, out _)
+                || !row.TryGetProperty("Number", out GameValue n) || !n.TryGetInt32(out int number) || number <= 0)
+                continue;
+            _byNumber[number] = GetOverlay(number) with { CarryOnlyOne = true };
+            marked++;
+        }
+        _log?.Log(LogSeverity.Info, "ItemOverlaySeed",
+            $"{marked} item(s) of a Unique Pool in '{setName}' start as Carry only one.");
     }
 
     // Defaults-tier overlay for itemNumber. Returns a blank ItemOverlay when

@@ -1316,6 +1316,194 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
         h.Dispose();
     }
 
+    // Recon finds `count` war hammers at C (the transit room), and the lap ends.
+    private static void ReconWarHammersAtC(SweepHarness h, int count)
+    {
+        string floor = count > 1 ? $"You notice {count} war hammer here." : "You notice a war hammer here.";
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        Assert.True(h.Sweep.Start());
+        h.Feed(floor);
+        h.Observe("C", Direction.N, Direction.S);
+        h.Observe("B", Direction.S);
+        h.Feed(floor);   // listed again on the way back
+        h.Observe("C", Direction.N, Direction.S);
+        h.Observe("A", Direction.N);
+    }
+
+    // "An unseen force prevents you from grabbing that item!" answered `get 6 glass
+    // orb` and the sweep sent the same get every lap (user, 2026-11-12). An item the
+    // game lets a character hold only one of, its record unmarked, is learned from
+    // the refusal: one copy is asked for at once, and the next only after it is
+    // delivered.
+    [Fact]
+    public void GetRefusedPastTheCarryLimit_MovesTheItemOneCopyATrip()
+    {
+        SweepHarness h = NewSweepHarness(_root, _realm, paradigm: true);
+        ReconWarHammersAtC(h, 3);
+        Assert.Equal(GhSweepManager.SweepPhase.Sorting, h.Sweep.Phase);
+
+        h.Observe("C", Direction.N, Direction.S);
+        Assert.Equal("get 3 war hammer", h.Sent[^1]);
+
+        h.Feed("An unseen force prevents you from grabbing that item!");
+        PaceOut();
+        Assert.Equal("get war hammer", h.Sent[^1]);
+        Assert.Contains("war hammer", h.Sweep.CarryOnlyOneLearned);
+
+        h.Feed("You took war hammer.");
+        Assert.Equal(1, h.Sweep.CarriedPendingCount);
+        Assert.Equal(new[] { 1, 1, 1 }, h.Sweep.PendingMoves.Select(m => m.Count).ToArray());
+        PaceOut();
+        Assert.Equal(1, h.Sent.Count(c => c == "get war hammer"));
+
+        h.Observe("A", Direction.N);
+        Assert.Equal("drop war hammer", h.Sent[^1]);
+        h.Feed("You dropped war hammer.");
+
+        h.Observe("C", Direction.N, Direction.S);
+        Assert.Equal("get war hammer", h.Sent[^1]);
+        Assert.Equal(2, h.Sent.Count(c => c == "get war hammer"));
+        Assert.Equal(1, h.Sent.Count(c => c == "get 3 war hammer"));
+
+        h.Dispose();
+    }
+
+    // An item whose record says Carry only one is planned one copy a trip from the
+    // start: a single get, never the counted one the game would refuse.
+    [Fact]
+    public void CarryOnlyOneItem_IsPickedUpOneCopyATrip_FromTheStart()
+    {
+        SweepHarness h = NewSweepHarness(_root, _realm, paradigm: true,
+            carryOnlyOneGroup: name => name == "war hammer" ? "pool 4" : null);
+        ReconWarHammersAtC(h, 2);
+        Assert.Equal(GhSweepManager.SweepPhase.Sorting, h.Sweep.Phase);
+
+        h.Observe("C", Direction.N, Direction.S);
+        Assert.Equal("get war hammer", h.Sent[^1]);
+        h.Feed("You took war hammer.");
+        PaceOut();
+
+        Assert.Equal(1, h.Sent.Count(c => c.StartsWith("get ", StringComparison.Ordinal)));
+        Assert.Equal(1, h.Sweep.CarriedPendingCount);
+        Assert.Equal(2, h.Sweep.PendingMoveCount);
+        Assert.Empty(h.Sweep.CarryOnlyOneLearned);
+
+        h.Dispose();
+    }
+
+    // The character already holds one the sweep didn't pick up: every get would be
+    // refused until it is gone, so none is sent and the pile is left where it is.
+    [Fact]
+    public void CarryOnlyOneItem_AlreadyHeld_IsLeftInPlace_WithoutAGet()
+    {
+        SweepHarness h = NewSweepHarness(_root, _realm, paradigm: true, carriedInventory: "war hammer",
+            carryOnlyOneGroup: name => name == "war hammer" ? "pool 4" : null);
+        ReconWarHammersAtC(h, 2);
+
+        // Nothing left to move, so the sort ends as it opens.
+        Assert.NotEqual(GhSweepManager.SweepPhase.Sorting, h.Sweep.Phase);
+        Assert.DoesNotContain(h.Sent, c => c.StartsWith("get ", StringComparison.Ordinal));
+        Assert.Equal(0, h.Sweep.PendingMoveCount);
+        Assert.Equal(2, h.Sweep.LeftInPlace.Count(l => l.ItemName == "war hammer" && l.Reason == GhLeftReason.OneAlreadyHeld));
+
+        h.Dispose();
+    }
+
+    // Items sharing a pool are held one at a time between them: carrying the war
+    // hammer, the sweep leaves its pool-mate on the floor until the hammer is
+    // delivered, then comes back for it.
+    [Fact]
+    public void ItemsOfOnePool_AreCarriedOneAtATime_BetweenThem()
+    {
+        SweepHarness h = NewSweepHarness(_root, _realm, paradigm: true,
+            carryOnlyOneGroup: name => name is "war hammer" or "battle axe" ? "pool 1" : null);
+        const string floor = "You notice a war hammer, a battle axe here.";
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        Assert.True(h.Sweep.Start());
+        h.Feed(floor);
+        h.Observe("C", Direction.N, Direction.S);
+        h.Observe("B", Direction.S);
+        h.Feed(floor);
+        h.Observe("C", Direction.N, Direction.S);
+        h.Observe("A", Direction.N);
+        Assert.Equal(GhSweepManager.SweepPhase.Sorting, h.Sweep.Phase);
+
+        h.Observe("C", Direction.N, Direction.S);
+        string item = h.Sent[^1]["get ".Length..];
+        Assert.Contains(item, new[] { "war hammer", "battle axe" });
+        h.Feed($"You took {item}.");
+        PaceOut();
+        Assert.Equal(1, h.Sent.Count(c => c.StartsWith("get ", StringComparison.Ordinal)));
+
+        h.Observe("A", Direction.N);
+        Assert.Equal($"drop {item}", h.Sent[^1]);
+        h.Feed($"You dropped {item}.");
+
+        h.Observe("C", Direction.N, Direction.S);
+        Assert.Equal(item == "war hammer" ? "get battle axe" : "get war hammer", h.Sent[^1]);
+
+        h.Dispose();
+    }
+
+        // A fresh `i` mid-sort lists the copy the sweep itself is carrying. That copy is
+    // the sweep's own, not one held apart from it, so the rest of the pile stays
+    // queued instead of being left as "one already held".
+    [Fact]
+    public void CarryOnlyOneItem_TheSweepsOwnCopy_InAFreshInventory_IsNotHeldOutsideIt()
+    {
+        SweepHarness h = NewSweepHarness(_root, _realm, currentWeight: 3513, maxWeight: 5280,
+            carryOnlyOneGroup: name => name == "war hammer" ? "pool 4" : null);
+        const string floor = "You notice 2 war hammer, an adamantite hauberk here.";
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+        Assert.True(h.Sweep.Start());
+        h.Feed(floor);
+        h.Observe("C", Direction.N, Direction.S);
+        h.Observe("B", Direction.S);
+        h.Feed(floor);
+        h.Observe("C", Direction.N, Direction.S);
+        h.Observe("A", Direction.N);
+        Assert.Equal(GhSweepManager.SweepPhase.Sorting, h.Sweep.Phase);
+
+        h.Observe("C", Direction.N, Direction.S);
+        Assert.Equal("get war hammer", h.Sent[^1]);
+        h.Feed("You took war hammer.");
+        PaceOut();
+        Assert.Equal("get adamantite hauberk", h.Sent[^1]);
+        h.Feed("You cannot carry that much!");
+        Assert.Equal("i", h.Sent[^1]);
+        FeedInventory(h.InventoryFeed, "war hammer", currentWeight: 4514, maxWeight: 5280);
+
+        Assert.DoesNotContain(h.Sweep.LeftInPlace, l => l.Reason == GhLeftReason.OneAlreadyHeld);
+        Assert.Contains(h.Sweep.PendingMoves, m => m.ItemName == "war hammer" && !m.Carried);
+
+        h.Dispose();
+    }
+
+        // Unmarked, and refused for one copy as well: one is held that the sweep didn't
+    // pick up. The pile is left, and neither get is sent again.
+    [Fact]
+    public void GetRefusedPastTheCarryLimit_ForOneCopy_LeavesThePile()
+    {
+        SweepHarness h = NewSweepHarness(_root, _realm, paradigm: true);
+        ReconWarHammersAtC(h, 2);
+        Assert.Equal(GhSweepManager.SweepPhase.Sorting, h.Sweep.Phase);
+
+        h.Observe("C", Direction.N, Direction.S);
+        Assert.Equal("get 2 war hammer", h.Sent[^1]);
+        h.Feed("An unseen force prevents you from grabbing that item!");
+        PaceOut();
+        Assert.Equal("get war hammer", h.Sent[^1]);
+        h.Feed("An unseen force prevents you from grabbing that item!");
+        PaceOut();
+
+        Assert.Equal(0, h.Sweep.PendingMoveCount);
+        Assert.Equal(2, h.Sweep.LeftInPlace.Count(l => l.ItemName == "war hammer" && l.Reason == GhLeftReason.OneAlreadyHeld));
+        Assert.Equal(1, h.Sent.Count(c => c == "get war hammer"));
+        Assert.Equal(1, h.Sent.Count(c => c == "get 2 war hammer"));
+
+        h.Dispose();
+    }
+
     [Fact]
     public void GetCurrencySyntax_BracketFormIsStillRecognised()
     {
@@ -1740,7 +1928,8 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
 
     private SweepHarness NewSweepHarness(string root, string realm,
         GhSuspendedSweepStore? suspended = null, int currentWeight = 1, int maxWeight = 100,
-        bool paradigm = true, string carriedInventory = "nothing", Func<string?>? activeGameData = null)
+        bool paradigm = true, string carriedInventory = "nothing", Func<string?>? activeGameData = null,
+        Func<string, string?>? carryOnlyOneGroup = null)
     {
         Directory.CreateDirectory(Path.Combine(root, "alpha"));
         File.WriteAllText(Path.Combine(root, "alpha", "Rooms.json"), """
@@ -1756,7 +1945,8 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
         File.WriteAllText(Path.Combine(root, "alpha", "Items.json"), """
             [
               { "Number": 1, "Name": "war hammer", "ItemType": 1, "Encum": 1 },
-              { "Number": 2, "Name": "adamantite hauberk", "ItemType": 1, "Encum": 800 }
+              { "Number": 2, "Name": "adamantite hauberk", "ItemType": 1, "Encum": 800 },
+              { "Number": 3, "Name": "battle axe", "ItemType": 1, "Encum": 1 }
             ]
             """);
 
@@ -1803,7 +1993,8 @@ public sealed class GhSweepManagerIntegrationTests : IDisposable
         sweep = new GhSweepManager(labels, runner, tracker, bfs, ground, names,
             router, coordinator, isOtherEngineBusy: () => false,
             isParadigm: () => paradigm, inventory: inventory, suspendedStore: suspended,
-            activeGameData: activeGameData, promptScanner: _sweepPrompt, now: () => _sweepNow, schedule: _sweepTimers.Arm);
+            activeGameData: activeGameData, promptScanner: _sweepPrompt, now: () => _sweepNow, schedule: _sweepTimers.Arm,
+            carryOnlyOneGroup: carryOnlyOneGroup);
 
         List<string> sent = new();
         sweep.SetWireSender(b => sent.Add(Encoding.Latin1.GetString(b).TrimEnd('\r')));

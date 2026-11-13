@@ -1846,6 +1846,7 @@ public static class BugReportBuilder
             if (!string.IsNullOrWhiteSpace(o.SellShops)) parts.Add($"sellShops {o.SellShops}");
             Flag(parts, "autoStash", o.AutoStash);
             Flag(parts, "cannotBeTaken", o.CannotBeTaken);
+            Flag(parts, "carryOnlyOne", o.CarryOnlyOne);
             Flag(parts, "mustHaveMinimum", o.MustHaveMinimum);
             Flag(parts, "loyalItem", o.LoyalItem);
             Flag(parts, "autoObtainForPath", o.AutoObtainForPath);
@@ -2433,6 +2434,11 @@ public static class BugReportBuilder
                     + $"{svc.GhSweep.CarryHeadroomNow}");
         Kv(sb, "Roomba left too-heavy",
             svc.GhSweep.LeftInPlace.Count(f => f.Reason == GhLeftReason.TooHeavy).ToString());
+        // A "Roomba keeps trying to pick this up" report for an item the game lets a
+        // character hold only one of turns on whether the sweep knew it.
+        Kv(sb, "Roomba one at a time (learned from refusals / left, one already held)",
+            $"{(svc.GhSweep.CarryOnlyOneLearned.Count == 0 ? "(none)" : string.Join(", ", svc.GhSweep.CarryOnlyOneLearned))} / "
+            + svc.GhSweep.LeftInPlace.Count(f => f.Reason == GhLeftReason.OneAlreadyHeld));
         // A room with no item cap can hold a floor list hundreds of stacks long, and
         // a "client locks up in the vault" report turns on how long that list is and
         // what reading it cost.

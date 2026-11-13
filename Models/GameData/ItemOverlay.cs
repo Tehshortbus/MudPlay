@@ -75,6 +75,12 @@ public sealed record ItemOverlay
     // sends get for an item marked this way, even when AutoCollect is set.
     public bool? CannotBeTaken { get; init; }
 
+    // The game lets a character hold only one at a time (MudPlay). Roomba moves such
+    // an item one trip a copy, and auto-collect / auto-buy stop at one. The Defaults
+    // tier sets it for every item of a Unique Pool (ability 188), so a stored false
+    // is an untick, not "unset".
+    public bool? CarryOnlyOne { get; init; }
+
     // Must keep at least MinToKeep of this item; engines won't drop below.
     public bool? MustHaveMinimum { get; init; }
 

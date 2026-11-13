@@ -222,6 +222,18 @@ public sealed class AutoGetItemRemoteTests : IDisposable
         Assert.Equal(Reply("stone wall: auto-get on, max 3 (cannot be taken)"), r.Ask1("@auto-get stone wall"));
     }
 
+    // The engine stops at one for a Carry only one item whatever Max to get says, so
+    // the report says so rather than leave "max none" to read as every copy.
+    [Fact]
+    public void AReport_SaysWhenTheItemIsCarryOnlyOne()
+    {
+        using Rig r = Build();
+        r.Resolver.WriteGameDataAt(SettingsTier.Global, "Items", "107",
+            new ItemOverlay { AutoCollect = true, CarryOnlyOne = true });
+
+        Assert.Equal(Reply("stone wall: auto-get on, max none (carry only one)"), r.Ask1("@auto-get stone wall"));
+    }
+
     // ----- Changes -----------------------------------------------------------------
 
     [Fact]

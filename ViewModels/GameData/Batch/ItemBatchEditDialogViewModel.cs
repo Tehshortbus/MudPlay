@@ -20,6 +20,7 @@ public sealed class ItemBatchChanges
     public BatchToggle AutoSell { get; init; } = BatchToggle.Leave;
     public BatchToggle AutoStash { get; init; } = BatchToggle.Leave;
     public BatchToggle CannotBeTaken { get; init; } = BatchToggle.Leave;
+    public BatchToggle CarryOnlyOne { get; init; } = BatchToggle.Leave;
     public BatchToggle MustHaveMinimum { get; init; } = BatchToggle.Leave;
     public BatchToggle LoyalItem { get; init; } = BatchToggle.Leave;
     public BatchToggle AutoObtainForPath { get; init; } = BatchToggle.Leave;
@@ -33,7 +34,8 @@ public sealed class ItemBatchChanges
         AutoCollect != BatchToggle.Leave || AutoDiscard != BatchToggle.Leave
         || AutoOpen != BatchToggle.Leave || AutoBuy != BatchToggle.Leave
         || AutoSell != BatchToggle.Leave || AutoStash != BatchToggle.Leave
-        || CannotBeTaken != BatchToggle.Leave || MustHaveMinimum != BatchToggle.Leave
+        || CannotBeTaken != BatchToggle.Leave || CarryOnlyOne != BatchToggle.Leave
+        || MustHaveMinimum != BatchToggle.Leave
         || LoyalItem != BatchToggle.Leave || AutoObtainForPath != BatchToggle.Leave
         || ChangeMinToKeep || ChangeMaxToGet;
 
@@ -50,6 +52,7 @@ public sealed class ItemBatchChanges
         if (AutoSell == BatchToggle.Off) o = o with { SellDetour = false, SellDetourAbove = null };
         if (AutoStash != BatchToggle.Leave) o = o with { AutoStash = AutoStash.Apply(o.AutoStash) };
         if (CannotBeTaken != BatchToggle.Leave) o = o with { CannotBeTaken = CannotBeTaken.Apply(o.CannotBeTaken) };
+        if (CarryOnlyOne != BatchToggle.Leave) o = o with { CarryOnlyOne = CarryOnlyOne.Apply(o.CarryOnlyOne) };
         if (MustHaveMinimum != BatchToggle.Leave) o = o with { MustHaveMinimum = MustHaveMinimum.Apply(o.MustHaveMinimum) };
         if (LoyalItem != BatchToggle.Leave) o = o with { LoyalItem = LoyalItem.Apply(o.LoyalItem) };
         if (AutoObtainForPath != BatchToggle.Leave) o = o with { AutoObtainForPath = AutoObtainForPath.Apply(o.AutoObtainForPath) };
@@ -78,6 +81,7 @@ public sealed class ItemBatchChanges
             }
             Add(AutoStash, nameof(ItemOverlay.AutoStash));
             Add(CannotBeTaken, nameof(ItemOverlay.CannotBeTaken));
+            Add(CarryOnlyOne, nameof(ItemOverlay.CarryOnlyOne));
             Add(MustHaveMinimum, nameof(ItemOverlay.MustHaveMinimum));
             Add(LoyalItem, nameof(ItemOverlay.LoyalItem));
             Add(AutoObtainForPath, nameof(ItemOverlay.AutoObtainForPath));
@@ -114,6 +118,7 @@ public sealed partial class ItemBatchEditDialogViewModel
     [ObservableProperty] private BatchToggle _autoSell = BatchToggle.Leave;
     [ObservableProperty] private BatchToggle _autoStash = BatchToggle.Leave;
     [ObservableProperty] private BatchToggle _cannotBeTaken = BatchToggle.Leave;
+    [ObservableProperty] private BatchToggle _carryOnlyOne = BatchToggle.Leave;
     [ObservableProperty] private BatchToggle _mustHaveMinimum = BatchToggle.Leave;
     [ObservableProperty] private BatchToggle _loyalItem = BatchToggle.Leave;
     [ObservableProperty] private BatchToggle _autoObtainForPath = BatchToggle.Leave;
@@ -142,7 +147,7 @@ public sealed partial class ItemBatchEditDialogViewModel
     {
         AutoCollect = AutoCollect, AutoDiscard = AutoDiscard, AutoOpen = AutoOpen,
         AutoBuy = AutoBuy, AutoSell = AutoSell, AutoStash = AutoStash,
-        CannotBeTaken = CannotBeTaken, MustHaveMinimum = MustHaveMinimum,
+        CannotBeTaken = CannotBeTaken, CarryOnlyOne = CarryOnlyOne, MustHaveMinimum = MustHaveMinimum,
         LoyalItem = LoyalItem, AutoObtainForPath = AutoObtainForPath,
         ChangeMinToKeep = ChangeMinToKeep, MinToKeep = MinToKeep,
         ChangeMaxToGet = ChangeMaxToGet, MaxToGet = MaxToGet,

@@ -287,7 +287,8 @@ public sealed class AutoModeRemoteHandler : IDisposable
 
     private static string Describe(string name, AutoGetItemRules.State state) =>
         $"{WireText.Ascii(name)}: auto-get {OnOff(state.AutoCollect)}, max {MaxText(state.Max)}"
-        + (state.CannotBeTaken ? " (cannot be taken)" : "");
+        + (state.CannotBeTaken ? " (cannot be taken)" : "")
+        + (state.CarryOnlyOne ? " (carry only one)" : "");
 
     private static string OnOff(bool on) => on ? "on" : "off";
 

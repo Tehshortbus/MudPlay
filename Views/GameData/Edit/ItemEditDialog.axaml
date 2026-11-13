@@ -118,6 +118,8 @@
                                             </Grid>
                                             <CheckBox Content="Cannot be taken" IsChecked="{Binding CannotBeTaken, Mode=TwoWay}"
                                                       ToolTip.Tip="Never pick it up, even with Auto-collect on."/>
+                                            <CheckBox Content="Carry only one" IsChecked="{Binding CarryOnlyOne, Mode=TwoWay}"
+                                                      ToolTip.Tip="The game lets you hold only one at a time. Roomba moves it one copy a trip, and Auto-collect and Auto-buy stop at one. Ticked to start with for an item the game data puts in a Unique Pool."/>
                                             <CheckBox Content="Auto-open" IsChecked="{Binding AutoOpen, Mode=TwoWay}"
                                                       IsVisible="{Binding CanAutoOpen}"
                                                       ToolTip.Tip="Open this container when one comes into your pack (Auto Get Items must be on). It waits out a fight, and what it gives is listed on Workshop → Chest Offload. One you already carry isn't opened."/>

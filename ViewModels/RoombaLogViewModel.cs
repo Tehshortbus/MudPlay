@@ -121,6 +121,7 @@ public sealed partial class RoombaLogViewModel : ObservableObject, IDisposable
         GhLeftReason.GoneBySortTime => "gone by sort time",
         GhLeftReason.NotFoundBySearch => "hidden, and this sweep's search didn't find it — still there",
         GhLeftReason.RefusedByGame => "the game won't let it be picked up",
+        GhLeftReason.OneAlreadyHeld => "only one can be held, and you already hold one",
         GhLeftReason.AllDestinationsFull => "every room that takes it is full",
         GhLeftReason.NotActuallyCarried => "not in inventory — the pickup never landed",
         GhLeftReason.CouldNotComplete => "couldn't be sorted this sweep — no room or headroom",

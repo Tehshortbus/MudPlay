@@ -91,7 +91,7 @@ public sealed class GhSweepManager : IDisposable
     internal static readonly TimeSpan InventoryVerificationTimeout = TimeSpan.FromSeconds(3);
 
     // A dispatched `get` can come back as a failure this manager must act on
-    // rather than retry forever. Four shapes (GAME_MECHANICS "`get` failure responses"):
+    // rather than retry forever. Five shapes (GAME_MECHANICS "`get` failure responses"):
     //   "You don't see <echo> here."  — the item is genuinely gone (recon's snapshot
     //       went stale, or another player took it); <echo> is whatever followed `get`.
     //   "Syntax: GET {Amount} {Currency}" — the game misparsed the item name as a
@@ -100,6 +100,8 @@ public sealed class GhSweepManager : IDisposable
     //       our tracked working-weight drifted low, so resync (not strand).
     //   "A strange force stops you from getting this item." — the game won't let
     //       this character take it; permanent for the item, so it is left alone.
+    //   "An unseen force prevents you from grabbing that item!" — the item is one
+    //       the game lets us hold only one of, and the get would take us past one.
     private static readonly Regex GetNotHereRegex = new(
         @"^\s*You don't see (?<echo>.+?) here\.\s*$",
         RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
@@ -114,6 +116,9 @@ public sealed class GhSweepManager : IDisposable
         RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     private static readonly Regex GetStrangeForceRegex = new(
         @"^\s*A strange force stops you from getting this item\.\s*$",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    private static readonly Regex GetPastCarryLimitRegex = new(
+        @"^\s*An unseen force prevents you from grabbing that item!\s*$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     // The DROP counterpart of the currency misparse — note the BRACES, where the
@@ -193,6 +198,15 @@ public sealed class GhSweepManager : IDisposable
     private readonly Func<bool> _isOtherEngineBusy;
     private readonly Func<bool> _isParadigm;
     private readonly Func<RoomKey, bool> _isRoomActivelyManaged;
+
+    // The group an item's hold-only-one limit is kept in (its Unique Pool, whose
+    // items share one; otherwise the item itself), null for an item without one.
+    private readonly Func<string, string?> _carryOnlyOneGroup;
+
+    // Each item's group as this sweep read it, by canonical name, and the items the
+    // game refused past one this sweep though nothing marked them.
+    private readonly Dictionary<string, string?> _carryOneGroups = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _learnedCarryOne = new(StringComparer.OrdinalIgnoreCase);
     private readonly InventoryManager? _inventory;
     private readonly GhItemLocationStore? _itemLocations;
     private readonly LogService? _log;
@@ -455,6 +469,8 @@ public sealed class GhSweepManager : IDisposable
     public int WorkingWeightBudget => WorkingBudget();
     public int LedgerCarriedWeightNow => LedgerCarriedWeight();
     public int CarryHeadroomNow => CurrentHeadroom();
+    // Items the game refused past one this sweep that their record didn't mark.
+    public IReadOnlyCollection<string> CarryOnlyOneLearned => _learnedCarryOne;
 
     // A room's most-recently-observed floor inventory (refreshed by the final recon
     // pass after sorting). Empty when the room wasn't observed. Fed to the GH tab's
@@ -495,6 +511,7 @@ public sealed class GhSweepManager : IDisposable
         GhItemLocationStore? itemLocations = null,
         Func<RoomKey, bool>? isRoomActivelyManaged = null,
         WirePromptScanner? promptScanner = null,
+        Func<string, string?>? carryOnlyOneGroup = null,
         GhSuspendedSweepStore? suspendedStore = null,
         Func<string?>? activeGameData = null,
         Func<long>? timestamp = null,
@@ -527,6 +544,7 @@ public sealed class GhSweepManager : IDisposable
         // Which labeled rooms THIS character sweeps (per-character; labels are shared
         // per-BBS). Defaults to "all managed" when unwired.
         _isRoomActivelyManaged = isRoomActivelyManaged ?? (static _ => true);
+        _carryOnlyOneGroup = carryOnlyOneGroup ?? (static _ => null);
         _promptScanner = promptScanner;
         _suspendedStore = suspendedStore;
         _activeGameData = activeGameData ?? (static () => null);
@@ -637,6 +655,8 @@ public sealed class GhSweepManager : IDisposable
         _stranded.Clear();
         _fullRooms.Clear();
         _saturated.Clear();
+        _carryOneGroups.Clear();
+        _learnedCarryOne.Clear();
         _commandQueue.Clear();
         _lastQueuedCommand = null;
         Cancel(ref _promptWait);
@@ -742,8 +762,7 @@ public sealed class GhSweepManager : IDisposable
 
         Phase = SweepPhase.Sorting;
         CaptureCarryBaseline();
-        SplitOversizedMoves();
-        StrandUnmovableItems();
+        FitQueueToPack();
         // The live queue now owns this work; the persisted copy would otherwise let
         // a later Start adopt the carried half a second time. It's rewritten at the
         // next sweep end either way. One kept for another set is not this queue.
@@ -1048,8 +1067,7 @@ public sealed class GhSweepManager : IDisposable
         Phase = SweepPhase.Sorting;
         CaptureCarryBaseline();
         BuildSortQueue();
-        SplitOversizedMoves();
-        StrandUnmovableItems();
+        FitQueueToPack();
         // The floors the sort starts from, to be kept in step with every copy the
         // game confirms taken or dropped.
         _expectedAfterSort = new GhFloorCounts(_itemNames, _visibleByRoom);
@@ -1143,6 +1161,122 @@ public sealed class GhSweepManager : IDisposable
         => _maxCarryWeight == int.MaxValue
             ? int.MaxValue
             : Math.Max(0, WorkingBudget() - LedgerCarriedWeight());
+
+    // Fit the queue to what the pack can take: items held one at a time cut into
+    // pickups of one, stacks too heavy for one trip split, and what can't be moved
+    // at all left where it is.
+    private void FitQueueToPack()
+    {
+        SplitCarryOneMoves();
+        SplitOversizedMoves();
+        StrandUnmovableItems();
+        StrandHeldOutsideTheSweep();
+    }
+
+    // ----- Items held one at a time --------------------------------------------
+
+    // The group an item's hold-only-one limit is kept in, or null when it has none:
+    // what its item record says, else what the game's refusal taught this sweep.
+    private string? CarryOneGroup(string itemName)
+    {
+        string name = GhSurveyMerger.Canonical(itemName, _itemNames);
+        if (!_carryOneGroups.TryGetValue(name, out string? group))
+            _carryOneGroups[name] = group = _carryOnlyOneGroup(name);
+        return group ?? (_learnedCarryOne.Contains(name) ? $"item {name}" : null);
+    }
+
+    // The groups the sweep is carrying a copy of: until it is delivered, a pickup
+    // of the same group would only be refused.
+    private HashSet<string> CarryOneGroupsCarried()
+    {
+        HashSet<string> carried = new(StringComparer.OrdinalIgnoreCase);
+        foreach (PendingSortMove move in _pending.Where(m => m.IsCarried && !m.Delivered))
+            if (CarryOneGroup(move.ItemName) is { } group) carried.Add(group);
+        return carried;
+    }
+
+    // The groups the character holds more of than the sweep carries: a copy held
+    // before the sweep, or picked up apart from it. The game's limit is on what the
+    // character holds, so worn gear and the key ring count with the pack.
+    private HashSet<string> CarryOneGroupsHeldOutsideTheSweep()
+    {
+        HashSet<string> outside = new(StringComparer.OrdinalIgnoreCase);
+        if (_inventory is not { IsLoaded: true } inventory) return outside;
+        InventorySnapshot snapshot = inventory.Snapshot;
+        Dictionary<string, int> held = new(StringComparer.OrdinalIgnoreCase);
+        void Count(string name, int copies)
+        {
+            if (CarryOneGroup(name) is { } group) held[group] = held.GetValueOrDefault(group) + copies;
+        }
+        foreach ((string name, int count) in InventorySnapshot.Stacks(snapshot.CarriedItems)) Count(name, count);
+        foreach (EquippedItem worn in snapshot.EquippedItems) Count(worn.Name, 1);
+        foreach (string key in snapshot.Keys ?? Array.Empty<string>())
+        {
+            (int quantity, string name) = InventorySnapshot.ParseKeyEntry(key);
+            Count(name, quantity);
+        }
+        foreach (PendingSortMove move in _pending.Where(m => m.IsCarried && !m.Delivered))
+            Count(move.ItemName, -move.Count);
+        foreach ((string group, int copies) in held)
+            if (copies > 0) outside.Add(group);
+        return outside;
+    }
+
+    // A pickup of more than one copy of an item held one at a time is cut into
+    // pickups of one, each delivered before the next is taken: the game refuses a
+    // get that would leave more than one held.
+    private void SplitCarryOneMoves()
+    {
+        List<string> split = new();
+        foreach (PendingSortMove move in _pending.ToList())
+        {
+            if (move.IsCarried || move.Delivered || move.Count <= 1 || CarryOneGroup(move.ItemName) is null)
+                continue;
+            int index = _pending.IndexOf(move);
+            _pending.RemoveAt(index);
+            for (int i = 0; i < move.Count; i++)
+            {
+                _pending.Insert(index + i, new PendingSortMove
+                {
+                    From = move.From,
+                    To = move.To,
+                    ItemName = move.ItemName,
+                    Count = 1,
+                    RequiresSearch = move.RequiresSearch,
+                });
+            }
+            split.Add(Stack(move));
+        }
+        if (split.Count > 0)
+            _log?.Info(LogCategory,
+                $"moving {split.Count} stack(s) one copy a trip (only one can be held): {NameFew(split)}");
+    }
+
+    // Leave every pickup of a group the character already holds a copy of that the
+    // sweep didn't pick up: the game would refuse each one until that copy is gone.
+    private void StrandHeldOutsideTheSweep()
+    {
+        HashSet<string> outside = CarryOneGroupsHeldOutsideTheSweep();
+        if (outside.Count == 0) return;
+        List<PendingSortMove> blocked = _pending
+            .Where(m => !m.IsCarried && !m.Delivered
+                        && CarryOneGroup(m.ItemName) is { } group && outside.Contains(group))
+            .ToList();
+        LeaveOneAlreadyHeld(blocked);
+    }
+
+    private void LeaveOneAlreadyHeld(List<PendingSortMove> blocked)
+    {
+        if (blocked.Count == 0) return;
+        foreach (PendingSortMove move in blocked)
+        {
+            _pending.Remove(move);
+            _leftInPlace.Add(new GhSweepItemFound(move.From, move.ItemName, GhLeftReason.OneAlreadyHeld));
+        }
+        _log?.Info(LogCategory,
+            $"only one can be held and you already hold one: leaving {blocked.Count} pickup(s) where they are: "
+            + NameStacks(blocked));
+    }
 
     // Split a queued stack heavier than the whole working budget into budget-sized
     // sub-moves, so a big pile (e.g. 140 torches) is carried across several trips
@@ -1792,10 +1926,14 @@ public sealed class GhSweepManager : IDisposable
         int used = 0;
         List<PendingSortMove> here = _pending
             .Where(m => !m.Delivered && !m.IsCarried && m.From.Equals(room)).ToList();
+        // One copy of an item held one at a time per batch, and none while the
+        // sweep carries one: the game would refuse the second.
+        HashSet<string> groupsHeld = CarryOneGroupsCarried();
+        bool TakesGroup(PendingSortMove move) => CarryOneGroup(move.ItemName) is not { } group || groupsHeld.Add(group);
         foreach (PendingSortMove move in here.Where(m => !m.RequiresSearch))
         {
             int weight = MoveWeight(move);
-            if (used + weight > headroom)
+            if (used + weight > headroom || !TakesGroup(move))
             {
                 visibleLeftBehind.Add(GhSurveyMerger.Canonical(move.ItemName, _itemNames));
                 continue;
@@ -1807,7 +1945,7 @@ public sealed class GhSweepManager : IDisposable
         {
             if (visibleLeftBehind.Contains(GhSurveyMerger.Canonical(move.ItemName, _itemNames))) continue;
             int weight = MoveWeight(move);
-            if (used + weight > headroom) continue;
+            if (used + weight > headroom || !TakesGroup(move)) continue;
             used += weight;
             fitting.Add(move);
         }
@@ -1820,7 +1958,13 @@ public sealed class GhSweepManager : IDisposable
     // pick up nothing and walk on.
     private List<GhSortPlanner.PickupRoom> PickupsOnOffer()
     {
-        List<PendingSortMove> uncollected = _pending.Where(p => !p.IsCarried && !p.Delivered).ToList();
+        // A pickup of an item held one at a time waits while the sweep carries one
+        // of its group: routing to it would arrive, pick up nothing and walk on.
+        HashSet<string> groupsCarried = CarryOneGroupsCarried();
+        List<PendingSortMove> uncollected = _pending
+            .Where(p => !p.IsCarried && !p.Delivered
+                        && (CarryOneGroup(p.ItemName) is not { } group || !groupsCarried.Contains(group)))
+            .ToList();
         HashSet<(RoomKey, string)> visibleStill = new();
         foreach (PendingSortMove move in uncollected.Where(m => !m.RequiresSearch))
             visibleStill.Add((move.From, GhSurveyMerger.Canonical(move.ItemName, _itemNames).ToLowerInvariant()));
@@ -2433,7 +2577,90 @@ public sealed class GhSweepManager : IDisposable
             if (refused is not null)
                 StrandFailedGet(refused, "the game won't let it be picked up (a strange force)",
                     GhLeftReason.RefusedByGame);
+            return;
         }
+        // Names no item either. The line is recorded on Paradigm only. Should it
+        // answer a stack sent one `get` a copy, a refusal for a get whose move was
+        // settled already answers one of those copies, not another pickup still
+        // outstanding, so it is never handed to the sole outstanding get.
+        if (GetPastCarryLimitRegex.IsMatch(line.Text))
+        {
+            PendingSortMove? refused = _lastQueuedCommand is { Verb: "get", Move: { } sent }
+                ? (gets.Contains(sent) ? sent : null)
+                : gets.Count == 1 ? gets[0] : null;
+            if (refused is not null) OnGetRefusedPastCarryLimit(refused);
+        }
+    }
+
+    // "An unseen force prevents you from grabbing that item!": the get would leave
+    // more than one held of an item the game lets a character hold only one of
+    // (GAME_MECHANICS "One-per-pool items (ability 188 `Unique Pool`)").
+    //   - Its record didn't say so: it is moved one copy a trip for the rest of the
+    //     sweep, and one copy is asked for here and now when none is carried.
+    //   - The sweep carries one of its group: the pickups wait for the delivery.
+    //   - A single copy refused with none carried: one is held that the sweep
+    //     didn't pick up, so every pickup of the group is left where it is.
+    private void OnGetRefusedPastCarryLimit(PendingSortMove move)
+    {
+        // A stack sent one `get` a copy may have had copies taken before the refusal.
+        KeepWhatWasTaken(move);
+        string name = GhSurveyMerger.Canonical(move.ItemName, _itemNames);
+        bool marked = CarryOneGroup(name) is not null;
+        if (!marked)
+        {
+            _learnedCarryOne.Add(name);
+            _log?.Info(LogCategory,
+                $"the game won't let more than one {name} be held — moving it one copy a trip this sweep. "
+                + "Tick Carry only one on its item record to plan for it from the start.");
+        }
+        string group = CarryOneGroup(name)!;
+
+        // Every pickup of the group still in this batch would be refused the same way.
+        List<PendingSortMove> sameGroup = _outstandingDispatch
+            .Where(m => !m.IsCarried && !m.Delivered && CarryOneGroup(m.ItemName) == group).ToList();
+        foreach (PendingSortMove pulled in sameGroup) _outstandingDispatch.Remove(pulled);
+        RequeueWithout(m => CarryOneGroup(m.ItemName) == group);
+
+        if (CarryOneGroupsCarried().Contains(group))
+        {
+            SplitCarryOneMoves();
+            _log?.Debug(LogCategory, $"{Stack(move)} at {move.From} waits until the {name} carried is delivered");
+        }
+        else if (!marked && move.Count > 1)
+        {
+            SplitCarryOneMoves();
+            if (_pending.FirstOrDefault(m => !m.IsCarried && !m.Delivered && m.From.Equals(move.From)
+                    && m.RequiresSearch == move.RequiresSearch && SameItem(m.ItemName, name)) is { } one)
+            {
+                _outstandingDispatch.Add(one);
+                _commandQueue.Enqueue(("get", one));
+            }
+        }
+        else
+        {
+            _failedHere.Add($"{Stack(move)} (only one can be held, and one is held already)");
+            LeaveOneAlreadyHeld(_pending
+                .Where(m => !m.IsCarried && !m.Delivered && CarryOneGroup(m.ItemName) == group).ToList());
+        }
+        PhaseChanged?.Invoke();
+
+        if (_commandQueue.Count > 0) SendNextQueuedCommand();
+        else if (_outstandingDispatch.Count == 0)
+        {
+            EndDispatch();
+            ContinueAfterTransaction("carry-limit refusal resolved dispatch");
+        }
+        else Arm(ref _dispatchSettle, DispatchSettleTimeout, OnDispatchSettleElapsed);
+    }
+
+    // Take the queued gets that match out of the batch; their moves stay on the queue
+    // for a later visit.
+    private void RequeueWithout(Func<PendingSortMove, bool> drop)
+    {
+        List<(string Verb, PendingSortMove Move)> queued = _commandQueue.ToList();
+        _commandQueue.Clear();
+        foreach ((string verb, PendingSortMove queuedMove) in queued)
+            if (verb != "get" || !drop(queuedMove)) _commandQueue.Enqueue((verb, queuedMove));
     }
 
     // The game didn't recognise our drop's item name, which almost always means we
@@ -2794,9 +3021,9 @@ public sealed class GhSweepManager : IDisposable
         }
         ResyncCarryBaseline();
         // A corrected (smaller) budget can require finer stack splitting and can
-        // reveal a single unit is now unmovable.
-        SplitOversizedMoves();
-        StrandUnmovableItems();
+        // reveal a single unit is now unmovable; a fresh read can show a copy of an
+        // item held one at a time that the sweep didn't pick up.
+        FitQueueToPack();
         PhaseChanged?.Invoke();
         ContinueAfterTransaction("inventory resync complete");
     }

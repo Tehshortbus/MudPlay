@@ -1,5 +1,13 @@
 # Version history
 
+## 3.203.0
+
+- New item option **Carry only one** (Game Data → Items, and the batch editor): Roomba moves the item one copy a trip, Auto-collect and Auto-buy stop at one
+- Carry only one starts ticked for every Unique Pool item in the game data (the orbs, city tokens, coin bag)
+- Roomba recognises `An unseen force prevents you from grabbing that item!` instead of re-sending the same `get` every lap
+- Roomba leaves a one-only pile alone when you already hold one it didn't pick up
+- `@auto-get <item>` ends its reply with `(carry only one)` for such an item
+
 ## 3.202.12
 
 - Session Stats: new Rounds/kill row, the average combat rounds a monster took to die this session (also a status-bar item)
