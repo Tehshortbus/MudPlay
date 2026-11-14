@@ -118,6 +118,9 @@ public sealed partial class CombatManager : IDisposable
     private readonly IDisposable _concealedPassageSub;
     private readonly IDisposable _userHitsSub;
     private readonly IDisposable _mobHitsSub;
+    // A monster's hit on us that prints no damage figure (the set's own lines).
+    private readonly IDisposable _mobHitsNoDamageSub;
+    private readonly IDisposable _selfDefenseHitsNoDamageSub;
     private readonly IDisposable _mobMissesSub;
     private readonly IDisposable _mobWeaponBlowSub;
     private readonly IDisposable _targetGoneSub;
@@ -1126,17 +1129,20 @@ public sealed partial class CombatManager : IDisposable
             m => NoteExitChangedHere(m, opened: true));
         _userHitsSub  = router.Subscribe(KnownPatterns.UserHits,  OnCombatLine);
         _mobHitsSub   = router.Subscribe(KnownPatterns.MobHits,   OnCombatLine);
+        _mobHitsNoDamageSub = router.Subscribe(KnownPatterns.MobHitsNoDamage, OnCombatLine);
         _mobMissesSub = router.Subscribe(KnownPatterns.MobMisses, OnCombatLine);
         _mobWeaponBlowSub = router.Subscribe(KnownPatterns.MonsterWeaponBlow, OnMonsterWeaponBlow);
         // Self-defense marking rides the same incoming-attack lines (each carries the
         // attacker's name in group 0). Separate from OnCombatLine because that also
         // fires on our OWN UserHits, which aren't an incoming attack.
         _selfDefenseHitsSub   = router.Subscribe(KnownPatterns.MobHits,    OnAttackedInSelfDefense);
+        _selfDefenseHitsNoDamageSub = router.Subscribe(KnownPatterns.MobHitsNoDamage, OnAttackedInSelfDefense);
         _selfDefenseMissesSub = router.Subscribe(KnownPatterns.MobMisses,  OnAttackedInSelfDefense);
         _selfDefenseDodgesSub = router.Subscribe(KnownPatterns.UserDodges, OnAttackedInSelfDefense);
         _attackOnUsSubs = new[]
         {
             router.Subscribe(KnownPatterns.MobHits,       OnAttackOnUsUnderUserBreakHold),
+            router.Subscribe(KnownPatterns.MobHitsNoDamage, OnAttackOnUsUnderUserBreakHold),
             router.Subscribe(KnownPatterns.MobMisses,     OnAttackOnUsUnderUserBreakHold),
             router.Subscribe(KnownPatterns.MobAttacksYou, OnAttackOnUsUnderUserBreakHold),
             router.Subscribe(KnownPatterns.UserDodges,    OnAttackOnUsUnderUserBreakHold),
@@ -6568,6 +6574,7 @@ public sealed partial class CombatManager : IDisposable
         _concealedPassageSub.Dispose();
         _userHitsSub.Dispose();
         _mobHitsSub.Dispose();
+        _mobHitsNoDamageSub.Dispose();
         _mobMissesSub.Dispose();
         _mobWeaponBlowSub.Dispose();
         _targetGoneSub.Dispose();
@@ -6585,6 +6592,7 @@ public sealed partial class CombatManager : IDisposable
         _attackConfirmHitsSub.Dispose();
         _attackConfirmMissesSub.Dispose();
         _selfDefenseHitsSub.Dispose();
+        _selfDefenseHitsNoDamageSub.Dispose();
         _selfDefenseMissesSub.Dispose();
         _selfDefenseDodgesSub.Dispose();
         foreach (IDisposable sub in _attackOnUsSubs) sub.Dispose();

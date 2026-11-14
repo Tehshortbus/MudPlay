@@ -3673,6 +3673,29 @@ public sealed class CombatManagerSpellsTests
         Assert.Equal("a big gravedigger", h.LastSent);          // self-defense → engaged with the weapon
     }
 
+    // A hit that prints no damage figure, from the set's own Messages table (NMR
+    // 1.8.4): "The <monster> sweeps your feet out from under you!" is an attack on us
+    // all the same (user, 2026-11-14), and the engine fights back.
+    [Fact]
+    public void SelfDefense_ADamageFreeHitFromTheSetsLines_EngineEngages()
+    {
+        using Harness h = new();
+        h.AddMonster(1, "grumpy badger");
+        h.SetOverlay(1, relationship: MonsterRelationship.Neutral);
+        MudPlay.Game.GameData.RealmEventLines lines = MudPlay.Game.GameData.RealmEventLines.From(TestRows.Table("""
+            [{"ID":1,"Name":"sweeps your feet","Kind":"Self","Msg":"The {source} sweeps your feet out from under you!","EndMsg":"\u0000","Effects":"Damage,Monster","Spell":0}]
+            """), _ => false);
+        Assert.True(h.Router.TryGetPattern(KnownPatterns.MobHitsNoDamage, out IMessagePattern pattern));
+        ((RealmLinePattern)pattern).SetMatcher(lines.HitOnUs);
+
+        h.Feed("Also here: grumpy badger.");
+        Assert.DoesNotContain(h.AllSent, s => s.Contains("badger"));
+
+        h.Feed("The grumpy badger sweeps your feet out from under you!");
+
+        Assert.Equal("a grumpy badger", h.LastSent);
+    }
+
     // A neutral we never provoked, swinging at us (a miss line still names it), is
     // engaged too.
     [Fact]

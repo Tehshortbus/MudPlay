@@ -105,6 +105,7 @@ public sealed class DarkRoomCombatWatcher : IDisposable
         _log = log;
         _subs.Add(router.Subscribe(KnownPatterns.MobMisses, OnAttackLine));
         _subs.Add(router.Subscribe(KnownPatterns.IncomingDamage, OnAttackLine));
+        _subs.Add(router.Subscribe(KnownPatterns.MobHitsNoDamage, OnAttackLine));
         _subs.Add(router.Subscribe(KnownPatterns.IncomingAttack, OnSwing));
         _subs.Add(router.Subscribe(KnownPatterns.PartyAttackAnnounce, OnPartyAttack));
         _subs.Add(router.Subscribe(KnownPatterns.CommandNoEffect, OnCommandNoEffect));
