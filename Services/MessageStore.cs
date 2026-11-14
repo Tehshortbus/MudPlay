@@ -117,7 +117,7 @@ public sealed class MessageStore
             RealmLines = "none: the set has no Messages table";
             return seed;
         }
-        if (MdbMessageOverlay.Unreadable(table) is { } why)
+        if (MdbMessageRow.Unreadable(table) is { } why)
         {
             RealmLines = $"none: the set's Messages table isn't one this client reads ({why})";
             _log?.Log(LogSeverity.Warn, "Messages", $"set '{setName}': {RealmLines}.");
