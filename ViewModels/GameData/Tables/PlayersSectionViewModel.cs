@@ -267,7 +267,7 @@ public sealed class PlayersSectionViewModel : GameDataTableSectionViewModel, IEd
         }
         if (record is null) return;
 
-        PlayerEditDialogViewModel vm = new(record);
+        PlayerEditDialogViewModel vm = new(record, _db.ClassTitles);
         PlayerEditResult? result = await _dialogs.OpenWindowAsync<PlayerEditDialogViewModel, PlayerEditResult>(vm);
         if (result is null) return;
 

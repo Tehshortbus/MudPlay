@@ -131,7 +131,7 @@ public sealed class PartyLevelTrackerTests
         // A who-observation gives Bob a title but no exact level → title band.
         h.Players.RecordObservation("Bob", null, null, null, "Apprentice", null, null, DateTime.UnixEpoch);
 
-        (int MinLevel, int MaxLevel)? band = ClassTitleTable.LookupLevelRange("Apprentice");
+        (int MinLevel, int MaxLevel)? band = ClassTitleTable.BuiltIn.LookupLevelRange("Apprentice");
         Assert.NotNull(band);
         int expLow = Math.Min(40, band!.Value.MinLevel);
         int expHigh = Math.Max(40, band.Value.MaxLevel);

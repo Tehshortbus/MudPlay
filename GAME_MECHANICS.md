@@ -1235,6 +1235,15 @@ How a character is named, how it earns and spends character points (CP), how exp
 **Client use:**
 - Implemented in `ExperienceTableCalculator.CalcExpNeeded_ParaMud`.
 
+### Class titles by level
+*Status: [OBSERVED] 2026-11-14 (game data: the Titles tables of NMR 1.8.4 exports of Stock v1.11p, Paradigm 1.9.1f and MudRev) · Realm: differs*
+
+- **Each class has its own title for each band of levels, and the realm's data sets them.** The `who` row shows the title (*Wire, prompt & command output → The `who` listing*). A gender-split title is `Male|Female` in the data (`Lord|Lady`).
+- **Stock and Paradigm agree up to level 55–70, then part.** Stock v1.11p's Warrior is `Dragonslayer` from 70 to 109; Paradigm's Warrior is `Dragonslayer` at 70–74, then `High Warlord`, `Juggernaut`, `Conqueror`, `Dread Juggernaut`, `Unstoppable Force` and `Overlord` (100–109). Every Stock class has one top title from about 70 up (Priest `Voice of God`, Mage `Supreme Archmagi`).
+- **Paradigm's Thief title at 55–59 is `Master Rogue`**; `Rogue` is 40–44.
+- **MudRev has 25 classes and titles to level 149–153**, its level 2–4 title `Apprentice` like level 1.
+- **Client use:** `ClassTitleTable.ForSet` reads the set's Titles table (class numbers named by its Classes table); a set without one gets `ClassTitleTable.BuiltIn`, Paradigm 1.9.1's titles. Read through `PlayerDatabase.ClassTitles` by `PartyLevelTracker`, `PlayerDatabase.RecordLevel`, the player editor and the bug report. (The built-in list before 2026-11-14 split Paradigm's `Master Rogue` into `Master` and `Rogue`, shifting every later Thief title five levels.)
+
 ### Trainers: level band, class restriction, and `train stats`
 *Status: CONFIRMED 2026-07-10 (verified against the 1.11p Shops table) — level band; CONFIRMED 2026-09-22 (user) — `train stats` not level-gated*
 

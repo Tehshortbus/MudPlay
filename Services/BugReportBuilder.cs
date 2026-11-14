@@ -405,6 +405,7 @@ public static class BugReportBuilder
             svc.ActiveSetDamagedCells == 0 ? "no" : $"{svc.ActiveSetDamagedCells} cell(s) - import the MDB again");
         Kv(sb, "Game data: items with room-command sources", svc.ItemSources.RoomCommandItemCount.ToString());
         Kv(sb, "Game data: monster relationship defaults", svc.MonsterOverlaySeed.RelationshipSummary);
+        Kv(sb, "Game data: class titles", svc.Players.ClassTitles.Describe());
         Kv(sb, "Character", svc.Profile.CurrentProfileName ?? "(none loaded)");
         Kv(sb, "BBS", svc.Profile.CurrentBbsName ?? "(none)");
         if (svc.Profile.Current is { StateUnverified: true })
@@ -982,7 +983,7 @@ public static class BugReportBuilder
                 : ", age unknown";
             return $"{exact} exact{age}";
         }
-        if (Game.GameData.ClassTitleTable.LookupLevelRange(rec?.Title) is { } band)
+        if (svc.Players.ClassTitles.LookupLevelRange(rec?.Title) is { } band)
             return $"{band.MinLevel}–{band.MaxLevel} (from title \"{rec!.Title}\")";
         return "unknown";
     }

@@ -275,7 +275,8 @@ public sealed class RemoteCommandCatalogTests
     {
         ViewModels.GameData.Edit.PlayerEditDialogViewModel vm = new(
             new PlayerRecord("Test", string.Empty, null, null, null, null, null, null,
-                             DateTime.UtcNow, DateTime.UtcNow));
+                             DateTime.UtcNow, DateTime.UtcNow),
+            Game.GameData.ClassTitleTable.BuiltIn);
         string tip = category switch
         {
             PlayerRemoteControls.QueryVersion        => vm.RcQueryVersionTip,
@@ -305,7 +306,8 @@ public sealed class RemoteCommandCatalogTests
     {
         ViewModels.GameData.Edit.PlayerEditDialogViewModel vm = new(
             new PlayerRecord("Test", string.Empty, null, null, null, null, null, null,
-                             DateTime.UtcNow, DateTime.UtcNow));
+                             DateTime.UtcNow, DateTime.UtcNow),
+            Game.GameData.ClassTitleTable.BuiltIn);
 
         Assert.Contains("Careful: @relation can set a monster to Hangup or Flee.", vm.RcAlterSettingsTip);
         Assert.DoesNotContain("Careful", vm.RcHangupDisconnectTip);

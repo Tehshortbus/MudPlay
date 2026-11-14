@@ -95,7 +95,7 @@ public sealed class PartyLevelTracker
             // Always carry the title band alongside the exact reading: the
             // estimate itself decides which wins (exact, unless the band's floor
             // has risen above a now-stale exact — see PartyLevelEstimate).
-            (int Min, int Max)? title = ClassTitleTable.LookupLevelRange(rec?.Title);
+            (int Min, int Max)? title = _players.ClassTitles.LookupLevelRange(rec?.Title);
             estimates.Add(new PartyLevelEstimate(exact, title));
         }
         return PartyLevelBounds.Compute(_selfLevel(), estimates);

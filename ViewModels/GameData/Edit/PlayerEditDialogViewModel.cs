@@ -20,6 +20,8 @@ public sealed partial class PlayerEditDialogViewModel : ObservableObject, IDialo
     public event Action<PlayerEditResult?>? CloseRequested;
 
     private readonly PlayerRecord _original;
+    // The active set's class titles, for the Class and Level rows' title guesses.
+    private readonly ClassTitleTable _titles;
 
     [ObservableProperty] private bool _inviteToPartyIfSeen;
     [ObservableProperty] private bool _joinPartyIfInvited;
@@ -173,10 +175,10 @@ public sealed partial class PlayerEditDialogViewModel : ObservableObject, IDialo
         get
         {
             if (!string.IsNullOrEmpty(_original.Class)) return _original.Class;
-            IReadOnlyList<string> inferred = ClassTitleTable.LookupClasses(_original.Title);
+            IReadOnlyList<string> inferred = _titles.LookupClasses(_original.Title);
             if (inferred.Count == 0) return null;
             if (inferred.Count == 1) return $"{inferred[0]} (by title)";
-            if (inferred.Count >= ClassTitleTable.ClassCount) return "Unknown";
+            if (inferred.Count >= _titles.ClassCount) return "Unknown";
             return $"{string.Join(" / ", inferred)} (by title)";
         }
     }
@@ -190,7 +192,7 @@ public sealed partial class PlayerEditDialogViewModel : ObservableObject, IDialo
     {
         get
         {
-            (int Min, int Max)? range = ClassTitleTable.LookupLevelRange(_original.Title);
+            (int Min, int Max)? range = _titles.LookupLevelRange(_original.Title);
             var estimate = new MudPlay.Game.Map.PartyLevelEstimate(_original.Level, range);
             if (estimate.Low is not { } lo || estimate.High is not { } hi) return null;
             return ClassTitleTable.FormatLevelRange((lo, hi));
@@ -229,9 +231,10 @@ public sealed partial class PlayerEditDialogViewModel : ObservableObject, IDialo
     // IsVisible on both the label and value cells.
     public bool HasRole => Role is not null;
 
-    public PlayerEditDialogViewModel(PlayerRecord original)
+    public PlayerEditDialogViewModel(PlayerRecord original, ClassTitleTable titles)
     {
         _original           = original;
+        _titles             = titles;
         InviteToPartyIfSeen = original.InviteToPartyIfSeen;
         JoinPartyIfInvited  = original.JoinPartyIfInvited;
         DontAutoDelete      = original.DontAutoDelete;
