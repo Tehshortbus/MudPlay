@@ -1364,9 +1364,9 @@ How to keep it current:
 - Why: MegaMUD-style experience reply; report paradigm-20261030-221217 (replies stuck on "type exp" under server vitals).
 
 ### ExperienceTableCalculatorTests.cs
-- Covers: Game/Calculators/ExperienceTableCalculator
-- Checks: the exp chart; Stock vs ParaMUD exp needed (level-34 taper); monotonic; saturation; time-to-level and its format tiers.
-- Why: level ETA readouts.
+- Covers: Game/Calculators/ExperienceTableCalculator (+ TnlCountdown)
+- Checks: the exp chart; Stock vs ParaMUD exp needed (level-34 taper); monotonic; saturation; time-to-level and its format tiers; a time to level centuries away is capped and runs on the countdown's clock; past a year it reads `over 1 year`.
+- Why: level ETA readouts; `Crash-20261114-125113` (level 75 on Anomaly at 15 exp an hour overflowed the clock).
 
 ### FavoriteEditDialogViewModelTests.cs
 - Covers: ViewModels/Navigation/FavoriteEditDialogViewModel

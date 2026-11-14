@@ -95,6 +95,21 @@ public sealed class ExperienceTableCalculatorTests
         Assert.Equal(2.0, t!.Value.TotalHours, 3);
     }
 
+    // A level billions of exp away at the first kill's rate comes to thousands of
+    // years: capped, so the countdown it feeds can add it to the clock
+    // (Crash-20261114-125113: level 75 on Anomaly, 15 exp an hour).
+    [Theory]
+    [InlineData(6_625_724_403L, 15L)]
+    [InlineData(long.MaxValue, 1L)]
+    public void CalcTimeToLevel_CenturiesAway_IsCapped_AndCountsDownOnTheClock(long needed, long rate)
+    {
+        TimeSpan? t = ExperienceTableCalculator.CalcTimeToLevel(needed, 0, rate);
+
+        Assert.Equal(ExperienceTableCalculator.MaxTimeToLevel, t);
+        DateTimeOffset now = new(2026, 11, 14, 12, 51, 13, TimeSpan.FromHours(-6));
+        Assert.Equal(t, new TnlCountdown().Remaining(t, now));
+    }
+
     [Theory]
     [InlineData(0, 0, 30, "30s")]            // sub-minute → seconds
     [InlineData(0, 4, 12, "4m 12s")]         // under 10m → minutes and seconds
@@ -107,6 +122,8 @@ public sealed class ExperienceTableCalculatorTests
     [InlineData(24, 59, 0, "24h 59m")]       // just under the day cutover
     [InlineData(25, 0, 0, "1d 1h 0m")]       // 25h → days
     [InlineData(26, 30, 0, "1d 2h 30m")]
+    [InlineData(8760, 0, 0, "365d 0h 0m")]   // a year is still counted out
+    [InlineData(8760, 0, 1, "over 1 year")]  // past it, only that (user, 2026-11-14)
     public void FormatTimeToLevel_TiersByMagnitude(int h, int m, int s, string expected)
         => Assert.Equal(expected, ExperienceTableCalculator.FormatTimeToLevel(new TimeSpan(h, m, s)));
 }
