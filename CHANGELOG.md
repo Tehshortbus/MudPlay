@@ -1,5 +1,12 @@
 # Version history
 
+## 3.206.0
+
+- A boss or lair monster's death text from the game data's Messages table counts as its death even when someone else made the kill: its boss timer and lair clock start
+- Following a leader through a command exit (`Ragnar slips into the dark alley.`) keeps the map sure where you are
+- A monster appearing in the room (`A moss zombie rises from the ground!`) re-reads the room during a fight
+- These lines are no longer listed as unrecognized; the bug report shows how many the set has and the last death read from one
+
 ## 3.205.0
 
 - Spell messages use the realm's own lines when the game data has a Messages table (Nightmare Redux 1.8.4 exports): its cast, incoming and start / wear-off lines replace the built-in ones, which fill in the rest

@@ -1921,6 +1921,10 @@ public sealed class AppServices
     // CombatManager engages it as if it had been listed.
     public Game.Combat.DarkRoomCombatWatcher DarkRoomCombat { get; private set; } = null!;
     public Game.Combat.MonsterSummonWatcher MonsterSummons { get; private set; } = null!;
+    // A monster appearing in the room (the set's monster entrances) re-displays it.
+    public Game.Combat.MonsterEntranceWatcher MonsterEntrances { get; private set; } = null!;
+    // A monster's death read from its own death text, for a kill that paid us nothing.
+    public Game.Combat.MonsterDeathLineWatcher MonsterDeathLines { get; private set; } = null!;
 
     // Holds the movement stack for a short beat after each dead-reckoned dark-room
     // advance, so the game engine has time to reveal a hostile (its "strides in"
@@ -3265,6 +3269,7 @@ public sealed class AppServices
         // Class titles follow the active set: its own Titles table, else the built-in list.
         Players.SetClassTitleSource(() => _classTitles ??= LoadClassTitles());
         GameData.ActiveSetChanged += _ => _classTitles = null;
+        GameData.ActiveSetChanged += _ => _realmEvents = null;
         Tick.HeartbeatElapsed += () => Players.TakeInOutsideChanges();
         // The settings files every client shares: global.json, and the game-data
         // edits made for all characters or for a realm.
@@ -4430,6 +4435,7 @@ public sealed class AppServices
         // NoteMoveSent the tracker keeps its old anchor, mismatches every new room
         // and falls to Lost within a few rooms.
         FollowMove = new Game.Map.FollowMoveObserver(Router, RoomTracker, Log);
+        FollowMove.SetChaseLines(() => RealmEvents, PartyState.IsLeaderWeFollow);
         FollowModes = new Game.FollowModeTracker(Router, Log);
         Profile.ProfileLoaded += _ => FollowModes.Reset();
 
@@ -5112,6 +5118,8 @@ public sealed class AppServices
             log: Log);
         GameData.ActiveSetChanged += _ => MonsterSummons.Invalidate();
         Messages.Messages.CollectionChanged += (_, _) => MonsterSummons.Invalidate();
+        MonsterEntrances = new Game.Combat.MonsterEntranceWatcher(Router, RoomClassifier,
+            () => RealmEvents, Combat.RequestRoomRefresh, Log);
 
         // Our own say echo ("You say \"…\"") only reaches the chat router — it's chat
         // by shape — so the combat engine hears about an attack the server read as a
@@ -5524,8 +5532,11 @@ public sealed class AppServices
             // restated in the watcher: the `par` roster (PartyManager), the stat /
             // exp / health sheet (StatParser), and the `spells` / `pow` listing
             // (SpellListParser) — otherwise every such poll flooded the queue.
+            // The set's own death, chase and monster-entrance lines (RealmEventLines)
+            // are read by their watchers, not by a router pattern either.
             isRecognizedByDirectParser: text =>
-                Game.PartyManager.IsRosterRow(text)
+                RealmEvents.IsKnown(text)
+                || Game.PartyManager.IsRosterRow(text)
                 || Game.StatParser.IsStatScreenLine(text)
                 || Game.Spells.SpellListParser.IsSpellListLine(text)
                 // The full-'i' inventory dump: its "You are carrying …" anchor plus every
@@ -8956,6 +8967,17 @@ public sealed class AppServices
         Lairs = new Game.Map.LairManager(Log);
         LairTimers = new Game.Map.LairTimerStore(GameData, RoomGraph, RoomTracker, Log);
         MonsterDeath.MonsterDied += evt => LairTimers.NoteKill(evt.At);
+        // A death text with no exp line of ours is another's kill of that monster, and
+        // counts as its death (user, 2026-11-14): its boss timer and the lair's clock
+        // start, and the fight's roster is read again without it.
+        MonsterDeathLines = new Game.Combat.MonsterDeathLineWatcher(Router, () => RealmEvents, log: Log);
+        MonsterDeathLines.DiedToAnother += death =>
+        {
+            BossTimers.OnMonsterDied(new Game.Combat.MonsterDeathEvent(ExperienceGained: null, At: death.At),
+                RoomTracker.State.CurrentRoom?.Key, death.Monster);
+            LairTimers.NoteKill(death.At);
+            Combat.RequestRoomRefresh($"'{death.Monster}' died to another");
+        };
         ExpResolver = new Game.Map.RouteExpResolver(RoomGraph, Bfs, LairTimers, GameData, Log);
 
         // Loops + lairs are per-game-data-set and share one on-disk tree,
@@ -12792,6 +12814,20 @@ public sealed class AppServices
 
     // The active set's class titles, built on first use after a set switch.
     private Game.GameData.ClassTitleTable? _classTitles;
+
+    // The active set's death, chase and monster-entrance lines, built on first use
+    // after a set switch.
+    private Game.GameData.RealmEventLines? _realmEvents;
+    public Game.GameData.RealmEventLines RealmEvents => _realmEvents ??= LoadRealmEvents();
+
+    private Game.GameData.RealmEventLines LoadRealmEvents()
+    {
+        Game.GameData.RealmEventLines lines = Game.GameData.RealmEventLines.From(
+            GameData.GetTable(Game.GameData.MdbMessageOverlay.TableName),
+            name => GameData.FindRowByName("Monsters", name) is not null);
+        Log.Info("GameData", $"death, chase and entrance lines: {lines.Summary}");
+        return lines;
+    }
 
     private Game.GameData.ClassTitleTable LoadClassTitles()
     {

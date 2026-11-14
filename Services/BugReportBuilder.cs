@@ -407,6 +407,10 @@ public static class BugReportBuilder
         Kv(sb, "Game data: monster relationship defaults", svc.MonsterOverlaySeed.RelationshipSummary);
         Kv(sb, "Game data: class titles", svc.Players.ClassTitles.Describe());
         Kv(sb, "Game data: realm message lines", svc.Messages.RealmLines);
+        Kv(sb, "Game data: death, chase and entrance lines", svc.RealmEvents.Summary);
+        Kv(sb, "Last death read from a death text (another's kill)", svc.MonsterDeathLines.Last is { } death
+            ? $"{death.At.ToLocalTime():HH:mm:ss} '{death.Monster}': {death.Line}"
+            : "(none this session)");
         Kv(sb, "Character", svc.Profile.CurrentProfileName ?? "(none loaded)");
         Kv(sb, "BBS", svc.Profile.CurrentBbsName ?? "(none)");
         if (svc.Profile.Current is { StateUnverified: true })

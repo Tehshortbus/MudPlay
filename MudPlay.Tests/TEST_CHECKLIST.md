@@ -3385,6 +3385,11 @@ How to keep it current:
 - Checks: compact k/M rates; percent to a tenth, never falsely 0% or 100%.
 - Why: report paradigm-20260930-213857.
 
+### RealmEventLinesTests.cs
+- Covers: Game/GameData/RealmEventLines (+ MdbMessageRow), Game/Combat/MonsterDeathLineWatcher, Game/Combat/MonsterEntranceWatcher, Game/Map/FollowMoveObserver's chase lines, RoomTracker.NoteFollowCommandMove
+- Checks: a set's Messages table rows of no spell read by kind (death text naming its monster or, shared, no one; a chase line's leaver; a monster entrance), a table of another shape gives none; fed through ServerFeed, a death text with no exp line before the prompt is another's kill, one our exp line follows raises nothing, a shared text names no one, and of two deaths before one exp line the first is another's; a monster entrance re-displays the room and marks the roster not whole; our leader's chase line is a follow move through the room's one command exit (the landing pinned among two same-looking rooms), another player's moves no one, and a room with two command exits gets no guess.
+- Why: the NMR 1.8.4 death, chase and entrance lines (user, 2026-11-14: a death text counts as that monster's death; followers are moved through a command exit with the leader).
+
 ### RealmRegenProfileTests.cs
 - Covers: Game/RealmRegenProfile
 - Checks: For(realm) picks the matching cadence profile.

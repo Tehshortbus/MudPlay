@@ -1,14 +1,12 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.205.0**
+> **Version 3.206.0**
 >
-> - Spell messages use the realm's own lines when the game data has a Messages table (Nightmare Redux 1.8.4 exports): its cast, incoming and start / wear-off lines replace the built-in ones, which fill in the rest
-> - Spells the built-in messages lack get a message from that table, flagged by what the spell does
-> - Your message edits still apply on top of the realm's lines
-> - A database table named like one of MudPlay's own files is imported as `Mdb<name>.json` instead of being left out
-> - Bug report: *Game data: realm message lines* says what the table changed
-> - A time to level more than a year away reads `Over 1 year`, and no longer crashes the client when it runs to thousands of years
+> - A boss or lair monster's death text from the game data's Messages table counts as its death even when someone else made the kill: its boss timer and lair clock start
+> - Following a leader through a command exit (`Ragnar slips into the dark alley.`) keeps the map sure where you are
+> - A monster appearing in the room (`A moss zombie rises from the ground!`) re-reads the room during a fight
+> - These lines are no longer listed as unrecognized; the bug report shows how many the set has and the last death read from one
 <!-- current-version:end -->
 
 A modern Telnet terminal client for **MajorMUD** and other BBS door games, built in C# / .NET 10 with [Avalonia](https://avaloniaui.net/). It renders a faithful CP437 cell grid with full VT100/ANSI parsing, and layers a MegaMUD-style automation suite (combat, party, navigation, healing, and more) on top — all in modeless, dockable windows so the terminal stays live while you configure anything.

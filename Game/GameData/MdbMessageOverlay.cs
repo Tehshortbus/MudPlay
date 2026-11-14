@@ -1,4 +1,3 @@
-using System.Text.Json;
 using System.Text.RegularExpressions;
 using MudPlay.Game.Spells;
 using MudPlay.Models.GameData;
@@ -33,27 +32,8 @@ public static partial class MdbMessageOverlay
 
     public sealed record Result(List<MessageRecord> Records, int RecordsChanged, int LinesReplaced, int RecordsAdded);
 
-    private sealed record Row(string Name, string Kind, string Msg, string EndMsg, string[] Effects, int Spell);
-
     // The record a spell's rows fill, and which row goes in each slot.
-    private sealed record Slots(Row? Cast, Row? Incoming, Row? Status);
-
-    private static readonly string[] RequiredColumns = ["Name", "Kind", "Msg", "EndMsg", "Effects", "Spell"];
-
-    // Why the table can't be read as a Messages table, or null when it can. Another
-    // exporter's table of that name has other columns.
-    public static string? Unreadable(GameTable table)
-    {
-        ArgumentNullException.ThrowIfNull(table);
-        foreach (GameRow row in table.Rows)
-        {
-            foreach (string column in RequiredColumns)
-                if (!row.TryGetProperty(column, out _))
-                    return $"it has no {column} column";
-            return null;
-        }
-        return "it has no rows";
-    }
+    private sealed record Slots(MdbMessageRow? Cast, MdbMessageRow? Incoming, MdbMessageRow? Status);
 
     // seed with the table's lines laid over it. spellName gives a spell's name by
     // number; spellFlags the conditions its ability codes prove, which a record the
@@ -69,20 +49,20 @@ public static partial class MdbMessageOverlay
         ArgumentNullException.ThrowIfNull(spellName);
         ArgumentNullException.ThrowIfNull(spellFlags);
 
-        Dictionary<int, List<Row>> bySpell = new();
-        foreach (Row row in ReadRows(table))
+        Dictionary<int, List<MdbMessageRow>> bySpell = new();
+        foreach (MdbMessageRow row in MdbMessageRow.Read(table))
         {
             if (row.Spell <= 0) continue;
-            if (!bySpell.TryGetValue(row.Spell, out List<Row>? rows)) bySpell[row.Spell] = rows = [];
+            if (!bySpell.TryGetValue(row.Spell, out List<MdbMessageRow>? rows)) bySpell[row.Spell] = rows = [];
             rows.Add(row);
         }
 
-        HashSet<Row> used = new(ReferenceEqualityComparer.Instance);
+        HashSet<MdbMessageRow> used = new(ReferenceEqualityComparer.Instance);
         List<MessageRecord> records = new(seed.Count);
         int changed = 0, replaced = 0;
         foreach (MessageRecord record in seed)
         {
-            List<(int Spell, Row Row)> rows = SpellsOf(record)
+            List<(int Spell, MdbMessageRow Row)> rows = SpellsOf(record)
                 .Where(bySpell.ContainsKey)
                 .SelectMany(n => bySpell[n].Select(r => (n, r)))
                 .ToList();
@@ -106,11 +86,11 @@ public static partial class MdbMessageOverlay
         foreach (MessageRecord record in seed) seedByName.TryAdd(record.Name.Trim(), record);
         HashSet<int> linkedInSeed = seed.SelectMany(SpellsOf).ToHashSet();
         int added = 0;
-        foreach ((int spell, List<Row> rows) in bySpell.OrderBy(kv => kv.Key))
+        foreach ((int spell, List<MdbMessageRow> rows) in bySpell.OrderBy(kv => kv.Key))
         {
-            Queue<Row> casts = new(rows.Where(r => !used.Contains(r) && IsCast(r)));
-            Queue<Row> incoming = new(rows.Where(r => !used.Contains(r) && IsIncoming(r)));
-            Queue<Row> statuses = new(rows.Where(r => !used.Contains(r) && IsStatus(r)));
+            Queue<MdbMessageRow> casts = new(rows.Where(r => !used.Contains(r) && IsCast(r)));
+            Queue<MdbMessageRow> incoming = new(rows.Where(r => !used.Contains(r) && IsIncoming(r)));
+            Queue<MdbMessageRow> statuses = new(rows.Where(r => !used.Contains(r) && IsStatus(r)));
             string name = spellName(spell) is { Length: > 0 } n ? n : rows[0].Name;
             bool first = !linkedInSeed.Contains(spell);
             while (casts.Count + incoming.Count + statuses.Count > 0)
@@ -135,7 +115,7 @@ public static partial class MdbMessageOverlay
 
         return new Result(records, changed, replaced, added);
 
-        static Row? Next(Queue<Row> rows) => rows.Count > 0 ? rows.Dequeue() : null;
+        static MdbMessageRow? Next(Queue<MdbMessageRow> rows) => rows.Count > 0 ? rows.Dequeue() : null;
 
         static bool IsEmpty(MessageRecord r) =>
             MessageRecord.IsBlankOrAbsent(r.CasterMessage) && MessageRecord.IsBlankOrAbsent(r.TargetMessage)
@@ -147,7 +127,7 @@ public static partial class MdbMessageOverlay
     // slots changed. A status line also brings the spell's condition flags.
     private static (MessageRecord Record, int Lines) Fill(
         MessageRecord record, Slots slots, Func<int, string?> spellName,
-        Func<int, MessageFlags> spellFlags, HashSet<Row> used)
+        Func<int, MessageFlags> spellFlags, HashSet<MdbMessageRow> used)
     {
         int lines = 0;
         string caster = record.CasterMessage, target = record.TargetMessage;
@@ -202,12 +182,13 @@ public static partial class MdbMessageOverlay
     // The row of the record's spells to fill a slot from: one that reads the same as
     // what the slot holds when there is one, so a spell with two cast lines keeps the
     // one the record already has, else the first.
-    private static Row? Pick(
-        List<(int Spell, Row Row)> rows, Func<Row, bool> fits, Func<Row, string?, bool> readsAsSlot,
+    private static MdbMessageRow? Pick(
+        List<(int Spell, MdbMessageRow Row)> rows, Func<MdbMessageRow, bool> fits,
+        Func<MdbMessageRow, string?, bool> readsAsSlot,
         Func<int, string?> spellName)
     {
-        Row? first = null;
-        foreach ((int spell, Row row) in rows)
+        MdbMessageRow? first = null;
+        foreach ((int spell, MdbMessageRow row) in rows)
         {
             if (!fits(row)) continue;
             if (readsAsSlot(row, spellName(spell))) return row;
@@ -216,16 +197,16 @@ public static partial class MdbMessageOverlay
         return first;
     }
 
-    private static bool IsCast(Row row) => row.Kind == "Cast" && row.Msg.Length > 0;
+    private static bool IsCast(MdbMessageRow row) => row.Kind == "Cast" && row.Msg.Length > 0;
 
     // A line printed to me when the spell lands, with no wear-off line: the incoming
     // line. A damage-shield line is printed when my shield hits back, and a fail line
     // when an action of mine fails, so neither is the spell landing on me.
-    private static bool IsIncoming(Row row) =>
+    private static bool IsIncoming(MdbMessageRow row) =>
         row.Kind == "Self" && row.EndMsg.Length == 0 && row.Msg.Length > 0
-        && Array.IndexOf(row.Effects, "DamageShield") < 0 && Array.IndexOf(row.Effects, "Fail") < 0;
+        && !row.HasEffect("DamageShield") && !row.HasEffect("Fail");
 
-    private static bool IsStatus(Row row) => row.Kind == "Self" && row.EndMsg.Length > 0;
+    private static bool IsStatus(MdbMessageRow row) => row.Kind == "Self" && row.EndMsg.Length > 0;
 
     // A table line in the catalogue's placeholders: {dmg} becomes {damage}, an
     // argument the export couldn't fill ({?}) a generic name, and the spell's own
@@ -263,26 +244,4 @@ public static partial class MdbMessageOverlay
     private static IEnumerable<int> SpellsOf(MessageRecord record) =>
         record.Links?.Where(l => string.Equals(l.Table, "Spells", StringComparison.OrdinalIgnoreCase))
             .Select(l => l.Number).Distinct() ?? [];
-
-    private static IEnumerable<Row> ReadRows(GameTable table)
-    {
-        foreach (GameRow row in table.Rows)
-        {
-            string[] effects = Text(row, "Effects").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            yield return new Row(Text(row, "Name"), Text(row, "Kind"), Text(row, "Msg"), Text(row, "EndMsg"), effects, Int(row, "Spell"));
-        }
-    }
-
-    // A text cell. The export writes an empty value as a lone NUL.
-    private static string Text(GameRow row, string field) =>
-        row.TryGetProperty(field, out GameValue value) && value.ValueKind == JsonValueKind.String
-            && value.GetString() is { } text
-            ? text.Trim('\0', ' ', '\t', '\r', '\n')
-            : "";
-
-    private static int Int(GameRow row, string field) =>
-        row.TryGetProperty(field, out GameValue value) && value.ValueKind == JsonValueKind.Number
-            && value.TryGetInt32(out int number)
-            ? number
-            : 0;
 }

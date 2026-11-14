@@ -25,17 +25,46 @@ public sealed class FollowMoveObserver : IDisposable
 {
     private const string LogCategory = "FollowMove";
 
+    private readonly MessageRouter _router;
     private readonly RoomTracker _tracker;
     private readonly LogService? _log;
     private readonly IDisposable _sub;
+    private Func<string, bool>? _isLeaderWeFollow;
+    private Func<GameData.RealmEventLines>? _chaseLines;
 
     public FollowMoveObserver(MessageRouter router, RoomTracker tracker, LogService? log = null)
     {
         ArgumentNullException.ThrowIfNull(router);
         ArgumentNullException.ThrowIfNull(tracker);
+        _router = router;
         _tracker = tracker;
         _log = log;
         _sub = router.Subscribe(KnownPatterns.PartyFollowMove, OnFollowMove);
+        _router.LineDispatched += OnLine;
+    }
+
+    // A command exit moves a follower with no follow line: the only sign is the chase
+    // line the room sees when the leader goes through ("Ragnar slips into the dark
+    // alley."). chaseLines are the set's chase lines; isLeaderWeFollow says whether
+    // the name it gives is the leader we follow.
+    public void SetChaseLines(Func<GameData.RealmEventLines> chaseLines, Func<string, bool> isLeaderWeFollow)
+    {
+        ArgumentNullException.ThrowIfNull(chaseLines);
+        ArgumentNullException.ThrowIfNull(isLeaderWeFollow);
+        _chaseLines = chaseLines;
+        _isLeaderWeFollow = isLeaderWeFollow;
+    }
+
+    private void OnLine(Terminal.LineExtractor.EmittedLine line)
+    {
+        if (line.IsPromptLine || _chaseLines is null || _isLeaderWeFollow is null) return;
+        if (!_chaseLines().IsChase(line.Text, out string who) || !_isLeaderWeFollow(who)) return;
+        string text = line.Text.Trim();
+        string? taken = _tracker.NoteFollowCommandMove();
+        _log?.Info(LogCategory, taken is { } command
+            ? $"Leader '{who}' left through a command exit ('{text}') — recorded as a follow move by '{command}'."
+            : $"Leader '{who}' left through a command exit ('{text}'), and this room has no single command exit "
+              + "the map knows — the next room display places us.");
     }
 
     private void OnFollowMove(MatchResult result)
@@ -47,5 +76,9 @@ public sealed class FollowMoveObserver : IDisposable
         _log?.Info(LogCategory, $"Follow-drag {direction} — recorded as a move so the map stays located.");
     }
 
-    public void Dispose() => _sub.Dispose();
+    public void Dispose()
+    {
+        _sub.Dispose();
+        _router.LineDispatched -= OnLine;
+    }
 }

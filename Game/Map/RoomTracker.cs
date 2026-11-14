@@ -851,17 +851,40 @@ public sealed partial class RoomTracker
         _engineCommandClaim = (command, (whenUtc ?? _now()) + EchoClaimExpiry);
     }
 
-    private void NoteMoveSentCore(string command, Direction? cardinal, bool isEngineAnnouncement, DateTimeOffset when)
+    // The party leader left through a command exit: a chase line named them, and the
+    // game moves a follower through it with them, printing no follow line (user,
+    // 2026-11-14; GAME_MECHANICS "Following the leader: follow / drag movement").
+    // Tracked as a follow-drag through the room's command exit when the room has
+    // exactly one; with none or several there is no telling which, and the room
+    // display that follows is read as any unannounced arrival. Returns the command
+    // taken, or null.
+    public string? NoteFollowCommandMove(DateTimeOffset? whenUtc = null)
+    {
+        if (State.CurrentRoom is not { } room) return null;
+        (Direction Dir, string Command)? only = null;
+        foreach ((Direction dir, RoomExit exit) in room.Exits)
+        {
+            if (exit.Hint != RoomExitHint.Text || exit.TextCommands is not { Count: > 0 } commands) continue;
+            if (only is not null) return null;
+            only = (dir, commands[0]);
+        }
+        if (only is not { } move) return null;
+        NoteMoveSentCore(move.Command, move.Dir, isEngineAnnouncement: false, whenUtc ?? _now(), isFollowDrag: true);
+        return move.Command;
+    }
+
+    private void NoteMoveSentCore(string command, Direction? cardinal, bool isEngineAnnouncement, DateTimeOffset when,
+        bool isFollowDrag = false)
     {
         if (isEngineAnnouncement)
         {
             _textEchoClaim = (command, when + EchoClaimExpiry);
         }
-        LastMoveWasManual = !isEngineAnnouncement;
+        LastMoveWasManual = !isEngineAnnouncement && !isFollowDrag;
         SettleUnshownCastDrag(when);
         NoteEventTime(when);
         SettleStalePassiveWait(when);
-        PendingMove move = new(cardinal, command, when);
+        PendingMove move = new(cardinal, command, when, isFollowDrag);
         EnqueuePending(move);
         AppendStep(new DirectionDto(cardinal, command));
         // A text exit with no cardinal is still a move: the passive footprint follows
