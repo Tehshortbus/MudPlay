@@ -1,13 +1,10 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.203.0**
+> **Version 3.203.3**
 >
-> - New item option **Carry only one** (Game Data → Items, and the batch editor): Roomba moves the item one copy a trip, Auto-collect and Auto-buy stop at one
-> - Carry only one starts ticked for every Unique Pool item in the game data (the orbs, city tokens, coin bag)
-> - Roomba recognises `An unseen force prevents you from grabbing that item!` instead of re-sending the same `get` every lap
-> - Roomba leaves a one-only pile alone when you already hold one it didn't pick up
-> - `@auto-get <item>` ends its reply with `(carry only one)` for such an item
+> - A buff cast while a step is still landing now counts toward the round the step lands in, so the loop waits at the lair's door instead of walking in on a spent cast
+> - Help guide: a lone monster already standing at a lair's door is fought during the door wait, the same as one that wanders in
 <!-- current-version:end -->
 
 A modern Telnet terminal client for **MajorMUD** and other BBS door games, built in C# / .NET 10 with [Avalonia](https://avaloniaui.net/). It renders a faithful CP437 cell grid with full VT100/ANSI parsing, and layers a MegaMUD-style automation suite (combat, party, navigation, healing, and more) on top — all in modeless, dockable windows so the terminal stays live while you configure anything.

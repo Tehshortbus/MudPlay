@@ -1488,6 +1488,74 @@ public sealed class CastingDirectorTests
         Assert.False(h.Director.BetweenRoundSlotMayBeSpent);
     }
 
+    // Report paradigm-20261113-141913, 14:18:57: blur went out with the loop's step still
+    // unanswered, the round ticked, and the game ran blur after the step landed, in the
+    // new round, so the lair's isto 2.8 s later was refused. A cast sent behind our move
+    // spends the round the move lands in; one sent with no move in flight frees at the tick.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void CastSentBehindOurMove_SpendsTheRoundTheMoveLandsIn(bool moveInFlight)
+    {
+        using CureHarness h = new();
+        DateTimeOffset start = new(2026, 11, 13, 19, 18, 53, 303, TimeSpan.Zero);
+        h.Now = start.UtcDateTime;
+        ManualTimers polls = new();
+        using TickEngine tick = new(h.Router, () => new DateTimeOffset(h.Now, TimeSpan.Zero), schedule: polls.Arm);
+        tick.CombatTickElapsed += () => h.Cast.OnCombatTick(tick.LastCombatTickWasPlaced);
+        tick.CombatTickElapsed += h.Director.NotifyRoundComplete;
+        h.Director.SetCombatTickSource(() => tick.LastCombatTickWasDamageDriven);
+        h.Director.SetCombatTickPlacement(() => tick.LastCombatTickWasPlaced);
+        bool pending = moveInFlight;
+        h.Director.SetMoveInFlightProbe(() => pending);
+
+        h.Router.Dispatch(RoundLine("Your blades slash nasty pinion rat for 12 damage!"));
+        DateTime projected = (start + TickEngine.CombatTickInterval).UtcDateTime;
+        h.Now = projected.AddMilliseconds(-424);         // blur, the step west unanswered
+        h.Director.MarkBetweenRoundSlotUsed();
+
+        h.Now = projected;
+        polls.RunAll();
+        Assert.Equal(moveInFlight, h.Director.BetweenRoundSlotUsed);
+
+        h.Now = projected.AddMilliseconds(244);          // the step lands
+        pending = false;
+        h.Director.NoteOurMoveLanded();
+        h.Now = projected.AddSeconds(2.36);              // the step into the lair
+        Assert.Equal(moveInFlight, h.Director.BetweenRoundSlotMayBeSpent);
+
+        h.Now = projected + TickEngine.CombatTickInterval;
+        polls.RunAll();
+        Assert.False(h.Director.BetweenRoundSlotMayBeSpent);
+    }
+
+    // A step the game never answers doesn't keep the slot spent past the bound.
+    [Fact]
+    public void CastBehindAMoveThatNeverLands_FreesAtTheNextTickAfterTheBound()
+    {
+        using CureHarness h = new();
+        DateTimeOffset start = new(2026, 11, 13, 19, 18, 53, 303, TimeSpan.Zero);
+        h.Now = start.UtcDateTime;
+        ManualTimers polls = new();
+        using TickEngine tick = new(h.Router, () => new DateTimeOffset(h.Now, TimeSpan.Zero), schedule: polls.Arm);
+        tick.CombatTickElapsed += h.Director.NotifyRoundComplete;
+        h.Director.SetCombatTickSource(() => tick.LastCombatTickWasDamageDriven);
+        h.Director.SetCombatTickPlacement(() => tick.LastCombatTickWasPlaced);
+        h.Director.SetMoveInFlightProbe(() => true);
+
+        h.Router.Dispatch(RoundLine("Your blades slash nasty pinion rat for 12 damage!"));
+        h.Now = start.UtcDateTime.AddSeconds(4.6);
+        h.Director.MarkBetweenRoundSlotUsed();
+
+        h.Now = (start + TickEngine.CombatTickInterval).UtcDateTime;
+        polls.RunAll();
+        Assert.True(h.Director.BetweenRoundSlotUsed);
+
+        h.Now = (start + 2 * TickEngine.CombatTickInterval).UtcDateTime;
+        polls.RunAll();
+        Assert.False(h.Director.BetweenRoundSlotMayBeSpent);
+    }
+
     private static LineExtractor.EmittedLine RoundLine(string text) =>
         new(text, new CellAttributes[text.Length], DateTimeOffset.UnixEpoch, IsPromptLine: false);
 

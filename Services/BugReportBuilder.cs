@@ -1231,6 +1231,7 @@ public static class BugReportBuilder
         Kv(sb, "Hazard buff", svc.AutoHazardCounterProvisioner.DescribeTracking() is { Count: > 0 } hazardBuff
             ? string.Join(" · ", hazardBuff)
             : "none tracked (off, or not known to be on)");
+        Kv(sb, "Between-round cast slot", svc.CastDirector.DescribeBetweenRoundSlot());
         Kv(sb, "Party cures backing off", svc.CastDirector.DescribePartyCureBackoff() is { Count: > 0 } cures
             ? string.Join(" · ", cures)
             : "(none)");

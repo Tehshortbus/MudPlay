@@ -244,7 +244,8 @@ public sealed partial class CastingDirector : IDisposable
 
     // True while this round's single between-round slot is spent (a cast landed within
     // the current round window and no round tick has freed it since).
-    private bool SlotSpentThisRound => _now() - _betweenRoundSlotUsedAt < RoundWindow;
+    private bool SlotSpentThisRound =>
+        CastQueuedBehindMove || _now() - _betweenRoundSlotUsedAt < RoundWindow;
 
     // Burst-settle guard. A round's hits arrive as a burst, and Paradigm redraws the
     // statline after EVERY line, so while the burst lands _state.Hp is a partial read
@@ -790,7 +791,7 @@ public sealed partial class CastingDirector : IDisposable
     {
         _clientUseHeldForSneak = false;
         _cast.NotifyExternalCastSent();
-        _betweenRoundSlotUsedAt = _now();
+        SpendSlot();
         CastFired?.Invoke();
     }
 
@@ -1167,6 +1168,7 @@ public sealed partial class CastingDirector : IDisposable
         _partyCures.Clear();
         _betweenRoundSlotUsedAt = DateTime.MinValue;
         _slotInDoubtSince = DateTime.MinValue;
+        _castQueuedBehindMoveAt = null;
         _pausedAt = null;
         _hpFull.Reset();
         _maFull.Reset();
@@ -1570,7 +1572,58 @@ public sealed partial class CastingDirector : IDisposable
     // or after RoundWindow. Stamped regardless of _state.InCombat — the per-round cap
     // applies whether or not the client thinks it's in combat (and the pre-attack debuff
     // fires during the between-kill *Combat Off* flicker where InCombat reads false).
-    public void MarkBetweenRoundSlotUsed() => _betweenRoundSlotUsedAt = _now();
+    public void MarkBetweenRoundSlotUsed() => SpendSlot();
+
+    private void SpendSlot()
+    {
+        _betweenRoundSlotUsedAt = _now();
+        _castQueuedBehindMoveAt = _isMoveInFlight?.Invoke() == true ? _now() : null;
+    }
+
+    // A command sent while our move is still being answered waits in the game's queue
+    // behind the move and runs when the move lands, not when it was sent (report
+    // paradigm-20261113-141913: blur sent at 14:18:57.952, the round tick on the wire at
+    // 58.412, then the room, then "You cast blur on Ridic!"). A round tick between the
+    // send and the landing has not freed the slot: the cast is still to run, and runs in
+    // the new round. So until the landing the slot reads spent, and from the landing it
+    // counts as cast then. A landing that never shows ends this after
+    // QueuedBehindMoveBound, as a swallowed step ends the combat engine's move hold.
+    private DateTime? _castQueuedBehindMoveAt;
+    private Func<bool>? _isMoveInFlight;
+    private static readonly TimeSpan QueuedBehindMoveBound = TimeSpan.FromSeconds(3);
+
+    private bool CastQueuedBehindMove =>
+        _castQueuedBehindMoveAt is { } at && _now() - at < QueuedBehindMoveBound;
+
+    // For the bug report: whether this round's between-round cast is spent, and why.
+    public string DescribeBetweenRoundSlot() =>
+        CastQueuedBehindMove ? "spent: a cast waits behind our move, and runs in the round the move lands in"
+        : SlotSpentThisRound ? $"spent {(_now() - _betweenRoundSlotUsedAt).TotalSeconds:0.0}s ago"
+        : BetweenRoundSlotMayBeSpent ? "free, but doubted: cast just ahead of a projected round tick"
+        : "free";
+
+    // Wire the "is a move of ours still unanswered?" probe (the room tracker's Pending).
+    // Unwired, a cast is taken to run as it is sent.
+    public void SetMoveInFlightProbe(Func<bool> isMoveInFlight)
+    {
+        ArgumentNullException.ThrowIfNull(isMoveInFlight);
+        _isMoveInFlight = isMoveInFlight;
+    }
+
+    // Our move was answered (it landed, or the game refused it): a cast queued behind
+    // it runs now, so this round's slot is the one it spends.
+    public void NoteOurMoveLanded()
+    {
+        if (!CastQueuedBehindMove)
+        {
+            _castQueuedBehindMoveAt = null;
+            return;
+        }
+        _castQueuedBehindMoveAt = null;
+        _betweenRoundSlotUsedAt = _now();
+        _log?.Combat(LogCategory,
+            "our move landed: the between-round cast sent behind it runs now, and spends this round's slot");
+    }
 
     // True when this round's single between-round cast is already spent — the same
     // predicate Evaluate gates on (so a null from Evaluate means "slot gone", not
@@ -1902,6 +1955,7 @@ public sealed partial class CastingDirector : IDisposable
             && _now() - _betweenRoundSlotUsedAt <= CollisionWindow)
         {
             _betweenRoundSlotUsedAt = DateTime.MinValue;
+            _castQueuedBehindMoveAt = null;
             _cast.ReleaseBetweenRoundCooldown();
             // A swallowed self-heal never moved Hp/Ma, so IsStaleSelfHealRepeat would
             // otherwise read the retry as the SAME stale-pool re-evaluation its 8s
@@ -2340,7 +2394,7 @@ public sealed partial class CastingDirector : IDisposable
         string? cast = RunDecisionPass(healEnabled, blessEnabled, ownUse);
         // Mark the round's single between-round slot spent so a second Evaluate this
         // round doesn't send another (doomed) cast; freed at the round boundary / window.
-        if (cast is not null) _betweenRoundSlotUsedAt = _now();
+        if (cast is not null) SpendSlot();
         return cast;
     }
 
