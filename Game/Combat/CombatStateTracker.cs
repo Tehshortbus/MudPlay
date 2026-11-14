@@ -66,6 +66,9 @@ public sealed class CombatStateTracker : IDisposable
 
     private readonly IDisposable _userHitsSub;
     private readonly IDisposable _mobHitsSub;
+    // The set's damage-free monster hits, on us or on another: the fight is live.
+    private readonly IDisposable _mobHitsNoDamageSub;
+    private readonly IDisposable _mobHitsOtherNoDamageSub;
     private readonly IDisposable _mobMissesSub;
     private readonly IDisposable _mobAttacksSub;
     private readonly IDisposable _userDodgesSub;
@@ -289,6 +292,8 @@ public sealed class CombatStateTracker : IDisposable
         _classifier.EntitiesObserved += OnEntitiesObserved;
         _userHitsSub      = router.Subscribe(KnownPatterns.UserHits,      OnAnyCombatLine);
         _mobHitsSub       = router.Subscribe(KnownPatterns.MobHits,       OnAnyCombatLine);
+        _mobHitsNoDamageSub      = router.Subscribe(KnownPatterns.MobHitsNoDamage,      OnAnyCombatLine);
+        _mobHitsOtherNoDamageSub = router.Subscribe(KnownPatterns.MobHitsOtherNoDamage, OnAnyCombatLine);
         _mobMissesSub     = router.Subscribe(KnownPatterns.MobMisses,     OnAnyCombatLine);
         // Broad mob-attacks-us line — catches the per-round swings that MobHits /
         // MobMisses miss on realms whose melee carries no damage number or "at
@@ -1115,6 +1120,8 @@ public sealed class CombatStateTracker : IDisposable
         _classifier.EntitiesObserved -= OnEntitiesObserved;
         _userHitsSub.Dispose();
         _mobHitsSub.Dispose();
+        _mobHitsNoDamageSub.Dispose();
+        _mobHitsOtherNoDamageSub.Dispose();
         _mobMissesSub.Dispose();
         _mobAttacksSub.Dispose();
         _userDodgesSub.Dispose();

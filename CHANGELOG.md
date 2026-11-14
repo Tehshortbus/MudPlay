@@ -1,5 +1,9 @@
 # Version history
 
+## 3.206.3
+
+- A monster's hit that prints no damage figure (the game data's Messages table: `The giant crab sweeps your feet out from under you!`) counts as it attacking you, or whoever it names
+
 ## 3.206.2
 
 - Every failure line of the game data's Messages table (asleep, afraid, turned to stone…) re-sends the command it ate, like a confusion fumble; lines that are also an effect's start line are left out

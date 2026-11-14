@@ -34,7 +34,10 @@ public sealed class RealmEventLinesTests : IDisposable
         Row("ogre", "The beast falls dead!", "Death"),
         Row("slips into the dark alley.", "{target} slips into the dark alley.", "Chase"),
         Row("A moss zombie rises from the ground!", "A moss zombie rises from the ground!", "CheckRoom"),
-        """{"ID":1,"Name":"blades","Kind":"Self","Msg":"As you walk through the passage, blades sweep out and slice you!","EndMsg":"\u0000","Effects":"Damage,Trap","Spell":0}""") + "]";
+        """{"ID":1,"Name":"blades","Kind":"Self","Msg":"As you walk through the passage, blades sweep out and slice you!","EndMsg":"\u0000","Effects":"Damage,Trap","Spell":0}""",
+        """{"ID":1,"Name":"smashes","Kind":"Other","Msg":"{source} picks {target} up and smashes him against the wall!","EndMsg":"\u0000","Effects":"Damage,Monster","Spell":0}""",
+        """{"ID":1,"Name":"swoops","Kind":"Self","Msg":"A {source} swoops down upon you!","EndMsg":"\u0000","Effects":"Damage,Monster","Spell":0}""",
+        """{"ID":1,"Name":"claws","Kind":"Self","Msg":"The {source} claws you with its pincers for {dmg} damage!","EndMsg":"\u0000","Effects":"Damage,Monster","Spell":0}""") + "]";
 
     private static RealmEventLines Lines() =>
         RealmEventLines.From(TestRows.Table(Table), name => name is "Thrag" or "orc" or "ogre");
@@ -54,8 +57,13 @@ public sealed class RealmEventLinesTests : IDisposable
         Assert.Equal("Ragnar", who);
         Assert.True(lines.IsEntrance("A moss zombie rises from the ground!"));
         Assert.True(lines.IsTrap("As you walk through the passage, blades sweep out and slice you!"));
+        // A damage-free hit names its monster without the article it prints with.
+        Assert.Equal(["giant eagle"], lines.HitOnUs("A giant eagle swoops down upon you!"));
+        Assert.Equal(["ogre", "Ragnar"], lines.HitOnAnother("The ogre picks Ragnar up and smashes him against the wall!"));
+        // A hit with a damage figure is read by shape already, so it isn't kept here.
+        Assert.Null(lines.HitOnUs("The crab claws you with its pincers for 12 damage!"));
         Assert.False(lines.IsKnown("The goblin swings at you, but misses!"));
-        Assert.Equal("from the set's Messages table: 3 death lines (1 naming their monster), 1 chase lines, 1 monster entrances, 1 trap lines, 0 failure lines",
+        Assert.Equal("from the set's Messages table: 3 death lines (1 naming their monster), 1 chase lines, 1 monster entrances, 1 trap lines, 0 failure lines, 2 damage-free monster hits",
             lines.Summary);
     }
 

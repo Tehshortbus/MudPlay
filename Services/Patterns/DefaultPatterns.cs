@@ -225,6 +225,9 @@ public static class DefaultPatterns
             @"^The (?<target>[\w -]+) \w+ (?:at|for) you\b");
         yield return new RegexPattern(KnownPatterns.MobHits,
             @"^The (?<target>[\w -]+) \w+ you for (?<damage>\d+) damage!");
+        // Their wordings are the set's; AppServices sets them once the set is known.
+        yield return new RealmLinePattern(KnownPatterns.MobHitsNoDamage);
+        yield return new RealmLinePattern(KnownPatterns.MobHitsOtherNoDamage);
         // Broad "the mob just attacked us" activity signal — see
         // KnownPatterns.MobAttacksYou. Matches "The <mob> <verb> you..." with any
         // (or no) tail, so a fight whose swings are armour-deflected or carry no

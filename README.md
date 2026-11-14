@@ -1,9 +1,9 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.206.2**
+> **Version 3.206.3**
 >
-> - Every failure line of the game data's Messages table (asleep, afraid, turned to stone…) re-sends the command it ate, like a confusion fumble; lines that are also an effect's start line are left out
+> - A monster's hit that prints no damage figure (the game data's Messages table: `The giant crab sweeps your feet out from under you!`) counts as it attacking you, or whoever it names
 <!-- current-version:end -->
 
 A modern Telnet terminal client for **MajorMUD** and other BBS door games, built in C# / .NET 10 with [Avalonia](https://avaloniaui.net/). It renders a faithful CP437 cell grid with full VT100/ANSI parsing, and layers a MegaMUD-style automation suite (combat, party, navigation, healing, and more) on top — all in modeless, dockable windows so the terminal stays live while you configure anything.

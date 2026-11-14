@@ -163,6 +163,9 @@ public sealed partial class TickEngine : ObservableObject, IDisposable
             if (!_isOffRoundDamage(match.Text)) RecordCombatTick();
         }));
         _patternSubs.Add(router.Subscribe(KnownPatterns.MobMisses, _ => RecordCombatTick()));
+        // A monster's hit that prints no damage figure (the set's own lines) is a
+        // round's swing all the same.
+        _patternSubs.Add(router.Subscribe(KnownPatterns.MobHitsNoDamage, _ => RecordCombatTick()));
 
         _poll = _schedule(PollInterval, OnPoll);
     }

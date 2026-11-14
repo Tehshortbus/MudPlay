@@ -84,6 +84,15 @@ public static class KnownPatterns
     // stock-20260730-190736).
     public const string MobAttacksYou        = "combat.mob-attacks-you";
 
+    // A monster's hit that prints no damage figure, from the set's own Messages table
+    // (RealmEventLines): "The <monster> sweeps your feet out from under you!". Groups:
+    // the monster. MobHits needs "for N damage", so these are its damage-free kin.
+    public const string MobHitsNoDamage      = "combat.mob-hits-no-damage";
+
+    // The same on someone else: "The <monster> sweeps <name>'s feet!". Groups: the
+    // monster, then whoever it hit.
+    public const string MobHitsOtherNoDamage = "combat.mob-hits-other-no-damage";
+
     // SOMETHING DAMAGED US, whoever or whatever it was. Keyed on the one phrase
     // that can only mean that — "... you for N damage!" — with no article
     // required, because a monster with a proper name is printed without one.
