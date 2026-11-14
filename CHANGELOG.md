@@ -1,5 +1,11 @@
 # Version history
 
+## 3.203.3
+
+- A buff cast while a step is still landing now counts toward the round the step lands in, so the loop waits at the lair's door instead of walking in on a spent cast
+- Help guide: a lone monster already standing at a lair's door is fought during the door wait, the same as one that wanders in
+- bug reports addressed: paradigm-20261113-113243, paradigm-20261113-140650, paradigm-20261113-141913
+
 ## 3.203.0
 
 - New item option **Carry only one** (Game Data → Items, and the batch editor): Roomba moves the item one copy a trip, Auto-collect and Auto-buy stop at one

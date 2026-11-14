@@ -5781,6 +5781,15 @@ public sealed class AppServices
         // A tick the client can't place against the game's rounds (nothing seen for a
         // long while) frees no cast slot.
         CastDirector.SetCombatTickPlacement(() => Tick.LastCombatTickWasPlaced);
+        // A cast sent while our move is unanswered runs when the move lands, and spends
+        // the round it lands in.
+        CastDirector.SetMoveInFlightProbe(() => RoomTracker.State.Confidence == Game.Map.RoomConfidence.Pending);
+        RoomTracker.StateChanged += Game.Map.RoomTracker.Named("cast slot", t =>
+        {
+            if (t.PreviousConfidence == Game.Map.RoomConfidence.Pending
+                && t.NewConfidence != Game.Map.RoomConfidence.Pending)
+                CastDirector.NoteOurMoveLanded();
+        });
         CastDirector.SetSettledPassScheduler((delay, callback) =>
         {
             var timer = new Avalonia.Threading.DispatcherTimer { Interval = delay };
