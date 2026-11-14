@@ -5491,6 +5491,7 @@ public sealed class AppServices
         // AttachLineExtractor lands in MainWindowViewModel alongside the other
         // line consumers.
         Conditions = new Game.Conditions.ConditionTracker(Messages, Log);
+        Conditions.SetRealmFailureLines(line => RealmEvents.FailureOf(line));
         // An ailment with no wear-off seen ends once its spell's time is up.
         Conditions.AilmentSeconds = SelfAilmentSeconds;
         // Stock's `stat` lists each active effect as its bare applied line; the stat
@@ -12816,7 +12817,7 @@ public sealed class AppServices
     // The active set's class titles, built on first use after a set switch.
     private Game.GameData.ClassTitleTable? _classTitles;
 
-    // The active set's death, chase, monster-entrance and trap lines, built on first use
+    // The active set's death, chase, monster-entrance, trap and failure lines, built on first use
     // after a set switch.
     private Game.GameData.RealmEventLines? _realmEvents;
     public Game.GameData.RealmEventLines RealmEvents => _realmEvents ??= LoadRealmEvents();
@@ -12826,7 +12827,7 @@ public sealed class AppServices
         Game.GameData.RealmEventLines lines = Game.GameData.RealmEventLines.From(
             GameData.GetTable(Game.GameData.MdbMessageOverlay.TableName),
             name => GameData.FindRowByName("Monsters", name) is not null);
-        Log.Info("GameData", $"death, chase, entrance and trap lines: {lines.Summary}");
+        Log.Info("GameData", $"lines of no spell: {lines.Summary}");
         return lines;
     }
 

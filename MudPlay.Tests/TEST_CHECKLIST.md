@@ -863,7 +863,7 @@ How to keep it current:
 
 ### ConditionTrackerTests.cs
 - Covers: Game/Conditions/ConditionTracker.
-- Checks: applied/ends latching; shared-line narrowing by cast line; shadowing by a longer applied text or another spell's cast line; negated casts; flag-wide wear-off; stat readouts; fumble ActionFailed; hold lines; shipped-seed cases.
+- Checks: applied/ends latching; shared-line narrowing by cast line; shadowing by a longer applied text or another spell's cast line; negated casts; flag-wide wear-off; stat readouts; fumble ActionFailed; hold lines; shipped-seed cases. The set's own failure lines (RealmEventLines) fire ActionFailed and count as fumble lines; one that is also a start line is left out, and a line that starts an effect is no failure on top (user, 2026-11-14).
 - Why: stuck conditions (paradigm-20261011-165726, -20260904-214452, -20261002-120516).
 
 ### ConnectionLossTests.cs

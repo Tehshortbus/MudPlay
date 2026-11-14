@@ -1,4 +1,5 @@
 using MudPlay.Game.Spells;
+using MudPlay.Models.GameData;
 using MudPlay.Services;
 
 namespace MudPlay.Game.GameData;
@@ -10,11 +11,14 @@ namespace MudPlay.Game.GameData;
 //     "Chase", the leaver as {target});
 //   - a monster entrance, a monster appearing or changing form (Effects "CheckRoom");
 //   - a trap going off, on walking into it or on a failed disarm (Effects "Trap"; the
-//     table has both lines of each trapped exit and can't tell them apart).
+//     table has both lines of each trapped exit and can't tell them apart);
+//   - a failure line, printed when an effect (confusion, sleep, fear, petrification…)
+//     makes a command fail (Effects "Fail"). A line that is also an effect's start
+//     line is left out (user, 2026-11-14): the line alone can't say which it is.
 // A set exported without the table has none, and these lines stay unknown to it.
 public sealed class RealmEventLines
 {
-    public static RealmEventLines None { get; } = new([], [], [], [], [], "none: the set has no Messages table");
+    public static RealmEventLines None { get; } = new([], [], [], [], [], [], "none: the set has no Messages table");
 
     // Death text → the monster it is the death of; null when the text is several
     // monsters' (the export then names it by its words, not by a monster).
@@ -24,12 +28,16 @@ public sealed class RealmEventLines
     private readonly HashSet<string> _traps;
     // The few trap lines that name who they hit or the damage.
     private readonly List<CasterMessageMatcher> _trapTemplates;
+    // Failure line → the record ConditionTracker raises ActionFailed with.
+    private readonly Dictionary<string, MessageRecord> _fails;
 
     public string Summary { get; }
 
     private RealmEventLines(Dictionary<string, string?> deaths, List<CasterMessageMatcher> chases,
-        HashSet<string> entrances, HashSet<string> traps, List<CasterMessageMatcher> trapTemplates, string summary)
+        HashSet<string> entrances, HashSet<string> traps, List<CasterMessageMatcher> trapTemplates,
+        Dictionary<string, MessageRecord> fails, string summary)
     {
+        _fails = fails;
         _deaths = deaths;
         _chases = chases;
         _entrances = entrances;
@@ -44,7 +52,7 @@ public sealed class RealmEventLines
         ArgumentNullException.ThrowIfNull(isMonster);
         if (table is null) return None;
         if (MdbMessageRow.Unreadable(table) is { } why)
-            return new([], [], [], [], [], $"none: the set's Messages table isn't one this client reads ({why})");
+            return new([], [], [], [], [], [], $"none: the set's Messages table isn't one this client reads ({why})");
 
         Dictionary<string, string?> deaths = new(StringComparer.Ordinal);
         List<CasterMessageMatcher> chases = [];
@@ -52,8 +60,21 @@ public sealed class RealmEventLines
         HashSet<string> entrances = new(StringComparer.Ordinal);
         HashSet<string> traps = new(StringComparer.Ordinal);
         List<CasterMessageMatcher> trapTemplates = [];
-        foreach (MdbMessageRow row in MdbMessageRow.Read(table))
+        List<MdbMessageRow> rows = MdbMessageRow.Read(table).ToList();
+        HashSet<string> startLines = rows.Where(r => r.Kind == "Self" && r.EndMsg.Length > 0 && r.Msg.Length > 0)
+            .Select(r => r.Msg).ToHashSet(StringComparer.Ordinal);
+        Dictionary<string, MessageRecord> fails = new(StringComparer.Ordinal);
+        foreach (MdbMessageRow row in rows)
         {
+            if (row.Kind == "Self" && row.EndMsg.Length == 0 && row.Msg.Length > 0 && row.HasEffect("Fail")
+                && !startLines.Contains(row.Msg))
+            {
+                fails.TryAdd(row.Msg, new MessageRecord(
+                    MessageRecord.ComputeId(row.Name, "", row.Msg, "", "", ""), row.Name,
+                    MessageFlags.LastActionFailed, (ushort)MessageFlags.LastActionFailed,
+                    CasterMessage: "", TargetMessage: row.Msg, WitnessMessage: "", AppliedMessage: "", AppliedEndsWith: ""));
+                continue;
+            }
             if (row.Spell != 0 || row.Msg.Length == 0) continue;
             if (row.Kind == "Self" && row.EndMsg.Length == 0 && row.HasEffect("Trap"))
             {
@@ -78,9 +99,10 @@ public sealed class RealmEventLines
                 entrances.Add(row.Msg);
         }
         int named = deaths.Values.Count(n => n is not null);
-        return new(deaths, chases, entrances, traps, trapTemplates,
+        return new(deaths, chases, entrances, traps, trapTemplates, fails,
             $"from the set's Messages table: {deaths.Count} death lines ({named} naming their monster), "
-            + $"{chases.Count} chase lines, {entrances.Count} monster entrances, {traps.Count + trapTemplates.Count} trap lines");
+            + $"{chases.Count} chase lines, {entrances.Count} monster entrances, {traps.Count + trapTemplates.Count} trap lines, "
+            + $"{fails.Count} failure lines");
     }
 
     // Whether line is a death text, and the monster it names (null when shared).
@@ -109,7 +131,10 @@ public sealed class RealmEventLines
         return _traps.Contains(text) || _trapTemplates.Any(t => t.TryMatch(text, out _));
     }
 
+    // The failure line's record (flagged LastActionFailed), or null when line isn't one.
+    public MessageRecord? FailureOf(string line) => _fails.GetValueOrDefault(line.Trim());
+
     // Whether line is one of these, for telling it from an unrecognized line.
     public bool IsKnown(string line) =>
-        IsDeath(line, out _) || IsEntrance(line) || IsTrap(line) || IsChase(line, out _);
+        IsDeath(line, out _) || IsEntrance(line) || IsTrap(line) || FailureOf(line) is not null || IsChase(line, out _);
 }
