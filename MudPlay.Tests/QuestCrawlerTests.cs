@@ -744,6 +744,21 @@ public sealed class QuestCrawlerTests : IDisposable
         Assert.Equal(4_000_000, q.ExpAward);
     }
 
+    // Crash-20261114-072453: MudRev hands 500,000,000 exp a step, and a quest's
+    // steps summed past int's range threw on the background quest warm-up.
+    [Fact]
+    public void Crawl_ExpAward_PastIntRange_IsSummed()
+    {
+        IReadOnlyList<CrawledQuest> quests = QuestCrawler.Crawl(
+            CacheWithTbInfo(
+                "giveability 150 2:addexp 750000000",
+                "giveability 150 5:addexp 750000000",
+                "giveability 150 9:giveitem 1000:addexp 750000000:addexp 2500000000"),
+            classId: null);
+
+        Assert.Equal(4_750_000_000L, Assert.Single(quests).ExpAward);
+    }
+
     [Fact]
     public void Crawl_MultiPartExp_AttachesToItsBand()
     {

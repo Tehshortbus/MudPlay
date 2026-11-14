@@ -93,7 +93,7 @@ public sealed record CrawledQuest(
     int StepRangeEnd = 0,
     bool AwardsAbility = false,
     bool ProgressByValue = false,
-    int ExpAward = 0,
+    long ExpAward = 0,
     // The alignment a character must hold to complete this quest, or null when the
     // quest isn't alignment-gated. Derived from the quest's goodaligned/evilaligned
     // gate directives (canonically abilities 126=Good / 127=Neutral / 128=Evil): a

@@ -3292,8 +3292,8 @@ How to keep it current:
 
 ### QuestCrawlerTests.cs
 - Covers: Game/Quests/QuestCrawler
-- Checks: quest discovery from giveability; level bands and tiers; class, race and alignment guards; rewards, keeper items, exp; value ladders; complete values; helper flags dropped.
-- Why: reports paradigm-20260925-123004, -20261011-230844; user, 2026-10-17.
+- Checks: quest discovery from giveability; level bands and tiers; class, race and alignment guards; rewards, keeper items, exp (a total past int's range, MudRev's 500,000,000 a step, is summed); value ladders; complete values; helper flags dropped.
+- Why: reports paradigm-20260925-123004, -20261011-230844, Crash-20261114-072453; user, 2026-10-17.
 
 ### QuestEditRowViewModelTests.cs
 - Covers: ViewModels/CharacterWorkshop/QuestEditRowViewModel
