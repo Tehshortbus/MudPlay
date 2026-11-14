@@ -1,5 +1,15 @@
 # Version history
 
+## 3.205.0
+
+- Spell messages use the realm's own lines when the game data has a Messages table (Nightmare Redux 1.8.4 exports): its cast, incoming and start / wear-off lines replace the built-in ones, which fill in the rest
+- Spells the built-in messages lack get a message from that table, flagged by what the spell does
+- Your message edits still apply on top of the realm's lines
+- A database table named like one of MudPlay's own files is imported as `Mdb<name>.json` instead of being left out
+- Bug report: *Game data: realm message lines* says what the table changed
+- A time to level more than a year away reads `Over 1 year`, and no longer crashes the client when it runs to thousands of years
+- bug reports addressed: Crash-20261114-125113
+
 ## 3.204.0
 
 - Class and level guesses from a player's `who` title use the realm's own titles when the game data has a Titles table (Nightmare Redux 1.8.4 exports)

@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using MudPlay.Models.GameData;
 using MudPlay.Services;
 
 namespace MudPlay.Game.GameData;
@@ -49,6 +50,20 @@ public sealed class SpellAilmentIndex
     // True when the spell applies the named ailment (case-insensitive keyword).
     public bool Applies(int spellNumber, string ailment)
         => Map().TryGetValue(spellNumber, out HashSet<string>? set) && set.Contains(ailment);
+
+    // The message-record flags the spell's codes prove. Confused is left off a hold:
+    // sleep, stun and paralyze share the Confusion code, and a record that holds is a
+    // hold, not a confusion.
+    public MessageFlags ConditionFlags(int spellNumber)
+    {
+        if (!Map().TryGetValue(spellNumber, out HashSet<string>? set)) return MessageFlags.None;
+        MessageFlags flags = MessageFlags.None;
+        if (set.Contains("poison")) flags |= MessageFlags.Poisoned;
+        if (set.Contains("blind"))  flags |= MessageFlags.Blinded;
+        if (set.Contains("hold"))   flags |= MessageFlags.MovementPrevented;
+        else if (set.Contains("confuse")) flags |= MessageFlags.Confused;
+        return flags;
+    }
 
     private Dictionary<int, HashSet<string>> Map()
     {

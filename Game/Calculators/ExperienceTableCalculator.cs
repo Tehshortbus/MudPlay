@@ -25,17 +25,30 @@ public static class ExperienceTableCalculator
 
     // Estimate time to reach a target level given a current exp total and an
     // exp-per-hour rate. Returns null when the rate is non-positive (no data), or
-    // TimeSpan.Zero when already there.
+    // TimeSpan.Zero when already there. Capped at MaxTimeToLevel: the first kill of a
+    // session at a high level (billions of exp to go at 15 an hour) comes to
+    // thousands of years, which callers add to the clock, and past the year 9999 that
+    // throws (Crash-20261114-125113).
     public static System.TimeSpan? CalcTimeToLevel(long expNeeded, long currentExp, long expPerHour)
     {
         if (expPerHour <= 0) return null;
         long remaining = expNeeded - currentExp;
         if (remaining <= 0) return System.TimeSpan.Zero;
-        return System.TimeSpan.FromHours((double)remaining / expPerHour);
+        double hours = (double)remaining / expPerHour;
+        return hours >= MaxTimeToLevel.TotalHours ? MaxTimeToLevel : System.TimeSpan.FromHours(hours);
     }
+
+    // Further off than any session can mean; still a time that reads as "not soon".
+    public static readonly System.TimeSpan MaxTimeToLevel = System.TimeSpan.FromDays(100 * 365);
+
+    // A time to level past a year is shown as only that (user, 2026-11-14): a figure
+    // that far off says no more than that the rate is too low yet to mean anything.
+    public static readonly System.TimeSpan OneYear = System.TimeSpan.FromDays(365);
+    public const string OverOneYear = "Over 1 year";
 
     // Compact time-to-level rendering, shared by every surface that shows a TNL
     // (the @exp reply, the status bar). Tiered so each magnitude reads cleanly:
+    //   > 1 year → "Over 1 year"
     //   >= 25h  → "1d 1h 0m"   (rolls up to days rather than a 25+ hour count)
     //   >= 90m  → "4h 10m"     (hours + minutes)
     //   >= 10m  → "89m"        (plain minutes — 60–89m stays "89m", not "1h 29m")
@@ -46,6 +59,7 @@ public static class ExperienceTableCalculator
     // only once past a full day plus an hour.
     public static string FormatTimeToLevel(System.TimeSpan ts)
     {
+        if (ts > OneYear) return OverOneYear;
         if (ts.TotalHours >= 25) return $"{ts.Days}d {ts.Hours}h {ts.Minutes}m";
         if (ts.TotalMinutes >= 90) return $"{(int)ts.TotalHours}h {ts.Minutes}m";
         if (ts.TotalMinutes >= 10) return $"{(int)ts.TotalMinutes}m";

@@ -290,7 +290,7 @@ public static class AppPaths
 
     // The client's own files in a set's folder, beside its tables. An imported table
     // named like one of them would land on it where file names ignore case (Windows,
-    // macOS), so MdbImporter leaves such a table out.
+    // macOS), so MdbImporter writes such a table under another name.
     public static IReadOnlyList<string> ClientSetFiles(string setName) =>
     [
         MessagesFile(setName), MonsterMessagesFile(setName), LegacySetMessageCandidatesFile(setName),

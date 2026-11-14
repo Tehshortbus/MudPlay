@@ -406,6 +406,7 @@ public static class BugReportBuilder
         Kv(sb, "Game data: items with room-command sources", svc.ItemSources.RoomCommandItemCount.ToString());
         Kv(sb, "Game data: monster relationship defaults", svc.MonsterOverlaySeed.RelationshipSummary);
         Kv(sb, "Game data: class titles", svc.Players.ClassTitles.Describe());
+        Kv(sb, "Game data: realm message lines", svc.Messages.RealmLines);
         Kv(sb, "Character", svc.Profile.CurrentProfileName ?? "(none loaded)");
         Kv(sb, "BBS", svc.Profile.CurrentBbsName ?? "(none)");
         if (svc.Profile.Current is { StateUnverified: true })

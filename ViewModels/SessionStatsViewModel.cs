@@ -541,7 +541,7 @@ public sealed partial class SessionStatsViewModel : ObservableObject, IDisposabl
             string etaPart = remaining is not { } eta
                 ? "rate unknown"
                 : eta <= TimeSpan.Zero ? "ready to level"
-                    : $"{Fmt(eta)} until level {r.TargetLevel}";
+                    : $"{FmtTimeToLevel(eta)} until level {r.TargetLevel}";
 
             return $"{bankedPart} · {etaPart}";
         }
@@ -564,7 +564,7 @@ public sealed partial class SessionStatsViewModel : ObservableObject, IDisposabl
             {
                 null => "rate unknown",
                 { } eta when eta <= TimeSpan.Zero => "ready to level",
-                { } eta => Fmt(eta),
+                { } eta => FmtTimeToLevel(eta),
             };
         }
     }
@@ -719,6 +719,9 @@ public sealed partial class SessionStatsViewModel : ObservableObject, IDisposabl
 
     private static string Fmt(TimeSpan t) =>
         $"{(int)t.TotalHours:D2}:{t.Minutes:D2}:{t.Seconds:D2}";
+
+    private static string FmtTimeToLevel(TimeSpan t) =>
+        t > ExperienceTableCalculator.OneYear ? ExperienceTableCalculator.OverOneYear : Fmt(t);
 
     private static string Range(int min, int max) =>
         max <= 0 ? "—" : $"{min}–{max}";

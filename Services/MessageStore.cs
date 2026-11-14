@@ -1,4 +1,5 @@
 using System.IO;
+using MudPlay.Game.GameData;
 using MudPlay.Models.GameData;
 
 namespace MudPlay.Services;
@@ -6,8 +7,9 @@ namespace MudPlay.Services;
 // In-memory cache of the Messages/Responses catalogue for the active set.
 // The catalogue is the realm-flavored seed at Global/Messages.{stock|paradigm}.seed.json
 // (the realm is picked from the set's Info.json Legit; re-synced from the seed embedded
-// in the exe on every launch) with the user's edits layered on top from
-// game data/{set}/messages.json. That per-set file holds only the DELTA against the
+// in the exe on every launch), the set's own lines laid over it where its export
+// carries a Messages table (MdbMessageOverlay), and the user's edits layered on top
+// from game data/{set}/messages.json. That per-set file holds only the DELTA against the
 // seed (see SeedDelta), so a shipped seed fix still reaches every record the user
 // hasn't changed.
 //
@@ -18,6 +20,7 @@ namespace MudPlay.Services;
 public sealed class MessageStore
 {
     private readonly LogService? _log;
+    private readonly GameDataCache? _gameData;
 
     // Text (Name + the five lines) is the record's identity and always comes from the
     // seed; Flags, Links, the confuse-fumble line and the cast response are what a user
@@ -50,14 +53,18 @@ public sealed class MessageStore
     // Set name currently sourcing Messages, or null when none is active.
     public string? ActiveSet { get; private set; }
 
+    // What the set's own Messages table did to the catalogue, for the bug report.
+    public string RealmLines { get; private set; } = "no set loaded";
+
     public MessageStore() { }
 
     // Production ctor — wire the log sink so parse failures surface in the
     // LogPane instead of silently leaving the catalogue empty.
-    public MessageStore(LogService log)
+    public MessageStore(LogService log, GameDataCache? gameData = null)
     {
         ArgumentNullException.ThrowIfNull(log);
         _log = log;
+        _gameData = gameData;
     }
 
     // Switch the catalogue to setName's data. Pass null to clear (no set active).
@@ -75,6 +82,7 @@ public sealed class MessageStore
         ActiveSet = setName;
         if (string.IsNullOrWhiteSpace(setName))
         {
+            RealmLines = "no set loaded";
             _seed = [];
             Messages.ReplaceAll([]);
             _log?.Log(LogSeverity.Info, "Messages", "no active game-data set — message catalogue cleared.");
@@ -83,6 +91,7 @@ public sealed class MessageStore
 
         string realm = GameDataRealm.Resolve(setName);
         (List<MessageRecord> seed, string seedSource) = LoadSeed(realm);
+        seed = WithRealmLines(setName, seed);
         _seed = seed;
         List<MessageRecord>? withEdits = Delta.Load(AppPaths.MessagesFile(setName), seed, _log, "Messages");
         List<MessageRecord> loaded = withEdits ?? seed;
@@ -96,6 +105,32 @@ public sealed class MessageStore
         else
             _log?.Log(LogSeverity.Info, "Messages",
                 $"set '{setName}' (realm '{realm}'): loaded {loaded.Count} message records from {source}.");
+    }
+
+    // The seed with the set's own lines laid over it, when its export carries a
+    // Messages table that reads as one. The result is the baseline the user's edits
+    // are kept against, so an edit to a record the table changed still applies.
+    private List<MessageRecord> WithRealmLines(string setName, List<MessageRecord> seed)
+    {
+        if (_gameData?.GetTable(MdbMessageOverlay.TableName) is not { } table)
+        {
+            RealmLines = "none: the set has no Messages table";
+            return seed;
+        }
+        if (MdbMessageOverlay.Unreadable(table) is { } why)
+        {
+            RealmLines = $"none: the set's Messages table isn't one this client reads ({why})";
+            _log?.Log(LogSeverity.Warn, "Messages", $"set '{setName}': {RealmLines}.");
+            return seed;
+        }
+
+        SpellAilmentIndex ailments = new(_gameData);
+        MdbMessageOverlay.Result result =
+            MdbMessageOverlay.Apply(seed, table, n => _gameData.FindNameByNumber("Spells", n), ailments.ConditionFlags);
+        RealmLines = $"from the set's Messages table: {result.LinesReplaced} lines on {result.RecordsChanged} records, "
+                   + $"{result.RecordsAdded} records added";
+        _log?.Log(LogSeverity.Info, "Messages", $"set '{setName}': realm lines {RealmLines}.");
+        return result.Records;
     }
 
     // Global realm seed (re-synced from the embedded copy every launch) → bundled floor.

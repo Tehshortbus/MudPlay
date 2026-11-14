@@ -240,6 +240,22 @@ public sealed class ExperienceQueryHandlerTests
             Assert.Single(Replies()));
     }
 
+    // A level more than a year away at the session's rate reads only that
+    // (user, 2026-11-14; Crash-20261114-125113 was such a rate at level 75).
+    [Fact]
+    public void Exp_ALevelMoreThanAYearAway_ReadsOverOneYear()
+    {
+        var (engine, stats, activity, clock, players) = Setup();
+        SeedPlayer(players, "Bob", PlayerRemoteControls.QueryExperience);
+        activity.NoteExperience(15);
+        clock.Advance(60); // 15 exp in an hour
+        ExpLine(exp: 6_716_823_714, level: 75, toNext: 6_625_724_403, span: 6_625_724_403);
+
+        ChatLines.Hear(_routers[engine], Telepath("Bob", "@exp"));
+
+        Assert.EndsWith("Rate: 15/hr  Will level in: Over 1 year", Assert.Single(Replies()), StringComparison.Ordinal);
+    }
+
     // ----- @exp refreshing the exp line --------------------------------
 
     // With no exp line read, @exp sends `exp` and answers once the game prints it.
