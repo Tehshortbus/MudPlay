@@ -1,12 +1,13 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.204.0**
+> **Version 3.205.0**
 >
-> - Class and level guesses from a player's `who` title use the realm's own titles when the game data has a Titles table (Nightmare Redux 1.8.4 exports)
-> - Paradigm's Thief title `Master Rogue` is read as one title, not two, so later Thief titles map to the right levels
-> - Bug report: *Game data: class titles* says which titles are in use
-> - A quest whose experience adds up past 2.1 billion (MudRev) no longer crashes the quest list's background build
+> - Spell messages use the realm's own lines when the game data has a Messages table (Nightmare Redux 1.8.4 exports): its cast, incoming and start / wear-off lines replace the built-in ones, which fill in the rest
+> - Spells the built-in messages lack get a message from that table, flagged by what the spell does
+> - Your message edits still apply on top of the realm's lines
+> - A database table named like one of MudPlay's own files is imported as `Mdb<name>.json` instead of being left out
+> - Bug report: *Game data: realm message lines* says what the table changed
 <!-- current-version:end -->
 
 A modern Telnet terminal client for **MajorMUD** and other BBS door games, built in C# / .NET 10 with [Avalonia](https://avaloniaui.net/). It renders a faithful CP437 cell grid with full VT100/ANSI parsing, and layers a MegaMUD-style automation suite (combat, party, navigation, healing, and more) on top — all in modeless, dockable windows so the terminal stays live while you configure anything.

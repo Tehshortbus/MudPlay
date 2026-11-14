@@ -115,24 +115,23 @@ public sealed class MdbImporter
             _roomCommandItems = 0;
             List<string> imported = new();
             List<string> skipped = new();
-            List<string> leftOut = new();
+            List<string> renamed = new();
 
             foreach (string tableName in tables)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                string fileName = ImportFileName(folderName, tableName);
                 if (ClientFileFor(folderName, tableName) is { } clientFile)
                 {
-                    // Nothing reads such a table, and writing it would replace the
-                    // client's file, which then reads the table's rows as its own.
-                    OnStatusChanged?.Invoke($"Leaving out {tableName}: its file would replace the client's own {clientFile}");
-                    leftOut.Add(tableName);
-                    continue;
+                    OnStatusChanged?.Invoke($"Importing {tableName} as {fileName}: {clientFile} is MudPlay's own file");
+                    renamed.Add($"{tableName} → {fileName}");
                 }
-                OnStatusChanged?.Invoke($"Importing {tableName}…");
+                else
+                    OnStatusChanged?.Invoke($"Importing {tableName}…");
 
                 try
                 {
-                    int rowCount = await ExportTableAsync(reader, tableName, outputPath, cancellationToken);
+                    int rowCount = await ExportTableAsync(reader, tableName, fileName, outputPath, cancellationToken);
                     totalRows += rowCount;
                     imported.Add($"{tableName} ({rowCount} rows)");
                 }
@@ -148,7 +147,7 @@ public sealed class MdbImporter
                     OnStatusChanged?.Invoke($"Retrying {tableName} after error: {ex.Message}");
                     try
                     {
-                        int rowCount = await ExportTableAsync(reader, tableName, outputPath, cancellationToken);
+                        int rowCount = await ExportTableAsync(reader, tableName, fileName, outputPath, cancellationToken);
                         totalRows += rowCount;
                         imported.Add($"{tableName} ({rowCount} rows)");
                     }
@@ -181,9 +180,9 @@ public sealed class MdbImporter
             if (skipped.Count > 0)
                 message += $"\n\nSkipped {skipped.Count}:\n" +
                            string.Join("\n", skipped.Select(t => $"  ⚠ {t}"));
-            if (leftOut.Count > 0)
-                message += $"\n\nNot imported {leftOut.Count} (named like one of MudPlay's own files in the set):\n" +
-                           string.Join("\n", leftOut.Select(t => $"  – {t}"));
+            if (renamed.Count > 0)
+                message += $"\n\nImported under another file name {renamed.Count} (named like one of MudPlay's own files in the set):\n" +
+                           string.Join("\n", renamed.Select(t => $"  – {t}"));
             bool hasLairs = imported.Any(t => t.StartsWith("Lairs (", StringComparison.OrdinalIgnoreCase));
             message += $"\n\nTotal rows imported: {totalRows:N0}"
                      + $"\nLairs table: {(hasLairs ? "yes" : "no")}"
@@ -254,6 +253,7 @@ public sealed class MdbImporter
     private async Task<int> ExportTableAsync(
         AccessReader reader,
         string tableName,
+        string fileName,
         string outputPath,
         CancellationToken cancellationToken)
     {
@@ -300,7 +300,6 @@ public sealed class MdbImporter
                 && RoomCommandSourceParser.ParseCell(cell as string).Count > 0);
 
         string json = JsonSerializer.Serialize(rows, JsonOpts);
-        string fileName = TableFileName(tableName);
         string filePath = Path.Combine(outputPath, fileName);
         await File.WriteAllTextAsync(filePath, json, cancellationToken);
 
@@ -368,6 +367,14 @@ public sealed class MdbImporter
         return AppPaths.ClientSetFiles(setName).Select(Path.GetFileName)
             .FirstOrDefault(f => string.Equals(f, fileName, StringComparison.OrdinalIgnoreCase));
     }
+
+    // The file a table is written to. A table named like one of the client's own files
+    // takes the "Mdb" prefix instead: written under its own name it would replace the
+    // client's file, which then reads the table's rows as its own (Crash-20261101-094634).
+    internal static string ImportFileName(string setName, string tableName) =>
+        ClientFileFor(setName, tableName) is null ? TableFileName(tableName) : RenamedPrefix + TableFileName(tableName);
+
+    internal const string RenamedPrefix = "Mdb";
 
     // Delete a freshly-created output folder when the import wrote nothing into it,
     // so a failed import never leaves an empty game-data set behind (switching to an
