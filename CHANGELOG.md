@@ -1,5 +1,13 @@
 # Version history
 
+## 3.204.0
+
+- Class and level guesses from a player's `who` title use the realm's own titles when the game data has a Titles table (Nightmare Redux 1.8.4 exports)
+- Paradigm's Thief title `Master Rogue` is read as one title, not two, so later Thief titles map to the right levels
+- Bug report: *Game data: class titles* says which titles are in use
+- A quest whose experience adds up past 2.1 billion (MudRev) no longer crashes the quest list's background build
+- bug reports addressed: Crash-20261114-072453
+
 ## 3.203.3
 
 - A buff cast while a step is still landing now counts toward the round the step lands in, so the loop waits at the lair's door instead of walking in on a spent cast

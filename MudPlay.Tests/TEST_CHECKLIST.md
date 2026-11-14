@@ -717,9 +717,9 @@ How to keep it current:
 - Why: capability from game data.
 
 ### ClassTitleTableTests.cs
-- Covers: Game/GameData/ClassTitleTable
-- Checks: title → class and level range; format.
-- Why: party level/class inference.
+- Covers: Game/GameData/ClassTitleTable (+ GameDataCache)
+- Checks: title → class and level range; format; the built-in list's Thief `Master Rogue` is one title; a set's own Titles table (loaded through GameDataCache from the set's files) gives its titles (a Stock Dragonslayer is 70-109) and its own classes; no Titles table, a class the Classes table doesn't name, or an empty cell falls back to the built-in list; a comma inside a title stays in it.
+- Why: party level/class inference, per realm (NMR 1.8.4 Titles table).
 
 ### ClassesSectionViewModelTests.cs
 - Covers: ViewModels/GameData/Tables/ClassesSectionViewModel.FormatExpModifier
@@ -3292,8 +3292,8 @@ How to keep it current:
 
 ### QuestCrawlerTests.cs
 - Covers: Game/Quests/QuestCrawler
-- Checks: quest discovery from giveability; level bands and tiers; class, race and alignment guards; rewards, keeper items, exp; value ladders; complete values; helper flags dropped.
-- Why: reports paradigm-20260925-123004, -20261011-230844; user, 2026-10-17.
+- Checks: quest discovery from giveability; level bands and tiers; class, race and alignment guards; rewards, keeper items, exp (a total past int's range, MudRev's 500,000,000 a step, is summed); value ladders; complete values; helper flags dropped.
+- Why: reports paradigm-20260925-123004, -20261011-230844, Crash-20261114-072453; user, 2026-10-17.
 
 ### QuestEditRowViewModelTests.cs
 - Covers: ViewModels/CharacterWorkshop/QuestEditRowViewModel

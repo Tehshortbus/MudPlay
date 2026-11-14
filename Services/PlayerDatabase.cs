@@ -30,6 +30,17 @@ public sealed class PlayerDatabase
     private readonly ProfileService _profile;
     private readonly Func<string?> _activeRealmFolder;
 
+    // The active set's class titles. Unwired, the built-in list.
+    private Func<Game.GameData.ClassTitleTable>? _classTitles;
+
+    public Game.GameData.ClassTitleTable ClassTitles => _classTitles?.Invoke() ?? Game.GameData.ClassTitleTable.BuiltIn;
+
+    public void SetClassTitleSource(Func<Game.GameData.ClassTitleTable> classTitles)
+    {
+        ArgumentNullException.ThrowIfNull(classTitles);
+        _classTitles = classTitles;
+    }
+
     // ----- Backing layers ------------------------------------------------
 
     // realm observations, keyed by GIVEN name (case-insensitive). Given
@@ -340,7 +351,7 @@ public sealed class PlayerDatabase
             // level as "trained since"), so an @level answer would change nothing.
             // The next who records their real title.
             string? title = existing.Title;
-            if (Game.GameData.ClassTitleTable.LookupLevelRange(title) is { } band
+            if (ClassTitles.LookupLevelRange(title) is { } band
                 && (level < band.MinLevel || level > band.MaxLevel))
                 title = null;
             _observations[given] = existing with { Level = level, LevelAt = nowUtc, LastSeenUtc = nowUtc, Title = title };

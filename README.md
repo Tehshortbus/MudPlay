@@ -1,10 +1,12 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.203.3**
+> **Version 3.204.0**
 >
-> - A buff cast while a step is still landing now counts toward the round the step lands in, so the loop waits at the lair's door instead of walking in on a spent cast
-> - Help guide: a lone monster already standing at a lair's door is fought during the door wait, the same as one that wanders in
+> - Class and level guesses from a player's `who` title use the realm's own titles when the game data has a Titles table (Nightmare Redux 1.8.4 exports)
+> - Paradigm's Thief title `Master Rogue` is read as one title, not two, so later Thief titles map to the right levels
+> - Bug report: *Game data: class titles* says which titles are in use
+> - A quest whose experience adds up past 2.1 billion (MudRev) no longer crashes the quest list's background build
 <!-- current-version:end -->
 
 A modern Telnet terminal client for **MajorMUD** and other BBS door games, built in C# / .NET 10 with [Avalonia](https://avaloniaui.net/). It renders a faithful CP437 cell grid with full VT100/ANSI parsing, and layers a MegaMUD-style automation suite (combat, party, navigation, healing, and more) on top — all in modeless, dockable windows so the terminal stays live while you configure anything.

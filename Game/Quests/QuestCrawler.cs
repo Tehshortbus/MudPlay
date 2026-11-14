@@ -494,7 +494,7 @@ public static class QuestCrawler
                     .Select(it => (it, m.Value, (IReadOnlyList<int>)m.Chain.ClassIds))).ToList(), classId);
             // Exp keys off the ability value (this axis's step), so tiers that share a value
             // don't double-count the same addexp.
-            int exp = SumDistinctStepExp(members.Select(m => (m.Value, m.Chain.Exp)));
+            long exp = SumDistinctStepExp(members.Select(m => (m.Value, m.Chain.Exp)));
 
             int rangeStart = i == 0 ? 1 : boundaries[i - 1] + 1;
             int rangeEnd = i == boundaries.Length - 1 ? int.MaxValue : upper;
@@ -535,7 +535,7 @@ public static class QuestCrawler
         var bonuses = new List<QuestBonus>();
         var giveItems = new List<int>();
         var takeItems = new List<int>();
-        int exp = 0;
+        long exp = 0;
 
         foreach (string segment in raw.Split(':'))
         {
@@ -564,7 +564,7 @@ public static class QuestCrawler
                 case "takeitem" when p.Length >= 2 && int.TryParse(p[1], out int ti):
                     takeItems.Add(ti);
                     break;
-                case "addexp" when p.Length >= 2 && int.TryParse(p[1], out int xp):
+                case "addexp" when p.Length >= 2 && long.TryParse(p[1], out long xp):
                     exp += xp;
                     break;
             }
@@ -589,7 +589,7 @@ public static class QuestCrawler
         IReadOnlyList<QuestBonus> bonuses = ResolveLowestRewardBonuses(chains, classId);
         IReadOnlyList<int> awardItems = AwardItemsFrom(KeeperCandidates(chains), classId);
         bool awardsAbility = awardItems.Count == 0 && bonuses.Count == 0;
-        int exp = SumDistinctStepExp(chains.Select(c => (c.GiveStep, c.Exp)));
+        long exp = SumDistinctStepExp(chains.Select(c => (c.GiveStep, c.Exp)));
         return new CrawledQuest(
             flag, 0, requiredLevel, bonuses, awardItems, classRestrict, raceRestrict, classLevels,
             AwardsAbility: awardsAbility, ExpAward: exp, RequiredAlignment: alignment,
@@ -643,13 +643,13 @@ public static class QuestCrawler
 
         // Attribute each exp-bearing chain to its tier the same way keepers are, so a
         // band's experience is only the addexp handed at its own give-steps.
-        var bandExpSteps = new Dictionary<int, List<(int Step, int Exp)>>();
+        var bandExpSteps = new Dictionary<int, List<(int Step, long Exp)>>();
         foreach (ParsedChain chain in chains.Where(c => c.Exp > 0))
         {
             int band = ResolveBand(new[] { chain }, bandLevels, ladder);
             if (band == 0) continue;
-            List<(int, int)> bucket = bandExpSteps.TryGetValue(band, out List<(int, int)>? es)
-                ? es : (bandExpSteps[band] = new List<(int, int)>());
+            List<(int, long)> bucket = bandExpSteps.TryGetValue(band, out List<(int, long)>? es)
+                ? es : (bandExpSteps[band] = new List<(int, long)>());
             bucket.Add((chain.GiveStep, chain.Exp));
         }
 
@@ -660,7 +660,7 @@ public static class QuestCrawler
                 ? bb : Array.Empty<QuestBonus>();
             IReadOnlyList<int> items = bandKeepers.TryGetValue(level, out List<(int, int, IReadOnlyList<int>)>? bk)
                 ? AwardItemsFrom(bk, classId) : Array.Empty<int>();
-            int exp = bandExpSteps.TryGetValue(level, out List<(int, int)>? xs) ? SumDistinctStepExp(xs) : 0;
+            long exp = bandExpSteps.TryGetValue(level, out List<(int, long)>? xs) ? SumDistinctStepExp(xs) : 0;
 
             int rangeStart = i == 0 ? 1 : ladder[i].Step;
             int rangeEnd = i == ladder.Count - 1 ? int.MaxValue : ladder[i + 1].Step - 1;
@@ -798,8 +798,9 @@ public static class QuestCrawler
     // Total experience across a set of (step, exp) grants: one value per distinct step
     // (the max, though class-branched chains repeat the same figure), summed. Keying on
     // the step is what stops a quest whose exp grant fans out across 15 class variants
-    // from reporting 15× the award. Zero/negative addexp entries don't contribute.
-    private static int SumDistinctStepExp(IEnumerable<(int Step, int Exp)> steps) =>
+    // from reporting 15× the award. Zero/negative addexp entries don't contribute. A
+    // long: MudRev hands 500,000,000 a step, and a quest's steps pass int's range.
+    private static long SumDistinctStepExp(IEnumerable<(int Step, long Exp)> steps) =>
         steps.Where(s => s.Exp > 0)
             .GroupBy(s => s.Step)
             .Sum(g => g.Max(s => s.Exp));
@@ -820,7 +821,7 @@ public static class QuestCrawler
         var bonuses = new List<QuestBonus>();
         var giveItems = new List<int>();
         var takeItems = new List<int>();
-        int exp = 0;
+        long exp = 0;
         // Abilities this line asks to be held, before it changes them itself.
         var heldGates = new HashSet<int>();
         var changed = new HashSet<int>();
@@ -873,7 +874,7 @@ public static class QuestCrawler
                 case "takeitem" when p.Length >= 2 && int.TryParse(p[1], out int ti):
                     takeItems.Add(ti);
                     break;
-                case "addexp" when p.Length >= 2 && int.TryParse(p[1], out int xp):
+                case "addexp" when p.Length >= 2 && long.TryParse(p[1], out long xp):
                     exp += xp; // the completion experience handed alongside this give-step
                     break;
             }
@@ -905,6 +906,6 @@ public static class QuestCrawler
         List<QuestBonus> Bonuses,
         List<int> GiveItems,
         List<int> TakeItems,
-        int Exp,
+        long Exp,
         bool RequiresFlag = false);
 }

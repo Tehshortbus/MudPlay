@@ -3262,6 +3262,9 @@ public sealed class AppServices
         // BbsPinApplied / ProfileSaving) and reads the active realm's folder
         // through ActiveRealmFolder.
         Players = new PlayerDatabase(Profile, ActiveRealmFolder);
+        // Class titles follow the active set: its own Titles table, else the built-in list.
+        Players.SetClassTitleSource(() => _classTitles ??= LoadClassTitles());
+        GameData.ActiveSetChanged += _ => _classTitles = null;
         Tick.HeartbeatElapsed += () => Players.TakeInOutsideChanges();
         // The settings files every client shares: global.json, and the game-data
         // edits made for all characters or for a realm.
@@ -12787,6 +12790,17 @@ public sealed class AppServices
 
     public Game.Map.LairEntryDebuffHold LairDebuffHold { get; private set; } = null!;
 
+    // The active set's class titles, built on first use after a set switch.
+    private Game.GameData.ClassTitleTable? _classTitles;
+
+    private Game.GameData.ClassTitleTable LoadClassTitles()
+    {
+        Game.GameData.ClassTitleTable titles =
+            Game.GameData.ClassTitleTable.ForSet(GameData.GetTable("Titles"), GameData.GetTable("Classes"));
+        Log.Info("GameData", $"class titles: {titles.Describe()}");
+        return titles;
+    }
+
     // Every loop some engine holds on to outside the loop catalogue: the runner's
     // (running, last run, staged, to restart after a reconnect), the one waiting on
     // its walk-to, and the one a running event goes back to.
@@ -16850,7 +16864,7 @@ public sealed class AppServices
                 if (FirstTokenEquals(entry.Name, givenName) && entry.Class.Length > 0)
                     return entry.Class;
         // A title only identifies a class when it isn't shared across classes.
-        return Game.GameData.ClassTitleTable.LookupClasses(record?.Title) is { Count: 1 } implied
+        return Players.ClassTitles.LookupClasses(record?.Title) is { Count: 1 } implied
             ? implied[0]
             : null;
     }
