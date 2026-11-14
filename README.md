@@ -1,9 +1,9 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.206.1**
+> **Version 3.206.2**
 >
-> - A failed trap disarm is recognized by every trap line of the game data's Messages table, so a realm's own traps (MudRev's sawblade) are retried like the Stock ones
+> - Every failure line of the game data's Messages table (asleep, afraid, turned to stone…) re-sends the command it ate, like a confusion fumble; lines that are also an effect's start line are left out
 <!-- current-version:end -->
 
 A modern Telnet terminal client for **MajorMUD** and other BBS door games, built in C# / .NET 10 with [Avalonia](https://avaloniaui.net/). It renders a faithful CP437 cell grid with full VT100/ANSI parsing, and layers a MegaMUD-style automation suite (combat, party, navigation, healing, and more) on top — all in modeless, dockable windows so the terminal stays live while you configure anything.

@@ -867,6 +867,63 @@ public sealed class ConditionTrackerTests
         Assert.Equal("fumble", h.ActionFailed[0].Name);
     }
 
+    // ----- The set's own failure lines (NMR 1.8.4 Messages table) -----
+
+    // Stock v1.11p's sleep and fear failure lines, and stun's, which is also its start
+    // line and so is left out (user, 2026-11-14).
+    private static MudPlay.Game.GameData.RealmEventLines RealmFailures() => MudPlay.Game.GameData.RealmEventLines.From(
+        TestRows.Table("""
+            [{"ID":1,"Name":"You are fast asleep.","Kind":"Self","Msg":"You are fast asleep.","EndMsg":"\u0000","Effects":"Fail","Spell":0},
+             {"ID":2,"Name":"too afraid","Kind":"Self","Msg":"You are too afraid to do that!","EndMsg":"\u0000","Effects":"Fail","Spell":0},
+             {"ID":3,"Name":"stunned","Kind":"Self","Msg":"You are stunned!","EndMsg":"You are no longer stunned.","Effects":"Confused,Fail","Spell":0},
+             {"ID":4,"Name":"stunned","Kind":"Self","Msg":"You are stunned!","EndMsg":"\u0000","Effects":"Fail","Spell":0}]
+            """), _ => false);
+
+    // Each is an eaten command, re-sent like a confusion fumble (user, 2026-11-14:
+    // "re-send every time"), and a fumbled move reverts on it.
+    [Fact]
+    public void TheSetsFailureLine_FiresActionFailed_AndIsAFumbleLine()
+    {
+        using Harness h = new();
+        MudPlay.Game.GameData.RealmEventLines lines = RealmFailures();
+        h.Tracker.SetRealmFailureLines(lines.FailureOf);
+
+        h.Feed("You are fast asleep.");
+        h.Feed("You are too afraid to do that!");
+
+        Assert.Equal(["You are fast asleep.", "too afraid"], h.ActionFailed.Select(r => r.Name));
+        Assert.True(h.Tracker.IsConfuseFumbleLine("You are fast asleep."));
+    }
+
+    [Fact]
+    public void AFailureLineThatIsAlsoAStartLine_IsLeftOut()
+    {
+        using Harness h = new();
+        MudPlay.Game.GameData.RealmEventLines lines = RealmFailures();
+        h.Tracker.SetRealmFailureLines(lines.FailureOf);
+
+        h.Feed("You are stunned!");
+
+        Assert.Empty(h.ActionFailed);
+        Assert.False(h.Tracker.IsConfuseFumbleLine("You are stunned!"));
+    }
+
+    // A line that started one of the catalogue's effects isn't a failure on top.
+    [Fact]
+    public void ALineThatStartsAnEffect_IsNotAlsoAFailure()
+    {
+        using Harness h = new();
+        h.Messages.Messages.Add(MakeRecord("sleep", MessageFlags.MovementPrevented | MessageFlags.AttackPrevented,
+            applied: "You are fast asleep", endsWith: "You wake up"));
+        MudPlay.Game.GameData.RealmEventLines lines = RealmFailures();
+        h.Tracker.SetRealmFailureLines(lines.FailureOf);
+
+        h.Feed("You are fast asleep.");
+
+        Assert.Single(h.Applied);
+        Assert.Empty(h.ActionFailed);
+    }
+
     // ----- ConfuseFumbleLine (data-driven movement-refusal source) ----
 
     [Fact]

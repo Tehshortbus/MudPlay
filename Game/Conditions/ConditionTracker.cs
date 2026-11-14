@@ -304,8 +304,16 @@ public sealed partial class ConditionTracker : ObservableObject, IDisposable
     {
         if (string.IsNullOrEmpty(text)) return false;
         string norm = NormalizeFumbleLine(text);
-        return norm.Length > 0 && MatchConfuseFumble(norm) is not null;
+        return norm.Length > 0 && (MatchConfuseFumble(norm) is not null || _realmFailure?.Invoke(text) is not null);
     }
+
+    // The set's own failure lines (RealmEventLines.FailureOf): a set exported with a
+    // Messages table names every effect's failure wording ("You are fast asleep.",
+    // "You are too afraid to do that!"), where the catalogue's Confused records know
+    // a few. Each is an eaten command like a confusion fumble, and is re-sent the same
+    // way (user, 2026-11-14: "re-send every time").
+    private Func<string, MessageRecord?>? _realmFailure;
+    public void SetRealmFailureLines(Func<string, MessageRecord?> failureOf) => _realmFailure = failureOf;
 
     // True when text is the applied line of a hold we are under. Paradigm answers a
     // held character's move by printing the hold's own line again ("You are too
@@ -732,6 +740,9 @@ public sealed partial class ConditionTracker : ObservableObject, IDisposable
             string norm = NormalizeFumbleLine(text);
             if (norm.Length > 0) actionFailed = MatchConfuseFumble(norm);
         }
+        // A line that has just started an effect isn't read as a failure on top.
+        if (actionFailed is null && appliedThisLine.Count == 0)
+            actionFailed = _realmFailure?.Invoke(text);
 
         if (endedThisLine.Count > 0 || appliedThisLine.Count > 0 || activeTouched)
             RecomputeFlags();

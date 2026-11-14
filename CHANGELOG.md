@@ -1,5 +1,9 @@
 # Version history
 
+## 3.206.2
+
+- Every failure line of the game data's Messages table (asleep, afraid, turned to stone…) re-sends the command it ate, like a confusion fumble; lines that are also an effect's start line are left out
+
 ## 3.206.1
 
 - A failed trap disarm is recognized by every trap line of the game data's Messages table, so a realm's own traps (MudRev's sawblade) are retried like the Stock ones

@@ -55,7 +55,7 @@ public sealed class RealmEventLinesTests : IDisposable
         Assert.True(lines.IsEntrance("A moss zombie rises from the ground!"));
         Assert.True(lines.IsTrap("As you walk through the passage, blades sweep out and slice you!"));
         Assert.False(lines.IsKnown("The goblin swings at you, but misses!"));
-        Assert.Equal("from the set's Messages table: 3 death lines (1 naming their monster), 1 chase lines, 1 monster entrances, 1 trap lines",
+        Assert.Equal("from the set's Messages table: 3 death lines (1 naming their monster), 1 chase lines, 1 monster entrances, 1 trap lines, 0 failure lines",
             lines.Summary);
     }
 
