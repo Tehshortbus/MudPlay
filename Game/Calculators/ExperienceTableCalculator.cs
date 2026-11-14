@@ -44,11 +44,11 @@ public static class ExperienceTableCalculator
     // A time to level past a year is shown as only that (user, 2026-11-14): a figure
     // that far off says no more than that the rate is too low yet to mean anything.
     public static readonly System.TimeSpan OneYear = System.TimeSpan.FromDays(365);
-    public const string OverOneYear = "over 1 year";
+    public const string OverOneYear = "Over 1 year";
 
     // Compact time-to-level rendering, shared by every surface that shows a TNL
     // (the @exp reply, the status bar). Tiered so each magnitude reads cleanly:
-    //   > 1 year → "over 1 year"
+    //   > 1 year → "Over 1 year"
     //   >= 25h  → "1d 1h 0m"   (rolls up to days rather than a 25+ hour count)
     //   >= 90m  → "4h 10m"     (hours + minutes)
     //   >= 10m  → "89m"        (plain minutes — 60–89m stays "89m", not "1h 29m")

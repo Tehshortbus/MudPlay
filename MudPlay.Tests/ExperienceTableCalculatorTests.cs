@@ -123,7 +123,7 @@ public sealed class ExperienceTableCalculatorTests
     [InlineData(25, 0, 0, "1d 1h 0m")]       // 25h → days
     [InlineData(26, 30, 0, "1d 2h 30m")]
     [InlineData(8760, 0, 0, "365d 0h 0m")]   // a year is still counted out
-    [InlineData(8760, 0, 1, "over 1 year")]  // past it, only that (user, 2026-11-14)
+    [InlineData(8760, 0, 1, "Over 1 year")]  // past it, only that (user, 2026-11-14)
     public void FormatTimeToLevel_TiersByMagnitude(int h, int m, int s, string expected)
         => Assert.Equal(expected, ExperienceTableCalculator.FormatTimeToLevel(new TimeSpan(h, m, s)));
 }

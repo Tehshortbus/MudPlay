@@ -7,7 +7,7 @@
 - Your message edits still apply on top of the realm's lines
 - A database table named like one of MudPlay's own files is imported as `Mdb<name>.json` instead of being left out
 - Bug report: *Game data: realm message lines* says what the table changed
-- A time to level more than a year away reads `over 1 year`, and no longer crashes the client when it runs to thousands of years
+- A time to level more than a year away reads `Over 1 year`, and no longer crashes the client when it runs to thousands of years
 - bug reports addressed: Crash-20261114-125113
 
 ## 3.204.0

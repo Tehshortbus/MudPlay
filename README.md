@@ -8,7 +8,7 @@
 > - Your message edits still apply on top of the realm's lines
 > - A database table named like one of MudPlay's own files is imported as `Mdb<name>.json` instead of being left out
 > - Bug report: *Game data: realm message lines* says what the table changed
-> - A time to level more than a year away reads `over 1 year`, and no longer crashes the client when it runs to thousands of years
+> - A time to level more than a year away reads `Over 1 year`, and no longer crashes the client when it runs to thousands of years
 <!-- current-version:end -->
 
 A modern Telnet terminal client for **MajorMUD** and other BBS door games, built in C# / .NET 10 with [Avalonia](https://avaloniaui.net/). It renders a faithful CP437 cell grid with full VT100/ANSI parsing, and layers a MegaMUD-style automation suite (combat, party, navigation, healing, and more) on top — all in modeless, dockable windows so the terminal stays live while you configure anything.

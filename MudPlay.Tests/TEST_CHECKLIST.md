@@ -1360,12 +1360,12 @@ How to keep it current:
 
 ### ExperienceQueryHandlerTests.cs
 - Covers: Game/Remote/ExperienceQueryHandler (@exp/@level), StatParser's exp line and server vitals.
-- Checks: before a stat parse; to-next/unknown; rate/ETA/ready lines from a real `exp` line; with no exp line or one over an hour old, @exp sends `exp` and answers on its line (or after the wait), once for every asker; with the server's vitals owned, both answer from them and send nothing; rate abbreviation tiers; permission gate.
+- Checks: before a stat parse; to-next/unknown; rate/ETA/ready lines from a real `exp` line; a level more than a year away reads `Will level in: Over 1 year`; with no exp line or one over an hour old, @exp sends `exp` and answers on its line (or after the wait), once for every asker; with the server's vitals owned, both answer from them and send nothing; rate abbreviation tiers; permission gate.
 - Why: MegaMUD-style experience reply; report paradigm-20261030-221217 (replies stuck on "type exp" under server vitals).
 
 ### ExperienceTableCalculatorTests.cs
 - Covers: Game/Calculators/ExperienceTableCalculator (+ TnlCountdown)
-- Checks: the exp chart; Stock vs ParaMUD exp needed (level-34 taper); monotonic; saturation; time-to-level and its format tiers; a time to level centuries away is capped and runs on the countdown's clock; past a year it reads `over 1 year`.
+- Checks: the exp chart; Stock vs ParaMUD exp needed (level-34 taper); monotonic; saturation; time-to-level and its format tiers; a time to level centuries away is capped and runs on the countdown's clock; past a year it reads `Over 1 year`.
 - Why: level ETA readouts; `Crash-20261114-125113` (level 75 on Anomaly at 15 exp an hour overflowed the clock).
 
 ### FavoriteEditDialogViewModelTests.cs
