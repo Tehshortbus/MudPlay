@@ -33,7 +33,8 @@ public sealed class RealmEventLinesTests : IDisposable
         Row("orc", "The beast falls dead!", "Death"),
         Row("ogre", "The beast falls dead!", "Death"),
         Row("slips into the dark alley.", "{target} slips into the dark alley.", "Chase"),
-        Row("A moss zombie rises from the ground!", "A moss zombie rises from the ground!", "CheckRoom")) + "]";
+        Row("A moss zombie rises from the ground!", "A moss zombie rises from the ground!", "CheckRoom"),
+        """{"ID":1,"Name":"blades","Kind":"Self","Msg":"As you walk through the passage, blades sweep out and slice you!","EndMsg":"\u0000","Effects":"Damage,Trap","Spell":0}""") + "]";
 
     private static RealmEventLines Lines() =>
         RealmEventLines.From(TestRows.Table(Table), name => name is "Thrag" or "orc" or "ogre");
@@ -52,8 +53,9 @@ public sealed class RealmEventLinesTests : IDisposable
         Assert.True(lines.IsChase("Ragnar slips into the dark alley.", out string who));
         Assert.Equal("Ragnar", who);
         Assert.True(lines.IsEntrance("A moss zombie rises from the ground!"));
+        Assert.True(lines.IsTrap("As you walk through the passage, blades sweep out and slice you!"));
         Assert.False(lines.IsKnown("The goblin swings at you, but misses!"));
-        Assert.Equal("from the set's Messages table: 3 death lines (1 naming their monster), 1 chase lines, 1 monster entrances",
+        Assert.Equal("from the set's Messages table: 3 death lines (1 naming their monster), 1 chase lines, 1 monster entrances, 1 trap lines",
             lines.Summary);
     }
 

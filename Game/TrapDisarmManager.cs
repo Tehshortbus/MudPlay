@@ -195,8 +195,19 @@ public sealed class TrapDisarmManager : IDisposable
     // next try waits it out rather than risk the trap again on what's left.
     public void SetRestHold(Func<bool> isHeld) => _restHold = isHeld;
 
+    // The set's own trap lines (RealmEventLines). The fixed list of TrapDisarmTriggered
+    // is the Stock 1.11p map's; a set exported with a Messages table carries its own
+    // traps' wordings, a customised realm's included. While a disarm is pending, no
+    // trap is walked into, so any of them means the disarm set the trap off.
+    public void SetRealmTrapLines(Func<GameData.RealmEventLines> lines) => _realmLines = lines;
+
     // The in-flight disarm is waiting for a rest hold to end.
     public bool HeldForRest => _heldForRest;
+
+    private Func<GameData.RealmEventLines>? _realmLines;
+    // The line now being dispatched was read as a trap going off from the set's own
+    // trap lines, so the fixed pattern's handler for the same line counts nothing more.
+    private bool _triggerReadFromRealmLine;
 
     // The rest hold changed: a disarm that was waiting on it goes out once it's over.
     public void NotifyRestHoldChanged()
@@ -373,7 +384,12 @@ public sealed class TrapDisarmManager : IDisposable
     // there, so unlike Stock's ambiguous failure line this never walks on. Try again up to
     // MaxDisarmAttempts, then give up and report it — the walker stops rather
     // than walk into a trap it couldn't clear.
-    private void OnDisarmTriggered(MatchResult _) => HandleTriggered();
+    // Read from the set's own trap line already (OnLineDispatched, which runs first).
+    private void OnDisarmTriggered(MatchResult _)
+    {
+        if (_triggerReadFromRealmLine) return;
+        HandleTriggered();
+    }
 
     private void HandleTriggered()
     {
@@ -480,11 +496,18 @@ public sealed class TrapDisarmManager : IDisposable
 
     private void OnLineDispatched(LineExtractor.EmittedLine line)
     {
+        _triggerReadFromRealmLine = false;
         if (_state != State.DisarmPending || line.IsPromptLine) return;
         string text = line.Text.Trim();
-        if (text.Length == 0 || _linesSinceDisarm.Count >= MaxLinesKept) return;
+        if (text.Length == 0) return;
         if (text.StartsWith("disarm trap", StringComparison.OrdinalIgnoreCase)) return;   // our echo
-        _linesSinceDisarm.Add(text);
+        if (_realmLines?.Invoke().IsTrap(text) == true)
+        {
+            _triggerReadFromRealmLine = true;
+            HandleTriggered();
+            return;
+        }
+        if (_linesSinceDisarm.Count < MaxLinesKept) _linesSinceDisarm.Add(text);
     }
 
     // A trap proved to be there, so the request's earlier "failed to disarm any"
