@@ -4010,7 +4010,7 @@ public sealed class AppServices
         // (game data/{set}/messages.json, a delta over the realm seed) —
         // reload whenever the active set changes so the Browser tab and
         // runtime engines see the right realm's catalogue.
-        Messages = new MessageStore(Log);
+        Messages = new MessageStore(Log, GameData);
         Messages.Messages.CollectionChanged += (_, _) => _spellMessages = null;
         GameData.ActiveSetChanged += Messages.Load;
         GameData.ActiveSetChanged += _ => CheckActiveSetForImportDamage();

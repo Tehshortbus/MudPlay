@@ -2450,8 +2450,13 @@ How to keep it current:
 
 ### MdbImporterTests.cs
 - Covers: Services/MdbImporter, ViewModels/MainWindowViewModel.BuildMdbCompleteStatus
-- Checks: missing file, filename sanitising, empty-folder removal (populated kept), JSON round-trip check, completion status text; a table named like one of the client's own per-set files (`Messages`, `Quests`, `Favorites`, any case) is named as one the import leaves out, a game table isn't.
-- Why: crash report with a corrupt table; `Crash-20261101-094634` / `-094635` / `-100406` / `-100632` (an Anomaly MDB's `Messages` table imported over `messages.json` on Windows).
+- Checks: missing file, filename sanitising, empty-folder removal (populated kept), JSON round-trip check, completion status text; a table named like one of the client's own per-set files (`Messages`, `Quests`, `Favorites`, any case) is written under the `Mdb` prefix, a game table under its own name; the `Messages` table lands on the file the message catalogue reads (`MdbMessageOverlay.TableName`).
+- Why: crash report with a corrupt table; `Crash-20261101-094634` / `-094635` / `-100406` / `-100632` (an Anomaly MDB's `Messages` table imported over `messages.json` on Windows); the NMR 1.8.4 `Messages` table has to reach the catalogue without landing on the user's edits.
+
+### MdbMessageOverlayTests.cs
+- Covers: Game/GameData/MdbMessageOverlay, Services/MessageStore.Load, Game/GameData/SpellAilmentIndex.ConditionFlags
+- Checks: a set's `MdbMessages.json` (written into a scratch set beside its Spells table, loaded through GameDataCache and MessageStore over the shipped Stock seed) replaces a spell record's lines where it words them differently, keeping the bystander's line and the record's Id; a line that reads the same (spell name written out, closing `!`) keeps the built-in form; a differing cast line pins the spell as `{spellname}`; the user's saved edit to a record still applies over the table's line; a spell no record is linked to gets one, flagged by its ability codes (a hold, not a confusion); a spell named like a built-in record starts from it; a second cast line gets a record after the first, which keeps the line it reads as; rows of no spell and near-empty lines are left out; a table of another shape is passed over and said so.
+- Why: the realm's own lines from an NMR 1.8.4 export win over the built-in catalogue per field (user, 2026-11-14), without losing the user's edits or setting flags the spell's codes don't prove.
 
 ### MegaMudHashTests.cs
 - Covers: Game/Map/MpFile/MegaMudHash
