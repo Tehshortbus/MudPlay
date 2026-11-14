@@ -1,12 +1,9 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.206.0**
+> **Version 3.206.1**
 >
-> - A boss or lair monster's death text from the game data's Messages table counts as its death even when someone else made the kill: its boss timer and lair clock start
-> - Following a leader through a command exit (`Ragnar slips into the dark alley.`) keeps the map sure where you are
-> - A monster appearing in the room (`A moss zombie rises from the ground!`) re-reads the room during a fight
-> - These lines are no longer listed as unrecognized; the bug report shows how many the set has and the last death read from one
+> - A failed trap disarm is recognized by every trap line of the game data's Messages table, so a realm's own traps (MudRev's sawblade) are retried like the Stock ones
 <!-- current-version:end -->
 
 A modern Telnet terminal client for **MajorMUD** and other BBS door games, built in C# / .NET 10 with [Avalonia](https://avaloniaui.net/). It renders a faithful CP437 cell grid with full VT100/ANSI parsing, and layers a MegaMUD-style automation suite (combat, party, navigation, healing, and more) on top — all in modeless, dockable windows so the terminal stays live while you configure anything.

@@ -1,5 +1,9 @@
 # Version history
 
+## 3.206.1
+
+- A failed trap disarm is recognized by every trap line of the game data's Messages table, so a realm's own traps (MudRev's sawblade) are retried like the Stock ones
+
 ## 3.206.0
 
 - A boss or lair monster's death text from the game data's Messages table counts as its death even when someone else made the kill: its boss timer and lair clock start

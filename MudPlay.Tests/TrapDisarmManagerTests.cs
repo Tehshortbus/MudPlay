@@ -299,6 +299,64 @@ public sealed class TrapDisarmManagerTests : IDisposable
         Assert.Equal(TrapDisarmManager.State.DisarmPending, mgr.CurrentState);
     }
 
+    // A set exported with a Messages table carries its own traps' lines (NMR 1.8.4):
+    // MudRev's sawblade, which the fixed Stock list doesn't know, and one that list
+    // has too.
+    private static Game.GameData.RealmEventLines RealmTraps() => Game.GameData.RealmEventLines.From(
+        TestRows.Table("""
+            [{"ID":1,"Name":"sawblade","Kind":"Self","Msg":"A whirring sawblade swings out and rips {target} for {dmg} damage!","EndMsg":"\u0000","Effects":"Damage,Trap","Spell":0},
+             {"ID":2,"Name":"trigger","Kind":"Self","Msg":"You try to disarm the trap, but instead trigger it!","EndMsg":"\u0000","Effects":"Damage,Trap","Spell":0}]
+            """), _ => false);
+
+    [Fact]
+    public void DisarmTriggered_ByTheSetsOwnTrapLine_TriesAgain()
+    {
+        var (mgr, router, _, wire) = Setup();
+        Game.GameData.RealmEventLines lines = RealmTraps();
+        mgr.SetRealmTrapLines(() => lines);
+        mgr.Enqueue("e", "walker", _ => { });
+        wire.Clear();
+
+        Dispatch(router, "A whirring sawblade swings out and rips you for 40 damage!");
+
+        Assert.Equal("disarm trap e\r", Encoding.Latin1.GetString(Assert.Single(wire)));
+        Assert.Equal(TrapDisarmManager.State.DisarmPending, mgr.CurrentState);
+    }
+
+    // After the set's own line, the next try's fixed-list line still counts.
+    [Fact]
+    public void TheSetsLineThenAFixedListLine_AreTwoTrapsGoingOff()
+    {
+        var (mgr, router, _, wire) = Setup();
+        Game.GameData.RealmEventLines lines = RealmTraps();
+        mgr.SetRealmTrapLines(() => lines);
+        mgr.Enqueue("e", "walker", _ => { });
+        wire.Clear();
+
+        Dispatch(router, "A whirring sawblade swings out and rips you for 40 damage!");
+        Dispatch(router, "You fail to disarm the trap, and blades sweep out and slice you!");
+
+        Assert.Equal(2, wire.Count);
+    }
+
+    // A line both the set's lines and the fixed list know is one trap going off, once.
+    [Fact]
+    public void ALineBothListsKnow_CountsOnce()
+    {
+        var (mgr, router, _, wire) = Setup();
+        Game.GameData.RealmEventLines lines = RealmTraps();
+        mgr.SetRealmTrapLines(() => lines);
+        List<bool> attempts = [];
+        mgr.DisarmAttempted += attempts.Add;
+        mgr.Enqueue("e", "walker", _ => { });
+        wire.Clear();
+
+        Dispatch(router, "You try to disarm the trap, but instead trigger it!");
+
+        Assert.Single(wire);
+        Assert.Equal([false], attempts);
+    }
+
     // A trap whose failure wording we don't know gets no recognised reply: the
     // watchdog handles it like one that went off, and keeps the lines for the log.
     [Fact]

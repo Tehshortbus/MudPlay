@@ -3387,7 +3387,7 @@ How to keep it current:
 
 ### RealmEventLinesTests.cs
 - Covers: Game/GameData/RealmEventLines (+ MdbMessageRow), Game/Combat/MonsterDeathLineWatcher, Game/Combat/MonsterEntranceWatcher, Game/Map/FollowMoveObserver's chase lines, RoomTracker.NoteFollowCommandMove
-- Checks: a set's Messages table rows of no spell read by kind (death text naming its monster or, shared, no one; a chase line's leaver; a monster entrance), a table of another shape gives none; fed through ServerFeed, a death text with no exp line before the prompt is another's kill, one our exp line follows raises nothing, a shared text names no one, and of two deaths before one exp line the first is another's; a monster entrance re-displays the room and marks the roster not whole; our leader's chase line is a follow move through the room's one command exit (the landing pinned among two same-looking rooms), another player's moves no one, and a room with two command exits gets no guess.
+- Checks: a set's Messages table rows of no spell read by kind (death text naming its monster or, shared, no one; a chase line's leaver; a monster entrance; a trap line), a table of another shape gives none; fed through ServerFeed, a death text with no exp line before the prompt is another's kill, one our exp line follows raises nothing, a shared text names no one, and of two deaths before one exp line the first is another's; a monster entrance re-displays the room and marks the roster not whole; our leader's chase line is a follow move through the room's one command exit (the landing pinned among two same-looking rooms), another player's moves no one, and a room with two command exits gets no guess.
 - Why: the NMR 1.8.4 death, chase and entrance lines (user, 2026-11-14: a death text counts as that monster's death; followers are moved through a command exit with the leader).
 
 ### RealmRegenProfileTests.cs
@@ -4573,7 +4573,7 @@ How to keep it current:
 
 ### TrapDisarmManagerTests.cs
 - Covers: Game/TrapDisarmManager, TrapDisarmOdds
-- Checks: - Disarm skill and odds from Traps and gear; the skill gate with class/race inference; direction normalising. - The disarm state machine: success, triggered retry, Stock "failed any", no effect, already disarmed, the re-arm clock. - The queue, StopAll, dispose, and holding the retry through a rest.
+- Checks: - Disarm skill and odds from Traps and gear; the skill gate with class/race inference; direction normalising. - The disarm state machine: success, triggered retry, Stock "failed any", no effect, already disarmed, the re-arm clock. - The queue, StopAll, dispose, and holding the retry through a rest. - The set's own trap lines (RealmEventLines, MudRev's templated sawblade) retry a pending disarm like the fixed list's; a line on both lists counts once, and a fixed-list line after one of the set's still counts.
 - Why: GAME_MECHANICS "Exit traps — search and disarm"; reports 132150, paradigm-20261002-191037, paradigm-20261003-111800.
 
 ### TrapHandlerTests.cs
