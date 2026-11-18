@@ -4718,6 +4718,8 @@ The warning is about the two buffs being **configured together**, not about whic
 
 (A **mutual** pair — bless ↔ greater bless, each removing the other — is **last-cast-wins** on either realm; only whichever was cast most recently survives, so pick one.)
 
+**A party buff that knocks one of your own buffs off you.** Some casts take a buff off you that the game data doesn't say they remove: **unholy fanaticism** cast on the party knocks **greater zeal** off its caster, though the data has it only the other way round. So a priest can keep unholy fanaticism on the group and greater zeal on themselves: tick unholy fanaticism for the party (yourself unticked, since greater zeal strips it off you anyway) and greater zeal for yourself. Each time unholy fanaticism is cast, greater zeal's wear-off line comes, and greater zeal is cast again at the next chance. This works for any such pair, as it rides the self buff's own wear-off line rather than a list of pairs; a pair whose party buff leaves your buff alone (chant beside greater bless) costs nothing.
+
 > **Note:** the **HP-regen** spell is *not* a maintained buff and isn't set here — it's a reactive minor-heal that fires when your HP dips, and it stays on **Settings → Spells** as **HP Regen**. Everything else moved to this list.
 
 **The mana budget** is a live readout just under the buttons — **`Mana/Tick gained: N - Mana/Tick to maintain: N`** — both sides measured per 30-second passive-regen tick (the "MP +N after ~30s" cadence) so they compare directly. The instant one number exceeds the other you know whether a buff loadout is self-sustaining before you commit to it in-game. It updates the moment you check or uncheck a box, the party roster changes, your gear changes (an `i`), or you level.

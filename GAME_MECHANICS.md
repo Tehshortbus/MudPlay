@@ -3687,6 +3687,11 @@ How one damage spell cast against a monster is worked out.
   removes chant** (confirmed 2026-09-07, user + game data), and chant (#23) also removes bless, so the
   pair is mutual there. On Stock v1.11p the removal is one-way: bless removes chant, but chant (#23 /
   #825) removes only blight and curse.
+- **unholy fanaticism knocks greater zeal off its caster, against the data** *([CONFIRMED] 2026-11-18, user; realm not stated, raised for a Paradigm-type realm)*. The data has it one-way the other way round: greater zeal (`grze`, #5581, `Targets` 1) removes unholy fanaticism (`unfa`, #1315, `Targets` 13), and unholy fanaticism's own list (blood ritual, zeal, righteousness, divine courage) doesn't name greater zeal. In the game, a priest with greater zeal up who casts unholy fanaticism on the party loses greater zeal.
+  - **Not every whole-party buff does this to the self buff that removes it:** chant cast on the party leaves greater bless alone (the chant bullets below; user, 2026-09-10), the same shape of pair.
+  - **Greater zeal's wear-off is the line zeal and righteousness share** (`The righteousness wears off.`, with the applied line `You are filled with divine power!`; Paradigm message seed).
+  - **Client policy** *(user, 2026-11-18: "watch for it")*: no pair list. After a party buff is cast, a self buff whose wear-off line comes is cast again at once, which is what the client does with any self buff's wear-off; a pair whose party buff leaves the self buff alone costs nothing.
+  - **Client use:** `ConditionTracker` ends every latched record whose own wear-off a line is before it clears any record's applied-line aliases. Before 2026-11-18 a record earlier in the catalogue sharing that wear-off, but not latched (zeal, released when greater zeal landed since greater zeal removes zeal), cleared greater zeal's latch first, so greater zeal's wear-off raised no `ConditionEnded` and `CastingDirector` kept its timer over a buff that was gone. The `CastingDirector.OnConditionEnded` clobber guard sets aside zeal's reading of the line (unholy fanaticism removes zeal) and not greater zeal's.
 - **The bless family, concretely (Paradigm 1.9.1 data — chant lists bless there):**
   - **greater bless #146** removes: greater curse #61, bless #14, curse #15, **chant #23**, divine
     favour #62, ashwood wand #668.

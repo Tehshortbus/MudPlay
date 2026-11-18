@@ -1,5 +1,9 @@
 # Version history
 
+## 3.206.4
+
+- A self buff that a party buff knocks off you (greater zeal under unholy fanaticism) is recast when its wear-off line comes, even when that line is shared with other buffs
+
 ## 3.206.3
 
 - A monster's hit that prints no damage figure (the game data's Messages table: `The giant crab sweeps your feet out from under you!`) counts as it attacking you, or whoever it names
