@@ -2203,6 +2203,54 @@ public sealed class CastingDirectorTests
         Assert.DoesNotContain(active, b => b.Short == "gbls");
     }
 
+    // unholy fanaticism (a whole-party buff) knocks greater zeal off the caster in the
+    // game, though the data has greater zeal removing unholy fanaticism and not the
+    // other way (user, 2026-11-18). Greater zeal's wear-off is the line zeal and
+    // righteousness share, and unholy fanaticism's data does remove those two: the
+    // wear-off right after its cast still ends greater zeal, which is recast (user,
+    // 2026-11-18: watch for the wear-off).
+    [Fact]
+    public void Buff_ASelfBuffAPartyBuffKnocksOff_IsRecastOnItsWearOff()
+    {
+        using CureHarness h = new();
+        h.ManaFloor = 0;
+        h.State.MaxMa = 100;
+        h.State.Ma = 80;
+        h.State.InCombat = false;
+        h.State.Position = PlayerPosition.Standing;
+        h.SelfBuff("grze");
+        h.SelfBuff("unfa");
+        h.BuffInfo["grze"] = (string.Empty, 300);
+        h.BuffInfo["unfa"] = (string.Empty, 500);
+        h.Removes["grze"] = ["unfa", "zeal", "rite"];
+        h.Removes["unfa"] = ["zeal", "rite"];
+        // zeal's record first: its reading of the shared wear-off is the one the
+        // clobber guard sets aside, and it mustn't take greater zeal's with it.
+        h.RecordCondition("zeal", MessageFlags.None, applied: "You are filled with divine power!",
+            endsWith: "The righteousness wears off.");
+        h.RecordCondition("grze", MessageFlags.None, applied: "You are filled with divine power!",
+            endsWith: "The righteousness wears off.");
+        h.RecordCondition("unfa", MessageFlags.None, applied: "You are in a state of fanatical fury!",
+            endsWith: "You feel yourself becoming calmer.");
+
+        h.Director.Evaluate();                              // greater zeal first
+        h.FeedLine("You are filled with divine power!");
+        h.Now = h.Now.AddSeconds(10);
+        h.Cast.OnCombatTick();
+        h.Director.NotifyRoundComplete();
+        h.Director.Evaluate();                              // then unholy fanaticism
+        h.FeedLine("You are in a state of fanatical fury!");
+        Assert.Equal(["grze", "unfa"], h.CastsSent);
+
+        h.CastsSent.Clear();
+        h.Now = h.Now.AddSeconds(1);
+        h.Cast.OnCombatTick();
+        h.Director.NotifyRoundComplete();
+        h.FeedLine("The righteousness wears off.");         // greater zeal knocked off
+
+        Assert.Equal(["grze"], h.CastsSent);
+    }
+
     [Fact]
     public void Buff_ConditionEnded_ClearsTimer_RecastsImmediately()
     {

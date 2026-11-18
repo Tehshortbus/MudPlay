@@ -1,9 +1,9 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.206.3**
+> **Version 3.206.4**
 >
-> - A monster's hit that prints no damage figure (the game data's Messages table: `The giant crab sweeps your feet out from under you!`) counts as it attacking you, or whoever it names
+> - A self buff that a party buff knocks off you (greater zeal under unholy fanaticism) is recast when its wear-off line comes, even when that line is shared with other buffs
 <!-- current-version:end -->
 
 A modern Telnet terminal client for **MajorMUD** and other BBS door games, built in C# / .NET 10 with [Avalonia](https://avaloniaui.net/). It renders a faithful CP437 cell grid with full VT100/ANSI parsing, and layers a MegaMUD-style automation suite (combat, party, navigation, healing, and more) on top — all in modeless, dockable windows so the terminal stays live while you configure anything.

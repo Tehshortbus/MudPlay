@@ -867,6 +867,27 @@ public sealed class ConditionTrackerTests
         Assert.Equal("fumble", h.ActionFailed[0].Name);
     }
 
+    // Two records sharing an applied line and a wear-off, only the later latched (the
+    // earlier released by a clobber, as zeal is when greater zeal lands): the wear-off
+    // ends the latched one, whichever comes first in the catalogue (user, 2026-11-18).
+    [Fact]
+    public void ASharedWearOff_EndsTheLatchedRecord_WhereverItSits()
+    {
+        using Harness h = new();
+        MessageRecord zeal = MakeRecord("zeal", MessageFlags.None,
+            applied: "You are filled with divine power!", endsWith: "The righteousness wears off.");
+        MessageRecord greaterZeal = MakeRecord("greater zeal", MessageFlags.None,
+            applied: "You are filled with divine power!", endsWith: "The righteousness wears off.");
+        h.Messages.Messages.Add(zeal);
+        h.Messages.Messages.Add(greaterZeal);
+        h.Feed("You are filled with divine power!");
+        h.Tracker.ReleaseApplied(r => r.Name == "zeal");
+
+        h.Feed("The righteousness wears off.");
+
+        Assert.Equal(["greater zeal"], h.Ended.Select(r => r.Name));
+    }
+
     // ----- The set's own failure lines (NMR 1.8.4 Messages table) -----
 
     // Stock v1.11p's sleep and fear failure lines, and stun's, which is also its start

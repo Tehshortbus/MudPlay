@@ -613,23 +613,35 @@ public sealed partial class ConditionTracker : ObservableObject, IDisposable
         // flags still have to follow the active set.
         bool activeTouched = false;
 
+        // Every record whose own wear-off this is, and that is latched, ends first,
+        // before any collateral clear below: a record earlier in the list that shares
+        // the wear-off text but isn't latched would otherwise clear its applied-line
+        // aliases, a latched one among them, before that one's own turn, and its
+        // ConditionEnded would never fire (greater zeal shares its applied and wear-off
+        // lines with zeal; released from zeal's latch, its wear-off after unholy
+        // fanaticism knocked it off left its timer running, user 2026-11-18).
+        List<MessageRecord> wearOffRecords = new();
         foreach ((string pattern, MessageRecord r) in _endsIndex)
         {
             if (!text.Contains(pattern, StringComparison.Ordinal)) continue;
+            wearOffRecords.Add(r);
+            // ConditionEnded stays gated on the record having been latched: the
+            // self-buff recast timers consume it, and a record never latched would
+            // tear down the timer of a buff that is still up.
+            if (_active.Remove(r.Id))
+            {
+                activeTouched = true;
+                endedThisLine.Add(r);   // PRIMARY: its OWN wear-off line fired
+            }
+        }
 
+        foreach (MessageRecord r in wearOffRecords)
+        {
             // The wear-off line arriving is the event, whether or not this record is
             // the one latched: an applied line and the wear-off the game prints can
             // sit on different records that share a flag, and a flag nothing clears
             // stands until ClearAll or, for an ailment, its spell's time running out
             // (AilmentSeconds). The flag-wide clear below runs either way.
-            bool wasOwnLatch = _active.Remove(r.Id);
-            if (wasOwnLatch) activeTouched = true;
-
-            // ConditionEnded stays gated on the record having been latched: the
-            // self-buff recast timers consume it, and a record never latched would
-            // tear down the timer of a buff that is still up.
-            if (wasOwnLatch)
-                endedThisLine.Add(r);   // PRIMARY: its OWN wear-off line fired
 
             // Collateral clears below drop co-latched siblings from _active so the
             // recomputed flags (and the nav pause they drive) stay honest — but they
