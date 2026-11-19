@@ -7,7 +7,7 @@ using MudPlay.Models.Profile;
 namespace MudPlay.Services;
 
 
-// Drives the per-character BBS handshake. Walks the menu-nav sequence the user
+// Drives the BBS handshake. Walks the board's logon steps the user
 // authored on the BBS section — wait for a pattern, send a reply, move on —
 // until the final step's response is sent and LoggedIntoGame fires. The reply
 // text supports case-insensitive credential placeholders: {user} / {userid} /
@@ -100,34 +100,24 @@ public sealed class LoginAutomator : IDisposable
         _log = log;
     }
 
-    // Convert each persisted MenuStep into its runtime form.
-    public static IReadOnlyList<AutomationStep> BuildSteps(BbsCredentials credentials)
-    {
-        ArgumentNullException.ThrowIfNull(credentials);
-        List<AutomationStep> steps = new(credentials.MenuNavSteps.Count);
-        foreach (MenuStep ms in credentials.MenuNavSteps)
-        {
-            steps.Add(new AutomationStep(ms.WaitForPattern, ms.Send));
-        }
-        return steps;
-    }
-
-    // Build a ready-to-start automator from a character's BBS credentials.
-    // Returns null when there's nothing to do — no credentials, or the
-    // credentials carry no menu-nav steps.
+    // Build a ready-to-start automator for a board's logon steps, sending the
+    // connecting character's own login for its {username} / {password}. Returns null
+    // when there are no steps. Without a saved login the steps that send one are
+    // passed over for the player to type (StepSkipped).
     public static LoginAutomator? TryBuild(
-        BbsCredentials? credentials,
+        IReadOnlyList<MenuStep> logonSteps,
+        BbsCredentials? login,
         PasswordProtector passwords,
         Func<string, CancellationToken, Task> sendText,
         Action<string>? log = null)
     {
+        ArgumentNullException.ThrowIfNull(logonSteps);
         ArgumentNullException.ThrowIfNull(passwords);
         ArgumentNullException.ThrowIfNull(sendText);
-        if (credentials is null) return null;
-        if (credentials.MenuNavSteps.Count == 0) return null;
+        if (logonSteps.Count == 0) return null;
 
         Func<Task<string?>>? resolvePassword = null;
-        if (credentials.EncryptedPassword is { } blob)
+        if (login?.EncryptedPassword is { } blob)
         {
             // Decrypt lazily — the protector is sync and fast, but we keep
             // the async signature so the automator can stay agnostic of
@@ -138,11 +128,11 @@ public sealed class LoginAutomator : IDisposable
         // Username decrypted at build time — the BBS receives it
         // plaintext on the wire so there's no point keeping it sealed
         // once we're inside the login flow.
-        string username = credentials.EncryptedUsername is { } usernameBlob
+        string username = login?.EncryptedUsername is { } usernameBlob
             ? (passwords.Unprotect(usernameBlob) ?? string.Empty)
             : string.Empty;
 
-        IReadOnlyList<AutomationStep> steps = BuildSteps(credentials);
+        List<AutomationStep> steps = logonSteps.Select(ms => new AutomationStep(ms.WaitForPattern, ms.Send)).ToList();
         return new LoginAutomator(steps, username, resolvePassword, sendText, log);
     }
 

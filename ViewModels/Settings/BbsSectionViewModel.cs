@@ -11,9 +11,9 @@ using MudPlay.Views.Settings;
 namespace MudPlay.ViewModels.Settings;
 
 // "BBS" tab. Owns the list of saved BBS records (globally shared across every
-// character) and the field-editor for whichever one is selected. Per-character
-// credentials (username, password, menu-nav sequence) live on the character
-// profile.
+// character) and the field-editor for whichever one is selected, the logon steps
+// included: every character on a board logs on with the board's steps. Per-character
+// credentials (username, password, sysop powers) live on the character profile.
 //
 // Apply walks the cached in-memory BBS profiles and persists every dirty one,
 // then commits the credential edits staged for every board the user touched —
@@ -62,8 +62,6 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         public bool SysopStatus;
         public bool SysopGodLives;
         public bool SysopGoto;
-        public List<MenuStep> MenuNavSteps = new();
-        public string? AutoLogonSetup;
         public List<SysopGotoLocation> SysopGotos = new();
     }
 
@@ -348,7 +346,7 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
 
     // ----- Per-character credentials -----
     // True when any character profile is loaded — including unsaved drafts.
-    // Credentials, sysop flag, and menu nav all bind against the in-memory
+    // Credentials and the sysop flags bind against the in-memory
     // CharacterProfile; the password is encrypted with the per-user .credkey (not
     // anything keyed on the profile name) so an unsaved draft can carry them
     // forward into its first Save just fine. Only used now to dim the credentials
@@ -392,27 +390,24 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private bool _confirmSaveSettings = false;
     [ObservableProperty] private bool _confirmDeletes = false;
 
-    // Editable rows for the per-character menu-nav sequence.
-    public ObservableCollection<MenuStepEditorViewModel> MenuNavSteps { get; } = new();
+    // Editable rows for the selected board's logon steps.
+    public ObservableCollection<MenuStepEditorViewModel> LogonSteps { get; } = new();
 
     // Editable rows for the per-character `sys goto` location table (shown/enabled
     // only when SysopGoto is on).
     public ObservableCollection<SysopGotoRowViewModel> SysopGotos { get; } = new();
 
-    // Logon sequences from other saved characters, offered as import sources so a
-    // new (or additional) character doesn't have to retype a flow another
-    // character already worked out. Every character is listed, not just ones on
-    // this BBS — some BBSes share a front-end, so a cross-BBS flow is often a
-    // mostly-right starting point. Rebuilt whenever the selected BBS or loaded
-    // profile changes.
-    public ObservableCollection<MenuNavImportOption> ImportSourceOptions { get; } = new();
+    // The other boards' logon steps, offered as import sources: some boards share
+    // a front-end, so another board's steps are often a mostly-right start.
+    // Rebuilt whenever the selected BBS changes.
+    public ObservableCollection<LogonStepsImportOption> ImportSourceOptions { get; } = new();
 
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(ImportMenuNavCommand))]
-    private MenuNavImportOption? _selectedImportSource;
+    [NotifyCanExecuteChangedFor(nameof(ImportLogonStepsCommand))]
+    private LogonStepsImportOption? _selectedImportSource;
 
-    // Drives the picker's enabled state — false hides / greys the import row when
-    // no other character has any logon steps to borrow.
+    // Drives the picker's enabled state — false greys the import row when no
+    // other board has logon steps to borrow.
     public bool HasImportSources => ImportSourceOptions.Count > 0;
 
     // Helper text under the credentials section.
@@ -631,8 +626,8 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         _profile.NotifyMutated();
     }
 
-    // Write one board's staged credential slice (username, password, menu-nav,
-    // sysop flags) onto the loaded profile. Runs whenever any CharacterProfile is
+    // Write one board's staged credential slice (username, password, sysop
+    // flags) onto the loaded profile. Runs whenever any CharacterProfile is
     // loaded (draft or named) because the inline EncryptedPassword is keyed off
     // the per-user .credkey, not the profile name — a draft's BbsCredentials
     // survive into its first Save. Persisting is the caller's job: one Save covers
@@ -650,8 +645,6 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         cred.EncryptedUsername = string.IsNullOrEmpty(staged.Username)
             ? null
             : _passwords.Protect(staged.Username);
-        cred.MenuNavSteps = staged.MenuNavSteps;
-        cred.AutoLogonSetup = staged.AutoLogonSetup;
         cred.SysopStatus = staged.SysopStatus;
         cred.SysopGodLives = staged.SysopGodLives;
         cred.SysopGoto = staged.SysopGoto;
@@ -772,7 +765,7 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     // Capture the outgoing board's credential edits before the incoming one
     // overwrites the fields. This is the only transition that can lose them, so
     // it's the only place that has to stage — cheaper than mirroring PushToCache
-    // across every credential control and the menu-step / sys-goto row VMs.
+    // across every credential control and the sys-goto row VMs.
     partial void OnSelectedBbsNameChanging(string? oldValue, string? newValue)
     {
         if (_suppressDirty || !_credentialsTouched) return;
@@ -799,8 +792,6 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
             SysopStatus = SysopStatus,
             SysopGodLives = SysopGodLives,
             SysopGoto = SysopGoto,
-            MenuNavSteps = MenuNavSteps.Select(vm => vm.ToModel()).ToList(),
-            AutoLogonSetup = AutoSetupShown()?.Name,
             SysopGotos = SysopGotos.Select(vm => vm.ToModel()).ToList(),
         };
 
@@ -850,6 +841,7 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         Host = profile.Host;
 
         LoadCredentialsFor(name);
+        LoadLogonSteps(profile);
         Port = profile.Port;
         MaxRedials = profile.MaxRedials;
         RedialPauseSeconds = profile.RedialPauseSeconds;
@@ -1106,8 +1098,6 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     {
         _pendingPassword = null;
         _credentialsTouched = false;
-        _autoFilledSetup = null;
-        MenuNavSteps.Clear();
         SysopGotos.Clear();
         if (!HasProfile)
         {
@@ -1127,12 +1117,8 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
             SysopStatus = staged.SysopStatus;
             SysopGodLives = staged.SysopGodLives;
             SysopGoto = staged.SysopGoto;
-            foreach (MenuStep step in staged.MenuNavSteps)
-                MenuNavSteps.Add(MenuStepEditorViewModel.FromModel(step, CredentialsDirty));
-            _autoFilledSetup = BuiltInBbses.Named(staged.AutoLogonSetup);
             foreach (SysopGotoLocation loc in staged.SysopGotos)
                 SysopGotos.Add(SysopGotoRowViewModel.FromModel(loc, CredentialsDirty, RoomName));
-            RefreshImportSources(bbsName);
             return;
         }
 
@@ -1153,15 +1139,6 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
             SysopStatus = cred.SysopStatus;
             SysopGodLives = cred.SysopGodLives;
             SysopGoto = cred.SysopGoto;
-            foreach (MenuStep step in cred.MenuNavSteps)
-            {
-                MenuNavSteps.Add(MenuStepEditorViewModel.FromModel(step, CredentialsDirty));
-            }
-            // Steps the client filled in itself show as connect will walk them: the
-            // setup installed game data calls for now takes their place.
-            _autoFilledSetup = BuiltInBbses.AutoFilled(cred);
-            if (_autoFilledSetup is not null && _loaded.TryGetValue(bbsName, out BbsProfile? savedBoard))
-                FillSetupWhereBlank(BuiltInBbses.ForInstalledSet(RealmSetFor(savedBoard, bbsName)), stepsOnly: true);
             foreach (SysopGotoLocation loc in cred.SysopGotos)
             {
                 SysopGotos.Add(SysopGotoRowViewModel.FromModel(loc, CredentialsDirty, RoomName));
@@ -1180,51 +1157,57 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
             {
                 SysopGotos.Add(SysopGotoRowViewModel.FromModel(loc, CredentialsDirty, RoomName));
             }
-            // The logon steps come filled in, the setup the realm's game data calls
-            // for, so typing a username and password and pressing OK is all the login
-            // needs.
-            if (_loaded.TryGetValue(bbsName, out BbsProfile? board))
-            {
-                _autoFilledSetup = BuiltInBbses.ForGameDataSet(RealmSetFor(board, bbsName));
-                AddLogonSteps(_autoFilledSetup);
-            }
         }
-
-        RefreshImportSources(bbsName);
     }
 
-    // Load every other saved character's logon steps into the import picker. Runs
-    // on each BBS-select / profile-load (the editing target drives which pair is
-    // excluded). Reads profiles straight from disk without switching to them, so a
-    // corrupt one is skipped rather than aborting the whole list.
+    // The board's logon steps. A board with none saved shows the setup its realm's
+    // game data calls for, so typing a username and password and pressing OK is all
+    // the login needs; steps the client filled in itself show as connect will walk
+    // them for the loaded character's realm.
+    private void LoadLogonSteps(BbsProfile board)
+    {
+        // A load, never an edit, whoever calls it: each row built would otherwise
+        // write the half-built list back onto the board as it went.
+        bool prev = _suppressDirty;
+        _suppressDirty = true;
+        LogonSteps.Clear();
+        if (board.LogonSteps is { } saved)
+        {
+            foreach (MenuStep step in saved)
+                LogonSteps.Add(MenuStepEditorViewModel.FromModel(step, LogonStepsChanged));
+            _autoFilledSetup = BuiltInBbses.AutoFilled(board);
+            if (_autoFilledSetup is not null)
+                FillSetupWhereBlank(BuiltInBbses.ForInstalledSet(RealmSetFor(board, board.Name)), stepsOnly: true);
+        }
+        else
+        {
+            _autoFilledSetup = BuiltInBbses.ForGameDataSet(RealmSetFor(board, board.Name));
+            AddLogonSteps(_autoFilledSetup);
+        }
+        _suppressDirty = prev;
+        RefreshImportSources(board.Name);
+    }
+
+    // A logon-step edit: into the cached board, so OK saves it with the BBS.
+    private void LogonStepsChanged()
+    {
+        if (_suppressDirty) return;
+        if (SelectedBbsName is { } name && _loaded.TryGetValue(name, out BbsProfile? board))
+        {
+            board.LogonSteps = LogonSteps.Select(vm => vm.ToModel()).ToList();
+            board.AutoLogonSetup = AutoSetupShown()?.Name;
+        }
+        Dirty();
+    }
+
+    // Load every other board's logon steps into the import picker.
     private void RefreshImportSources(string editingBbs)
     {
         ImportSourceOptions.Clear();
         SelectedImportSource = null;
-
-        if (HasProfile)
-        {
-            var loaded = new List<(string bbs, string name, CharacterProfile profile)>();
-            foreach (ProfileRef r in _profile.ListAll())
-            {
-                CharacterProfile? p;
-                try
-                {
-                    p = JsonStore.Load<CharacterProfile>(AppPaths.CharacterProfileFile(r.Bbs, r.Name));
-                }
-                catch (InvalidDataException)
-                {
-                    // One unreadable profile shouldn't blank the picker for the rest.
-                    continue;
-                }
-                if (p is not null) loaded.Add((r.Bbs, r.Name, p));
-            }
-
-            foreach (MenuNavImportOption option in MenuNavImportOption.Build(
-                         loaded, editingBbs, _profile.CurrentBbsName, _profile.CurrentProfileName))
-                ImportSourceOptions.Add(option);
-        }
-
+        foreach (LogonStepsImportOption option in LogonStepsImportOption.Build(
+                     _bbsStore.ListNames().Select(_bbsStore.Peek).OfType<BbsProfile>(), editingBbs))
+            ImportSourceOptions.Add(option);
         OnPropertyChanged(nameof(HasImportSources));
     }
 
@@ -1286,6 +1269,10 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         ScrollbackLines = defaults.ScrollbackLines;
         BackscrollWheelLines = defaults.BackscrollWheelLines;
         DisconnectPattern = defaults.DisconnectPattern;
+        LogonSteps.Clear();
+        _autoFilledSetup = null;
+        ImportSourceOptions.Clear();
+        OnPropertyChanged(nameof(HasImportSources));
         RealmNames.Clear();
         SelectedRealmName = null;
         LoadRealmFields();
@@ -1515,7 +1502,7 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     private BuiltInBbses.Preset? _autoFilledSetup;
 
     private BuiltInBbses.Preset? AutoSetupShown() =>
-        _autoFilledSetup is { } setup && setup.HasSteps(MenuNavSteps.Select(vm => vm.ToModel())) ? setup : null;
+        _autoFilledSetup is { } setup && setup.HasSteps(LogonSteps.Select(vm => vm.ToModel())) ? setup : null;
 
     // The game data set of the realm the loaded character plays on the board (the
     // board's first realm for another board), or the global default it uses.
@@ -1529,7 +1516,7 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     private void AddLogonSteps(BuiltInBbses.Preset setup)
     {
         foreach (MenuStep step in setup.CopyLogonSteps())
-            MenuNavSteps.Add(MenuStepEditorViewModel.FromModel(step, CredentialsDirty));
+            LogonSteps.Add(MenuStepEditorViewModel.FromModel(step, LogonStepsChanged));
     }
 
     // A game data set chosen for the realm fills in only what's blank: a host
@@ -1543,11 +1530,11 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
             Host = setup.Host;
             Port = setup.Port;
         }
-        if (!HasProfile || (MenuNavSteps.Count > 0 && AutoSetupShown() is null) || AutoSetupShown() == setup) return;
-        MenuNavSteps.Clear();
+        if ((LogonSteps.Count > 0 && AutoSetupShown() is null) || AutoSetupShown() == setup) return;
+        LogonSteps.Clear();
         AddLogonSteps(setup);
         _autoFilledSetup = setup;
-        CredentialsDirty();
+        LogonStepsChanged();
     }
 
     // The chosen setup over what's there, the host and port too for a board's
@@ -1561,11 +1548,10 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
             Host = setup.Host;
             Port = setup.Port;
         }
-        if (!HasProfile) return;
-        MenuNavSteps.Clear();
+        LogonSteps.Clear();
         AddLogonSteps(setup);
         _autoFilledSetup = null;
-        CredentialsDirty();
+        LogonStepsChanged();
     }
 
     // Confirm flags are Global-tier, not per-BBS — they don't push into
@@ -1577,11 +1563,11 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     partial void OnConfirmDeletesChanged(bool value)            { Dirty(); }
 
     [RelayCommand]
-    private void AddMenuStep()
+    private void AddLogonStep()
     {
         if (_suppressDirty) return;
-        MenuNavSteps.Add(new MenuStepEditorViewModel(CredentialsDirty));
-        CredentialsDirty();
+        LogonSteps.Add(new MenuStepEditorViewModel(LogonStepsChanged));
+        LogonStepsChanged();
     }
 
     [RelayCommand]
@@ -1609,45 +1595,46 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
             : null;
 
     [RelayCommand]
-    private void RemoveMenuStep(MenuStepEditorViewModel? step)
+    private void RemoveLogonStep(MenuStepEditorViewModel? step)
     {
         if (step is null) return;
-        if (!MenuNavSteps.Remove(step)) return;
-        CredentialsDirty();
+        if (!LogonSteps.Remove(step)) return;
+        LogonStepsChanged();
     }
 
     [RelayCommand]
-    private void MoveMenuStepUp(MenuStepEditorViewModel? step)
+    private void MoveLogonStepUp(MenuStepEditorViewModel? step)
     {
         if (step is null) return;
-        int i = MenuNavSteps.IndexOf(step);
+        int i = LogonSteps.IndexOf(step);
         if (i <= 0) return;
-        MenuNavSteps.Move(i, i - 1);
-        CredentialsDirty();
+        LogonSteps.Move(i, i - 1);
+        LogonStepsChanged();
     }
 
     [RelayCommand]
-    private void MoveMenuStepDown(MenuStepEditorViewModel? step)
+    private void MoveLogonStepDown(MenuStepEditorViewModel? step)
     {
         if (step is null) return;
-        int i = MenuNavSteps.IndexOf(step);
-        if (i < 0 || i >= MenuNavSteps.Count - 1) return;
-        MenuNavSteps.Move(i, i + 1);
-        CredentialsDirty();
+        int i = LogonSteps.IndexOf(step);
+        if (i < 0 || i >= LogonSteps.Count - 1) return;
+        LogonSteps.Move(i, i + 1);
+        LogonStepsChanged();
     }
 
-    // Replace the current character's logon steps with a copy of the chosen
-    // source's. Destructive by design but recoverable: Settings is a Save/Cancel
-    // window, so Cancel / X drops the import if it wasn't the right starting point.
-    [RelayCommand(CanExecute = nameof(CanImportMenuNav))]
-    private void ImportMenuNav()
+    // Replace the board's logon steps with a copy of the chosen board's.
+    // Destructive by design but recoverable: Settings is a Save/Cancel window, so
+    // Cancel / X drops the import if it wasn't the right starting point.
+    [RelayCommand(CanExecute = nameof(CanImportLogonSteps))]
+    private void ImportLogonSteps()
     {
         if (SelectedImportSource is not { } src) return;
-        MenuNavSteps.Clear();
+        LogonSteps.Clear();
         foreach (MenuStep step in src.Steps)
-            MenuNavSteps.Add(MenuStepEditorViewModel.FromModel(step, CredentialsDirty));
-        CredentialsDirty();
+            LogonSteps.Add(MenuStepEditorViewModel.FromModel(step, LogonStepsChanged));
+        _autoFilledSetup = null;
+        LogonStepsChanged();
     }
 
-    private bool CanImportMenuNav() => SelectedImportSource is not null;
+    private bool CanImportLogonSteps() => SelectedImportSource is not null;
 }

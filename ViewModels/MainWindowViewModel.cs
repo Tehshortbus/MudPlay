@@ -2863,19 +2863,19 @@ public partial class MainWindowViewModel : ObservableObject
         CharacterProfile? character = AppServices.Current.Profile.Current;
         BbsCredentials? creds = null;
         character?.BbsCredentials?.TryGetValue(bbs.Name, out creds);
-        (creds, string? setupNote) = BuiltInBbses.LogonFor(
-            creds, bbs.RealmFor(character?.Realm), AppServices.Current.Settings.Current.DefaultGameDataSet);
+        (IReadOnlyList<MenuStep> logonSteps, string? setupNote) = BuiltInBbses.LogonFor(
+            bbs, bbs.RealmFor(character?.Realm), AppServices.Current.Settings.Current.DefaultGameDataSet);
         if (setupNote is not null) AppServices.Current.Log.Info("LoginAuto", $"'{bbs.Name}': {setupNote}.");
 
         LoginAutomator? automator = LoginAutomator.TryBuild(
+            logonSteps,
             creds,
             AppServices.Current.Passwords,
             (text, ct) => client.SendTextAsync(text, ct),
             msg => AppServices.Current.Log.Debug("LoginAuto", msg));
         if (automator is null)
         {
-            AppServices.Current.Log.Debug("LoginAuto",
-                $"No menu-nav configured on '{AppServices.Current.Profile.CurrentProfileName ?? "(no profile)"}' for BBS '{bbs.Name}' — manual login.");
+            AppServices.Current.Log.Debug("LoginAuto", $"No logon steps set for BBS '{bbs.Name}' — manual login.");
             return;
         }
 

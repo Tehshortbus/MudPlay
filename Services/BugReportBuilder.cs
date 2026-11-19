@@ -506,6 +506,9 @@ public static class BugReportBuilder
               + (bbs.ReconnectOnNoResponse ? " no-response" : "")
               + (bbs.ReconnectOnFailedConnect || bbs.ReconnectOnCarrierLost || bbs.ReconnectOnNoResponse ? "" : " none")
               + $"; no-response idle {(bbs.NoResponseTimeoutSeconds > 0 ? bbs.NoResponseTimeoutSeconds + "s" : "off")}");
+        // Where the board's logon steps come from, not what they send: a step's
+        // Response can hold a login typed in by hand.
+        Kv(sb, "Logon steps (the board's)", bbs is null ? "(no active BBS)" : LogonStepsLabel(bbs));
         // Startup profile-load setting — diagnoses "it didn't reopen my profile".
         Kv(sb, "Auto-load last profile", svc.Settings.Current.AutoLoadLastProfile ? "on" : "off");
         Kv(sb, "Last-used profile", svc.Settings.Current.LastUsedProfile is { } lp
@@ -3532,6 +3535,11 @@ public static class BugReportBuilder
     }
 
     // ----- Helpers -------------------------------------------------------
+
+    private static string LogonStepsLabel(Models.Settings.BbsProfile bbs) =>
+        bbs.LogonSteps is not { } steps ? "none saved: connect walks the setup the realm's game data calls for"
+        : BuiltInBbses.AutoFilled(bbs) is { } setup ? $"{steps.Count}, the {setup.Name} setup the client filled in (the realm's data can replace it)"
+        : $"{steps.Count}, set by the player";
 
     internal static string RealmLabel(RealmType realm) => realm switch
     {

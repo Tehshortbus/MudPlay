@@ -1,6 +1,6 @@
 namespace MudPlay.Models.Profile;
 
-// One step in the per-character menu-navigation sequence that runs after the BBS
+// One step in a board's logon sequence (BbsProfile.LogonSteps) that runs after the BBS
 // connect completes. The LoginAutomator walks the list in order: wait for
 // WaitForPattern (case-insensitive substring), send Send, move on. The final
 // step's match fires Services.LoginAutomator.LoggedIntoGame.

@@ -24,17 +24,23 @@ public sealed class BbsCredentials
     // at the app data folder's .credkey. null when no password has been set.
     public string? EncryptedPassword { get; set; }
 
-    // Menu-navigation steps the LoginAutomator walks after the BBS
-    // login/password handshake completes. Each step waits for a server pattern
-    // and sends a reply — used to flow through "Press any key", main-menu picks,
-    // and the door-game entry prompt before the MajorMUD session is live.
-    public List<MenuStep> MenuNavSteps { get; set; } = new();
+    // The logon steps are the board's (BbsProfile.LogonSteps). Releases through
+    // 3.206.x kept a copy per character here; LogonStepMigration reads these once to
+    // move them onto their board. Read from an old profile but never written back:
+    // the serializer's view of each reads null, which isn't written.
+    [System.Text.Json.Serialization.JsonIgnore]
+    public List<MenuStep>? LegacyLogonSteps { get; private set; }
 
-    // The logon setup (BuiltInBbses) the client filled MenuNavSteps in from on its
-    // own, or null once the player applied one by hand. While the steps are still
-    // exactly that setup's, they aren't the player's: the setup the realm's game
-    // data calls for takes their place.
-    public string? AutoLogonSetup { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string? LegacyAutoLogonSetup { get; private set; }
+
+    [System.Text.Json.Serialization.JsonInclude]
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    private List<MenuStep>? MenuNavSteps { get => null; set => LegacyLogonSteps = value; }
+
+    [System.Text.Json.Serialization.JsonInclude]
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    private string? AutoLogonSetup { get => null; set => LegacyAutoLogonSetup = value; }
 
     // The individual SYSOP powers this character actually holds on this BBS. Each
     // is an independent capability the client only exercises when its box is

@@ -497,6 +497,68 @@
                         </StackPanel>
                     </Panel>
 
+                    <TextBlock Classes="GroupHeader" Text="Automated Logon Menu Navigation"/>
+
+                    <!-- Guidance: these steps drive the reconnect/login handshake only. A
+                         MegaMUD-holdover "Are you sure you want to log off? (Y/N)" step (a
+                         BBS quit-confirmation) never appears on the reconnect path, so the
+                         automator stalls waiting for it and the character never re-enters. -->
+                    <TextBlock Classes="FieldLabel" TextWrapping="Wrap" Margin="0,4,0,0"
+                               Text="Only add steps to LOG IN to the game — never log-out or quit steps (e.g. a &quot;log off? (Y/N)&quot; confirmation). A logout step will never match on reconnect and stalls the automatic re-entry."/>
+
+                    <StackPanel Spacing="4" Margin="0,6,0,0">
+                        <Grid ColumnDefinitions="*,140,Auto,Auto,Auto" Margin="0,0,0,2">
+                            <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Message"/>
+                            <TextBlock Grid.Column="1" Classes="FieldLabel" Text="Response" Margin="6,0,0,0"/>
+                        </Grid>
+
+                        <ItemsControl ItemsSource="{Binding LogonSteps}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:MenuStepEditorViewModel">
+                                    <Grid ColumnDefinitions="*,140,Auto,Auto,Auto" Margin="0,0,0,4">
+                                        <TextBox Grid.Column="0"
+                                                 Text="{Binding WaitForPattern, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                                                 PlaceholderText="Main Menu:"/>
+                                        <TextBox Grid.Column="1" Margin="6,0,0,0"
+                                                 Text="{Binding Send, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                                                 PlaceholderText="G"/>
+                                        <Button Grid.Column="2" Margin="6,0,0,0" Content="↑"
+                                                Command="{Binding $parent[ItemsControl].((vm:BbsSectionViewModel)DataContext).MoveLogonStepUpCommand}"
+                                                CommandParameter="{Binding}"
+                                                ToolTip.Tip="Move step up"/>
+                                        <Button Grid.Column="3" Margin="2,0,0,0" Content="↓"
+                                                Command="{Binding $parent[ItemsControl].((vm:BbsSectionViewModel)DataContext).MoveLogonStepDownCommand}"
+                                                CommandParameter="{Binding}"
+                                                ToolTip.Tip="Move step down"/>
+                                        <Button Grid.Column="4" Margin="6,0,0,0" Content="Remove"
+                                                Command="{Binding $parent[ItemsControl].((vm:BbsSectionViewModel)DataContext).RemoveLogonStepCommand}"
+                                                CommandParameter="{Binding}"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <Button Content="Add step" Command="{Binding AddLogonStepCommand}"
+                                HorizontalAlignment="Left" Margin="0,4,0,0"/>
+
+                        <!-- Credential-token legend for the Response field. -->
+                        <TextBlock Classes="FieldLabel" TextWrapping="Wrap" Margin="0,6,0,0"
+                                   Text="Response tokens:  {user} / {userid} / {username} → the character's username · {pass} / {pswd} / {passwd} / {password} → its password"
+                                   ToolTip.Tip="Type any of these in a step's Response and it's replaced with the connecting character's own saved username / password (Credentials, below) at logon, so one set of steps logs on every character on this BBS."/>
+
+                        <Grid ColumnDefinitions="*,Auto" Margin="0,10,0,0"
+                              IsEnabled="{Binding HasImportSources}"
+                              ToolTip.Tip="Copy the logon steps of another BBS. Replaces the steps above. Cancel the Settings window to undo.">
+                            <ComboBox Grid.Column="0"
+                                      ItemsSource="{Binding ImportSourceOptions}"
+                                      SelectedItem="{Binding SelectedImportSource}"
+                                      HorizontalAlignment="Stretch"
+                                      PlaceholderText="Import logon steps from another BBS…"/>
+                            <Button Grid.Column="1" Margin="6,0,0,0" Content="Import"
+                                    Command="{Binding ImportLogonStepsCommand}"/>
+                        </Grid>
+                    </StackPanel>
+
                     <!-- ============================================================
                          SECTION 2 — Character profile settings (per-character).
                          Written onto the loaded character's per-BBS credential
@@ -631,68 +693,6 @@
 
                         <Button Content="Add location" Command="{Binding AddSysopGotoCommand}"
                                 HorizontalAlignment="Left" Margin="0,4,0,0"/>
-                    </StackPanel>
-
-                    <TextBlock Classes="GroupHeader" Text="Automated Logon Menu Navigation"/>
-
-                    <!-- Guidance: these steps drive the reconnect/login handshake only. A
-                         MegaMUD-holdover "Are you sure you want to log off? (Y/N)" step (a
-                         BBS quit-confirmation) never appears on the reconnect path, so the
-                         automator stalls waiting for it and the character never re-enters. -->
-                    <TextBlock Classes="FieldLabel" TextWrapping="Wrap" Margin="0,4,0,0"
-                               Text="Only add steps to LOG IN to the game — never log-out or quit steps (e.g. a &quot;log off? (Y/N)&quot; confirmation). A logout step will never match on reconnect and stalls the automatic re-entry."/>
-
-                    <StackPanel IsEnabled="{Binding HasProfile}" Spacing="4" Margin="0,6,0,0">
-                        <Grid ColumnDefinitions="*,140,Auto,Auto,Auto" Margin="0,0,0,2">
-                            <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Message"/>
-                            <TextBlock Grid.Column="1" Classes="FieldLabel" Text="Response" Margin="6,0,0,0"/>
-                        </Grid>
-
-                        <ItemsControl ItemsSource="{Binding MenuNavSteps}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate x:DataType="vm:MenuStepEditorViewModel">
-                                    <Grid ColumnDefinitions="*,140,Auto,Auto,Auto" Margin="0,0,0,4">
-                                        <TextBox Grid.Column="0"
-                                                 Text="{Binding WaitForPattern, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
-                                                 PlaceholderText="Main Menu:"/>
-                                        <TextBox Grid.Column="1" Margin="6,0,0,0"
-                                                 Text="{Binding Send, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
-                                                 PlaceholderText="G"/>
-                                        <Button Grid.Column="2" Margin="6,0,0,0" Content="↑"
-                                                Command="{Binding $parent[ItemsControl].((vm:BbsSectionViewModel)DataContext).MoveMenuStepUpCommand}"
-                                                CommandParameter="{Binding}"
-                                                ToolTip.Tip="Move step up"/>
-                                        <Button Grid.Column="3" Margin="2,0,0,0" Content="↓"
-                                                Command="{Binding $parent[ItemsControl].((vm:BbsSectionViewModel)DataContext).MoveMenuStepDownCommand}"
-                                                CommandParameter="{Binding}"
-                                                ToolTip.Tip="Move step down"/>
-                                        <Button Grid.Column="4" Margin="6,0,0,0" Content="Remove"
-                                                Command="{Binding $parent[ItemsControl].((vm:BbsSectionViewModel)DataContext).RemoveMenuStepCommand}"
-                                                CommandParameter="{Binding}"/>
-                                    </Grid>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-
-                        <Button Content="Add step" Command="{Binding AddMenuStepCommand}"
-                                HorizontalAlignment="Left" Margin="0,4,0,0"/>
-
-                        <!-- Credential-token legend for the Response field. -->
-                        <TextBlock Classes="FieldLabel" TextWrapping="Wrap" Margin="0,6,0,0"
-                                   Text="Response tokens:  {user} / {userid} / {username} → your username · {pass} / {pswd} / {passwd} / {password} → your password"
-                                   ToolTip.Tip="Type any of these in a step's Response and it's replaced with the character's saved username / password at logon."/>
-
-                        <Grid ColumnDefinitions="*,Auto" Margin="0,10,0,0"
-                              IsEnabled="{Binding HasImportSources}"
-                              ToolTip.Tip="Copy the logon steps from another saved character. Replaces the steps above; usernames and passwords are never copied. Cancel the Settings window to undo.">
-                            <ComboBox Grid.Column="0"
-                                      ItemsSource="{Binding ImportSourceOptions}"
-                                      SelectedItem="{Binding SelectedImportSource}"
-                                      HorizontalAlignment="Stretch"
-                                      PlaceholderText="Import logon steps from another character…"/>
-                            <Button Grid.Column="1" Margin="6,0,0,0" Content="Import"
-                                    Command="{Binding ImportMenuNavCommand}"/>
-                        </Grid>
                     </StackPanel>
 
                     <!-- ============================================================
