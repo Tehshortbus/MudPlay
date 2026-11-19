@@ -217,7 +217,7 @@ public sealed partial class SettingsWindowViewModel : ObservableObject, IDisposa
     {
         if (applied.Count == 0) return;
         _log.Info("Settings",
-            $"User saved {applied.Count} section(s) to profile '{_profile.CurrentProfileName ?? "(none)"}': {string.Join(", ", applied)}.");
+            $"User saved {applied.Count} section(s), with character '{_profile.CurrentProfileName ?? "(none)"}' loaded (each setting to its own tier): {string.Join(", ", applied)}.");
     }
 
     // Apply every dirty section, returning the titles applied. With holdFlagged a

@@ -9,17 +9,20 @@ using Xunit;
 
 namespace MudPlay.Tests;
 
-// The Settings BBS tab's logon setups. Picking a realm's game data set fills in the
-// setup that data was exported for, Anomaly, Paradigm or Stock, only where nothing
-// is set yet; the Connection header's Apply setup puts one in over what's there.
+// The Settings BBS tab's logon steps, the board's own and shared by every character
+// on it (issue #1219). Picking a realm's game data set fills in the setup that data
+// was exported for, Anomaly, Paradigm or Stock, only where nothing is set yet; the
+// Connection header's Apply setup puts one in over what's there; another board's
+// steps can be imported.
 //
-// The board is saved under the scratch data root and the game data sets under its
-// game-data folder; both are deleted in Dispose.
+// The boards are saved under the scratch data root and the game data sets under its
+// game-data folder; all are deleted in Dispose.
 [Collection(BbsSectionCollection.Name)]
 public sealed class BbsSectionLogonSetupTests : IDisposable
 {
     private readonly string _tag = Path.GetRandomFileName().Replace(".", "");
     private readonly string _board;
+    private readonly string _otherBoard;
     private readonly string _anomalySet;
     private readonly string _paradigmSet;
     private readonly ProfileService _profile;
@@ -29,6 +32,7 @@ public sealed class BbsSectionLogonSetupTests : IDisposable
     {
         ScratchRoot.Require();
         _board = $"!mudplay-test-logonsetup-{_tag}";
+        _otherBoard = $"!mudplay-test-logonsetup-other-{_tag}";
         _anomalySet = WriteSet("anomaly", "Anomaly");
         _paradigmSet = WriteSet("paradigm", "Paradigm");
         BbsProfileStore store = new();
@@ -51,6 +55,7 @@ public sealed class BbsSectionLogonSetupTests : IDisposable
     {
         _vm.Dispose();
         new BbsProfileStore().Delete(_board);
+        new BbsProfileStore().Delete(_otherBoard);
         foreach (string set in new[] { _anomalySet, _paradigmSet })
         {
             try { Directory.Delete(AppPaths.GameDataSetDir(set), recursive: true); }
@@ -67,7 +72,7 @@ public sealed class BbsSectionLogonSetupTests : IDisposable
         return set;
     }
 
-    private IEnumerable<string> Sends() => _vm.MenuNavSteps.Select(s => s.Send).ToList();
+    private IEnumerable<string> Sends() => _vm.LogonSteps.Select(s => s.Send).ToList();
 
     [Fact]
     public void ANewBoard_PickingAnAnomalySet_FillsTheHostPortAndItsLogonSteps()
@@ -85,7 +90,7 @@ public sealed class BbsSectionLogonSetupTests : IDisposable
     public void AHostTypedAndStepsEdited_StayWhenASetIsPicked()
     {
         _vm.Host = "my.board.example";
-        _vm.MenuNavSteps[2].Send = "g";
+        _vm.LogonSteps[2].Send = "g";
 
         _vm.RealmGameDataSet = _paradigmSet;
 
@@ -97,7 +102,7 @@ public sealed class BbsSectionLogonSetupTests : IDisposable
     public void ApplySetup_PutsItInOverWhatsThere_AndStockLeavesTheHostAlone()
     {
         _vm.Host = "my.board.example";
-        _vm.MenuNavSteps[2].Send = "g";
+        _vm.LogonSteps[2].Send = "g";
 
         _vm.ApplyLogonSetupCommand.Execute("Paradigm");
 
@@ -113,17 +118,15 @@ public sealed class BbsSectionLogonSetupTests : IDisposable
         Assert.Equal("paramud.mudinfo.net", new BbsProfileStore().Get(_board)!.Host);
     }
 
-    // A login saved with the steps the client filled in shows the setup installed
-    // data calls for; one the player applied by hand is saved as theirs and stays.
+    // Steps saved as the client filled them in show the setup installed data calls
+    // for; steps the player applied by hand are saved as theirs and stay.
     [Fact]
     public void SavedStepsTheClientFilledIn_GiveWayToTheRealmsData_AndAppliedOnesStay()
     {
-        _vm.Username = "hero";
-        _vm.Apply();
-        Assert.Equal("Stock", _profile.Current!.BbsCredentials![_board].AutoLogonSetup);
-
         BbsProfileStore store = new();
         BbsProfile board = store.Get(_board)!;
+        board.LogonSteps = BuiltInBbses.Stock.CopyLogonSteps();
+        board.AutoLogonSetup = "Stock";
         board.Realms[0].ActiveGameDataSet = _anomalySet;
         store.Save(board);
         _vm.Dispose();
@@ -133,10 +136,57 @@ public sealed class BbsSectionLogonSetupTests : IDisposable
 
         _vm.ApplyLogonSetupCommand.Execute("Stock");
         _vm.Apply();
-        Assert.Null(_profile.Current!.BbsCredentials![_board].AutoLogonSetup);
+        Assert.Null(new BbsProfileStore().Get(_board)!.AutoLogonSetup);
         _vm.Dispose();
         _vm = NewTab();
 
         Assert.Equal(["{username}", "{password}", "m"], Sends());
+    }
+
+    // The steps are the board's: set with one character loaded, they're what the
+    // next character on the board shows and logs on with, while each keeps its own
+    // username; nothing of them is written onto the character.
+    [Fact]
+    public void LogonStepsSetWithOneCharacter_AreTheNextCharactersOnTheBoard()
+    {
+        _profile.SaveAs(_board, "Alpha");
+        _vm.LogonSteps[2].Send = "g";
+        _vm.Username = "alpha";
+        _vm.Apply();
+
+        BbsProfile saved = new BbsProfileStore().Get(_board)!;
+        Assert.Equal(["{username}", "{password}", "g"], saved.LogonSteps!.Select(st => st.Send));
+        Assert.Null(saved.AutoLogonSetup);
+        Assert.DoesNotContain("MenuNavSteps", File.ReadAllText(AppPaths.CharacterProfileFile(_board, "Alpha")));
+
+        _profile.CreateProfile(_board, "Beta");
+        _profile.Load(_board, "Beta");
+
+        Assert.Equal(["{username}", "{password}", "g"], Sends());
+        Assert.Equal("", _vm.Username);
+    }
+
+    [Fact]
+    public void AnotherBoardsSteps_AreOfferedForImport_AndReplaceTheseOnImport()
+    {
+        new BbsProfileStore().Save(new BbsProfile
+        {
+            Name = _otherBoard,
+            LogonSteps = [new() { WaitForPattern = "Login:", Send = "{username}" }, new() { WaitForPattern = "Menu:", Send = "x" }],
+        });
+        BbsProfileStore store = new();
+        BbsProfile editing = store.Get(_board)!;
+        editing.LogonSteps = BuiltInBbses.Stock.CopyLogonSteps();
+        store.Save(editing);
+        _vm.Dispose();
+        _vm = NewTab();
+
+        LogonStepsImportOption offered = Assert.Single(_vm.ImportSourceOptions, o => o.BbsName == _otherBoard);
+        Assert.DoesNotContain(_vm.ImportSourceOptions, o => o.BbsName == _board);
+        _vm.SelectedImportSource = offered;
+        _vm.ImportLogonStepsCommand.Execute(null);
+        _vm.Apply();
+
+        Assert.Equal(["{username}", "x"], new BbsProfileStore().Get(_board)!.LogonSteps!.Select(st => st.Send));
     }
 }

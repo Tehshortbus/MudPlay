@@ -52,7 +52,6 @@ public sealed class BbsRenameCascadeTests : IDisposable
                 [credentialKey] = new BbsCredentials
                 {
                     EncryptedUsername = "enc-user",
-                    MenuNavSteps = { new MenuStep() },
                 },
             },
         };

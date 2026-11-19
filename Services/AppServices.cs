@@ -3131,6 +3131,12 @@ public sealed class AppServices
         foreach (string name in BuiltInBbses.AddMissing(Bbs, Settings.Current.BuiltInBbsesAdded, BuiltInBbses.All))
             bootstrapLog.Info("BBS", $"Added the built-in board '{name}' to the BBS list.");
         if (Settings.Current.BuiltInBbsesAdded.Count != builtInsKnown) Settings.Save();
+        if (!Settings.Current.LogonStepsOnBoards)
+        {
+            LogonStepMigration.MoveToBoards(Bbs, Profile.ListAll(), bootstrapLog);
+            Settings.Current.LogonStepsOnBoards = true;
+            Settings.Save();
+        }
         Realms = new RealmCatalog(Bbs, Profile, bootstrapLog);
 
         // Startup head start: parse the big MDB tables for whatever profile "Auto-load

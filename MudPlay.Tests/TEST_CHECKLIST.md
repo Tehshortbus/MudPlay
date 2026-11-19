@@ -387,9 +387,9 @@ How to keep it current:
 - Why: the GMCP modes only do anything on a board that offers GMCP (user, 2026-10-29).
 
 ### BbsSectionLogonSetupTests.cs
-- Covers: ViewModels/Settings/BbsSectionViewModel (logon setups), Services/BuiltInBbses
-- Checks: on a new board, picking a realm set whose Info names Anomaly fills the blank host, port and the untouched Stock prefill with Anomaly's; a typed host and edited steps stay when a set is picked; Apply setup puts Paradigm's host, port and steps in over what's there, Stock replaces only the steps, and OK saves the host; a login saved with the client's Stock steps shows Anomaly's once the realm's data is Anomaly, and Stock applied by hand is saved as the player's own and stays.
-- Why: a board's logon setup goes by its realm's game data and fills in only what isn't set, with a manual Apply setup in the Connection header (user, 2026-10-28).
+- Covers: ViewModels/Settings/BbsSectionViewModel (the board's logon steps), Services/BuiltInBbses, ViewModels/Settings/LogonStepsImportOption
+- Checks: on a new board, picking a realm set whose Info names Anomaly fills the blank host, port and the untouched Stock prefill with Anomaly's; a typed host and edited steps stay when a set is picked; Apply setup puts Paradigm's host, port and steps in over what's there, Stock replaces only the steps, and OK saves the host; a board saved with the client's Stock steps shows Anomaly's once the realm's data is Anomaly (opening the tab leaves the saved steps whole), and Stock applied by hand is saved on the board as the player's own and stays; steps set with one character loaded are saved on the board, not the character, and the next character on the board shows them with its own blank username; another board's steps are offered for import (the board being edited is not) and replace these on OK.
+- Why: a board's logon setup goes by its realm's game data and fills in only what isn't set, with a manual Apply setup in the Connection header (user, 2026-10-28); the steps are the board's, shared by its characters (issue #1219, report `stock-20261118-083629`, user 2026-11-19).
 
 ### BbsSectionRealmGameDataSetTests.cs
 - Covers: ViewModels/Settings/BbsSectionViewModel (realm Game data picker)
@@ -579,7 +579,7 @@ How to keep it current:
 
 ### BuiltInBbsesTests.cs
 - Covers: Services/BuiltInBbses
-- Checks: a built-in board is added once and stays removed once the user deletes it; the same host and port under another name is not added twice; the setup goes by a set's Info board name (Anomaly, Paradigm, anything else or no set → Stock), a realm on the global default goes by the global set, and copied steps are the caller's own; connect (LogonFor) gives a character with no login the realm's setup, replaces saved steps the client filled in only when installed data calls for another, and never replaces applied or edited steps or any steps with no data installed; the Stock steps (`Otherwise type "new":`, `Enter your password:`, `Main System Menu (TOP)` → `m`) carry no host; every shipped setup sends only credential tokens and one-key menu picks.
+- Checks: a built-in board is added once and stays removed once the user deletes it; the same host and port under another name is not added twice; the setup goes by a set's Info board name (Anomaly, Paradigm, anything else or no set → Stock), a realm on the global default goes by the global set, and copied steps are the caller's own; connect (LogonFor) gives a board with no steps saved the realm's setup, walks the setup installed data calls for in place of board steps the client filled in (leaving the board's own as they are), and never replaces applied or edited steps or any steps with no data installed; the Stock steps (`Otherwise type "new":`, `Enter your password:`, `Main System Menu (TOP)` → `m`) carry no host; every shipped setup sends only credential tokens and one-key menu picks.
 - Why: Anomaly Mud and Paradigm come set up on a new install, and a board's logon setup follows its game data rather than a host and port that can change (user, 2026-10-28), with no one's account or password in them.
 
 ### BulkCommandPacerTests.cs
@@ -2272,8 +2272,13 @@ How to keep it current:
 
 ### LoginAutomatorTests.cs
 - Covers: Services/LoginAutomator
-- Checks: step matching (CSI stripped), CR appended, pager Enter, username/password placeholders and aliases, one-shot credential locks, skips when credentials missing, TryBuild.
+- Checks: step matching (CSI stripped), CR appended, pager Enter, username/password placeholders and aliases, one-shot credential locks, skips when credentials missing, TryBuild (no steps → none; the board's steps sent with the character's own login).
 - Why: never resend a login; auto-login.
+
+### LogonStepMigrationTests.cs
+- Covers: Services/LogonStepMigration, Models/Profile/BbsCredentials (the old per-character steps)
+- Checks: a character's steps, as an old release saved them, become its board's and the character drops them on its next save; when characters disagree the board takes the player's steps over the client's fill-in, then the steps most shared, then the newest character's, naming the others in the log; only the client's fill-in on file stays marked as the client's; a board that already has steps keeps them.
+- Why: the logon steps moved from the characters to the board, once per install, without losing a board's working login (issue #1219, report `stock-20261118-083629`).
 
 ### LookAlikeTextExitTests.cs
 - Covers: Game/Map/RoomTracker (the echo of a move in flight), MovementRefusalDetector, SpecialExitDispatch, driven over the wire by TrackerWireRig
@@ -2495,11 +2500,6 @@ How to keep it current:
 - Covers: Services/MenuActionCatalogue, ToolbarItemCatalogue, ContextMenuDefaults, ContextMenuConfig, ViewModels/Settings/ContextMenuRowViewModel
 - Checks: every catalogue command/toggle/gesture resolves on MainWindowViewModel by reflection, submenus and deep links valid, defaults resolve, ContextMenuConfig.ApplyFrom takes entries, folders and custom labels.
 - Why: a reflection typo is a silent dead menu item.
-
-### MenuNavImportOptionTests.cs
-- Covers: ViewModels/Settings/MenuNavImportOption
-- Checks: which logon sequences are offered for import, exclusions, ordering, label.
-- Why: import logon steps from another character.
 
 ### MessageCandidateReportReplayTests.cs
 - Covers: Game/MessageCandidateWatcher (with real seeds and exclusions)

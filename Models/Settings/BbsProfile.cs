@@ -110,6 +110,20 @@ public sealed class BbsProfile
     //   ►►► [{name}] logs OFF*
     public string? DisconnectPattern { get; set; }
 
+    // ----- Logon -----
+
+    // The steps the LoginAutomator walks after connecting, the board's own: every
+    // character on it logs on the same way, and a step's {username} / {password}
+    // resolves from the connecting character's own login (BbsCredentials). Null
+    // while none were ever saved: connect then walks the setup the realm's game
+    // data calls for (BuiltInBbses.LogonFor).
+    public List<Models.Profile.MenuStep>? LogonSteps { get; set; }
+
+    // The logon setup (BuiltInBbses) the client filled LogonSteps in from on its
+    // own, or null once the player set them. While the steps are still exactly that
+    // setup's they aren't the player's: the setup the connecting character's realm
+    // calls for takes their place.
+    public string? AutoLogonSetup { get; set; }
 
     // ----- Realms -----
 

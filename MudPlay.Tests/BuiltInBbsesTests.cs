@@ -105,42 +105,39 @@ public sealed class BuiltInBbsesTests : IDisposable
         Assert.Equal("{username}", BuiltInBbses.Stock.LogonSteps[0].Send);
     }
 
-    // What connect walks. With no login saved, the setup the realm's data calls for.
-    // Saved steps the client filled in, still unedited, give way to the setup
-    // installed data now calls for; with no data to go by they stay, and steps the
-    // player applied or edited are never replaced.
+    // What connect walks. With no steps saved for the board, the setup the realm's
+    // data calls for. Saved steps the client filled in, still unedited, give way to
+    // the setup installed data calls for the connecting character's realm, and the
+    // board keeps its own; with no data to go by they stay, and steps the player
+    // applied or edited are never replaced.
     [Fact]
     public void ConnectReplacesOnlyStepsTheClientFilledIn_WhenInstalledDataCallsForAnother()
     {
         string anomaly = WriteSet("anomaly", "Anomaly");
         RealmProfile onAnomaly = new() { ActiveGameDataSet = anomaly };
 
-        (BbsCredentials none, string? noneNote) = BuiltInBbses.LogonFor(null, new RealmProfile(), null);
-        Assert.True(BuiltInBbses.Stock.HasSteps(none.MenuNavSteps));
+        (IReadOnlyList<MenuStep> none, string? noneNote) = BuiltInBbses.LogonFor(new BbsProfile(), new RealmProfile(), null);
+        Assert.True(BuiltInBbses.Stock.HasSteps(none));
         Assert.NotNull(noneNote);
 
-        BbsCredentials filled = new() { MenuNavSteps = BuiltInBbses.Stock.CopyLogonSteps(), AutoLogonSetup = "Stock" };
+        BbsProfile filled = new() { LogonSteps = BuiltInBbses.Stock.CopyLogonSteps(), AutoLogonSetup = "Stock" };
         Assert.Null(BuiltInBbses.LogonFor(filled, new RealmProfile(), null).Note);
-        Assert.True(BuiltInBbses.Stock.HasSteps(filled.MenuNavSteps));
 
-        (BbsCredentials swapped, string? swapNote) = BuiltInBbses.LogonFor(filled, onAnomaly, null);
-        Assert.Same(filled, swapped);
+        (IReadOnlyList<MenuStep> swapped, string? swapNote) = BuiltInBbses.LogonFor(filled, onAnomaly, null);
         Assert.NotNull(swapNote);
-        Assert.True(BuiltInBbses.All[0].HasSteps(filled.MenuNavSteps));
-        Assert.Equal("Anomaly", filled.AutoLogonSetup);
+        Assert.True(BuiltInBbses.All[0].HasSteps(swapped));
+        Assert.True(BuiltInBbses.Stock.HasSteps(filled.LogonSteps!));
+        Assert.Equal("Stock", filled.AutoLogonSetup);
 
-        BbsCredentials noData = new() { MenuNavSteps = BuiltInBbses.All[0].CopyLogonSteps(), AutoLogonSetup = "Anomaly" };
+        BbsProfile noData = new() { LogonSteps = BuiltInBbses.All[0].CopyLogonSteps(), AutoLogonSetup = "Anomaly" };
         Assert.Null(BuiltInBbses.LogonFor(noData, new RealmProfile { ActiveGameDataSet = $"not-installed-{_tag}" }, null).Note);
-        Assert.True(BuiltInBbses.All[0].HasSteps(noData.MenuNavSteps));
 
-        BbsCredentials applied = new() { MenuNavSteps = BuiltInBbses.Stock.CopyLogonSteps() };
-        BuiltInBbses.LogonFor(applied, onAnomaly, null);
-        Assert.True(BuiltInBbses.Stock.HasSteps(applied.MenuNavSteps));
+        BbsProfile applied = new() { LogonSteps = BuiltInBbses.Stock.CopyLogonSteps() };
+        Assert.True(BuiltInBbses.Stock.HasSteps(BuiltInBbses.LogonFor(applied, onAnomaly, null).Steps));
 
-        BbsCredentials edited = new() { MenuNavSteps = BuiltInBbses.Stock.CopyLogonSteps(), AutoLogonSetup = "Stock" };
-        edited.MenuNavSteps[2].Send = "g";
-        BuiltInBbses.LogonFor(edited, onAnomaly, null);
-        Assert.Equal("g", edited.MenuNavSteps[2].Send);
+        BbsProfile edited = new() { LogonSteps = BuiltInBbses.Stock.CopyLogonSteps(), AutoLogonSetup = "Stock" };
+        edited.LogonSteps[2].Send = "g";
+        Assert.Equal("g", BuiltInBbses.LogonFor(edited, onAnomaly, null).Steps[2].Send);
     }
 
     [Fact]

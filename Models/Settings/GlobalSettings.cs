@@ -218,6 +218,10 @@ public sealed class GlobalSettings
     // so one the user removes isn't added back on the next launch.
     public List<string> BuiltInBbsesAdded { get; set; } = new();
 
+    // Whether the characters' logon steps were moved onto their boards
+    // (LogonStepMigration), so that's done once per install.
+    public bool LogonStepsOnBoards { get; set; }
+
     // Step reached / finished per Visual Guide (Help → Visual Guides).
     public GuideProgress Guides { get; set; } = new();
 

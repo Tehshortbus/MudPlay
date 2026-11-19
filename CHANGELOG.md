@@ -1,5 +1,11 @@
 # Version history
 
+## 3.206.5
+
+- Logon steps are the BBS's, shared by every character on it; login name, password and sysop powers stay per character
+- Each board takes its characters' existing logon steps once on update (the ones you set first, then the most shared)
+- bug reports addressed: stock-20261118-083629
+
 ## 3.206.4
 
 - A self buff that a party buff knocks off you (greater zeal under unholy fanaticism) is recast when its wear-off line comes, even when that line is shared with other buffs

@@ -82,31 +82,28 @@ public static class BuiltInBbses
     public static Preset? ForInstalledSet(string? set) =>
         set is not null && Directory.Exists(AppPaths.GameDataSetDir(set)) ? ForGameDataSet(set) : null;
 
-    // The setup a saved login's steps were filled in from by the client, while
+    // The setup a board's logon steps were filled in from by the client, while
     // they're still exactly that setup's; null when the player set them.
-    public static Preset? AutoFilled(BbsCredentials login) =>
-        Named(login.AutoLogonSetup) is { } setup && setup.HasSteps(login.MenuNavSteps) ? setup : null;
+    public static Preset? AutoFilled(BbsProfile board) =>
+        board.LogonSteps is { } steps && Named(board.AutoLogonSetup) is { } setup && setup.HasSteps(steps) ? setup : null;
 
-    // The login connect walks, and what was decided, for the log (null when the
-    // saved login is used as it is). With no login saved, the setup the realm's
-    // game data calls for, its username and password left for the player to type.
-    // Saved steps the client filled in itself, still unedited, give way to the
-    // setup installed data now calls for; the change is made on the saved login.
-    public static (BbsCredentials Login, string? Note) LogonFor(BbsCredentials? saved, RealmProfile? realm, string? globalDefaultSet)
+    // The logon steps connect walks for a character playing realm on board, and what
+    // was decided, for the log (null when the board's saved steps are used as they
+    // are). With none saved, the setup the realm's game data calls for. Saved steps
+    // the client filled in itself, still unedited, give way to the setup installed
+    // data calls for this character's realm; the board keeps its own, since another
+    // of its realms may want them.
+    public static (IReadOnlyList<MenuStep> Steps, string? Note) LogonFor(BbsProfile board, RealmProfile? realm, string? globalDefaultSet)
     {
-        if (saved is null)
+        ArgumentNullException.ThrowIfNull(board);
+        if (board.LogonSteps is not { } saved)
         {
             Preset setup = ForRealm(realm, globalDefaultSet);
-            return (new BbsCredentials { MenuNavSteps = setup.CopyLogonSteps() },
-                $"no login saved, so the {setup.Name} logon steps its realm's game data calls for");
+            return (setup.LogonSteps, $"no logon steps saved for the board, so the {setup.Name} ones its realm's game data calls for");
         }
-        if (AutoFilled(saved) is { } filled
+        if (AutoFilled(board) is { } filled
             && ForInstalledSet(realm?.ActiveGameDataSet ?? globalDefaultSet) is { } wanted && wanted != filled)
-        {
-            saved.MenuNavSteps = wanted.CopyLogonSteps();
-            saved.AutoLogonSetup = wanted.Name;
-            return (saved, $"the {filled.Name} logon steps filled in for it, unedited, replaced by the {wanted.Name} ones its realm's game data calls for");
-        }
+            return (wanted.LogonSteps, $"the {filled.Name} logon steps filled in for the board, unedited, give way to the {wanted.Name} ones this realm's game data calls for");
         return (saved, null);
     }
 
