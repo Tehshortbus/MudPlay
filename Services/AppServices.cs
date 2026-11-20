@@ -3137,6 +3137,12 @@ public sealed class AppServices
             Settings.Current.LogonStepsOnBoards = true;
             Settings.Save();
         }
+        if (!Settings.Current.CharacterLogonStepsKept)
+        {
+            LogonStepMigration.KeepCharactersOwn(Bbs, Profile.ListAll(), bootstrapLog);
+            Settings.Current.CharacterLogonStepsKept = true;
+            Settings.Save();
+        }
         Realms = new RealmCatalog(Bbs, Profile, bootstrapLog);
 
         // Startup head start: parse the big MDB tables for whatever profile "Auto-load

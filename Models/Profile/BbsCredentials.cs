@@ -24,10 +24,15 @@ public sealed class BbsCredentials
     // at the app data folder's .credkey. null when no password has been set.
     public string? EncryptedPassword { get; set; }
 
-    // The logon steps are the board's (BbsProfile.LogonSteps). Releases through
-    // 3.206.x kept a copy per character here; LogonStepMigration reads these once to
-    // move them onto their board. Read from an old profile but never written back:
-    // the serializer's view of each reads null, which isn't written.
+    // This character's own logon steps on the board, walked instead of the board's
+    // (BbsProfile.LogonSteps): one account's characters can need different answers
+    // at the BBS's menus, a character slot or a realm. Null = the board's.
+    public List<MenuStep>? LogonSteps { get; set; }
+
+    // Releases through 3.206.4 kept every character's steps here, under the old
+    // names; LogonStepMigration reads them once, for the board's default and the
+    // characters that differ from it. Read from an old profile but never written
+    // back: the serializer's view of each reads null, which isn't written.
     [System.Text.Json.Serialization.JsonIgnore]
     public List<MenuStep>? LegacyLogonSteps { get; private set; }
 

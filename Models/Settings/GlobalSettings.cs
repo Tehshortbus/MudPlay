@@ -222,6 +222,10 @@ public sealed class GlobalSettings
     // (LogonStepMigration), so that's done once per install.
     public bool LogonStepsOnBoards { get; set; }
 
+    // Whether the characters whose old logon steps differ from their board's were
+    // given them back as their own (LogonStepMigration.KeepCharactersOwn), once.
+    public bool CharacterLogonStepsKept { get; set; }
+
     // Step reached / finished per Visual Guide (Help → Visual Guides).
     public GuideProgress Guides { get; set; } = new();
 

@@ -1,5 +1,10 @@
 # Version history
 
+## 3.206.6
+
+- A character can keep its own logon steps on a BBS (Settings → BBS + Display, "Only for this character"), for accounts whose characters each pick their own slot or realm
+- Characters whose old logon steps differ from their BBS's get them back as their own on update
+
 ## 3.206.5
 
 - Logon steps are the BBS's, shared by every character on it; login name, password and sysop powers stay per character

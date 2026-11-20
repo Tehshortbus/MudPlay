@@ -63,6 +63,7 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         public bool SysopGodLives;
         public bool SysopGoto;
         public List<SysopGotoLocation> SysopGotos = new();
+        public List<MenuStep>? OwnLogonSteps;
     }
 
     public override string Id => "bbs";
@@ -390,8 +391,14 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
     [ObservableProperty] private bool _confirmSaveSettings = false;
     [ObservableProperty] private bool _confirmDeletes = false;
 
-    // Editable rows for the selected board's logon steps.
+    // Editable rows for the logon steps: the selected board's, or the loaded
+    // character's own on it while LogonStepsForCharacter is checked.
     public ObservableCollection<MenuStepEditorViewModel> LogonSteps { get; } = new();
+
+    // The rows are the loaded character's own logon steps on the board, walked
+    // instead of the board's. Checking it starts them as a copy of what's shown;
+    // unchecking drops them, back to the board's.
+    [ObservableProperty] private bool _logonStepsForCharacter;
 
     // Editable rows for the per-character `sys goto` location table (shown/enabled
     // only when SysopGoto is on).
@@ -649,6 +656,7 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         cred.SysopGodLives = staged.SysopGodLives;
         cred.SysopGoto = staged.SysopGoto;
         cred.SysopGotos = staged.SysopGotos;
+        cred.LogonSteps = staged.OwnLogonSteps;
 
         if (staged.PasswordTouched) cred.EncryptedPassword = staged.EncryptedPassword;
     }
@@ -793,6 +801,7 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
             SysopGodLives = SysopGodLives,
             SysopGoto = SysopGoto,
             SysopGotos = SysopGotos.Select(vm => vm.ToModel()).ToList(),
+            OwnLogonSteps = LogonStepsForCharacter ? LogonSteps.Select(vm => vm.ToModel()).ToList() : null,
         };
 
         if (_pendingPassword is not null)
@@ -1160,16 +1169,43 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         }
     }
 
-    // The board's logon steps. A board with none saved shows the setup its realm's
-    // game data calls for, so typing a username and password and pressing OK is all
-    // the login needs; steps the client filled in itself show as connect will walk
-    // them for the loaded character's realm.
+    // The logon steps connect walks for the loaded character on the board: its own
+    // when it has them, else the board's.
     private void LoadLogonSteps(BbsProfile board)
     {
         // A load, never an edit, whoever calls it: each row built would otherwise
-        // write the half-built list back onto the board as it went.
+        // write the half-built list back as it went.
         bool prev = _suppressDirty;
         _suppressDirty = true;
+        List<MenuStep>? own = OwnLogonStepsFor(board.Name);
+        LogonStepsForCharacter = own is not null;
+        if (own is not null)
+        {
+            LogonSteps.Clear();
+            foreach (MenuStep step in own)
+                LogonSteps.Add(MenuStepEditorViewModel.FromModel(step, LogonStepsChanged));
+            _autoFilledSetup = null;
+        }
+        else
+        {
+            ShowBoardLogonSteps(board);
+        }
+        _suppressDirty = prev;
+        RefreshImportSources(board.Name);
+    }
+
+    // Pending edits first, as for the rest of the login.
+    private List<MenuStep>? OwnLogonStepsFor(string bbsName) =>
+        !HasProfile ? null
+        : _stagedCredentials.TryGetValue(bbsName, out StagedCredentials? staged) ? staged.OwnLogonSteps
+        : _profile.Current?.BbsCredentials?.GetValueOrDefault(bbsName)?.LogonSteps;
+
+    // The board's logon steps. A board with none saved shows the setup its realm's
+    // game data calls for, so typing a username and password and pressing OK is all
+    // the login needs; steps the client filled in itself show as connect will walk
+    // them for the loaded character's realm. Callers suppress dirtying.
+    private void ShowBoardLogonSteps(BbsProfile board)
+    {
         LogonSteps.Clear();
         if (board.LogonSteps is { } saved)
         {
@@ -1184,14 +1220,34 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
             _autoFilledSetup = BuiltInBbses.ForGameDataSet(RealmSetFor(board, board.Name));
             AddLogonSteps(_autoFilledSetup);
         }
-        _suppressDirty = prev;
-        RefreshImportSources(board.Name);
     }
 
-    // A logon-step edit: into the cached board, so OK saves it with the BBS.
+    partial void OnLogonStepsForCharacterChanged(bool value)
+    {
+        if (_suppressDirty) return;
+        if (value)
+        {
+            _autoFilledSetup = null;
+        }
+        else if (SelectedBbsName is { } name && _loaded.TryGetValue(name, out BbsProfile? board))
+        {
+            _suppressDirty = true;
+            ShowBoardLogonSteps(board);
+            _suppressDirty = false;
+        }
+        CredentialsDirty();
+    }
+
+    // A logon-step edit: the character's own go with its login; the board's into
+    // the cached board, so OK saves them with the BBS.
     private void LogonStepsChanged()
     {
         if (_suppressDirty) return;
+        if (LogonStepsForCharacter)
+        {
+            CredentialsDirty();
+            return;
+        }
         if (SelectedBbsName is { } name && _loaded.TryGetValue(name, out BbsProfile? board))
         {
             board.LogonSteps = LogonSteps.Select(vm => vm.ToModel()).ToList();
@@ -1270,6 +1326,10 @@ public sealed partial class BbsSectionViewModel : SettingsSectionViewModel
         BackscrollWheelLines = defaults.BackscrollWheelLines;
         DisconnectPattern = defaults.DisconnectPattern;
         LogonSteps.Clear();
+        bool prev = _suppressDirty;
+        _suppressDirty = true;
+        LogonStepsForCharacter = false;
+        _suppressDirty = prev;
         _autoFilledSetup = null;
         ImportSourceOptions.Clear();
         OnPropertyChanged(nameof(HasImportSources));

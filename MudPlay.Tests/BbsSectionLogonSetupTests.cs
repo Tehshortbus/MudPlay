@@ -10,7 +10,8 @@ using Xunit;
 namespace MudPlay.Tests;
 
 // The Settings BBS tab's logon steps, the board's own and shared by every character
-// on it (issue #1219). Picking a realm's game data set fills in the setup that data
+// on it (issue #1219), or one character's own when checked "only for this
+// character" (Paradigm accounts pick a character slot each). Picking a realm's game data set fills in the setup that data
 // was exported for, Anomaly, Paradigm or Stock, only where nothing is set yet; the
 // Connection header's Apply setup puts one in over what's there; another board's
 // steps can be imported.
@@ -164,6 +165,41 @@ public sealed class BbsSectionLogonSetupTests : IDisposable
 
         Assert.Equal(["{username}", "{password}", "g"], Sends());
         Assert.Equal("", _vm.Username);
+    }
+
+    // One account's characters answering the board's menus differently (a character
+    // slot each): the one checked "only for this character" logs on with its own
+    // steps, the board's stay as they are for the rest, and unchecking drops its own.
+    [Fact]
+    public void ACharactersOwnSteps_AreItsAlone_AndUncheckingGoesBackToTheBoards()
+    {
+        _profile.SaveAs(_board, "Alpha");
+        _vm.LogonSteps[2].Send = "g";
+        _vm.Apply();
+        _profile.CreateProfile(_board, "Beta");
+        _profile.Load(_board, "Beta");
+
+        _vm.LogonStepsForCharacter = true;
+        _vm.AddLogonStepCommand.Execute(null);
+        _vm.LogonSteps[3].WaitForPattern = "Character Selection";
+        _vm.LogonSteps[3].Send = "2";
+        _vm.Apply();
+
+        Assert.Equal(["{username}", "{password}", "g"], new BbsProfileStore().Get(_board)!.LogonSteps!.Select(st => st.Send));
+        _profile.Load(_board, "Alpha");
+        Assert.False(_vm.LogonStepsForCharacter);
+        Assert.Equal(["{username}", "{password}", "g"], Sends());
+        Assert.Null(_profile.Current!.BbsCredentials?.GetValueOrDefault(_board)?.LogonSteps);
+        _profile.Load(_board, "Beta");
+        Assert.True(_vm.LogonStepsForCharacter);
+        Assert.Equal(["{username}", "{password}", "g", "2"], Sends());
+        Assert.Equal("2", _profile.Current!.BbsCredentials![_board].LogonSteps![^1].Send);
+
+        _vm.LogonStepsForCharacter = false;
+        Assert.Equal(["{username}", "{password}", "g"], Sends());
+        _vm.Apply();
+        Assert.Null(_profile.Current!.BbsCredentials![_board].LogonSteps);
+        Assert.Equal(3, new BbsProfileStore().Get(_board)!.LogonSteps!.Count);
     }
 
     [Fact]
