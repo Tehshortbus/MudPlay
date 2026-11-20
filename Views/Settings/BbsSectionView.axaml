@@ -506,6 +506,11 @@
                     <TextBlock Classes="FieldLabel" TextWrapping="Wrap" Margin="0,4,0,0"
                                Text="Only add steps to LOG IN to the game — never log-out or quit steps (e.g. a &quot;log off? (Y/N)&quot; confirmation). A logout step will never match on reconnect and stalls the automatic re-entry."/>
 
+                    <CheckBox Margin="0,6,0,0" IsChecked="{Binding LogonStepsForCharacter}"
+                              IsEnabled="{Binding HasProfile}"
+                              Content="Only for this character"
+                              ToolTip.Tip="Checked, these steps are the loaded character's own and it logs on with them instead of the BBS's; use it when characters on one account answer the BBS's menus differently (a character slot, a realm). Unchecked, the character logs on with the BBS's steps, shared by every character on it."/>
+
                     <StackPanel Spacing="4" Margin="0,6,0,0">
                         <Grid ColumnDefinitions="*,140,Auto,Auto,Auto" Margin="0,0,0,2">
                             <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Message"/>

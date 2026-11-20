@@ -7,8 +7,9 @@ using Xunit;
 namespace MudPlay.Tests;
 
 // The once-per-install move of the logon steps from the characters that each kept a
-// copy (profiles saved through 3.206.x) onto their board (issue #1219). The boards
-// and characters are written under the scratch data root, the characters as an old
+// copy (profiles saved through 3.206.4) onto their board (issue #1219), and back to
+// the characters whose copy differs from the board's, as their own. The boards and
+// characters are written under the scratch data root, the characters as an old
 // release wrote them, and deleted in Dispose.
 public sealed class LogonStepMigrationTests : IDisposable
 {
@@ -112,7 +113,52 @@ public sealed class LogonStepMigrationTests : IDisposable
         Assert.Equal("x", LastSend(setBeatsFilled));
         Assert.Equal("y", LastSend(mostShared));
         Assert.Equal("y", LastSend(newest));
-        Assert.Contains(_log.Snapshot(), e => e.Message.Contains("B1 had other logon steps", StringComparison.Ordinal));
+    }
+
+    // A character whose steps differ from the board's it was given keeps them as its
+    // own, so it logs on as before (one account's characters picking different
+    // slots); one with the board's has none of its own.
+    [Fact]
+    public void CharactersWhoseStepsDifferFromTheBoards_KeepThemAsTheirOwn()
+    {
+        string board = Board();
+        ProfileRef[] characters =
+        [
+            Character(board, "B1", "1", minutesAgo: 0),
+            Character(board, "B2", "2", minutesAgo: 10),
+            Character(board, "B3", "2", minutesAgo: 20),
+        ];
+        BbsProfileStore boards = new();
+        LogonStepMigration.MoveToBoards(boards, characters, _log);
+
+        Assert.Equal([$"B1 on {board}"], LogonStepMigration.KeepCharactersOwn(boards, characters, _log));
+
+        Assert.Equal("2", LastSend(board));
+        ProfileService profiles = TestProfiles.Service();
+        profiles.Load(board, "B1");
+        Assert.Equal("1", profiles.Current!.BbsCredentials![board].LogonSteps![^1].Send);
+        Assert.Equal("enc-B1", profiles.Current.BbsCredentials[board].EncryptedUsername);
+        Assert.DoesNotContain("MenuNavSteps", File.ReadAllText(AppPaths.CharacterProfileFile(board, "B1")));
+        profiles.Load(board, "B2");
+        Assert.Null(profiles.Current!.BbsCredentials![board].LogonSteps);
+    }
+
+    // An install that moved the steps to the board without keeping any per character
+    // (3.206.5): a character whose old copy is still on file and differs gets it
+    // back; run again, nothing changes.
+    [Fact]
+    public void AfterTheBoardsAlreadyTookTheSteps_ADifferingCharacterStillGetsItsOwnBack_Once()
+    {
+        string board = Board(new BbsProfile { LogonSteps = [new() { WaitForPattern = "Menu:", Send = "kept" }] });
+        ProfileRef alpha = Character(board, "Alpha", "g");
+
+        Assert.Single(LogonStepMigration.KeepCharactersOwn(new BbsProfileStore(), [alpha], _log));
+        Assert.Empty(LogonStepMigration.KeepCharactersOwn(new BbsProfileStore(), [alpha], _log));
+
+        Assert.Equal("kept", LastSend(board));
+        ProfileService profiles = TestProfiles.Service();
+        profiles.Load(board, "Alpha");
+        Assert.Equal("g", profiles.Current!.BbsCredentials![board].LogonSteps![^1].Send);
     }
 
     // Only the client's own fill-in on file: the board keeps it as the client's, so

@@ -1,10 +1,10 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.206.5**
+> **Version 3.206.6**
 >
-> - Logon steps are the BBS's, shared by every character on it; login name, password and sysop powers stay per character
-> - Each board takes its characters' existing logon steps once on update (the ones you set first, then the most shared)
+> - A character can keep its own logon steps on a BBS (Settings → BBS + Display, "Only for this character"), for accounts whose characters each pick their own slot or realm
+> - Characters whose old logon steps differ from their BBS's get them back as their own on update
 <!-- current-version:end -->
 
 A modern Telnet terminal client for **MajorMUD** and other BBS door games, built in C# / .NET 10 with [Avalonia](https://avaloniaui.net/). It renders a faithful CP437 cell grid with full VT100/ANSI parsing, and layers a MegaMUD-style automation suite (combat, party, navigation, healing, and more) on top — all in modeless, dockable windows so the terminal stays live while you configure anything.

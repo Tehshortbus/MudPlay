@@ -89,13 +89,17 @@ public static class BuiltInBbses
 
     // The logon steps connect walks for a character playing realm on board, and what
     // was decided, for the log (null when the board's saved steps are used as they
-    // are). With none saved, the setup the realm's game data calls for. Saved steps
-    // the client filled in itself, still unedited, give way to the setup installed
-    // data calls for this character's realm; the board keeps its own, since another
-    // of its realms may want them.
-    public static (IReadOnlyList<MenuStep> Steps, string? Note) LogonFor(BbsProfile board, RealmProfile? realm, string? globalDefaultSet)
+    // are). The character's own steps (login), when it has them, else the board's.
+    // With none saved, the setup the realm's game data calls for. Saved steps the
+    // client filled in itself, still unedited, give way to the setup installed data
+    // calls for this character's realm; the board keeps its own, since another of
+    // its realms may want them.
+    public static (IReadOnlyList<MenuStep> Steps, string? Note) LogonFor(
+        BbsProfile board, BbsCredentials? login, RealmProfile? realm, string? globalDefaultSet)
     {
         ArgumentNullException.ThrowIfNull(board);
+        if (login?.LogonSteps is { } own)
+            return (own, "the character's own logon steps, not the board's");
         if (board.LogonSteps is not { } saved)
         {
             Preset setup = ForRealm(realm, globalDefaultSet);
