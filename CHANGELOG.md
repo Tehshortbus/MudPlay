@@ -1,5 +1,10 @@
 # Version history
 
+## 3.206.7
+
+- A party walk short of a gate item only for members who didn't answer the count (a client that refuses `@have`), with no copy to be fetched, now asks whether to walk on instead of failing
+- bug reports addressed: paradigm-20261120-172705
+
 ## 3.206.6
 
 - A character can keep its own logon steps on a BBS (Settings → BBS + Display, "Only for this character"), for accounts whose characters each pick their own slot or realm

@@ -56,6 +56,12 @@ public sealed partial class PartyInventoryProbe : IDisposable
 
         // True when at least one member reported holding the item.
         public bool AnyHeld => TotalCount > 0;
+
+        // The members who didn't answer, when they alone are short of one each:
+        // everyone who answered (or was credited) holds one. Empty otherwise.
+        public IReadOnlyList<string> SilentAloneShort() =>
+            Unanswered is { Count: > 0 } silent && CountsByMember.Values.All(n => n >= 1)
+                ? silent.ToList() : Array.Empty<string>();
     }
 
     private sealed class PendingQuery
