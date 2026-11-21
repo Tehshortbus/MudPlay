@@ -27,6 +27,12 @@ namespace MudPlay.Game.Map;
 // leader crosses an exit that needs the item before that trip ends. An item whose
 // uses can't be read is treated the same way.
 //
+// Walking on without a count. When a member who didn't answer can't be fetched a
+// copy (no source can be reached), the user is asked whether to walk on regardless
+// (user, 2026-11-20). A yes credits that member with one copy, for that trip only:
+// not a hand-over, so their own answer drops it rather than replacing it, and the
+// next trip asks again.
+//
 // Never saved: the party doesn't outlive the session either.
 public sealed class PartyHandOverMemory
 {
@@ -44,8 +50,9 @@ public sealed class PartyHandOverMemory
     // Trip is the journey a limited-use item was handed over on; null for an item
     // that is kept, whose hand-over stands until the party changes. Silent says
     // the member's last word on the item was no answer at all, so that they hold
-    // it rests on the hand-over alone.
-    private sealed record Remembered(string ItemName, int Copies, object? Trip, bool Silent);
+    // it rests on the hand-over alone. Vouched is the user's walk-on, not a
+    // hand-over, and is always for its trip alone.
+    private sealed record Remembered(string ItemName, int Copies, object? Trip, bool Silent, bool Vouched = false);
 
     private readonly Func<int, bool> _hasLimitedUses;
     private readonly Func<object?> _journey;
@@ -128,8 +135,10 @@ public sealed class PartyHandOverMemory
         {
             if (!_byMember.TryGetValue(sent.Recipient, out Dictionary<int, Remembered>? items))
                 _byMember[sent.Recipient] = items = new Dictionary<int, Remembered>();
-            // Copies handed over on an earlier trip went with that trip.
+            // Copies handed over on an earlier trip went with that trip, and a
+            // walk-on was no copy at all.
             int before = items.TryGetValue(sent.ItemId, out Remembered? known) && ReferenceEquals(known.Trip, trip)
+                && !known.Vouched
                 ? known.Copies : 0;
             total = before + copies;
             // A member credited at the count is not among its unanswered, and is
@@ -169,6 +178,14 @@ public sealed class PartyHandOverMemory
             foreach (KeyValuePair<string, int> answer in counted.CountsByMember)
             {
                 if (Find(answer.Key, id) is not { } known) continue;
+                if (known.Vouched)
+                {
+                    Forget(answer.Key, id);
+                    (notes ??= new()).Add(
+                        $"path item {id} ('{known.ItemName}'): {answer.Key} answers {answer.Value} — "
+                        + "taken at their word over the walk-on that credited them");
+                    continue;
+                }
                 if (answer.Value > 0)
                     _byMember[answer.Key][id] = known with { Copies = answer.Value, Silent = false };
                 else Forget(answer.Key, id);
@@ -192,9 +209,11 @@ public sealed class PartyHandOverMemory
                 (credited ??= new(StringComparer.OrdinalIgnoreCase))[silent] = credit;
                 if (!known.Silent) _byMember[silent][id] = known with { Silent = true };
                 if (!noteCredits) continue;
-                (notes ??= new()).Add(
-                    $"path item {id} ('{known.ItemName}'): {silent} didn't answer — credited with the {credit} "
-                    + "handed over earlier, so none is fetched for them");
+                (notes ??= new()).Add(known.Vouched
+                    ? $"path item {id} ('{known.ItemName}'): {silent} didn't answer — credited with one, since you said "
+                        + "to walk on, so none is fetched for them"
+                    : $"path item {id} ('{known.ItemName}'): {silent} didn't answer — credited with the {credit} "
+                        + "handed over earlier, so none is fetched for them");
             }
         }
         LogLapsed(lapsed);
@@ -224,8 +243,11 @@ public sealed class PartyHandOverMemory
         lock (_gate)
         {
             if (_byMember.Count == 0) return false;
+            // A walk-on for an item that is kept says the same after the gate as
+            // before it.
             foreach (KeyValuePair<string, Dictionary<int, Remembered>> kv in _byMember)
-                if (kv.Value.TryGetValue(itemId, out Remembered? known) && known.Trip is not null)
+                if (kv.Value.TryGetValue(itemId, out Remembered? known) && known.Trip is not null
+                    && (!known.Vouched || _hasLimitedUses(itemId)))
                     (spent ??= new()).Add(kv.Key);
             if (spent is null) return false;
             foreach (string member in spent) Forget(member, itemId);
@@ -285,6 +307,28 @@ public sealed class PartyHandOverMemory
         _log?.Info(LogCategory,
             $"the trip is over: the hand-over of {string.Join(", ", over.Select(o => $"{o.ItemName} to {o.Member}"))} "
             + "is no longer remembered (a limited number of uses)");
+    }
+
+    // The user said to walk on although these members didn't answer the count of
+    // the item and none could be fetched for them: each is credited with one for
+    // the trip under way. With no trip, there is nothing to walk on.
+    public void Vouch(int itemId, string itemName, IReadOnlyCollection<string> members)
+    {
+        ArgumentNullException.ThrowIfNull(members);
+        if (itemId <= 0 || string.IsNullOrWhiteSpace(itemName) || members.Count == 0) return;
+        if (_journey() is not { } trip) return;
+        lock (_gate)
+        {
+            foreach (string member in members)
+            {
+                if (!_byMember.TryGetValue(member, out Dictionary<int, Remembered>? items))
+                    _byMember[member] = items = new Dictionary<int, Remembered>();
+                items[itemId] = new Remembered(itemName, 1, trip, Silent: true, Vouched: true);
+            }
+        }
+        _log?.Info(LogCategory,
+            $"path item {itemId} ('{itemName}'): you said to walk on — {string.Join(", ", members)} taken to hold one "
+            + "for this trip");
     }
 
     // The game refused a give, naming the player it was for when its line does. The
@@ -353,7 +397,8 @@ public sealed class PartyHandOverMemory
                 var parts = new List<string>();
                 foreach (KeyValuePair<string, Dictionary<int, Remembered>> member in _byMember)
                     foreach (Remembered r in member.Value.Values)
-                        parts.Add($"{member.Key}: {r.ItemName} x{r.Copies}" + (r.Trip is null ? "" : " (this trip only)"));
+                        parts.Add($"{member.Key}: {r.ItemName} x{r.Copies}"
+                            + (r.Vouched ? " (walked on without a count, this trip only)" : r.Trip is null ? "" : " (this trip only)"));
                 foreach (Awaited a in _awaited)
                     parts.Add($"{a.Recipient}: {a.ItemName} (sent {(now - a.SentAt).TotalSeconds:0}s ago, not confirmed)");
                 return parts.Count == 0 ? "(none)" : string.Join("; ", parts);

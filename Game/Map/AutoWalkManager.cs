@@ -1539,11 +1539,17 @@ public sealed class AutoWalkManager : IRecoverableEngine
                 // scope has closed), so DescribeExitBlock reports the real
                 // acquirable-gate reasons on the front-door route's hops.
                 bool unpaid = false;
+                IReadOnlyList<int> missingItems = Array.Empty<int>();
                 string reason = describePath is { Count: > 0 }
-                    ? DescribeBlockedRoute(source.Key, describePath, out unpaid)
+                    ? DescribeBlockedRoute(source.Key, describePath, out unpaid, out missingItems)
                     : DescribeNoPlainRoute(source.Key, destination);
+                // Read before the failure ends the journey, so the handler can pick
+                // the same journey back up.
+                WalkJourney? failedJourney = _legToJourneyGoal ? _journey : null;
                 if (unpaid) FailUnpaid(destination, reason);
                 else Raise(new WalkEvent(WalkEventKind.Failed, reason, destination));
+                if (!unpaid && missingItems.Count > 0 && failedJourney is { OwnedLeg: false })
+                    _itemGateFailureHandler?.Invoke(failedJourney, missingItems);
                 return false;
             }
             else
@@ -1891,9 +1897,11 @@ public sealed class AutoWalkManager : IRecoverableEngine
     // old fixed "level, toll, or class" line that misnamed a key-door block.
     //
     // unpaid: a toll or fare the crosser can't pay is among the reasons.
-    private string DescribeBlockedRoute(RoomKey source, IReadOnlyList<Direction> ungatedPath, out bool unpaid)
+    private string DescribeBlockedRoute(RoomKey source, IReadOnlyList<Direction> ungatedPath, out bool unpaid,
+        out IReadOnlyList<int> missing)
     {
         unpaid = false;
+        missing = Array.Empty<int>();
         ExitBlockReason reasons = ExitBlockReason.None;
         // The first toll and the first paid transport that turn the crosser away,
         // kept whole so the message names the room, the way, the price and how
@@ -1939,6 +1947,7 @@ public sealed class AutoWalkManager : IRecoverableEngine
         if (closedRooms is { } closed && Filter is { } filter)
             return DescribeClosedRooms(source, cur, closed.First, closed.Count, filter);
         unpaid = tollGate is not null || fareGate is not null;
+        missing = missingItems;
         return FormatBlockReasons(reasons, missingItems, levelGate, doorGate, tollGate, fareGate);
     }
 
@@ -2046,7 +2055,7 @@ public sealed class AutoWalkManager : IRecoverableEngine
         if (probe is null || probe.Count == 0)
             probe = _bfs.FindPath(leg.From, leg.To, Filter, ignoreExitGates: true);
         string why = probe is { Count: > 0 }
-            ? DescribeBlockedRoute(leg.From, probe, out _)
+            ? DescribeBlockedRoute(leg.From, probe, out _, out _)
             : DescribeNoPlainRoute(leg.From, leg.To);
 
         string exit = $"the exit {leg.GateDir.ToLongName()} of {NameRoom(leg.GateRoom)}";
@@ -2192,6 +2201,16 @@ public sealed class AutoWalkManager : IRecoverableEngine
     {
         ArgumentNullException.ThrowIfNull(handler);
         _unpaidCrossingHandler = handler;
+    }
+
+    // Told when a journey's walk to its destination has no route for want of gate
+    // items, with the journey (already ended) and the items, so the handler can
+    // settle what it can and pick the journey back up.
+    private Action<WalkJourney, IReadOnlyList<int>>? _itemGateFailureHandler;
+    public void SetItemGateFailureHandler(Action<WalkJourney, IReadOnlyList<int>> handler)
+    {
+        ArgumentNullException.ThrowIfNull(handler);
+        _itemGateFailureHandler = handler;
     }
 
     // "a level requirement (1/1420 (Marble Passage) needs level 30+)" — names the

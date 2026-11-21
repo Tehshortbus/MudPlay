@@ -295,6 +295,31 @@ public sealed class PartyInventoryProbeTests
         Assert.Equal(new[] { "Bob" }, r.CountsByMember.Keys);
     }
 
+    // A member whose client turns the count down answers nothing the count can read,
+    // so they're unanswered. They alone are short when everyone who answered holds
+    // one: the copies a leader can only fetch, and asks about walking on without
+    // when it can't.
+    [Theory]
+    [InlineData("yes - 1x 'rope'", true)]
+    [InlineData("no - nothing matching 'rope'", false)]
+    public async Task AMemberWhoRefusesTheCount_IsAloneShort_OnlyWhenEveryoneWhoAnsweredHoldsOne(
+        string bobsAnswer, bool riaAloneShort)
+    {
+        var h = new Harness();
+        h.AddMember("Bob");
+        h.AddMember("Ria");
+        h.GoInParty();
+
+        Task<PartyInventoryProbe.PartyItemResult> q = h.Probe.QueryAsync(175, "rope");
+        h.Reply("Bob", bobsAnswer);
+        h.Reply("Ria", "{command invalid or not allowed}");
+        h.FireWindows();
+        PartyInventoryProbe.PartyItemResult r = await q.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(new[] { "Ria" }, r.Unanswered);
+        Assert.Equal(riaAloneShort ? new[] { "Ria" } : Array.Empty<string>(), r.SilentAloneShort());
+    }
+
     [Fact]
     public async Task EveryoneAnswering_LeavesNobodyUnanswered()
     {

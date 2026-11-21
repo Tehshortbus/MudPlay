@@ -312,7 +312,7 @@ How to keep it current:
 
 ### AutoWalkManagerTests.cs
 - Covers: Game/Map/AutoWalkManager, and through it RoomTracker, MovementCoordinator, EngineRecoveryGate, MovementFilter, SpecialExitDispatch, ParadigmPositionResolver and Game/Health/HealthManager (flee). It also holds tests for Game/Map/LoopRunner, LoopWalkHandoff and TeleportCatalog, and for ViewModels/Settings/TeleportChoiceViewModel.
-- Checks: - Walking a route: wire payloads, advancing on confirmed landings, a refused move's retry and replan budgets (confusion exempt), replanning on desync / Suspect / Lost, and supersede (loud vs silent, deferred mid-step). - Pause and resume: gate holds, in-flight steps not re-sent, asking `rm` while Suspect, the stall watchdog, flee peek and hand-back across a disconnect. - Special exits: doors (open, abandon and go round, not here), hidden / text / teleport / multi-action / rolled-reveal / trapped exits; gate-item, boss-stop and item-announce holds; blocked-route failure text; which teleports an automatic walk may take; the loop walk-to handoff (a walk there that failed with nothing read after its last command leaves the loop to the reconnect's restart, report `paradigm-20261031-051327`); the teleport catalog.
+- Checks: - Walking a route: wire payloads, advancing on confirmed landings, a refused move's retry and replan budgets (confusion exempt), replanning on desync / Suspect / Lost, and supersede (loud vs silent, deferred mid-step). - Pause and resume: gate holds, in-flight steps not re-sent, asking `rm` while Suspect, the stall watchdog, flee peek and hand-back across a disconnect. - Special exits: doors (open, abandon and go round, not here), hidden / text / teleport / multi-action / rolled-reveal / trapped exits; gate-item, boss-stop and item-announce holds; blocked-route failure text, and a journey whose leg to its destination fails for want of gate items handed, ended, with its items to the item-gate failure handler (report `paradigm-20261120-172705`); which teleports an automatic walk may take; the loop walk-to handoff (a walk there that failed with nothing read after its last command leaves the loop to the reconnect's restart, report `paradigm-20261031-051327`); the teleport catalog.
 - Why: reports `paradigm-20260901-091527`, `-100523`, `-201514`, `paradigm-20260902-173754`, `paradigm-20260911-100708`, `-103315`, `paradigm-20260924-053941`, `-120529`, `paradigm-20260928-125823`, `paradigm-20261004-201232`, `-204354`, `paradigm-20261006-221209`, `paradigm-20261007-202509`, `paradigm-20261009-011133`, `-082958`, `paradigm-20260810-201953`, `paradigm-20260818-000725`, `stock-20260731-010401`, `stock-20260914-000112`. They guard against a walk that stalls, double-sends, drifts past its route or fails too eagerly.
 
 ### BackscrollViewModelTests.cs
@@ -2960,8 +2960,8 @@ How to keep it current:
 
 ### PartyInventoryProbeTests.cs
 - Covers: Game/Remote/PartyInventoryProbe (+ PartyPathItemGate)
-- Checks: @have broadcast; reply parsing including brace-wrapped and count-only (with or without MegaMUD's full stop); window; unanswered members; invitees. Two members' `{Yes: 1.}` answers, fed as the game sent them, leave nothing to buy. An answer it can't read, or a count too big for an int, is logged and not counted, and the log line is masked by the bug report's chat censor.
-- Why: Party path-item counts; report `paradigm-20261019-041600` (two mine passes bought that the party held).
+- Checks: @have broadcast; reply parsing including brace-wrapped and count-only (with or without MegaMUD's full stop); window; unanswered members, including one whose client refuses the count (`{command invalid or not allowed}`), who alone is short only when everyone who answered holds one (`SilentAloneShort`); invitees. Two members' `{Yes: 1.}` answers, fed as the game sent them, leave nothing to buy. An answer it can't read, or a count too big for an int, is logged and not counted, and the log line is masked by the bug report's chat censor.
+- Why: Party path-item counts; report `paradigm-20261019-041600` (two mine passes bought that the party held); report `paradigm-20261120-172705` (the walk-on question for a member who refused the rope count).
 
 ### PartyLevelBoundsTests.cs
 - Covers: Game/Map/PartyLevelBounds
@@ -2990,8 +2990,8 @@ How to keep it current:
 
 ### PartyPathItemGateTests.cs
 - Covers: Game/Map/PartyPathItemGate, PartyHandOverMemory
-- Checks: Follower borrowing and leader provisioning; substitutes; walk hold and release; hold caps; later legs; hand-over memory.
-- Why: paradigm-20261009-011133; user 2026-10-09.
+- Checks: Follower borrowing and leader provisioning; substitutes; walk hold and release; hold caps; later legs; hand-over memory; a walk-on without a count credits the silent member for that trip alone (nothing fetched or handed over, kept past a gate of a kept item, asked again next trip, dropped by their own answer), and a hand-over after a walk-on counts only the copies handed over.
+- Why: paradigm-20261009-011133; user 2026-10-09; report `paradigm-20261120-172705` (user 2026-11-20: ask whether to walk on when a silent member's copy can't be fetched).
 
 ### PartyPollerTests.cs
 - Covers: Game/PartyPoller

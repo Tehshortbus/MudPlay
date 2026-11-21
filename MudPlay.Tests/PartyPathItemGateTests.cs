@@ -1748,6 +1748,7 @@ public sealed class PartyPathItemGateTests
 
     private const int Ring = 474;     // unlimited uses: kept for good
     private const int Ticket = 924;   // one use: a gate can use it up
+    private const int Rope = 191;     // unlimited uses: kept for good
 
     // A leader with a spare and one member, Sil, who never answers: the spare
     // goes to Sil. confirmed is the game's line coming back for that give.
@@ -1789,6 +1790,51 @@ public sealed class PartyPathItemGateTests
         Assert.Empty(h.Forwarded);
         Assert.Empty(h.Sent);
         Assert.DoesNotContain("no answer from", h.Gate.JourneyCountsSummary);
+    }
+
+    // The user said to walk on although Ria didn't answer the rope count and none
+    // could be fetched: on that trip she is taken to hold one and nothing is fetched
+    // or handed over; crossing a gate of an item that is kept leaves that standing.
+    // The next trip asks again, and so does her own answer, which drops the walk-on.
+    [Fact]
+    public void AWalkOnWithoutACount_CreditsTheSilentMember_ForThatTripAlone()
+    {
+        var h = new Harness { IsLeader = true, SearchEnabled = false, Journey = new object() };
+        h.Names[Rope] = "rope and grapple";
+        h.SelfCounts[Rope] = 1;
+        h.Results[Rope] = Answer(Rope, new[] { "Ria" }, ("Cidir", 1));
+
+        h.HandOvers.Vouch(Rope, "rope and grapple", new[] { "Ria" });
+        h.Gate.OnPathItemsRequired(new[] { Rope });
+
+        Assert.Empty(h.Forwarded);
+        Assert.Empty(h.Sent);
+        Assert.False(h.HandOvers.OnGateCrossed(Rope));
+        Assert.Contains("Ria: rope and grapple x1 (walked on without a count", h.HandOvers.Summary);
+
+        NextTrip(h, Rope);
+        Assert.Equal((Rope, 2), Assert.Single(h.ForwardedReq));
+
+        h.Journey = new object();
+        h.HandOvers.Vouch(Rope, "rope and grapple", new[] { "Ria" });
+        h.Results[Rope] = Answer(Rope, ("Cidir", 1), ("Ria", 1));
+        h.Gate.OnPathItemsRequired(new[] { Rope });
+        Assert.Equal("(none)", h.HandOvers.Summary);
+        Assert.Single(h.ForwardedReq);
+    }
+
+    // A walk-on is no copy: a hand-over confirmed on the same trip counts only itself.
+    [Fact]
+    public void AHandOverAfterAWalkOn_IsRememberedAsTheCopiesHandedOver()
+    {
+        var h = new Harness { IsLeader = true, Journey = new object() };
+        h.LimitedUse.Add(Ticket);
+        h.HandOvers.Vouch(Ticket, "room ticket", new[] { "Sil" });
+
+        h.HandOvers.NoteGiveSent(Ticket, "room ticket", "Sil", recipientSilent: true);
+        h.HandOvers.OnItemGivenAway("room ticket", 1, "Sil");
+
+        Assert.Equal("Sil: room ticket x1 (this trip only)", h.HandOvers.Summary);
     }
 
     // A give the game refused leaves the copy with the leader, and the line that

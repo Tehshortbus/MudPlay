@@ -9825,6 +9825,9 @@ public sealed class AppServices
             NoticeUnpaid($"[Navigation: no walk to {where} - {reason}]");
         });
         LoopRunner.SetUnpaidCrossingHandler(reason => NoticeUnpaid($"[Navigation: {reason}]"));
+        // Posted: the walk can fail from inside the emulator's message pump.
+        Walker.SetItemGateFailureHandler((journey, items) =>
+            Avalonia.Threading.Dispatcher.UIThread.Post(() => OnItemGateWalkFailed(journey, items)));
         // Posted: the restart can be decided inside the line pump, where writing to
         // the terminal re-enters it.
         LoopRunner.SetReconnectNotice(text => Avalonia.Threading.Dispatcher.UIThread.Post(() => WriteTerminalNotice(text)));
@@ -15667,8 +15670,12 @@ public sealed class AppServices
     // each holds; an item the party is short of then gates its exits for planning,
     // so the route card names it. Swapped whole, never edited in place: the plan
     // reads it from a background thread.
-    private volatile IReadOnlyDictionary<int, (int Need, int OthersHeld)> _partyGateCounts =
-        new Dictionary<int, (int, int)>();
+    //
+    // SilentShort names the members who didn't answer, when they alone are short:
+    // every member who answered holds one. Those are the copies the leader can only
+    // fetch, and when it can't, the user is asked whether to walk on regardless.
+    private volatile IReadOnlyDictionary<int, (int Need, int OthersHeld, IReadOnlyList<string> SilentShort)> _partyGateCounts =
+        new Dictionary<int, (int, int, IReadOnlyList<string>)>();
 
     // The members' answers behind each count above, kept for the walk the card
     // starts: PartyPathItemGate decides on the numbers the card showed instead of
@@ -15721,7 +15728,7 @@ public sealed class AppServices
     // reach one each. The leader's count is read live, so buying the missing
     // copies opens the gate without another round of asking.
     private bool IsPartyShortOfGateItem(int itemId) =>
-        _partyGateCounts.TryGetValue(itemId, out (int Need, int OthersHeld) c)
+        _partyGateCounts.TryGetValue(itemId, out (int Need, int OthersHeld, IReadOnlyList<string> SilentShort) c)
         && CountItemCarried(itemId) + c.OthersHeld < c.Need;
 
     // "darkwood ring (one each for your party of 3; 2 held)" on a route card, or
@@ -15730,7 +15737,7 @@ public sealed class AppServices
     {
         string? name = ItemNames.GetName(itemId);
         if (name is null || !IsPartyShortOfGateItem(itemId)) return name;
-        (int need, int othersHeld) = _partyGateCounts[itemId];
+        (int need, int othersHeld, _) = _partyGateCounts[itemId];
         return $"{name} (one each for your party of {need}; {CountItemCarried(itemId) + othersHeld} held)";
     }
 
@@ -15739,13 +15746,14 @@ public sealed class AppServices
     {
         get
         {
-            IReadOnlyDictionary<int, (int Need, int OthersHeld)> counts = _partyGateCounts;
+            IReadOnlyDictionary<int, (int Need, int OthersHeld, IReadOnlyList<string> SilentShort)> counts = _partyGateCounts;
             if (counts.Count == 0) return "(none)";
             return string.Join("; ", counts.Select(kv =>
             {
                 int held = CountItemCarried(kv.Key) + kv.Value.OthersHeld;
                 return $"{ItemNames.GetName(kv.Key) ?? $"item #{kv.Key}"}: party of {kv.Value.Need} holds {held}"
-                    + (held < kv.Value.Need ? " (short — gates closed to the plan)" : "");
+                    + (held < kv.Value.Need ? " (short — gates closed to the plan)" : "")
+                    + (kv.Value.SilentShort.Count > 0 ? $"; short only by {string.Join(", ", kv.Value.SilentShort)}, who didn't answer" : "");
             }));
         }
     }
@@ -15754,18 +15762,90 @@ public sealed class AppServices
     {
         _cardCounts.Remove(itemId);
         if (!_partyGateCounts.ContainsKey(itemId)) return;
-        var next = new Dictionary<int, (int, int)>(_partyGateCounts);
+        var next = new Dictionary<int, (int, int, IReadOnlyList<string>)>(_partyGateCounts);
         next.Remove(itemId);
         _partyGateCounts = next;
         Log.Info(Game.Map.AutoSearchManager.LogCategory,
             $"party gate count: item {itemId} handed out — its gates are open to the party again");
     }
 
+    // A journey to its destination found no route for want of gate items. Where
+    // the party is short of one only by the copies of members who didn't answer its
+    // count (the leader and everyone who answered hold one), and the leader couldn't
+    // fetch them, the user is asked whether to walk on (user, 2026-11-20; report
+    // paradigm-20261120-172705, where the only rope shop was behind the rope gate).
+    // A yes credits those members with one copy for the trip and picks the journey
+    // back up: whoever holds one crosses, and one who doesn't is turned back at the
+    // exit and drops out of the party. One question at a time.
+    private bool _askingToWalkOn;
+
+    private void OnItemGateWalkFailed(Game.Map.WalkJourney journey, IReadOnlyList<int> missingItems)
+    {
+        if (_askingToWalkOn) return;
+        IReadOnlyDictionary<int, (int Need, int OthersHeld, IReadOnlyList<string> SilentShort)> counts = _partyGateCounts;
+        var silentShort = new List<(int Id, string Name, IReadOnlyList<string> Members)>();
+        foreach (int id in missingItems.Distinct())
+        {
+            if (!IsPartyShortOfGateItem(id)) return;
+            (_, _, IReadOnlyList<string> silent) = counts[id];
+            if (silent.Count == 0 || CountItemCarried(id) < 1) return;
+            silentShort.Add((id, ItemNames.GetName(id) ?? $"item #{id}", silent));
+        }
+        if (silentShort.Count == 0) return;
+
+        string items = string.Join(", ", silentShort.Select(i => $"{i.Name} ({string.Join(", ", i.Members)})"));
+        Log.Info(Game.Map.AutoSearchManager.LogCategory,
+            $"party gate count: the walk to {journey.Destination} can't fetch a copy for the member(s) who didn't answer "
+            + $"the count of {items} — asking whether to walk on");
+        _askingToWalkOn = true;
+        _ = AskToWalkOnAsync(journey, silentShort, items);
+    }
+
+    private async Task AskToWalkOnAsync(
+        Game.Map.WalkJourney journey, List<(int Id, string Name, IReadOnlyList<string> Members)> silentShort, string items)
+    {
+        bool walkOn;
+        try
+        {
+            IEnumerable<string> who = silentShort.SelectMany(i => i.Members).Distinct(StringComparer.OrdinalIgnoreCase);
+            walkOn = await Confirm.ConfirmAsync(
+                "Walk on without a count?",
+                $"{string.Join(", ", who)} didn't answer the party count of {string.Join(", ", silentShort.Select(i => i.Name))}, "
+                + "and no copy can be fetched for them on the way.\n\n"
+                + "Walk on anyway? Whoever holds one crosses with you; anyone without one is turned back at the exit and "
+                + "drops out of the party.",
+                "Walk on");
+        }
+        finally
+        {
+            _askingToWalkOn = false;
+        }
+        if (!walkOn)
+        {
+            Log.Info(Game.Map.AutoSearchManager.LogCategory, $"party gate count: you said not to walk on without a count of {items}");
+            return;
+        }
+        if (Walker.State is not Game.Map.WalkState.Idle)
+        {
+            Log.Info(Game.Map.AutoSearchManager.LogCategory,
+                $"party gate count: walk on without a count of {items} not done — another walk is under way");
+            return;
+        }
+        var next = new Dictionary<int, (int, int, IReadOnlyList<string>)>(_partyGateCounts);
+        foreach ((int id, _, _) in silentShort) next.Remove(id);
+        _partyGateCounts = next;
+        Log.Info(Game.Map.AutoSearchManager.LogCategory,
+            $"party gate count: walking on to {journey.Destination} without a count of {items}");
+        if (!Walker.ResumeJourney(journey)) return;
+        foreach ((int id, string name, IReadOnlyList<string> members) in silentShort)
+            PartyHandOvers.Vouch(id, name, members);
+    }
+
     internal void ClearPartyShortGateItems(string why)
     {
         _cardCounts.Clear();
         if (_partyGateCounts.Count == 0) return;
-        _partyGateCounts = new Dictionary<int, (int, int)>();
+        _partyGateCounts = new Dictionary<int, (int, int, IReadOnlyList<string>)>();
         Log.Info(Game.Map.AutoSearchManager.LogCategory, $"party gate count: dropped — {why}");
     }
 
@@ -15790,7 +15870,7 @@ public sealed class AppServices
             List<int> toCount = PerMemberGateItemsOnRoute(source, destination, counted);
             if (toCount.Count == 0) return;
 
-            var next = new Dictionary<int, (int, int)>(_partyGateCounts);
+            var next = new Dictionary<int, (int, int, IReadOnlyList<string>)>(_partyGateCounts);
             foreach (int id in toCount)
             {
                 if (GameData.ActiveLoad != countedOn) return;
@@ -15805,7 +15885,7 @@ public sealed class AppServices
                     PartyHandOvers.Reconcile(asked, perPerson: 1, noteCredits: false);
                 int need = 1 + r.Expected;
                 int own = CountItemCarried(id);
-                next[id] = (need, r.TotalCount);
+                next[id] = (need, r.TotalCount, r.SilentAloneShort());
                 _cardCounts[id] = (asked, DateTimeOffset.UtcNow);
                 string members = r.CountsByMember.Count == 0 ? "nobody answered"
                     : string.Join(", ", r.CountsByMember.Select(kv => asked.CountsByMember.ContainsKey(kv.Key)

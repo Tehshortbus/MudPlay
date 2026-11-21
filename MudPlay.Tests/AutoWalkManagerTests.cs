@@ -2963,6 +2963,29 @@ public sealed class AutoWalkManagerTests : IDisposable
         Assert.Equal(WalkState.Walking, walker.State);
     }
 
+    // A walk to its destination with no route for want of a gate item hands the
+    // journey and the item to the handler after its failure, so the journey can be
+    // picked back up (the walk-on question for party members who didn't answer).
+    [Fact]
+    public void BlockedRoute_ItemGate_HandsTheEndedJourneyAndItsItemsToTheHandler()
+    {
+        (AutoWalkManager walker, List<WalkEvent> events) = NewItemGatedWalker(nameResolver: null);
+        var told = new List<(WalkJourney Journey, IReadOnlyList<int> Items)>();
+        walker.SetItemGateFailureHandler((journey, items) =>
+        {
+            Assert.Contains(events, e => e.Kind == WalkEventKind.Failed);
+            told.Add((journey, items));
+        });
+
+        Assert.False(walker.WalkTo(new RoomKey(1, 2), pickedRoute: true));
+
+        (WalkJourney journey, IReadOnlyList<int> items) = Assert.Single(told);
+        Assert.Equal(new RoomKey(1, 2), journey.Destination);
+        Assert.True(journey.PickedRoute);
+        Assert.Equal(new[] { 474 }, items);
+        Assert.Null(walker.Journey);
+    }
+
     [Fact]
     public void BlockedRoute_ItemGate_FallsBackToGeneric_WhenNoResolver()
     {
