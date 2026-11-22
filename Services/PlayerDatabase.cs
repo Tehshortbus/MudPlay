@@ -26,7 +26,8 @@ namespace MudPlay.Services;
 // customizations stay attached to the profile, harmless when no record exists
 // for them at the moment (a later observation re-binds them automatically).
 //
-// The permissions alone can be shared by the realm or the BBS (SharedPlayerGrants).
+// The permissions and Don't-delete can be shared by the realm or the BBS
+// (SharedPlayerGrants).
 // While they are, the shared list replaces each character's own, which stays parked
 // on the profile and comes back when the scope returns to Character.
 public sealed class PlayerDatabase
@@ -699,7 +700,7 @@ public sealed class PlayerDatabase
     }
 
     // Drop every observation last seen more than days days ago, EXCEPT those
-    // whose customization is flagged DontAutoDelete. Returns the number
+    // flagged DontAutoDelete, on the shared list while one is in force. Returns the number
     // removed. Customizations for purged players stay attached to the profile —
     // a later observation re-binds them automatically.
     public int PurgeStale(int days, DateTime nowUtc)
@@ -716,10 +717,10 @@ public sealed class PlayerDatabase
         {
             PlayerObservation o = _observations[given];
             if (o.LastSeenUtc >= cutoff) continue;
-            if (_customizations.TryGetValue(given, out PlayerCustomization c) && c.DontAutoDelete) continue;
+            if (InForce(given).DontAutoDelete) continue;
             // A Friend or an Enemy is something the user told us: it outlasts the
-            // player going unseen, on every character, where the per-character
-            // keep flag above only covers the one that set it.
+            // player going unseen, on every character, where the keep flag above
+            // only covers the characters that hold it.
             if (o.Relationship != PlayerRelationship.Neutral) continue;
             _observations.Remove(given);
             removed++;

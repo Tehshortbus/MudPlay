@@ -3,8 +3,8 @@
 <!-- current-version:start -->
 > **Version 3.207.0**
 >
-> - Players table can share remote permissions per character, across a realm, or across the whole BBS
-> - Each character's own permissions are kept and return when sharing is turned off
+> - Players table can keep remote permissions and Don't-delete per character, across a realm, or across the whole BBS
+> - Each character's own settings are kept and return when sharing is turned off
 <!-- current-version:end -->
 
 A modern Telnet terminal client for **MajorMUD** and other BBS door games, built in C# / .NET 10 with [Avalonia](https://avaloniaui.net/). It renders a faithful CP437 cell grid with full VT100/ANSI parsing, and layers a MegaMUD-style automation suite (combat, party, navigation, healing, and more) on top — all in modeless, dockable windows so the terminal stays live while you configure anything.

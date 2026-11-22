@@ -163,7 +163,39 @@ public sealed class PlayerPermissionScopeTests : IDisposable
     }
 
     [Fact]
-    public void WhatIsNotAPermission_StaysWithEachCharacter()
+    public void DontDelete_SetOnOneCharacter_KeepsThePlayerOnAnother()
+    {
+        PlayerDatabase first = Client(RealmA);
+        PlayerDatabase otherRealm = Client(RealmB);
+        first.SetPermissionScope(PlayerPermissionScope.Bbs);
+
+        first.EditCustomization("Bob", first.Find("Bob")!.ToCustomization() with { DontAutoDelete = true });
+        otherRealm.TakeInOutsideChanges();
+
+        Assert.True(otherRealm.Find("Bob")!.DontAutoDelete);
+        Assert.Equal(0, otherRealm.PurgeStale(1, Now.AddDays(10)));
+        Assert.NotNull(otherRealm.Find("Bob"));
+    }
+
+    [Fact]
+    public void DontDelete_FollowsTheScope_AndTheCharactersOwnComesBack()
+    {
+        PlayerDatabase first = Client(RealmA);
+        first.EditCustomization("Bob", first.Find("Bob")!.ToCustomization() with { DontAutoDelete = true });
+
+        first.SetPermissionScope(PlayerPermissionScope.Realm);
+        Assert.True(first.Find("Bob")!.DontAutoDelete);
+        first.EditCustomization("Bob", first.Find("Bob")!.ToCustomization() with { DontAutoDelete = false });
+        Assert.False(first.Find("Bob")!.DontAutoDelete);
+        Assert.Equal(1, first.PurgeStale(1, Now.AddDays(10)));
+
+        first.RecordObservation("Bob Smith", null, null, null, null, null, null, Now);
+        first.SetPermissionScope(PlayerPermissionScope.Character);
+        Assert.True(first.Find("Bob")!.DontAutoDelete);
+    }
+
+    [Fact]
+    public void WhatIsNotShared_StaysWithEachCharacter()
     {
         PlayerDatabase first = Client(RealmA);
         PlayerDatabase second = Client(RealmA);

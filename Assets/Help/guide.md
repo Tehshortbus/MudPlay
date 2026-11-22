@@ -1135,7 +1135,7 @@ Your client goes through these checks in this order. The first one that stops a 
 - **Every character on this realm:** each realm has one list, used by all its characters.
 - **Every character on this BBS:** one list for every character on every realm of the BBS. **Careful:** a name on another realm can be a different person, and they would hold the same permissions.
 
-A shared list **replaces** each character's own while it is on. The first time a list is used it starts from what the table shows; after that it keeps its own contents. On **realm** sharing, another realm's list starts empty until you grant permissions there. Each character's own list is kept and comes back when you return to **This character only**. Only the permissions and the `@dupe` lock are shared: party behaviours, Don't-delete and notes stay with each character.
+A shared list **replaces** each character's own while it is on. The first time a list is used it starts from what the table shows; after that it keeps its own contents. On **realm** sharing, another realm's list starts empty until you grant permissions there. Each character's own list is kept and comes back when you return to **This character only**. The permissions, **Don't-delete** and the `@dupe` lock are shared. The party behaviours (Invite-if-seen, Join-if-invited) and notes stay with each character.
 
 There are seventeen permissions:
 
