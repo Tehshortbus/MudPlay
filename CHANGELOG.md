@@ -1,5 +1,10 @@
 # Version history
 
+## 3.207.0
+
+- Players table can keep remote permissions, party toggles and Don't-delete per character, across a realm, or across the whole BBS
+- Each character's own settings are kept and return when sharing is turned off
+
 ## 3.206.7
 
 - A party walk short of a gate item only for members who didn't answer the count (a client that refuses `@have`), with no copy to be fetched, now asks whether to walk on instead of failing

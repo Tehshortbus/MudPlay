@@ -1129,7 +1129,15 @@ Your client goes through these checks in this order. The first one that stops a 
 7. **The suicide rules,** for a sender who holds the permission: `@do` with the word `suicide`, and the lives rule of `@suicide`. See **Always refused** and **@suicide**.
 8. **The command itself.** It is carried out, or it answers why it couldn't be.
 
-**Permissions** are granted per player, and saved with your character. Open **Game Data Browser → Players**, open the player, and tick boxes in the remote-control grid. There are seventeen:
+**Permissions** are granted per player. Open **Game Data Browser → Players**, open the player, and tick boxes in the remote-control grid. **Remote settings** at the top of that table picks who shares a player's permissions, party toggles and Don't-delete, for the whole BBS:
+
+- **This character only** (the default): each character keeps its own list.
+- **Every character on this realm:** each realm has one list, used by all its characters.
+- **Every character on this BBS:** one list for every character on every realm of the BBS. **Careful:** a name on another realm can be a different person, and they would hold the same permissions and party toggles.
+
+A shared list **replaces** each character's own while it is on. The first time a list is used it starts from what the table shows; after that it keeps its own contents. On **realm** sharing, another realm's list starts empty until you grant permissions there. Each character's own list is kept and comes back when you return to **This character only**. The permissions, **Invite-if-seen**, **Join-if-invited**, **Don't-delete** and the `@dupe` lock are all shared. Only a player's notes stay with each character.
+
+There are seventeen permissions:
 
 | Permission | Commands it allows |
 |---|---|
@@ -3017,7 +3025,7 @@ Copies **the sender's own query, Roomba and quest permissions** onto another pla
 **Situations:**
 
 - **Only queries move.** What can be copied: Query version, experience, health/status, location, inventory, boss timers, deaths, Query Roomba and Query quests. Nothing that acts on your character (move, execute, alter settings, request invite, hangup, divert) and **never Elevated Commands**, so a player who was duplicated onto can't `@dupe` onward.
-- **One use per player.** Each player with Elevated Commands can `@dupe` once. After that it is refused until **you** re-arm it: open that player in Game Data Browser → Players and press **Reset @dupe** under Elevated Commands. The dialog shows when it was spent and on whom. Nothing sent over chat can reset it, and a refused attempt doesn't spend it.
+- **One use per player.** Each player with Elevated Commands can `@dupe` once (once across the characters sharing their permissions, when **Remote settings** is set to a realm or the BBS). After that it is refused until **you** re-arm it: open that player in Game Data Browser → Players and press **Reset @dupe** under Elevated Commands. The dialog shows when it was spent and on whom. Nothing sent over chat can reset it, and a refused attempt doesn't spend it.
 - **It only adds.** The target keeps what they had and gains the rest. Only the permission grid moves, not their party behaviours or notes.
 - **An unknown name is refused** so that a typo can't grant trust to whoever later takes that name.
 - **It is logged.** Every use and every refusal is written to the program log (who, onto whom, what was granted), and the sender's record keeps who they duplicated onto and when.

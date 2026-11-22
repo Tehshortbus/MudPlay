@@ -3170,6 +3170,11 @@ How to keep it current:
 - Checks: sightings keyed by given name; counted once per visit; an arrival suppresses the redisplay count; self, party members, non-players and synthetic re-fires skipped.
 - Why: report paradigm-20261013-173152.
 
+### PlayerPermissionScopeTests.cs
+- Covers: Services/SharedPlayerGrants, PlayerDatabase's permission scope, PlayersSectionViewModel's scope picker
+- Checks: per-character grants stay put; realm and BBS lists reach the right clients, revokes included; widening starts from the table and a character's own list returns; a used list keeps its revoke; the @dupe lock, Don't-delete and party toggles are shared (a shared Don't-delete protects from another client's purge), notes aren't; a bad file grants nothing; the tab follows another client's change.
+- Why: a permission must reach exactly the characters the user chose to share it with, and no one else.
+
 ### PlayersSectionViewModelTests.cs
 - Covers: ViewModels/GameData/Tables/PlayersSectionViewModel
 - Checks: own row hidden (by given name, case-insensitive, the live name preferred); refreshes on profile swap and close; Toggles column; dispose detaches.
