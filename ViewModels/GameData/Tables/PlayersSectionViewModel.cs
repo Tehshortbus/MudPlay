@@ -233,7 +233,7 @@ public sealed class PlayersSectionViewModel : GameDataTableSectionViewModel, IEd
         yield return (rc.HasFlag(PlayerRemoteControls.SysopCommands),       "Elevated Commands");
     }
 
-    // Widening hands permissions to more characters, and BBS-wide to a possibly
+    // Widening hands these settings to more characters, and BBS-wide to a possibly
     // different person of the same name on another realm, so it asks first.
     public async Task ChoosePermissionScopeAsync(int index)
     {
@@ -247,15 +247,15 @@ public sealed class PlayersSectionViewModel : GameDataTableSectionViewModel, IEd
         if (scope > _db.PermissionScope && _dialogs is not null)
         {
             string who = scope == PlayerPermissionScope.Bbs
-                ? "every character on this BBS. A name on another realm may be a different person, and they would hold the same permissions"
+                ? "every character on this BBS. A name on another realm may be a different person, and they would hold the same permissions and party toggles"
                 : "every character on this realm";
             bool yes;
             _askingScope = true;
             try
             {
                 yes = await AppServices.Current.Confirm.ConfirmAsync(
-                    "Share remote permissions?",
-                    $"These permissions will apply to {who}. They replace each character's own, which are kept and come back if you return to \"This character only\".",
+                    "Share remote settings?",
+                    $"The permissions, party toggles and Don't-delete in this table will apply to {who}. They replace each character's own, which are kept and come back if you return to \"This character only\".",
                     "Share");
             }
             finally { _askingScope = false; }

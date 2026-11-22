@@ -117,7 +117,7 @@ public static class BugReportAutomationSections
         HashSet<string> party = new(svc.PartyState.Members.Where(m => !m.IsSelf).Select(m => m.Name), StringComparer.OrdinalIgnoreCase);
 
         StringBuilder sb = new();
-        sb.Append("Permissions are kept ").Append(SharedPlayerGrants.Describe(svc.Players.PermissionScope)).Append(".\n");
+        sb.Append("Player remote settings (permissions, party toggles, Don't-delete) are kept ").Append(SharedPlayerGrants.Describe(svc.Players.PermissionScope)).Append(".\n");
         sb.Append("Players given any remote-command permission (").Append(allowed.Count)
           .Append("); everyone else may send none. Denied or unknown commands are answered: ")
           .Append(svc.RemoteCommands.WarnOnDenial ? "yes" : "no (Warn on invalid remote command is off)").Append(".\n\n");

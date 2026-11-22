@@ -195,7 +195,53 @@ public sealed class PlayerPermissionScopeTests : IDisposable
     }
 
     [Fact]
-    public void WhatIsNotShared_StaysWithEachCharacter()
+    public void ThePartyToggles_ReachTheCharactersSharing_AndTheCharactersOwnComeBack()
+    {
+        PlayerDatabase first = Client(RealmA);
+        PlayerDatabase otherRealm = Client(RealmB);
+        first.EditCustomization("Bob", first.Find("Bob")!.ToCustomization() with { JoinPartyIfInvited = true });
+
+        first.SetPermissionScope(PlayerPermissionScope.Bbs);
+        Assert.True(first.Find("Bob")!.JoinPartyIfInvited);
+        first.EditCustomization("Bob", first.Find("Bob")!.ToCustomization() with
+        {
+            InviteToPartyIfSeen = true, JoinPartyIfInvited = false,
+        });
+        otherRealm.TakeInOutsideChanges();
+        Assert.True(otherRealm.Find("Bob")!.InviteToPartyIfSeen);
+        Assert.False(otherRealm.Find("Bob")!.JoinPartyIfInvited);
+
+        first.SetPermissionScope(PlayerPermissionScope.Character);
+        Assert.False(first.Find("Bob")!.InviteToPartyIfSeen);
+        Assert.True(first.Find("Bob")!.JoinPartyIfInvited);
+    }
+
+    [Fact]
+    public void AnInviteToggleAlone_IsEnoughToKeepAPlayerOnTheSharedList()
+    {
+        PlayerDatabase first = Client(RealmA);
+        first.SetPermissionScope(PlayerPermissionScope.Realm);
+        first.EditCustomization("Bob", first.Find("Bob")!.ToCustomization() with { InviteToPartyIfSeen = true });
+
+        PlayerDatabase restarted = Client(RealmA);
+
+        Assert.True(restarted.Find("Bob")!.InviteToPartyIfSeen);
+    }
+
+    [Fact]
+    public void AJoinToggleAlone_IsEnoughToKeepAPlayerOnTheSharedList()
+    {
+        PlayerDatabase first = Client(RealmA);
+        first.SetPermissionScope(PlayerPermissionScope.Realm);
+        first.EditCustomization("Bob", first.Find("Bob")!.ToCustomization() with { JoinPartyIfInvited = true });
+
+        PlayerDatabase restarted = Client(RealmA);
+
+        Assert.True(restarted.Find("Bob")!.JoinPartyIfInvited);
+    }
+
+    [Fact]
+    public void Notes_StayWithEachCharacter()
     {
         PlayerDatabase first = Client(RealmA);
         PlayerDatabase second = Client(RealmA);
@@ -203,13 +249,13 @@ public sealed class PlayerPermissionScopeTests : IDisposable
 
         first.EditCustomization("Bob", first.Find("Bob")!.ToCustomization() with
         {
-            RemoteControls = Query, Notes = "healer", JoinPartyIfInvited = true,
+            RemoteControls = Query, Notes = "healer",
         });
         second.TakeInOutsideChanges();
 
         Assert.Equal(Query, Held(second));
+        Assert.Equal("healer", first.Find("Bob")!.Notes);
         Assert.Null(second.Find("Bob")!.Notes);
-        Assert.False(second.Find("Bob")!.JoinPartyIfInvited);
     }
 
     [Fact]

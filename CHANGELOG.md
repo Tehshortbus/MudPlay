@@ -2,7 +2,7 @@
 
 ## 3.207.0
 
-- Players table can keep remote permissions and Don't-delete per character, across a realm, or across the whole BBS
+- Players table can keep remote permissions, party toggles and Don't-delete per character, across a realm, or across the whole BBS
 - Each character's own settings are kept and return when sharing is turned off
 
 ## 3.206.7

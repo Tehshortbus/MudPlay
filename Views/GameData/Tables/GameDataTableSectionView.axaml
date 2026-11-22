@@ -50,8 +50,8 @@
                 <!-- Players tab only; shown and given its section in code-behind. -->
                 <StackPanel x:Name="PermissionScopePanel" DockPanel.Dock="Right"
                             Orientation="Horizontal" Spacing="6" IsVisible="False"
-                            ToolTip.Tip="Who shares the remote permissions in this table. Each character's own are kept while a wider choice is on.">
-                    <TextBlock Classes="StatusText" Text="Remote permissions:" VerticalAlignment="Center"/>
+                            ToolTip.Tip="Who shares the permissions, party toggles and Don't-delete in this table. Each character's own are kept while a wider choice is on. Notes stay per character.">
+                    <TextBlock Classes="StatusText" Text="Remote settings:" VerticalAlignment="Center"/>
                     <ComboBox x:Name="PermissionScopeBox" Width="240"/>
                 </StackPanel>
                 <TextBlock Classes="Header" Text="{Binding Title}"/>

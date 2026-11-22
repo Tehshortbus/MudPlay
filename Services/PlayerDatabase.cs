@@ -26,7 +26,7 @@ namespace MudPlay.Services;
 // customizations stay attached to the profile, harmless when no record exists
 // for them at the moment (a later observation re-binds them automatically).
 //
-// The permissions and Don't-delete can be shared by the realm or the BBS
+// Everything but the notes can be shared by the realm or the BBS
 // (SharedPlayerGrants).
 // While they are, the shared list replaces each character's own, which stays parked
 // on the profile and comes back when the scope returns to Character.

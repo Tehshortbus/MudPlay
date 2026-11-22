@@ -5,7 +5,7 @@ using MudPlay.Models.GameData;
 
 namespace MudPlay.Services;
 
-// The realm-wide and BBS-wide remote-command permission lists, and which of them (if
+// The realm-wide and BBS-wide lists of players' remote settings, and which of them (if
 // either) is in force. The BBS's file holds the scope and the BBS list; each realm's
 // file holds that realm's list. Every client on the BBS reads the same files, so
 // they are followed the way the realm's other shared files are.

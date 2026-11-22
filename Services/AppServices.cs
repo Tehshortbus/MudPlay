@@ -3280,7 +3280,7 @@ public sealed class AppServices
         Players = new PlayerDatabase(Profile, ActiveRealmFolder,
             () => ActiveRealmFolder() is not null && ResolveActiveRealm() is { } played ? AppPaths.BbsFolder(played.Bbs.Name) : null);
         Players.PermissionScopeChanged += scope =>
-            Log.Info("PlayerDatabase", $"Remote-command permissions are now kept {SharedPlayerGrants.Describe(scope)}.");
+            Log.Info("PlayerDatabase", $"Player remote settings are now kept {SharedPlayerGrants.Describe(scope)}.");
         // Class titles follow the active set: its own Titles table, else the built-in list.
         Players.SetClassTitleSource(() => _classTitles ??= LoadClassTitles());
         GameData.ActiveSetChanged += _ => _classTitles = null;

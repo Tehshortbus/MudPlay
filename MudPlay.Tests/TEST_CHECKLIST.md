@@ -3172,7 +3172,7 @@ How to keep it current:
 
 ### PlayerPermissionScopeTests.cs
 - Covers: Services/SharedPlayerGrants, PlayerDatabase's permission scope, PlayersSectionViewModel's scope picker
-- Checks: per-character grants stay put; realm and BBS lists reach the right clients, revokes included; widening starts from the table and a character's own list returns; a used list keeps its revoke; the @dupe lock and Don't-delete are shared (a shared Don't-delete protects from another client's purge), party behaviours and notes aren't; a bad file grants nothing; the tab follows another client's change.
+- Checks: per-character grants stay put; realm and BBS lists reach the right clients, revokes included; widening starts from the table and a character's own list returns; a used list keeps its revoke; the @dupe lock, Don't-delete and party toggles are shared (a shared Don't-delete protects from another client's purge), notes aren't; a bad file grants nothing; the tab follows another client's change.
 - Why: a permission must reach exactly the characters the user chose to share it with, and no one else.
 
 ### PlayersSectionViewModelTests.cs
