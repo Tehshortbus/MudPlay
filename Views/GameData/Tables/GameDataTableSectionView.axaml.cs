@@ -59,8 +59,14 @@ public partial class GameDataTableSectionView : UserControl
         // guard via _columnsBuilt so the second is a no-op.
         // A DataContext swap means a different section — drop any captured
         // sort so it can't be reapplied to an unrelated table's columns.
-        DataContextChanged   += (_, _) => { _sortSnapshot.Clear(); WireColumnPicker(); TryBuildColumns(); WireAddRemoveButtons(); WireScrollHook(); };
-        AttachedToVisualTree += (_, _) => { WireColumnPicker(); TryBuildColumns(); WireAddRemoveButtons(); WireScrollHook(); };
+        DataContextChanged   += (_, _) => { _sortSnapshot.Clear(); WireColumnPicker(); TryBuildColumns(); WireAddRemoveButtons(); WireScrollHook(); WirePermissionScope(); };
+        PermissionScopeBox.SelectionChanged += OnPermissionScopeChosen;
+        AttachedToVisualTree += (_, _) => { WireColumnPicker(); TryBuildColumns(); WireAddRemoveButtons(); WireScrollHook(); WirePermissionScope(); };
+        DetachedFromVisualTree += (_, _) =>
+        {
+            if (_scopeSection is not null) _scopeSection.PropertyChanged -= OnScopeSectionChanged;
+            _scopeSection = null;
+        };
 
         // Double-click any row → invoke the section's OpenEditCommand
         // with the row as the argument. Sections that don't expose an
@@ -209,6 +215,45 @@ public partial class GameDataTableSectionView : UserControl
             try { RowsGrid.ScrollIntoView(row, null); }
             catch { /* virtualised DataGrid can throw if row isn't materialised yet — harmless */ }
         }, DispatcherPriority.Background);
+    }
+
+    private PlayersSectionViewModel? _scopeSection;
+    private bool _syncingScope;
+
+    private void WirePermissionScope()
+    {
+        if (_scopeSection is not null) _scopeSection.PropertyChanged -= OnScopeSectionChanged;
+        _scopeSection = DataContext as PlayersSectionViewModel;
+        PermissionScopePanel.IsVisible = _scopeSection is not null;
+        if (_scopeSection is null) return;
+        _scopeSection.PropertyChanged += OnScopeSectionChanged;
+        _syncingScope = true;
+        PermissionScopeBox.ItemsSource = _scopeSection.PermissionScopeLabels;
+        _syncingScope = false;
+        SyncPermissionScope();
+    }
+
+    private void OnScopeSectionChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(PlayersSectionViewModel.PermissionScopeIndex)
+            or nameof(PlayersSectionViewModel.CanChoosePermissionScope))
+            SyncPermissionScope();
+    }
+
+    // Also puts the box back when the question is answered no.
+    private void SyncPermissionScope()
+    {
+        if (_scopeSection is null) return;
+        _syncingScope = true;
+        PermissionScopeBox.SelectedIndex = _scopeSection.PermissionScopeIndex;
+        PermissionScopeBox.IsEnabled = _scopeSection.CanChoosePermissionScope;
+        _syncingScope = false;
+    }
+
+    private async void OnPermissionScopeChosen(object? sender, SelectionChangedEventArgs e)
+    {
+        if (_syncingScope || _scopeSection is null || PermissionScopeBox.SelectedIndex < 0) return;
+        await _scopeSection.ChoosePermissionScopeAsync(PermissionScopeBox.SelectedIndex);
     }
 
     // Conditionally surface the Add / Remove buttons next to the search filter

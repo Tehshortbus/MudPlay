@@ -751,6 +751,11 @@ public static class AppPaths
     public static string RealmTriggersFile(string realmFolder) =>
         Path.Combine(realmFolder, "triggers.json");
 
+    // The remote-command permissions shared across a BBS or a realm, in that BBS's or
+    // realm's folder (SharedPlayerGrants).
+    public static string PlayerPermissionsFile(string bbsOrRealmFolder) =>
+        Path.Combine(bbsOrRealmFolder, "player-permissions.json");
+
     // Observed players. One PlayerObservation per player ever seen on the realm,
     // so the same name on another realm (or board) counts as a different person.
     public static string RealmPlayersFile(string realmFolder) =>

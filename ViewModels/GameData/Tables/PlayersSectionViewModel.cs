@@ -57,6 +57,18 @@ public sealed class PlayersSectionViewModel : GameDataTableSectionViewModel, IEd
     private readonly Action<Models.Profile.CharacterProfile>? _profileSwapHandler;
     private readonly Action<Models.Profile.CharacterProfile>? _profileMutatedHandler;
     private readonly Action? _profileClosedHandler;
+    private readonly Action<PlayerPermissionScope> _scopeHandler;
+    private bool _askingScope;
+
+    // Indexed by PlayerPermissionScope.
+    public IReadOnlyList<string> PermissionScopeLabels { get; } = new[]
+    {
+        "This character only", "Every character on this realm", "Every character on this BBS",
+    };
+
+    public int PermissionScopeIndex => (int)_db.PermissionScope;
+
+    public bool CanChoosePermissionScope => _db.CanSharePermissions;
 
     // Live self-name source (given/full), preferred over the stored profile name
     // for the self-row filter. Null falls back
@@ -76,6 +88,12 @@ public sealed class PlayersSectionViewModel : GameDataTableSectionViewModel, IEd
         _liveSelfName = liveSelfName;
         _handler = (_, _) => Reload();
         _db.Players.CollectionChanged += _handler;
+        _scopeHandler = _ =>
+        {
+            OnPropertyChanged(nameof(PermissionScopeIndex));
+            OnPropertyChanged(nameof(CanChoosePermissionScope));
+        };
+        _db.PermissionScopeChanged += _scopeHandler;
         // Refresh the filter when the loaded character swaps so a
         // freshly-loaded Raijin doesn't keep MudPlay's row hidden (and
         // vice versa). Drafts (no loaded profile) reload to "show
@@ -106,6 +124,7 @@ public sealed class PlayersSectionViewModel : GameDataTableSectionViewModel, IEd
     public override void Dispose()
     {
         _db.Players.CollectionChanged -= _handler;
+        _db.PermissionScopeChanged -= _scopeHandler;
         if (_profile is not null)
         {
             if (_profileSwapHandler    is not null) _profile.ProfileLoaded  -= _profileSwapHandler;
@@ -212,6 +231,41 @@ public sealed class PlayersSectionViewModel : GameDataTableSectionViewModel, IEd
         yield return (rc.HasFlag(PlayerRemoteControls.AlterSettings),       "Alter settings");
         yield return (rc.HasFlag(PlayerRemoteControls.DivertConversations), "Divert conversations");
         yield return (rc.HasFlag(PlayerRemoteControls.SysopCommands),       "Elevated Commands");
+    }
+
+    // Widening hands permissions to more characters, and BBS-wide to a possibly
+    // different person of the same name on another realm, so it asks first.
+    public async Task ChoosePermissionScopeAsync(int index)
+    {
+        PlayerPermissionScope scope = (PlayerPermissionScope)index;
+        if (!Enum.IsDefined(scope) || scope == _db.PermissionScope) return;
+        if (_askingScope)
+        {
+            OnPropertyChanged(nameof(PermissionScopeIndex));
+            return;
+        }
+        if (scope > _db.PermissionScope && _dialogs is not null)
+        {
+            string who = scope == PlayerPermissionScope.Bbs
+                ? "every character on this BBS. A name on another realm may be a different person, and they would hold the same permissions"
+                : "every character on this realm";
+            bool yes;
+            _askingScope = true;
+            try
+            {
+                yes = await AppServices.Current.Confirm.ConfirmAsync(
+                    "Share remote permissions?",
+                    $"These permissions will apply to {who}. They replace each character's own, which are kept and come back if you return to \"This character only\".",
+                    "Share");
+            }
+            finally { _askingScope = false; }
+            if (!yes)
+            {
+                OnPropertyChanged(nameof(PermissionScopeIndex));
+                return;
+            }
+        }
+        _db.SetPermissionScope(scope);
     }
 
     private async Task AddAsync()

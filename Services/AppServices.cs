@@ -3277,7 +3277,10 @@ public sealed class AppServices
         // Wires its own subscriptions (ProfileLoaded / ProfileClosed /
         // BbsPinApplied / ProfileSaving) and reads the active realm's folder
         // through ActiveRealmFolder.
-        Players = new PlayerDatabase(Profile, ActiveRealmFolder);
+        Players = new PlayerDatabase(Profile, ActiveRealmFolder,
+            () => ActiveRealmFolder() is not null && ResolveActiveRealm() is { } played ? AppPaths.BbsFolder(played.Bbs.Name) : null);
+        Players.PermissionScopeChanged += scope =>
+            Log.Info("PlayerDatabase", $"Remote-command permissions are now kept {SharedPlayerGrants.Describe(scope)}.");
         // Class titles follow the active set: its own Titles table, else the built-in list.
         Players.SetClassTitleSource(() => _classTitles ??= LoadClassTitles());
         GameData.ActiveSetChanged += _ => _classTitles = null;

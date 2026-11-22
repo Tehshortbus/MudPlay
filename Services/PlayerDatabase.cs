@@ -25,10 +25,17 @@ namespace MudPlay.Services;
 // customization layer reloads. PurgeStale drops observations only —
 // customizations stay attached to the profile, harmless when no record exists
 // for them at the moment (a later observation re-binds them automatically).
+//
+// The permissions alone can be shared by the realm or the BBS (SharedPlayerGrants).
+// While they are, the shared list replaces each character's own, which stays parked
+// on the profile and comes back when the scope returns to Character.
 public sealed class PlayerDatabase
 {
     private readonly ProfileService _profile;
     private readonly Func<string?> _activeRealmFolder;
+    private readonly Func<string?>? _activeBbsFolder;
+    private readonly SharedPlayerGrants _grants = new();
+    private (PlayerPermissionScope Scope, bool Available) _announcedScope = (PlayerPermissionScope.Character, false);
 
     // The active set's class titles. Unwired, the built-in list.
     private Func<Game.GameData.ClassTitleTable>? _classTitles;
@@ -69,17 +76,26 @@ public sealed class PlayerDatabase
     // character's stale-alignment flag once our own row is re-observed by a who.
     public event Action<string>? ObservationRecorded;
 
+    // Raised when the permission scope in force changes, by this client, another on
+    // the BBS, or a swap to a different BBS.
+    public event Action<PlayerPermissionScope>? PermissionScopeChanged;
+
+    public PlayerPermissionScope PermissionScope => _grants.Scope;
+
+    public bool CanSharePermissions => _grants.Available;
+
     // ----- Construction --------------------------------------------------
 
     // Production ctor. Subscribes to ProfileService's ProfileLoaded /
     // ProfileClosed / ProfileSaving / BbsPinApplied so both layers stay in sync
     // with whichever character + realm the user is on.
-    public PlayerDatabase(ProfileService profile, Func<string?> activeRealmFolder)
+    public PlayerDatabase(ProfileService profile, Func<string?> activeRealmFolder, Func<string?>? activeBbsFolder = null)
     {
         ArgumentNullException.ThrowIfNull(profile);
         ArgumentNullException.ThrowIfNull(activeRealmFolder);
         _profile = profile;
         _activeRealmFolder = activeRealmFolder;
+        _activeBbsFolder = activeBbsFolder;
 
         profile.ProfileLoaded  += _ => OnSwap();
         profile.ProfileClosed  +=      OnSwap;
@@ -222,8 +238,34 @@ public sealed class PlayerDatabase
         (string given, _) = PlayerObservation.SplitName(name);
         if (string.IsNullOrEmpty(given)) return null;
         if (!_observations.TryGetValue(given, out PlayerObservation? obs)) return null;
-        _customizations.TryGetValue(given, out PlayerCustomization c);
-        return PlayerRecord.Merge(obs, c);
+        return PlayerRecord.Merge(obs, InForce(given));
+    }
+
+    // The character's own customization, with the shared permissions over its own
+    // while a wider scope is on.
+    private PlayerCustomization InForce(string given)
+    {
+        _customizations.TryGetValue(given, out PlayerCustomization own);
+        return _grants.IsShared ? _grants.Get(given).AppliedTo(own) : own;
+    }
+
+    // Switch who shares the permissions. A list used for the first time starts from
+    // the table as it stands.
+    public void SetPermissionScope(PlayerPermissionScope scope)
+    {
+        TakeInOutsideChanges();
+        _grants.ChangeScope(scope, _customizations
+            .Select(p => KeyValuePair.Create(p.Key, PlayerGrant.Of(p.Value))));
+        Rebuild();
+        AnnounceScope();
+    }
+
+    private void AnnounceScope()
+    {
+        (PlayerPermissionScope, bool) now = (_grants.Scope, _grants.Available);
+        if (now == _announcedScope) return;
+        _announcedScope = now;
+        PermissionScopeChanged?.Invoke(_grants.Scope);
     }
 
     // ----- Greet tracking (realm tier) ------------------------------------
@@ -520,6 +562,14 @@ public sealed class PlayerDatabase
         (string given, _) = PlayerObservation.SplitName(nameOrGiven);
         if (string.IsNullOrEmpty(given)) return false;
 
+        TakeInOutsideChanges();
+        if (_grants.IsShared)
+        {
+            _grants.Set(given, PlayerGrant.Of(customization));
+            _customizations.TryGetValue(given, out PlayerCustomization own);
+            customization = PlayerGrant.Of(own).AppliedTo(customization);
+        }
+
         if (customization.IsDefault)
             _customizations.Remove(given);
         else
@@ -696,6 +746,7 @@ public sealed class PlayerDatabase
         // observation. The next save rewrites the file in the merged
         // form, so this migration is one-shot.
         LoadObservations();
+        _grants.Attach(_activeBbsFolder?.Invoke(), _realmFolder);
 
         // Char layer: pull off the loaded profile (null when no profile).
         // Same migration story: customization dicts written before the
@@ -722,6 +773,7 @@ public sealed class PlayerDatabase
         }
 
         Rebuild();
+        AnnounceScope();
     }
 
     // Insert one observation, collapsing collisions on GivenName. The newer
@@ -814,9 +866,12 @@ public sealed class PlayerDatabase
     public bool TakeInOutsideChanges()
     {
         if (string.IsNullOrEmpty(_realmFolder)) return false;
-        if (!_stamp.ChangedOutside(AppPaths.RealmPlayersFile(_realmFolder))) return false;
-        LoadObservations();
+        bool observations = _stamp.ChangedOutside(AppPaths.RealmPlayersFile(_realmFolder));
+        if (observations) LoadObservations();
+        bool grants = _grants.TakeInOutsideChanges();
+        if (!observations && !grants) return false;
         Rebuild();
+        AnnounceScope();
         return true;
     }
 
@@ -845,8 +900,7 @@ public sealed class PlayerDatabase
         {
             // Customization key follows the given-name layer — the user's
             // per-player toggles must survive a family-name change.
-            _customizations.TryGetValue(o.GivenName, out PlayerCustomization c);
-            Players.Add(PlayerRecord.Merge(o, c));
+            Players.Add(PlayerRecord.Merge(o, InForce(o.GivenName)));
         }
     }
 }
