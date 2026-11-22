@@ -4252,7 +4252,7 @@ How to keep it current:
 
 ### SysopGotoManagerTests.cs
 - Covers: Game/SysopGotoManager
-- Checks: the gate order (combat → break, table membership, level), the exact keyword sent, the forced room display, and the name-matched landing resync. Typed-line interception. The wimpy escape skips the level gate and sends `break` first.
+- Checks: the gate order (combat → break, table membership, level), the exact keyword sent, the forced room display, the name-matched landing resync, and the terminal warning when a jump lands in a room other than its row (not for a refused jump or an unknown starting room). Typed-line interception. The wimpy escape skips the level gate and sends `break` first.
 - Why: the risk of jumping mid-fight or below the level a location requires, or of mis-anchoring after the jump.
 
 ### SysopGotoRoutePlannerTests.cs

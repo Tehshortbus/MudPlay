@@ -5906,6 +5906,7 @@ public sealed class AppServices
             inCombat: () => PlayerState.InCombat,
             knownLevel: () => Stats.HasParsed ? PlayerStats.Level : (int?)null,
             roomName: key => RoomGraph.GetRoom(key)?.Name,
+            roomHere: () => RoomTracker.State.CurrentRoom?.Name,
             // Raw (gate-piercing) wire for BOTH the `sys goto` command and the bare
             // Enter: sys commands are honoured at any HP, so they must survive the
             // mortally-wounded send-gate hold (the wimpy escape fires while bleeding

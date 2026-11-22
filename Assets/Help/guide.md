@@ -5412,6 +5412,8 @@ Ticking this reveals a **Sys Goto locations** table on the BBS tab where you edi
 - the **Map** and **Room** it lands you in (MudPlay uses these only to work out where you ended up and show the room name it resolves to);
 - an optional **Min level** gate that greys the entry out until your character is high enough.
 
+If a jump lands somewhere other than the room in its row, a yellow `[Sys goto …]` message on the terminal names both rooms, so you can correct the row. Boards can set their own room for a keyword such as `silvermere`, so a starter row may need changing.
+
 A fresh install seeds the usual starter towns (newhaven, silvermere, rhudaur, khazarad, lostcity). A `sys goto` produces no message in-game — only a statline redisplay — so MudPlay sends a bare Enter afterward to pull up the room you landed in and re-fix your position on the map. You can `sys goto` out of a room full of hostiles, but **not while you're actively in combat**: if an attack is in progress MudPlay sends `break` first and tells you to run it again once the fight stops. Refused (and harmless) without real sysop access.
 
 The Health tab's **Sys goto wimpy instead of hanging** also uses this power: at your hang-up threshold it sends `break` and a `sys goto` to your chosen location instead of disconnecting.

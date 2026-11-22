@@ -1,5 +1,10 @@
 # Version history
 
+## 3.207.1
+
+- A sys goto that lands somewhere other than its table row now warns on the terminal, naming both rooms
+- bug reports addressed: stock-20261122-124831
+
 ## 3.207.0
 
 - Players table can keep remote permissions, party toggles and Don't-delete per character, across a realm, or across the whole BBS

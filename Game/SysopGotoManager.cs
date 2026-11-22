@@ -29,6 +29,8 @@ public sealed class SysopGotoManager
     // The display name of a landing room (via RoomGraphManager), or null when the key
     // isn't in the active graph. Used both to arm the resync and to validate the row.
     private readonly Func<RoomKey, string?> _roomName;
+    // The name of the room we're in now, or null when the position isn't known.
+    private readonly Func<string?> _roomHere;
     private readonly Action<string> _send;
     // Sends a bare Enter. A sys-goto emits no room display on its own (only a statline
     // redisplay), so we force one so the landing resync has a room name to match.
@@ -44,7 +46,7 @@ public sealed class SysopGotoManager
     // whose name matches commits the position; a mismatch or the timeout drops it and
     // lets normal tracking / Lost-recovery take over — so a refused jump never lies to
     // the tracker.
-    private (RoomKey Key, string ExpectedName, DateTimeOffset SentAt)? _armed;
+    private (RoomKey Key, string ExpectedName, DateTimeOffset SentAt, string Keyword, string? LeftRoom)? _armed;
     private static readonly TimeSpan LandingWindow = TimeSpan.FromSeconds(5);
 
     public SysopGotoManager(
@@ -53,6 +55,7 @@ public sealed class SysopGotoManager
         Func<bool> inCombat,
         Func<int?> knownLevel,
         Func<RoomKey, string?> roomName,
+        Func<string?> roomHere,
         Action<string> send,
         Action forceRoomDisplay,
         Action<string> writeStatus,
@@ -64,6 +67,7 @@ public sealed class SysopGotoManager
         ArgumentNullException.ThrowIfNull(inCombat);
         ArgumentNullException.ThrowIfNull(knownLevel);
         ArgumentNullException.ThrowIfNull(roomName);
+        ArgumentNullException.ThrowIfNull(roomHere);
         ArgumentNullException.ThrowIfNull(send);
         ArgumentNullException.ThrowIfNull(forceRoomDisplay);
         ArgumentNullException.ThrowIfNull(writeStatus);
@@ -73,6 +77,7 @@ public sealed class SysopGotoManager
         _inCombat = inCombat;
         _knownLevel = knownLevel;
         _roomName = roomName;
+        _roomHere = roomHere;
         _send = send;
         _forceRoomDisplay = forceRoomDisplay;
         _writeStatus = writeStatus;
@@ -208,6 +213,7 @@ public sealed class SysopGotoManager
     {
         var key = new RoomKey(loc.Map, loc.Room);
         string? landingName = _roomName(key);
+        string? leftRoom = _roomHere();
         _send($"sys goto {loc.Name}");
         // A sys-goto prints no room on its own — only a statline redisplay — so nudge
         // the game to show the landing room with a bare Enter; that display is what
@@ -215,7 +221,7 @@ public sealed class SysopGotoManager
         _forceRoomDisplay();
         if (landingName is { Length: > 0 })
         {
-            _armed = (key, landingName, DateTimeOffset.UtcNow);
+            _armed = (key, landingName, DateTimeOffset.UtcNow, loc.Name, leftRoom);
             _log?.Info(LogCat, $"Fired 'sys goto {loc.Name}' → landing {key} ('{landingName}'); armed resync.");
         }
         else
@@ -249,7 +255,23 @@ public sealed class SysopGotoManager
             _log?.Info(LogCat,
                 $"Landing mismatch — expected '{armed.ExpectedName}' but saw '{roomName}' — dropping resync (jump may have been refused).");
             _armed = null;
+            WarnIfLandedElsewhere(armed.Keyword, armed.Key, armed.ExpectedName, armed.LeftRoom, roomName);
         }
+    }
+
+    // Some keywords go to a room each board configures, so a table row can be right on
+    // one board and wrong on another. The room we left showing again is a refused jump,
+    // which says nothing about the row, and with no known room to compare there's no
+    // telling the two apart.
+    private void WarnIfLandedElsewhere(string keyword, RoomKey key, string expected, string? leftRoom, string? shown)
+    {
+        string landed = shown?.Trim() ?? string.Empty;
+        if (landed.Length == 0 || string.IsNullOrWhiteSpace(leftRoom)
+            || string.Equals(landed, leftRoom.Trim(), StringComparison.OrdinalIgnoreCase))
+            return;
+        _log?.Warn(LogCat, $"'sys goto {keyword}' landed in '{landed}', but its table row says {key} ('{expected}').");
+        _writeStatus($"[Sys goto '{keyword}' landed in {landed}, but your Sys Goto table says {expected} ({key}). "
+            + "Correct its room in Settings → BBS + Display.]");
     }
 
     // True when a jump is fired but its landing hasn't been confirmed yet — surfaced
