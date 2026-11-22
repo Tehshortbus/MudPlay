@@ -307,7 +307,7 @@ How to keep it current:
 
 ### AutoWalkManagerSysGotoTests.cs
 - Covers: Game/Map/AutoWalkManager (SysGotoStep), Game/Map/SysopGotoRoutePlanner
-- Checks: The walker fires a `sys goto` jump when it's the only route, waits for the landing, then walks the land leg. The jump fails at the deadline if the landing never confirms. No jump with an empty location table.
+- Checks: The walker fires a `sys goto` jump when it's the only route, waits for the landing, then walks the land leg. The jump fails at the deadline if the landing never confirms. A jump to an unknown room drops the old position until a display places us. No jump with an empty location table.
 - Why: the sysop jump is a multi-room shortcut with no graph edge, so arrival must be confirmed and a non-landing must not wedge the walk.
 
 ### AutoWalkManagerTests.cs
@@ -2295,6 +2295,11 @@ How to keep it current:
 - Checks: code → label mapping for item/slot/weapon/armour/currency/spell/shop/monster/magery types; unknown and non-numeric input.
 - Why: Game Data tables display.
 
+### LoopAtRoomTests.cs
+- Covers: Game/Map/LoopAtRoom
+- Checks: no loop for a room on none; a loop starting here beats one passing through; Always Start Here is the loop's start; a favourite, then the name, breaks ties.
+- Why: the Manage dialog offers the loop the player is standing on (report stock-20261120-072254).
+
 ### LoopBuilderSessionTests.cs
 - Covers: ViewModels/Navigation/LoopBuilderSessionViewModel
 - Checks: clicks expand to a closed cycle, per-waypoint actions and flags ride into the loop, remove/move clicks, unreachable legs block save, a set switch drops the build, Discard drops the name and notes where Clear keeps them, one start room per loop, a row's step is found again through edits, renumbers and moves, and never once it is removed, saved or cleared (even when an identical step takes its place).
@@ -2810,8 +2815,8 @@ How to keep it current:
 
 ### NavTreeBuilderTests.cs
 - Covers: ViewModels/Navigation/NavTreeBuilder
-- Checks: Default expand state; a user override survives Sync; filter cycle restores the resting state.
-- Why: Folder state across rebuilds and filters.
+- Checks: Default expand state; a user override survives Sync; filter cycle restores the resting state; pinned rows lead the list, out of their folders; ExpandPath opens only the path asked for.
+- Why: Folder state across rebuilds and filters, and favourites staying first (report stock-20261120-072254).
 
 ### NeedsRegistryTests.cs
 - Covers: Services/NeedsRegistry
@@ -4252,7 +4257,7 @@ How to keep it current:
 
 ### SysopGotoManagerTests.cs
 - Covers: Game/SysopGotoManager
-- Checks: the gate order (combat → break, table membership, level), the exact keyword sent, the forced room display, and the name-matched landing resync. Typed-line interception. The wimpy escape skips the level gate and sends `break` first.
+- Checks: the gate order (combat → break, table membership, level), the exact keyword sent, the forced room display, the name-matched landing resync, and the terminal warning and run stop when a jump lands in a room other than its row (not for a refused jump or an unknown starting room). Typed-line interception. The wimpy escape skips the level gate and sends `break` first.
 - Why: the risk of jumping mid-fight or below the level a location requires, or of mis-anchoring after the jump.
 
 ### SysopGotoRoutePlannerTests.cs

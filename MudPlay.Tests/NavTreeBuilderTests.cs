@@ -34,6 +34,36 @@ public sealed class NavTreeBuilderTests
         => Folders(nodes).Single(f => f.Path == path);
 
     [Fact]
+    public void PinnedRows_LeadTheList_AheadOfFoldersAndOutOfTheirOwn()
+    {
+        string[] rows = { "Zeta", "Alpha", "Mid" };
+        Func<string, string?> folderOf = r => r == "Zeta" ? "Town" : r == "Mid" ? "Town" : null;
+
+        List<object> tree = NavTreeBuilder.Build(rows, folderOf, System.Array.Empty<string>(),
+            defaultExpanded: false, pinned: r => r == "Zeta");
+
+        Assert.Equal("Zeta", tree[0]);
+        NavFolderNodeViewModel town = Assert.IsType<NavFolderNodeViewModel>(tree[1]);
+        Assert.Equal(new object[] { "Mid" }, town.Children.ToArray());
+        Assert.Equal("Alpha", tree[2]);
+    }
+
+    [Fact]
+    public void ExpandPath_OpensTheFolderAndThoseAboveIt_AndNoOther()
+    {
+        List<object> tree = NavTreeBuilder.Build(System.Array.Empty<string>(), s => s,
+            new[] { "Cities/Silvermere/Docks", "Cities/Silver", "Caves" }, defaultExpanded: false);
+
+        NavTreeBuilder.ExpandPath(tree, "Cities/Silvermere");
+
+        Assert.True(FolderAt(tree, "Cities").IsExpanded);
+        Assert.True(FolderAt(tree, "Cities/Silvermere").IsExpanded);
+        Assert.False(FolderAt(tree, "Cities/Silvermere/Docks").IsExpanded);
+        Assert.False(FolderAt(tree, "Cities/Silver").IsExpanded);
+        Assert.False(FolderAt(tree, "Caves").IsExpanded);
+    }
+
+    [Fact]
     public void Build_CollapseByDefault_FoldersStartCollapsed()
     {
         List<object> tree = NavTreeBuilder.Build(

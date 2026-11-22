@@ -17,12 +17,14 @@ public static class NavTreeBuilder
     // a row's stored folder (empty = root). allFolders seeds folders that
     // have no rows yet (empty folders the user created) so they still
     // render. defaultExpanded seeds each folder's starting expand state (every
-    // current surface passes false).
+    // current surface passes false). Rows pinned answers true for lead the list, ahead
+    // of the folders and out of their own, so a favourite is never a folder away.
     public static List<object> Build<TRow>(
         IEnumerable<TRow> rows,
         Func<TRow, string?> folderOf,
         IEnumerable<string> allFolders,
-        bool defaultExpanded = true)
+        bool defaultExpanded = true,
+        Func<TRow, bool>? pinned = null)
     {
         ArgumentNullException.ThrowIfNull(rows);
         ArgumentNullException.ThrowIfNull(folderOf);
@@ -52,8 +54,14 @@ public static class NavTreeBuilder
         foreach (string folder in NavFolders.ExpandAncestors(allFolders))
             Ensure(folder);
 
+        List<object> first = new();
         foreach (TRow row in rows)
         {
+            if (pinned?.Invoke(row) == true)
+            {
+                first.Add(row!);
+                continue;
+            }
             string folder = NavFolders.Normalize(folderOf(row));
             if (folder.Length == 0) roots.Add(row!);
             else Ensure(folder).Children.Add(row!);
@@ -62,6 +70,8 @@ public static class NavTreeBuilder
         SortNodes(roots);
         foreach (NavFolderNodeViewModel node in folders.Values)
             SortNodes(node.Children);
+        SortNodes(first);
+        roots.InsertRange(0, first);
 
         return roots;
     }
@@ -84,19 +94,34 @@ public static class NavTreeBuilder
         bool defaultExpanded,
         HashSet<string> expandOverrides,
         bool harvest,
-        bool forceExpandAll)
+        bool forceExpandAll,
+        Func<TRow, bool>? pinned = null)
     {
         ArgumentNullException.ThrowIfNull(target);
         ArgumentNullException.ThrowIfNull(expandOverrides);
 
         if (harvest) HarvestOverrides(target, expandOverrides, defaultExpanded);
 
-        List<object> built = Build(rows, folderOf, allFolders, defaultExpanded);
+        List<object> built = Build(rows, folderOf, allFolders, defaultExpanded, pinned);
         ApplyOverrides(built, expandOverrides, defaultExpanded);
         if (forceExpandAll) ForceExpandFolders(built);
 
         target.Clear();
         foreach (object node in built) target.Add(node);
+    }
+
+    // Open the folder at path and every folder above it.
+    public static void ExpandPath(IEnumerable<object> nodes, string path)
+    {
+        string wanted = NavFolders.Normalize(path);
+        foreach (NavFolderNodeViewModel f in nodes.OfType<NavFolderNodeViewModel>())
+        {
+            if (!wanted.Equals(f.Path, StringComparison.OrdinalIgnoreCase)
+                && !wanted.StartsWith(f.Path + "/", StringComparison.OrdinalIgnoreCase))
+                continue;
+            f.IsExpanded = true;
+            ExpandPath(f.Children, wanted);
+        }
     }
 
     // Flatten a nested folder/leaf tree into the ordered flat row list the folder

@@ -36,10 +36,25 @@ public partial class NavigationManagerDialog : Window
     public NavigationManagerDialog()
     {
         InitializeComponent();
-        // Land the cursor in the Go To "Filter favourites…" box the moment the window
-        // opens (the play/Start button opens on that tab), so the user can filter right
-        // away. No-op if it's hidden because no favourites exist yet.
-        Opened += (_, _) => GotoFilterBox.Focus();
+        // Land the cursor in the open tab's filter box, so the user can filter right
+        // away. No-op if it's hidden because the list is empty.
+        Opened += (_, _) =>
+        {
+            if (DataContext is NavigationManagerDialogViewModel { SelectedTabIndex: 1 }) GotoFilterBox.Focus();
+            else WalkFilterBox.Focus();
+            ScrollToLoopHere();
+        };
+        DataContextChanged += (_, _) =>
+        {
+            if (_loopHereSource is not null) _loopHereSource.LoopHereShown -= ScrollToLoopHere;
+            _loopHereSource = DataContext as NavigationManagerDialogViewModel;
+            if (_loopHereSource is not null) _loopHereSource.LoopHereShown += ScrollToLoopHere;
+        };
+        Closed += (_, _) =>
+        {
+            if (_loopHereSource is not null) _loopHereSource.LoopHereShown -= ScrollToLoopHere;
+            _loopHereSource = null;
+        };
         WireDragDrop(WalkTreeView);
         WireDragDrop(GotoTreeView);
         // DoubleTapped only routes as Bubble, so the handler must be
@@ -47,6 +62,15 @@ public partial class NavigationManagerDialog : Window
         WalkTreeView.AddHandler(DoubleTappedEvent, OnRowDoubleTapped, RoutingStrategies.Bubble);
         GotoTreeView.AddHandler(DoubleTappedEvent, OnRowDoubleTapped, RoutingStrategies.Bubble);
     }
+
+    private NavigationManagerDialogViewModel? _loopHereSource;
+
+    // Posted so the list has laid out the rows it was just given.
+    private void ScrollToLoopHere() => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+    {
+        if (_loopHereSource is { LoopHereRowIndex: >= 0 and var row } && row < WalkTreeView.ItemCount)
+            WalkTreeView.ScrollIntoView(row);
+    }, Avalonia.Threading.DispatcherPriority.Loaded);
 
     // Double-clicking a leaf runs it — the fast "play this now" gesture,
     // matching each row's green Go button. Edit stays reachable via the Edit

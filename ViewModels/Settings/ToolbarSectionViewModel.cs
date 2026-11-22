@@ -42,6 +42,7 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
             {
                 "Toolbar + Shortcuts", "Shortcuts",
                 "Help menu websites", "Website", "BBS website", "Help links",
+                "Start button", "Start button opens", "Loops", "Go To",
             });
 
     protected override Control BuildView() => new ToolbarSectionView { DataContext = this };
@@ -223,6 +224,7 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
 
         LoadFromProfile();
         LoadWebsites();
+        StartButtonOpensIndex = (int)_globalSettings.Current.StartButtonOpens;
         _suppressDirty = false;
     }
 
@@ -255,6 +257,7 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
         // toolbar/shortcuts layout below is character-scoped and only saves when
         // one is).
         SaveWebsites();
+        SaveStartButtonChoice();
 
         if (_profile.Current is { } profile)
         {
@@ -278,11 +281,26 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
         ClearDirty();
     }
 
+    // Indexed by StartButtonOpens: 0 = Loops, 1 = Go To.
+    [ObservableProperty] private int _startButtonOpensIndex;
+
+    partial void OnStartButtonOpensIndexChanged(int value) => Dirty();
+
+    private void SaveStartButtonChoice()
+    {
+        StartButtonOpens chosen = StartButtonOpensIndex == (int)StartButtonOpens.GoTo
+            ? StartButtonOpens.GoTo : StartButtonOpens.Loops;
+        if (_globalSettings.Current.StartButtonOpens == chosen) return;
+        _globalSettings.Current.StartButtonOpens = chosen;
+        _globalSettings.Save();
+    }
+
     public override void Discard()
     {
         _suppressDirty = true;
         LoadFromProfile();
         LoadWebsites();
+        StartButtonOpensIndex = (int)_globalSettings.Current.StartButtonOpens;
         _suppressDirty = false;
         ClearDirty();
     }
@@ -297,6 +315,7 @@ public sealed partial class ToolbarSectionViewModel : SettingsSectionViewModel
         // A profile swap can change the active BBS, so re-resolve the BBS
         // website field + its label alongside the layout.
         LoadWebsites();
+        StartButtonOpensIndex = (int)_globalSettings.Current.StartButtonOpens;
         _suppressDirty = false;
         ClearDirty();
         CopyStatus = null;

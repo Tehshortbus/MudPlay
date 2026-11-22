@@ -24,6 +24,9 @@ public sealed class SysopGotoManagerTests
         public int? Level;
         public List<SysopGotoLocation> Locations = SysopGotoLocation.DefaultStarterSet();
         public readonly Dictionary<RoomKey, string> RoomNames = new();
+        public string? RoomHere;
+        public bool RunStops;
+        public readonly List<string> LandedElsewhere = new();
 
         public SysopGotoManager Build() => new(
             enabled: () => Enabled,
@@ -31,10 +34,12 @@ public sealed class SysopGotoManagerTests
             inCombat: () => InCombat,
             knownLevel: () => Level,
             roomName: key => RoomNames.TryGetValue(key, out string? n) ? n : null,
+            roomHere: () => RoomHere,
             send: Sent.Add,
             forceRoomDisplay: () => ForceRoomDisplayCalls++,
             writeStatus: Status.Add,
-            commitLocated: Committed.Add);
+            commitLocated: Committed.Add,
+            landedElsewhere: why => { LandedElsewhere.Add(why); return RunStops; });
     }
 
     // The starter towns the level gate is judged against.
@@ -160,6 +165,57 @@ public sealed class SysopGotoManagerTests
         // A second display doesn't re-commit — the arm was consumed.
         mgr.OnRoomDisplayed("Town Square");
         Assert.Single(h.Committed);
+    }
+
+    // Report stock-20261122-124831: a board whose silvermere isn't the starter row's room.
+    [Fact]
+    public void ALandingInAnotherRoom_WarnsOnTheTerminal_NamingBothRooms()
+    {
+        var h = WithNames();
+        h.RoomHere = "Slimy Sewer Tunnel";
+        var mgr = h.Build();
+        mgr.TryFire(h.Locations.Find(l => l.Name == "newhaven")!, out _);
+
+        mgr.OnRoomDisplayed("Silvermere Residence");
+
+        string notice = Assert.Single(h.Status);
+        Assert.StartsWith("[Sys goto 'newhaven' landed in Silvermere Residence", notice);
+        Assert.Contains("Town Square", notice);
+        Assert.EndsWith("]", notice);
+        Assert.DoesNotContain("Navigation stopped", notice);
+        Assert.Empty(h.Committed);
+        Assert.Single(h.LandedElsewhere);
+    }
+
+    [Fact]
+    public void ALandingInAnotherRoom_SaysSoWhenItStoppedARun()
+    {
+        var h = WithNames();
+        h.RoomHere = "Slimy Sewer Tunnel";
+        h.RunStops = true;
+        var mgr = h.Build();
+        mgr.TryFire(h.Locations.Find(l => l.Name == "newhaven")!, out _);
+
+        mgr.OnRoomDisplayed("Silvermere Residence");
+
+        Assert.Contains("Navigation stopped.", Assert.Single(h.Status));
+    }
+
+    [Theory]
+    [InlineData("Slimy Sewer Tunnel", "slimy sewer tunnel")]   // refused: the room we left, shown again
+    [InlineData(null, "Silvermere Residence")]                 // no known room to compare
+    [InlineData("Slimy Sewer Tunnel", "Town Square")]          // landed where the table says
+    public void NoWarning_WhenTheDisplayDoesNotProveTheRowWrong(string? left, string shown)
+    {
+        var h = WithNames();
+        h.RoomHere = left;
+        var mgr = h.Build();
+        mgr.TryFire(h.Locations.Find(l => l.Name == "newhaven")!, out _);
+
+        mgr.OnRoomDisplayed(shown);
+
+        Assert.Empty(h.Status);
+        Assert.Empty(h.LandedElsewhere);
     }
 
     [Fact]
