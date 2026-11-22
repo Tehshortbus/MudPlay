@@ -1960,7 +1960,8 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
         IEnumerable<string> folders = filtering ? Array.Empty<string>() : _services.NavFolders.AllFolders;
         NavTreeBuilder.Sync<object>(NavTree, rows, folderOf, folders,
             defaultExpanded: false, _navExpandOverrides,
-            harvest: !_navWasFiltering, forceExpandAll: false);
+            harvest: !_navWasFiltering, forceExpandAll: false,
+            pinned: static row => row is LoopRowViewModel { Source.Favorite: true } or LairSetupRowViewModel { Source.Favorite: true });
         _navFlat.Rebuild(NavTree);
         _navWasFiltering = filtering;
         OnPropertyChanged(nameof(HasNavTree));

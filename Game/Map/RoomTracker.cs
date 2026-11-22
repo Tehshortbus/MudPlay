@@ -2185,6 +2185,11 @@ public sealed partial class RoomTracker
     // just rebuilt — drop any per-set state and start over.
     public void OnGraphReloaded(DateTimeOffset? whenUtc = null) => ForgetPosition("graph reloaded", whenUtc);
 
+    // A jump landed in a room we can't name. Keeping the old room would have the next
+    // move planned from a place we've left.
+    public void NoteJumpedToUnknownRoom(string reason, DateTimeOffset? whenUtc = null) =>
+        ForgetPosition(reason, whenUtc);
+
     private bool HoldsAPosition => State.CurrentRoom is not null || State.Confidence != RoomConfidence.Unknown;
 
     // Hold no room at all, and nothing that came with it: the moves in flight, the

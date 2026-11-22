@@ -37,6 +37,8 @@ public sealed class SysopGotoManager
     private readonly Action _forceRoomDisplay;
     private readonly Action<string> _writeStatus;
     private readonly Action<RoomKey> _commitLocated;
+    // A jump put us in a room the table doesn't name. Answers whether that stopped a run.
+    private readonly Func<string, bool> _landedElsewhere;
     private readonly LogService? _log;
 
     private const string LogCat = "SysopGoto";
@@ -60,6 +62,7 @@ public sealed class SysopGotoManager
         Action forceRoomDisplay,
         Action<string> writeStatus,
         Action<RoomKey> commitLocated,
+        Func<string, bool> landedElsewhere,
         LogService? log = null)
     {
         ArgumentNullException.ThrowIfNull(enabled);
@@ -72,6 +75,7 @@ public sealed class SysopGotoManager
         ArgumentNullException.ThrowIfNull(forceRoomDisplay);
         ArgumentNullException.ThrowIfNull(writeStatus);
         ArgumentNullException.ThrowIfNull(commitLocated);
+        ArgumentNullException.ThrowIfNull(landedElsewhere);
         _enabled = enabled;
         _locations = locations;
         _inCombat = inCombat;
@@ -82,6 +86,7 @@ public sealed class SysopGotoManager
         _forceRoomDisplay = forceRoomDisplay;
         _writeStatus = writeStatus;
         _commitLocated = commitLocated;
+        _landedElsewhere = landedElsewhere;
         _log = log;
     }
 
@@ -270,7 +275,9 @@ public sealed class SysopGotoManager
             || string.Equals(landed, leftRoom.Trim(), StringComparison.OrdinalIgnoreCase))
             return;
         _log?.Warn(LogCat, $"'sys goto {keyword}' landed in '{landed}', but its table row says {key} ('{expected}').");
+        bool stopped = _landedElsewhere($"sys goto '{keyword}' landed in '{landed}', not {key}");
         _writeStatus($"[Sys goto '{keyword}' landed in {landed}, but your Sys Goto table says {expected} ({key}). "
+            + (stopped ? "Navigation stopped. " : string.Empty)
             + "Correct its room in Settings → BBS + Display.]");
     }
 

@@ -19,6 +19,10 @@
             <Setter Property="BorderBrush"  Value="Transparent"/>
             <Setter Property="Background"   Value="Transparent"/>
         </Style>
+        <Style Selector="Border.ManagerRow.Here">
+            <Setter Property="BorderBrush" Value="{StaticResource AccentGreenBrush}"/>
+            <Setter Property="Background"  Value="{StaticResource ChromeBgElevBrush}"/>
+        </Style>
         <Style Selector="Border.ManagerRow TextBlock">
             <Setter Property="FontSize"   Value="11"/>
             <Setter Property="Foreground" Value="{StaticResource ChromeFgBrush}"/>
@@ -150,15 +154,13 @@
                                     ToolTip.Tip="Import a MegaMUD .mp loop file. Path-style .mp files (one-way A→B) are rejected."/>
                         </Grid>
                     </Border>
-                    <ScrollViewer Grid.Row="1"
-                                  HorizontalScrollBarVisibility="Disabled"
-                                  VerticalScrollBarVisibility="Auto">
-                        <!-- Right margin reserves a gutter for the overlay
-                             vertical scrollbar (Fluent floats it over the
-                             viewport's right edge) so it can't sit on top of
-                             the per-loop / per-lair Go + action buttons in the
-                             tree rows below. -->
-                        <StackPanel Margin="0,0,14,0">
+                    <!-- The list takes the space under the filter and scrolls by itself,
+                         so the filter stays put. Right margin reserves a gutter for the
+                         overlay vertical scrollbar (Fluent floats it over the viewport's
+                         right edge) so it can't sit on top of the per-loop / per-lair
+                         Go + action buttons in the rows below. -->
+                    <Grid Grid.Row="1" RowDefinitions="Auto,*" Margin="0,0,14,0">
+                        <StackPanel Grid.Row="0">
                             <!-- Status line: the last .mp import's outcome,
                                  or why the running loop's Save below was
                                  refused. Empty until one of them has
@@ -202,7 +204,7 @@
                                             ToolTip.Tip="Persist the currently-running loop to disk under the typed name."/>
                                 </Grid>
                             </Border>
-                            <TextBox Classes="clearable" Text="{Binding WalkFilter, Mode=TwoWay}"
+                            <TextBox Classes="clearable" Name="WalkFilterBox" Text="{Binding WalkFilter, Mode=TwoWay}"
                                      PlaceholderText="Filter loops / lairs…"
                                      FontSize="11" Margin="0,0,0,3"
                                      IsVisible="{Binding HasWalkItems}"/>
@@ -217,18 +219,18 @@
                                        FontSize="11"
                                        Foreground="{StaticResource ChromeFgMutedBrush}"
                                        IsVisible="{Binding HasNoWalkMatches}"/>
+                        </StackPanel>
                             <!-- Rendered FLAT: folders and their open children are all
                                  uniform-height NavFlatRow rows, NOT a nested TreeView where
                                  an expanded folder is one giant item that wrecks the
-                                 virtualized scrollbar and drifts on expand. MaxHeight +
+                                 virtualized scrollbar and drifts on expand. The grid row +
                                  VirtualizingStackPanel bound the viewport so a broad filter
                                  match virtualizes. See the rail's trees. -->
-                            <ListBox Name="WalkTreeView"
+                            <ListBox Name="WalkTreeView" Grid.Row="1"
                                      ItemsSource="{Binding WalkRows}"
                                      IsVisible="{Binding HasWalkTree}"
                                      Background="Transparent"
                                      Padding="0,0,14,0"
-                                     MaxHeight="440"
                                      ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                      ScrollViewer.VerticalScrollBarVisibility="Auto"
                                      DragDrop.AllowDrop="True">
@@ -317,7 +319,8 @@
                                     </DataTemplate>
                                     <!-- Loop leaf. -->
                                     <DataTemplate DataType="vm:ManagerLoopRow">
-                                        <Border Classes="ManagerRow" Background="Transparent" Tag="{Binding}">
+                                        <Border Classes="ManagerRow" Classes.Here="{Binding IsHere}" Tag="{Binding}"
+                                                ToolTip.Tip="{Binding HereTip}">
                                             <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto" ColumnSpacing="6" MinWidth="0">
                                                 <StackPanel Grid.Column="0" VerticalAlignment="Center">
                                                     <TextBlock Text="{Binding Name}"
@@ -494,8 +497,7 @@
                                     </DataTemplate>
                                 </ListBox.DataTemplates>
                             </ListBox>
-                        </StackPanel>
-                    </ScrollViewer>
+                    </Grid>
                 </Grid>
             </Border>
                 </TabItem>
@@ -532,10 +534,8 @@
                                             ToolTip.Tip="Add a room as a favourite — search by name or enter a map/room number."/>
                                 </Grid>
                             </Border>
-                            <ScrollViewer Grid.Row="1"
-                                          HorizontalScrollBarVisibility="Disabled"
-                                          VerticalScrollBarVisibility="Auto">
-                                <StackPanel Margin="0,0,14,0">
+                            <Grid Grid.Row="1" RowDefinitions="Auto,*" Margin="0,0,14,0">
+                                <StackPanel Grid.Row="0">
                                     <TextBox Classes="clearable" Name="GotoFilterBox"
                                              Text="{Binding GotoFilter, Mode=TwoWay}"
                                              PlaceholderText="Filter favourites…"
@@ -549,14 +549,14 @@
                                                Padding="8" FontSize="11"
                                                Foreground="{StaticResource ChromeFgMutedBrush}"
                                                IsVisible="{Binding HasNoGotoMatches}"/>
+                                </StackPanel>
                                     <!-- Rendered FLAT (uniform-height NavFlatRow rows), collapsed
                                          at rest — see the Loops tab tree for why. -->
-                                    <ListBox Name="GotoTreeView"
+                                    <ListBox Name="GotoTreeView" Grid.Row="1"
                                              ItemsSource="{Binding FavoriteRows}"
                                              IsVisible="{Binding HasFavoriteTree}"
                                              Background="Transparent"
                                              Padding="0,0,14,0"
-                                             MaxHeight="440"
                                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                              ScrollViewer.VerticalScrollBarVisibility="Auto"
                                              DragDrop.AllowDrop="True">
@@ -723,8 +723,7 @@
                                             </DataTemplate>
                                         </ListBox.DataTemplates>
                                     </ListBox>
-                                </StackPanel>
-                            </ScrollViewer>
+                            </Grid>
                         </Grid>
                     </Border>
                 </TabItem>

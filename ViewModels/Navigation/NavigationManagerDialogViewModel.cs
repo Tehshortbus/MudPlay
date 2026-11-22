@@ -150,7 +150,8 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
         AutoLairManager? autoLair = null,
         FavoritesStore? favorites = null,
         bool startOnGotoTab = false,
-        MovementFilter? movementFilter = null)
+        MovementFilter? movementFilter = null,
+        Func<RoomKey?>? roomHere = null)
     {
         ArgumentNullException.ThrowIfNull(loops);
         ArgumentNullException.ThrowIfNull(lairSetups);
@@ -174,6 +175,7 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
         _autoLair = autoLair;
         _favorites = favorites;
         _movementFilter = movementFilter;
+        _roomHere = roomHere;
         Draft = draft;
         _onDraftConsumed = onDraftConsumed;
         _runningLoopName = runner?.CurrentLoop?.Name ?? string.Empty;
@@ -205,8 +207,9 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
     private void RebuildLoops()
     {
         Loops.Clear();
+        Loop? here = _roomHere?.Invoke() is { } room ? LoopAtRoom.Pick(_loops.Loops, room) : null;
         foreach (Loop loop in _loops.Loops.OrderBy(l => l.Name, StringComparer.OrdinalIgnoreCase))
-            Loops.Add(new ManagerLoopRow(loop));
+            Loops.Add(new ManagerLoopRow(loop) { IsHere = ReferenceEquals(loop, here) });
         OnPropertyChanged(nameof(HasLoops));
         OnPropertyChanged(nameof(HasWalkItems));
         RebuildWalkTree();
@@ -251,7 +254,8 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
         IEnumerable<string> folders = filtering ? Array.Empty<string>() : FolderSeed;
         NavTreeBuilder.Sync<object>(WalkTree, rows, folderOf, folders,
             defaultExpanded: false, _walkExpandOverrides,
-            harvest: !_walkWasFiltering, forceExpandAll: false);
+            harvest: !_walkWasFiltering, forceExpandAll: false,
+            pinned: static row => row is ManagerLoopRow { Source.Favorite: true } or ManagerLairSetupRow { Source.Favorite: true });
         _walkWasFiltering = filtering;
         _walkFlat.Rebuild(WalkTree);
         OnPropertyChanged(nameof(HasWalkTree));
@@ -327,11 +331,42 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
 
     // Which tab is showing: 0 = Loops & Auto-Lairs, 1 = Go To. Two-way so user
     // clicks stay in sync; driven by the entry point via SelectTab (toolbar Start
-    // opens on Go To, the map's Manage button on Loops).
+    // opens on the tab Settings picks, the map's Manage button on Loops).
     [ObservableProperty] private int _selectedTabIndex;
 
     // Land on the Go To tab (when it exists) or the Loops tab.
-    public void SelectTab(bool gotoTab) => SelectedTabIndex = gotoTab && HasGotoTab ? 1 : 0;
+    public void SelectTab(bool gotoTab)
+    {
+        SelectedTabIndex = gotoTab && HasGotoTab ? 1 : 0;
+        if (SelectedTabIndex == 0) ShowLoopHere();
+    }
+
+    private readonly Func<RoomKey?>? _roomHere;
+
+    // Where the loop we're standing on sits in the list, for the window to scroll to;
+    // -1 when there is none.
+    public int LoopHereRowIndex { get; private set; } = -1;
+
+    public event Action? LoopHereShown;
+
+    // Marks the loop for the room we're in now and opens its folder. Only as the tab is
+    // brought up: a rebuild mustn't reopen a folder the user has since closed.
+    private void ShowLoopHere()
+    {
+        RebuildLoops();
+        if (Loops.FirstOrDefault(l => l.IsHere) is not { } here)
+        {
+            LoopHereRowIndex = -1;
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(WalkFilter) && !here.Source.Favorite)
+        {
+            NavTreeBuilder.ExpandPath(WalkTree, here.Source.Folder);
+            _walkFlat.Rebuild(WalkTree);
+        }
+        LoopHereRowIndex = WalkRows.ToList().FindIndex(r => r.Item is ManagerLoopRow { IsHere: true });
+        LoopHereShown?.Invoke();
+    }
 
     private void RebuildFavorites()
     {
@@ -1088,6 +1123,10 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
 // Single saved-loop row shown in the manager.
 public sealed record ManagerLoopRow(Loop Source)
 {
+    // The loop the character is standing on, shown highlighted.
+    public bool IsHere { get; init; }
+    public string? HereTip => IsHere ? "You're on this loop" : null;
+
     public string Name => Source.Name;
     public int WaypointCount => Source.Waypoints.Count;
     public string Notes => string.IsNullOrWhiteSpace(Source.Notes) ? "—" : Source.Notes!;

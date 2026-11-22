@@ -1,9 +1,14 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.207.1**
+> **Version 3.208.0**
 >
-> - A sys goto that lands somewhere other than its table row now warns on the terminal, naming both rooms
+> - A sys goto that lands somewhere other than its table row now warns on the terminal, naming both rooms, and stops the run
+> - Toolbar Pause stays lit while paused, and pressing it resumes
+> - Start opens the Loops tab by default; Settings → Toolbar + Shortcuts can switch it to Go To
+> - Loop and Go To filters stay in view while the list scrolls
+> - Favourite loops and Auto-Lairs sit at the top of their lists
+> - Navigation Management highlights the loop you're standing on
 <!-- current-version:end -->
 
 A modern Telnet terminal client for **MajorMUD** and other BBS door games, built in C# / .NET 10 with [Avalonia](https://avaloniaui.net/). It renders a faithful CP437 cell grid with full VT100/ANSI parsing, and layers a MegaMUD-style automation suite (combat, party, navigation, healing, and more) on top — all in modeless, dockable windows so the terminal stays live while you configure anything.

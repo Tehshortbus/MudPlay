@@ -146,6 +146,21 @@ public sealed class AutoWalkManagerSysGotoTests : IDisposable
         Assert.Contains(h.Events, e => e.Kind == WalkEventKind.Failed);
     }
 
+    // Report stock-20261122-124831: the tracker kept the room left behind, and the loop
+    // walked on from it.
+    [Fact]
+    public void AJumpToAnUnknownRoom_DropsTheOldRoom_UntilADisplayPlacesUs()
+    {
+        Harness h = NewHarness(new[] { Loc("newhaven", 1, 10) });
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+
+        h.Tracker.NoteJumpedToUnknownRoom("sys goto landed elsewhere");
+        Assert.Null(h.Tracker.State.CurrentRoom);
+
+        h.Tracker.NoteRoomObserved(Obs("Goal", Direction.S));
+        Assert.Equal(new RoomKey(1, 11), h.Tracker.State.CurrentRoom?.Key);
+    }
+
     [Fact]
     public void WalkTo_NoUsableLocation_DoesNotJump()
     {

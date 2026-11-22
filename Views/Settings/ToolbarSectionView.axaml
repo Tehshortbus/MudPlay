@@ -125,6 +125,16 @@
                    Text="Shared across every character and BBS on this install."/>
         <Border Classes="SettingsSectionRule"/>
 
+        <StackPanel Orientation="Horizontal" Spacing="8"
+                    ToolTip.Tip="The tab Navigation Management opens on when you press the toolbar's Start button with nothing to resume or run.">
+            <TextBlock Text="Start button opens" VerticalAlignment="Center"
+                       Foreground="{StaticResource ChromeFgBrush}"/>
+            <ComboBox SelectedIndex="{Binding StartButtonOpensIndex, Mode=TwoWay}" MinWidth="120">
+                <ComboBoxItem Content="Loops"/>
+                <ComboBoxItem Content="Go To"/>
+            </ComboBox>
+        </StackPanel>
+
         <!-- Help-menu websites (Global tier) — always editable. -->
         <TextBlock Classes="SectionHeader"
                    Text="Help menu websites — shown under Help ↗ (shared across all characters)"/>

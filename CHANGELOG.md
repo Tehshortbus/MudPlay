@@ -1,9 +1,14 @@
 # Version history
 
-## 3.207.1
+## 3.208.0
 
-- A sys goto that lands somewhere other than its table row now warns on the terminal, naming both rooms
-- bug reports addressed: stock-20261122-124831
+- A sys goto that lands somewhere other than its table row now warns on the terminal, naming both rooms, and stops the run
+- Toolbar Pause stays lit while paused, and pressing it resumes
+- Start opens the Loops tab by default; Settings → Toolbar + Shortcuts can switch it to Go To
+- Loop and Go To filters stay in view while the list scrolls
+- Favourite loops and Auto-Lairs sit at the top of their lists
+- Navigation Management highlights the loop you're standing on
+- bug reports addressed: stock-20261122-124831, stock-20261120-072254
 
 ## 3.207.0
 

@@ -2178,6 +2178,7 @@
                                              MaxHeight="400"
                                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                              ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                             ScrollViewer.IsScrollChainingEnabled="False"
                                              DragDrop.AllowDrop="True">
                                         <!-- Rendered FLAT (uniform-height rows) so an expanded folder
                                              isn't one giant virtualized item — see FavoriteTreeView. -->

@@ -2176,10 +2176,10 @@ public partial class MainWindowViewModel : ObservableObject
                 // rest) must not read as "Resume"; only the user's own pause does.
                 Game.Map.MovementController ctl = AppServices.Current.MovementControl;
                 row.IsActionEnabled = true;
-                // Depress while a movement engine is in progress (loop / goto /
-                // auto-lair, running or paused); back to default the moment
-                // movement stops (idle). OnMovementControlStateChanged re-runs this.
-                row.IsActive = ctl.IsActive;
+                // Depress while a movement engine is moving (loop / goto / auto-lair);
+                // a user pause lights Pause instead, so the bar never reads as running
+                // while paused. OnMovementControlStateChanged re-runs this.
+                row.IsActive = ctl.IsActive && !ctl.IsUserPaused;
                 row.Tooltip = ctl.IsUserPaused
                     ? "Resume movement"
                     : "Start movement — run the staged loop, or open Manage to pick / switch one";
@@ -2187,11 +2187,12 @@ public partial class MainWindowViewModel : ObservableObject
             }
             case "MovementPause":
             {
-                // Pure pause: enabled while an engine is active and the user
-                // hasn't already paused it. Stays enabled through engine waits so
-                // the user can stack a manual pause on top of a fight/rest.
+                // Lit while the user's pause holds, whether pressed here or caused by a
+                // typed move; pressing it again resumes. Stays enabled through engine
+                // waits so the user can stack a pause on top of a fight/rest.
                 Game.Map.MovementController ctl = AppServices.Current.MovementControl;
-                row.IsActionEnabled = ctl.IsActive && !ctl.IsUserPaused;
+                row.IsActionEnabled = ctl.IsActive;
+                row.IsActive = ctl.IsUserPaused;
                 break;
             }
             case "MovementStop":
@@ -6164,7 +6165,7 @@ public partial class MainWindowViewModel : ObservableObject
     // Toolbar Start, which doubles as Resume. USER-paused → resume. Idle with a
     // loop staged (Manage dialog's Load) → run it straight away. Otherwise — idle
     // with nothing staged, OR already running a loop/goto — open the shared Manage
-    // dialog on the Go To tab, so the user can pick or SWITCH destination by
+    // dialog on the tab Settings picks, so the user can pick or SWITCH destination by
     // hitting Run on a different favourite / loop mid-run. Backing out of the
     // staged loop's route cards lets go of it, so the next Start opens the list.
     [RelayCommand]
@@ -6183,12 +6184,12 @@ public partial class MainWindowViewModel : ObservableObject
                 declined: () => s.LoopRunner.Unstage(staged, "the walk to it was called off at its route cards"));
             return;
         }
-        OpenNavManager(startOnGotoTab: true);
+        OpenNavManager(startOnGotoTab: s.Settings.Current.StartButtonOpens == Models.Settings.StartButtonOpens.GoTo);
     }
 
-    // Toolbar Pause — pauses the running engine (no-op if already paused / idle).
+    // Toolbar Pause — pauses the running engine, or resumes one the user paused.
     [RelayCommand]
-    private void MovementPause() => AppServices.Current.MovementControl.Pause();
+    private void MovementPause() => AppServices.Current.MovementControl.TogglePause();
 
     // Toolbar Stop — backs the running engine fully out to Idle.
     [RelayCommand]
@@ -6208,7 +6209,7 @@ public partial class MainWindowViewModel : ObservableObject
     // runs saved loops + lairs and hosts the Go To favourites tab — no map window
     // required. When the map is up and mid loop-build, its live LoopBuilder draft
     // is handed to the dialog so the Draft "save this loop" section shows. The
-    // bool picks the default tab (toolbar Start → Go To, map button → Loops); an
+    // bool picks the default tab (toolbar Start → the Settings choice, map button → Loops); an
     // already-open dialog is switched to that tab and re-focused.
     private void OpenNavManager(bool startOnGotoTab)
     {
@@ -6251,7 +6252,9 @@ public partial class MainWindowViewModel : ObservableObject
             autoLair: s.AutoLair,
             favorites: s.Favorites,
             startOnGotoTab: startOnGotoTab,
-            movementFilter: s.Movement);
+            movementFilter: s.Movement,
+            roomHere: () => s.RoomTracker.State.Confidence == Game.Map.RoomConfidence.Confirmed
+                ? s.RoomTracker.State.CurrentRoom?.Key : null);
 
         Views.Navigation.NavigationManagerDialog window = new() { DataContext = vm };
         // The dialog's Close button raises CloseRequested; mirror what

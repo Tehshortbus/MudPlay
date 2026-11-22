@@ -5915,6 +5915,19 @@ public sealed class AppServices
             forceRoomDisplay: () => _rawWireSend?.Invoke(System.Text.Encoding.Latin1.GetBytes("\r")),
             writeStatus: msg => Avalonia.Threading.Dispatcher.UIThread.Post(() => WriteTerminalNotice(msg)),
             commitLocated: key => RoomTracker.SetLocated(key),
+            landedElsewhere: reason =>
+            {
+                bool running = MovementControl.IsActive;
+                if (running)
+                {
+                    MovementControl.Stop(reason);
+                    // Settles the autos as any stop of a run does, posted because it
+                    // can write to the terminal from inside the line pump.
+                    NoteGameDataStop?.Invoke(reason);
+                }
+                RoomTracker.NoteJumpedToUnknownRoom(reason);
+                return running;
+            },
             log: Log);
         // Late-wire HealthManager's "sys goto wimpy instead of hanging" escape now
         // that SysopGoto exists (Health is built earlier). When the emergency low-HP

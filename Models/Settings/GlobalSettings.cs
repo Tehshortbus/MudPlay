@@ -170,6 +170,10 @@ public sealed class GlobalSettings
     // per-character); read live by WindowSnapManager. Surfaced in Settings → General.
     public bool SnapWindows { get; set; } = true;
 
+    // Which Navigation Management tab the toolbar's Start button opens on when there's
+    // nothing to resume or run. Install-wide. Surfaced in Settings → Toolbar + Shortcuts.
+    public StartButtonOpens StartButtonOpens { get; set; } = StartButtonOpens.Loops;
+
     // Draw the windows on the graphics card rather than with the CPU. Off by
     // default: the graphics driver costs a client about 120 MB, and a text client
     // draws with the CPU for a few percent of one core (user, 2026-11-02). The
