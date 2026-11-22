@@ -1,10 +1,11 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.208.1**
+> **Version 3.208.2**
 >
 > - A follower no longer sends a false @comeback when the leader's departure line arrives after the follower has already moved
 > - A leader fetching a member who never stopped following resumes at the next `par` instead of waiting out the timer
+> - The map window's loop list also highlights the loop you're standing on, following you as you walk
 <!-- current-version:end -->
 
 A modern Telnet terminal client for **MajorMUD** and other BBS door games, built in C# / .NET 10 with [Avalonia](https://avaloniaui.net/). It renders a faithful CP437 cell grid with full VT100/ANSI parsing, and layers a MegaMUD-style automation suite (combat, party, navigation, healing, and more) on top — all in modeless, dockable windows so the terminal stays live while you configure anything.

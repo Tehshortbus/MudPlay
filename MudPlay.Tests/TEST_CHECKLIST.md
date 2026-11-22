@@ -2297,8 +2297,8 @@ How to keep it current:
 
 ### LoopAtRoomTests.cs
 - Covers: Game/Map/LoopAtRoom
-- Checks: no loop for a room on none; a loop starting here beats one passing through; Always Start Here is the loop's start; a favourite, then the name, breaks ties.
-- Why: the Manage dialog offers the loop the player is standing on (report stock-20261120-072254).
+- Checks: no loop for a room on none; the running loop stays the pick; a loop starting here beats one passing through; Always Start Here is the loop's start; a favourite, then the name, breaks ties; the by-room index lists a loop once per room.
+- Why: the Manage dialog and the map's loop list mark the loop the player is standing on (report stock-20261120-072254).
 
 ### LoopBuilderSessionTests.cs
 - Covers: ViewModels/Navigation/LoopBuilderSessionViewModel

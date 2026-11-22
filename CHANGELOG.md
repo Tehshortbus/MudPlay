@@ -1,9 +1,10 @@
 # Version history
 
-## 3.208.1
+## 3.208.2
 
 - A follower no longer sends a false @comeback when the leader's departure line arrives after the follower has already moved
 - A leader fetching a member who never stopped following resumes at the next `par` instead of waiting out the timer
+- The map window's loop list also highlights the loop you're standing on, following you as you walk
 - bug reports addressed: stock-20261122-163705
 
 ## 3.208.0

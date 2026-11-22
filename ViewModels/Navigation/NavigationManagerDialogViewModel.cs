@@ -207,7 +207,7 @@ public sealed partial class NavigationManagerDialogViewModel : ObservableObject,
     private void RebuildLoops()
     {
         Loops.Clear();
-        Loop? here = _roomHere?.Invoke() is { } room ? LoopAtRoom.Pick(_loops.Loops, room) : null;
+        Loop? here = _roomHere?.Invoke() is { } room ? LoopAtRoom.Pick(_loops.Loops, room, _runner?.CurrentLoop?.Name) : null;
         foreach (Loop loop in _loops.Loops.OrderBy(l => l.Name, StringComparer.OrdinalIgnoreCase))
             Loops.Add(new ManagerLoopRow(loop) { IsHere = ReferenceEquals(loop, here) });
         OnPropertyChanged(nameof(HasLoops));

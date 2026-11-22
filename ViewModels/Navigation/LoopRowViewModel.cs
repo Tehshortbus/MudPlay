@@ -1,3 +1,4 @@
+using CommunityToolkit.Mvvm.ComponentModel;
 using MudPlay.Game.Map;
 
 namespace MudPlay.ViewModels.Navigation;
@@ -5,8 +6,12 @@ namespace MudPlay.ViewModels.Navigation;
 // Display-only wrapper around a Loop for the Navigation right-rail LOOPS
 // section. Carries the human-friendly labels the list template binds to plus
 // the underlying Source for the Run command.
-public sealed class LoopRowViewModel
+public sealed partial class LoopRowViewModel : ObservableObject
 {
+    // The loop the character is standing on. Observable because it moves with every
+    // step, where the rows themselves are only rebuilt when the loops change.
+    [ObservableProperty] private bool _isHere;
+
     public Loop Source { get; }
     public string Name => Source.Name;
 

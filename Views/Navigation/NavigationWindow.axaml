@@ -369,6 +369,16 @@
         </Style>
 
         <!-- CURRENT NAV step row dynamic styling -->
+        <Style Selector="Border.RailLoop">
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="CornerRadius" Value="3"/>
+            <Setter Property="Padding" Value="2,0"/>
+        </Style>
+        <Style Selector="Border.RailLoop.Here">
+            <Setter Property="BorderBrush" Value="{StaticResource AccentGreenBrush}"/>
+            <Setter Property="Background" Value="{StaticResource ChromeBgElevBrush}"/>
+        </Style>
         <Style Selector="Border.NavRow">
             <Setter Property="Padding" Value="8,3"/>
             <Setter Property="CornerRadius" Value="3"/>
@@ -2317,6 +2327,7 @@
                                                  second line. Load + Go stay right-aligned at
                                                  any name length. -->
                                             <DataTemplate DataType="vm:LoopRowViewModel">
+                                                <Border Classes="RailLoop" Classes.Here="{Binding IsHere}">
                                                 <Grid ColumnDefinitions="*,Auto,Auto" Margin="0,2" ColumnSpacing="4" Background="Transparent"
                                                       ToolTip.Tip="{Binding RowTooltip}">
                                                     <StackPanel Grid.Column="0" VerticalAlignment="Center" MinWidth="0">
@@ -2370,6 +2381,7 @@
                                                         </ContextMenu>
                                                     </Grid.ContextMenu>
                                                 </Grid>
+                                                </Border>
                                             </DataTemplate>
                                         </ListBox.DataTemplates>
                                     </ListBox>
