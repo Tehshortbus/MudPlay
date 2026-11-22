@@ -1920,6 +1920,59 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
             Setups.Add(new LairSetupRowViewModel(s));
         OnPropertyChanged(nameof(HasAnyLoopsOrSetups));
         RebuildNavTree();
+        _loopsByRoom = null;
+        _loopHereRow = null;
+        MarkLoopHere(scroll: false);
+    }
+
+    // ----- The loop we're standing on ------------------------------------
+
+    private ILookup<RoomKey, Loop>? _loopsByRoom;
+    private LoopRowViewModel? _loopHereRow;
+
+    // The marked loop changed to the row at this index of NavRows, for the window to
+    // scroll to.
+    public event Action<int>? LoopHereRowChanged;
+
+    // Mid-step is no news: the mark stays until the move lands.
+    private void MarkLoopHere(bool scroll)
+    {
+        RoomState state = _services.RoomTracker.State;
+        if (state.Confidence == RoomConfidence.Pending) return;
+        Loop? here = null;
+        if (state.Confidence == RoomConfidence.Confirmed && state.CurrentRoom is { } room)
+        {
+            _loopsByRoom ??= LoopAtRoom.ByRoom(_services.Loops.Loops);
+            here = LoopAtRoom.Pick(_loopsByRoom[room.Key], room.Key, _services.LoopRunner.CurrentLoop?.Name);
+        }
+        LoopRowViewModel? row = here is null ? null : Loops.FirstOrDefault(l => ReferenceEquals(l.Source, here));
+        if (ReferenceEquals(row, _loopHereRow)) return;
+        if (_loopHereRow is not null) _loopHereRow.IsHere = false;
+        _loopHereRow = row;
+        if (row is null) return;
+        row.IsHere = true;
+        if (scroll) AnnounceLoopHereRow();
+    }
+
+    private void AnnounceLoopHereRow()
+    {
+        if (_loopHereRow is not { } row) return;
+        int index = NavRows.ToList().FindIndex(r => ReferenceEquals(r.Item, row));
+        if (index >= 0) LoopHereRowChanged?.Invoke(index);
+    }
+
+    // As the window opens: show the loop even inside a closed folder. Not on each step,
+    // or walking past loops would keep opening folders the user had closed.
+    public void RevealLoopHere()
+    {
+        MarkLoopHere(scroll: false);
+        if (_loopHereRow is not { } row) return;
+        if (string.IsNullOrWhiteSpace(LoopFilter) && !row.Source.Favorite && row.Source.Folder.Length > 0)
+        {
+            NavTreeBuilder.ExpandPath(NavTree, row.Source.Folder);
+            _navFlat.Rebuild(NavTree);
+        }
+        AnnounceLoopHereRow();
     }
 
     // Rebuild the folder tree from the flat Loops + Setups, honouring LoopFilter.
@@ -3759,6 +3812,7 @@ public sealed partial class NavigationViewModel : ObservableObject, IDisposable
 
     private void OnTrackerStateChanged(RoomTransition _)
     {
+        MarkLoopHere(scroll: true);
         RefreshFromTracker();
         RefreshAutoLairApproachPath();
         // Re-trim the walk-to overlay to the room we just confirmed. The

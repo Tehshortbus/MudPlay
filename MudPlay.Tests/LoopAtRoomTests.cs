@@ -40,6 +40,29 @@ public sealed class LoopAtRoomTests
     }
 
     [Fact]
+    public void TheLoopRunningNow_StaysThePick_WhereItCrossesOneStartingHere()
+    {
+        Loop running = MakeLoop("Z running", false, "1/1", "1/5");
+        Loop starting = MakeLoop("A starting", true, "1/5", "1/1");
+
+        Assert.Same(running, LoopAtRoom.Pick(new[] { starting, running }, Here, running: "z RUNNING"));
+        Assert.Same(starting, LoopAtRoom.Pick(new[] { starting, running }, Here, running: "Not on this room"));
+    }
+
+    [Fact]
+    public void ByRoom_ListsEachLoopOncePerRoomItCrosses()
+    {
+        Loop twice = MakeLoop("Twice", false, "1/5", "1/1", "1/5");
+        Loop other = MakeLoop("Other", false, "1/2");
+
+        ILookup<RoomKey, Loop> byRoom = LoopAtRoom.ByRoom(new[] { twice, other });
+
+        Assert.Same(twice, Assert.Single(byRoom[Here]));
+        Assert.Same(other, Assert.Single(byRoom[new RoomKey(1, 2)]));
+        Assert.Empty(byRoom[new RoomKey(9, 9)]);
+    }
+
+    [Fact]
     public void AmongEquals_AFavouriteComesFirst_ThenTheName()
     {
         Loop plain = MakeLoop("A plain", false, "1/1", "1/5");

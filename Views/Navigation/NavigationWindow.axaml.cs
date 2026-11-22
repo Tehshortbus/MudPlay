@@ -52,6 +52,7 @@ public partial class NavigationWindow : Window
         // search box or nothing at all), and the user has to click
         // the map first before navigation works.
         Opened    += (_, _) => FocusMap();
+        Opened    += (_, _) => (DataContext as NavigationViewModel)?.RevealLoopHere();
         Activated += (_, _) => FocusMap();
         // Position the legend once the first layout pass has sized the map (its
         // Bounds are 0 until then). No-op when the legend starts hidden.
@@ -85,6 +86,7 @@ public partial class NavigationWindow : Window
             {
                 vm.CenterOnPlayerRequested += OnCenterOnPlayerRequested;
                 vm.PropertyChanged          += OnVmPropertyChanged;
+                vm.LoopHereRowChanged       += OnLoopHereRowChanged;
                 // Expose the map's live browse state so a movement step defers
                 // the layout re-root while the user is panning / crawling / has
                 // just jumped the view (see NavigationViewModel.RefreshFromTracker).
@@ -92,6 +94,17 @@ public partial class NavigationWindow : Window
                     vm.IsMapBrowsing = () => browseMap.IsAutoFollowSuppressed;
             }
         };
+    }
+
+    // Left alone while the pointer is on the list: the user is reading it.
+    private void OnLoopHereRowChanged(int row)
+    {
+        if (this.FindControl<ListBox>("NavTreeView") is not { IsPointerOver: false, IsEffectivelyVisible: true } list)
+            return;
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (row < list.ItemCount) list.ScrollIntoView(row);
+        }, DispatcherPriority.Loaded);
     }
 
     private void OnCenterOnPlayerRequested()

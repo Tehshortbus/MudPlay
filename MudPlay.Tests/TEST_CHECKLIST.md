@@ -828,8 +828,8 @@ How to keep it current:
 
 ### ComebackRequesterTests.cs
 - Covers: Game/Remote/ComebackRequester (with FollowMoveObserver, MovementRefusalDetector, PartyManager, TooHeavyWaitSignal).
-- Checks: - One @comeback when left behind; none for leave, uninvite, own move, death or teleport. - Held / retried / dropped requests; leader answers (refuse vs coming); a leader's `got you` after we already follow again starts no join, wait or give-up; Stock self-`join`.
-- Why: GAME_MECHANICS "@comeback (follower → leader)"; paradigm-20260922-085609; paradigm-20261025-114837.
+- Checks: - One @comeback when left behind; none for leave, uninvite, own move, death or teleport. - Held / retried / dropped requests; leader answers (refuse vs coming); a leader's `got you` after we already follow again starts no join, wait or give-up; Stock self-`join`; the departure line of a move we followed, arriving after the room, is no left-behind, while a real next step, another direction or a refused follow still is.
+- Why: GAME_MECHANICS "@comeback (follower → leader)"; paradigm-20260922-085609; paradigm-20261025-114837; stock-20261122-163705.
 
 ### CommandHistoryNavigatorTests.cs
 - Covers: Services/CommandHistoryNavigator.
@@ -2297,8 +2297,8 @@ How to keep it current:
 
 ### LoopAtRoomTests.cs
 - Covers: Game/Map/LoopAtRoom
-- Checks: no loop for a room on none; a loop starting here beats one passing through; Always Start Here is the loop's start; a favourite, then the name, breaks ties.
-- Why: the Manage dialog offers the loop the player is standing on (report stock-20261120-072254).
+- Checks: no loop for a room on none; the running loop stays the pick; a loop starting here beats one passing through; Always Start Here is the loop's start; a favourite, then the name, breaks ties; the by-room index lists a loop once per room.
+- Why: the Manage dialog and the map's loop list mark the loop the player is standing on (report stock-20261120-072254).
 
 ### LoopBuilderSessionTests.cs
 - Covers: ViewModels/Navigation/LoopBuilderSessionViewModel
@@ -2930,7 +2930,7 @@ How to keep it current:
 
 ### PartyComebackManagerTests.cs
 - Covers: Game/Remote/PartyComebackManager (+ walker, loop, lair, PartyManager)
-- Checks: @comeback and @where recovery; full-party and distance gates; a member back from a dropped link whose @comeback crosses our invite (the auto-invite's or one typed by hand) is answered `got you - resuming` once following, `comeback already in progress` while still [Invited] (not for a fresh recruit invited on logging in, nor for an invite echoed into a party already full without the asker's row), with no @forget either way; an invite long after the re-entry isn't the return's; a move of ours since, or a request long after the return, is judged as any other; a full party never counts the asking member's own row; backtrack; loop and lair gates; train-trip roll; Stock join vs invite; @forget, including the follower's side: a leader's @forget while we still follow, the next `par` naming them again and the @wait kept for them going out; a member left behind right after their @ok is asked for a fresh @ok (@waiting) and trusted, and waits the full window only when that happens again within the wait window.
+- Checks: @comeback and @where recovery; a `par` listing the awaited member as following ends the wait, an [Invited] row doesn't (stock-20261122-163705); full-party and distance gates; a member back from a dropped link whose @comeback crosses our invite (the auto-invite's or one typed by hand) is answered `got you - resuming` once following, `comeback already in progress` while still [Invited] (not for a fresh recruit invited on logging in, nor for an invite echoed into a party already full without the asker's row), with no @forget either way; an invite long after the re-entry isn't the return's; a move of ours since, or a request long after the return, is judged as any other; a full party never counts the asking member's own row; backtrack; loop and lair gates; train-trip roll; Stock join vs invite; @forget, including the follower's side: a leader's @forget while we still follow, the next `par` naming them again and the @wait kept for them going out; a member left behind right after their @ok is asked for a fresh @ok (@waiting) and trusted, and waits the full window only when that happens again within the wait window.
 - Why: Many reports (paradigm-20260926-195517, -20260928-074527, -20261007-*, -20261025-114837, -20261028-102116).
 
 ### PartyDeathRosterCleanupTests.cs

@@ -503,6 +503,37 @@ public sealed class PartyComebackManagerTests : IDisposable
         Assert.Contains("resuming", h.LastReply);
     }
 
+    // Report stock-20261122-163705: a false @comeback from a member who never stopped
+    // following. No "started to follow you" is coming, so `par` has to end the wait.
+    [Theory]
+    [InlineData("  Tank                           (Priest)     [M: 92%] [H: 92%]   - Backrank", true)]
+    [InlineData("  Tank                           (Priest)     [Invited]", false)]
+    public void WaitingForAMemberToFollow_AParOnlyEndsItWhenItListsThemFollowing(string tankRow, bool resumes)
+    {
+        using Harness h = NewHarness();
+        h.Party.LocalCharacterName = "Boss";
+        ServerFeed feed = new(h.Router);
+        h.Party.AttachLineExtractor(feed.Lines);
+        h.Router.Dispatch(Line("Tank started to follow you."));
+        h.Router.Dispatch(Line("Scout started to follow you."));
+        StartLair(h);
+        ChatLines.Hear(h.Router, Telepath("Tank", "@comeback 1/1"));
+        h.Tracker.SetLocated(new RoomKey(1, 1));   // settle → Finished → re-invite
+        Assert.Equal("re-invited, waiting for them to follow", h.Comeback.RecoveryPhase);
+
+        feed.Line("The following people are in your travel party:");
+        feed.Rows(new[]
+        {
+            "  Boss                           (Warrior)             [H:100%]   - Frontrank",
+            "  Scout                          (Ninja)               [H:100%]   - Midrank",
+            tankRow,
+        });
+        feed.Prompt("[HP=100/MA=10]:");
+
+        Assert.Equal(resumes, h.Lair.IsActive);
+        Assert.Equal(resumes ? null : "Tank", h.Comeback.RecoveringMember);
+    }
+
     // Recovering a member mid-loop continues the same session: the loop resumes
     // without re-raising ReachedFirstWaypoint, whose consumer zeroes the session
     // stats and broadcasts @reset to the party.
