@@ -774,6 +774,14 @@ public sealed class PartyComebackManager : IDisposable
             _gateFetches.RemoveAll(f => SameName(f.Given, given)
                 && _gateCrossed.TryGetValue(f.From, out GateStep crossed) && crossed.Exit.Target == f.To && crossed.At > f.At);
         }
+        // A member who never stopped following has no "started to follow you" to come
+        // (a false @comeback, report stock-20261122-163705): a full row says they are
+        // with us, where one the game dropped reads [Invited] or is gone.
+        if (_busy && _phase == ComebackPhase.AwaitingFollow && MemberFollowing(_senderGiven))
+        {
+            _log?.Info(LogCategory, $"`par` lists {_senderGiven} as following — no need to wait for them to follow again");
+            OnMemberFollowConfirmed(_senderGiven);
+        }
     }
 
     // A loop run is over (stopped for good, or failed): whom it was judged to

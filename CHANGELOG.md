@@ -1,5 +1,11 @@
 # Version history
 
+## 3.208.1
+
+- A follower no longer sends a false @comeback when the leader's departure line arrives after the follower has already moved
+- A leader fetching a member who never stopped following resumes at the next `par` instead of waiting out the timer
+- bug reports addressed: stock-20261122-163705
+
 ## 3.208.0
 
 - A sys goto that lands somewhere other than its table row now warns on the terminal, naming both rooms, and stops the run

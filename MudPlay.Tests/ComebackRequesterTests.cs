@@ -425,6 +425,81 @@ public sealed class ComebackRequesterTests : IDisposable
         Assert.Null(h.LastWire);
     }
 
+    // Report stock-20261122-163705: the old room's departure line reached the follower
+    // after the follow line and the new room, and read as the leader walking off.
+    [Theory]
+    [InlineData("north", "Boss just left to the north.")]
+    [InlineData("up", "Boss just left upwards.")]
+    [InlineData("down", "Boss just left downwards.")]
+    public void TheDepartureOfTheMoveWeFollowed_ArrivingAfterTheRoom_SendsNothing(string dir, string departure)
+    {
+        using Harness h = NewFollower();
+
+        h.Feed($" -- Following your Party leader {dir} --");
+        h.Feed("B");
+        h.Feed("Also here: Boss.");
+        h.Feed("Obvious exits: south");
+        h.Feed(departure);
+        h.Timers.RunDue(ComebackRequester.SettleTime);
+
+        Assert.Null(h.LastWire);
+    }
+
+    [Fact]
+    public void TheDepartureOfTheMoveWeFollowed_WithBlindFollowShowingNoRoom_SendsNothing()
+    {
+        using Harness h = NewFollower();
+
+        h.Feed(" -- Following your Party leader north --");
+        h.Feed("Boss just left to the north.");
+        h.Timers.RunDue(ComebackRequester.SettleTime);
+
+        Assert.Null(h.LastWire);
+    }
+
+    [Fact]
+    public void ARealNextStepTheSameWay_StillCountsAsLeftBehind()
+    {
+        using Harness h = NewFollower();
+
+        h.Feed(" -- Following your Party leader north --");
+        h.Feed("B");
+        h.Feed("Obvious exits: north, south");
+        h.Advance(TimeSpan.FromSeconds(1));
+        h.Feed("Boss just left to the north.");
+        h.Timers.RunDue(ComebackRequester.SettleTime);
+
+        Assert.Contains("@comeback", h.LastWire);
+    }
+
+    [Fact]
+    public void ALeaderLeavingAnotherWayJustAfterOurArrival_StillCountsAsLeftBehind()
+    {
+        using Harness h = NewFollower();
+
+        h.Feed(" -- Following your Party leader north --");
+        h.Feed("B");
+        h.Feed("Obvious exits: south");
+        h.Feed("Boss just left to the south.");
+        h.Timers.RunDue(ComebackRequester.SettleTime);
+
+        Assert.Contains("@comeback", h.LastWire);
+    }
+
+    // A follow move an exit refused never arrived: the leader did walk off.
+    [Fact]
+    public void AFollowLineWithSomethingSaidAndNoArrival_ThenTheDeparture_StillCountsAsLeftBehind()
+    {
+        using Harness h = NewFollower();
+
+        h.Feed(" -- Following your Party leader north --");
+        h.Feed("A strange force bars your way.");
+        h.Feed("Boss just left to the north.");
+        h.Timers.RunDue(ComebackRequester.SettleTime);
+
+        Assert.Contains("@comeback", h.LastWire);
+    }
+
     // The leader relayed a teleport keyword, a follow line and a line came, and the
     // follow ended: that is the leader's teleport, not an exit that turned us away.
     [Fact]

@@ -9620,7 +9620,10 @@ This covers how a client learns which ailments afflict itself and its party memb
     - A `par` typed afterwards on Stock still lists the leader as `[Invited]`, and with no follow of our own that row reads as an invite of ours (*`par` output block*, the `[Invited]` row bullet).
   - **A dropped link is the reconnect's incident.** `ComebackRequester.NoteDisconnected` stands the watch down until the follower follows again, so the one request for that split is `PartyRejoinCoordinator`'s, inside its own window.
   - **Order with `@wait`.** A held or too-heavy follower's `@wait (reason)` goes out on the refusal line and the `@comeback` on the `no longer following` line behind it (the Stock capture in *A follower who can't move is left behind*).
+- **The departure line of a move a follower went along with can reach it after its arrival** *([OBSERVED] 2026-11-22, report `stock-20261122-163705`; Realm: Stock, Paradigm not recorded)*. On the wire: `-- Following your Party leader west --`, the new room with the leader in `Also here:`, then `Raine just left to the west.` 6 ms after the follow move, in a room with no west exit. 7 of that capture's 48 departures of the leader came in this order, and follow moves were at least 1.027 s apart.
 - **Client use:**
+  - A departure naming the direction of a follow move made within the last 500 ms is that same move, unless the move was refused (`ComebackRequester.IsTheMoveWeJustMadeWithThem`; **Client policy**, report `stock-20261122-163705`).
+  - A leader waiting for a fetched member to follow ends the wait when a `par` gives that member a full row, since one who never stopped following prints no `started to follow you` (`PartyComebackManager.OnParReplyRead`; **Client policy**, same report).
   - The client's `ComebackRequester` is correctly telepath-only.
   - A follower must not auto-navigate itself back to a stale self-selected walk-to target.
   - What happens to movement after a death is in *Death & corpse recovery → Death wipes all effects*.

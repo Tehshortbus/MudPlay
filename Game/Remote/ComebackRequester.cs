@@ -62,6 +62,11 @@ public sealed partial class ComebackRequester : IDisposable
     // well inside it, and so is the prompt that shows a drop.
     internal static readonly TimeSpan SettleTime = TimeSpan.FromSeconds(2);
 
+    // The old room's departure line can reach a follower after the follow line and the
+    // new room (report stock-20261122-163705: 6 ms after). Well under the second a
+    // leader's next step takes, so a real step the same way isn't mistaken for it.
+    private static readonly TimeSpan SameMoveWindow = TimeSpan.FromMilliseconds(500);
+
     // A typed room command can be refused with an exit's wording ("A strange power
     // holds you back!"), and its answer comes at once.
     private static readonly TimeSpan TypedReplyWindow = TimeSpan.FromSeconds(2);
@@ -116,6 +121,8 @@ public sealed partial class ComebackRequester : IDisposable
     private string _leaderLeftWord = string.Empty;
     private DateTimeOffset _followAttemptAt = DateTimeOffset.MinValue;
     private string _followAttemptWord = string.Empty;
+    // When that follow line was read; unlike _followAttemptAt, kept past the arrival.
+    private DateTimeOffset _followLineAt = DateTimeOffset.MinValue;
     private int _linesSinceFollowLine;
     private DateTimeOffset _ownMoveRefusedAt = DateTimeOffset.MinValue;
     private DateTimeOffset _manualMoveAt = DateTimeOffset.MinValue;
@@ -500,10 +507,23 @@ public sealed partial class ComebackRequester : IDisposable
         if (!result.Groups[0].Trim().Equals(leader, StringComparison.OrdinalIgnoreCase)) return;
         string word = result.Groups[1].Trim();
         if (word.Equals("nowhere", StringComparison.OrdinalIgnoreCase)) return;
+        if (IsTheMoveWeJustMadeWithThem(word))
+        {
+            _log?.Debug(LogCategory, $"{leader} left {word}: the move we just followed, printed after our arrival");
+            return;
+        }
         _leaderLeftAt = _now();
         _leaderLeftWord = word;
         BeginSettle(leader);
     }
+
+    // A follow line naming this direction a moment ago, and it wasn't refused: we
+    // arrived, or (`set follow blind` shows no room) nothing but this departure has
+    // been said since, which OnAnyLine has already counted.
+    private bool IsTheMoveWeJustMadeWithThem(string word) =>
+        (_followAttemptAt == DateTimeOffset.MinValue || _linesSinceFollowLine <= 1)
+        && _now() - _followLineAt <= SameMoveWindow
+        && ExitLongName(word).Equals(_followAttemptWord, StringComparison.OrdinalIgnoreCase);
 
     // The leader, dead or dropped. The party goes with them, and nobody is coming
     // back.
@@ -526,6 +546,7 @@ public sealed partial class ComebackRequester : IDisposable
     {
         OnFollowingAgain();
         _followAttemptAt = _now();
+        _followLineAt = _followAttemptAt;
         _followAttemptWord = result.Groups.Count > 0 ? result.Groups[0].Trim() : string.Empty;
         _linesSinceFollowLine = 0;
     }
@@ -931,15 +952,17 @@ public sealed partial class ComebackRequester : IDisposable
     private bool LeaderExitCasts(string? word)
     {
         if (word is null || ConfirmedRoom() is not { } room) return false;
-        string longName = word.ToLowerInvariant() switch
-        {
-            "upwards" or "above" => "up",
-            "downwards" or "below" => "down",
-            string other => other,
-        };
-        if (!DirectionExtensions.TryFromLongName(longName, out Direction direction)) return false;
+        if (!DirectionExtensions.TryFromLongName(ExitLongName(word), out Direction direction)) return false;
         return room.Exits.TryGetValue(direction, out RoomExit exit) && exit.CastsOnWalk;
     }
+
+    // A departure line says "upwards" where a follow line says "up".
+    private static string ExitLongName(string word) => word.ToLowerInvariant() switch
+    {
+        "upwards" or "above" => "up",
+        "downwards" or "below" => "down",
+        string other => other,
+    };
 
     // The evidence still fresh at the end of a settle, for the log and the bug report.
     private string? DescribeEvidence(string leader, DateTimeOffset now)
