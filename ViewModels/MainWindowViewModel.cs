@@ -833,6 +833,7 @@ public partial class MainWindowViewModel : ObservableObject
         StatusBar.Apply(Models.Settings.StatusBarSettings.Read(AppServices.Current.Settings.Current));
 
         Lines = new LineExtractor(Emulator);
+        Emulator.HideFinishedRow = AppServices.Current.CombatLineDisplay.TakeRowHidden;
         Capture = new CaptureSession(Emulator.Screen.Scrollback);
 
         // The control API's transcript endpoints need the live screen, and we own
@@ -3924,7 +3925,10 @@ public partial class MainWindowViewModel : ObservableObject
         string line = $"\r\n{sgr}{text}\x1b[0m\r\n";
         // Notices come from all over the client and are written with dashes and
         // arrows; the grid draws CP437, so Cp437.Encode turns those into ASCII.
-        Emulator.Feed(Cp437.Encode(line));
+        Game.Combat.CombatLineDisplayFilter display = AppServices.Current.CombatLineDisplay;
+        display.ClientIsWriting = true;
+        try { Emulator.Feed(Cp437.Encode(line)); }
+        finally { display.ClientIsWriting = false; }
     }
 
     private void OnStatlineFlagChanged()

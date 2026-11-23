@@ -31,6 +31,14 @@ public sealed class TerminalEmulator
     // a scroll, a clear or a shrink pushes the row into the ring.
     public event Action<ScrollbackBuffer.Row>? LineCompleted;
 
+    // Asked once a row has been read by every LineCompleted subscriber: true takes it
+    // back off the screen, as if it had never been printed. What the row said has
+    // already gone to every parser, so this changes the display and nothing else.
+    public Func<bool>? HideFinishedRow { get; set; }
+
+    // The rows above the cursor that a long line wrapped from, still awaiting its end.
+    private int _wrappedRowsAbove;
+
     // How many times the whole screen has been erased: ED 2 / 3, ED 0 from the
     // top-left cell (ESC[H ESC[J), ED 1 from the bottom-right one, and a full reset
     // (ESC c). A reader that noted it can tell a screen drawn since from one left
@@ -225,6 +233,20 @@ public sealed class TerminalEmulator
         ReadOnlySpan<Cell> cells = Screen.Row(Screen.CursorY);
         LineCompleted?.Invoke(new ScrollbackBuffer.Row(_now(), cells.ToArray(), softWrap));
         _rowWritten = false;
+        if (softWrap)
+        {
+            _wrappedRowsAbove++;
+        }
+        else
+        {
+            int wrapped = _wrappedRowsAbove;
+            _wrappedRowsAbove = 0;
+            if (HideFinishedRow?.Invoke() == true)
+            {
+                TakeRowBack(wrapped);
+                return;
+            }
+        }
         // The row keeps how it was left, into the scrollback: a reader of the
         // transcript can then tell the row below is this line carrying on.
         Screen.SetRowSoftWrapped(Screen.CursorY, softWrap);
@@ -241,6 +263,17 @@ public sealed class TerminalEmulator
         }
     }
 
+    // The line feed never happens: the next line is written where this one was.
+    private void TakeRowBack(int wrappedRowsAbove)
+    {
+        int top = Math.Max(_scrollTop, Screen.CursorY - wrappedRowsAbove);
+        Screen.EraseRows(top, Screen.CursorY, _attr);
+        Screen.CursorY = top;
+        Screen.CursorX = 0;
+        _wrapPending = false;
+        Screen.Bump();
+    }
+
     // MajorMUD paints its pictures (a drawn card, a sign) by clearing the screen
     // and addressing each row with CUP, text rows included: the row naming the
     // card never gets an LF. Leaving a written row by a vertical move is that
@@ -248,6 +281,7 @@ public sealed class TerminalEmulator
     // a positioned row that was only erased says nothing.
     private void CompleteRowBeforeLeaving(int newRow)
     {
+        if (newRow != Screen.CursorY) _wrappedRowsAbove = 0;
         if (!_rowWritten || newRow == Screen.CursorY) return;
         _rowWritten = false;
         // Written again and left by a move: whatever once wrapped from this row
@@ -259,6 +293,9 @@ public sealed class TerminalEmulator
             if (cell.Char != ' ') { blank = false; break; }
         if (blank) return;
         LineCompleted?.Invoke(new ScrollbackBuffer.Row(_now(), cells.ToArray(), false));
+        // A painted row stays: the question is only asked so its answer can't fall to
+        // the next row.
+        _ = HideFinishedRow?.Invoke();
     }
 
     private void BeginEsc()

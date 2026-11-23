@@ -138,6 +138,18 @@ public sealed class MessageCandidateWatcher : IDisposable
     // something forgets to wire it explicitly.
     public bool Enabled { get; set; } = true;
 
+    // Asked whether the display wants each line judged even with capture off (the
+    // "Unknown lines" box of Settings → Combat). The judging runs every pattern again,
+    // so nothing pays for it unless that box is ticked.
+    public Func<bool>? ReadsForDisplay { get; set; }
+
+    // The line just read came through every exclusion: nothing here knows it. Not said
+    // of what answers a command just typed, whose listing can be anything.
+    public bool LastLineUnrecognized { get; private set; }
+
+    private static readonly TimeSpan TypedReplyWindow = TimeSpan.FromSeconds(2);
+    private DateTimeOffset _lastTypedAt = DateTimeOffset.MinValue;
+
     // currentRoom is a copy-out of the player's live position, read at capture
     // time so a staged candidate carries a "first seen here" locator hint.
     // Null-tolerant: a null provider (or a null return before the room is
@@ -242,6 +254,7 @@ public sealed class MessageCandidateWatcher : IDisposable
             string cmd = part.Trim();
             if (cmd.Length == 0) continue;
             _recentCommands[cmd] = DateTimeOffset.UtcNow;
+            _lastTypedAt = DateTimeOffset.UtcNow;
             if (_isRoomExitCommand?.Invoke(cmd) == true) _exitCommandAt = DateTimeOffset.UtcNow;
         }
     }
@@ -341,7 +354,13 @@ public sealed class MessageCandidateWatcher : IDisposable
 
     private void OnLine(LineExtractor.EmittedLine line)
     {
-        if (!Enabled) return;
+        LastLineUnrecognized = false;
+        bool capturing = Enabled;
+        if (!capturing)
+        {
+            if (ReadsForDisplay?.Invoke() != true) return;
+            _pending = null;   // nothing is staged with capture off
+        }
         // A prompt closes whatever listing was running.
         if (line.IsPromptLine) { EndBlocks(); return; }
         // Before the game: splash animation, BBS login menu / banner, and the
@@ -399,6 +418,9 @@ public sealed class MessageCandidateWatcher : IDisposable
             NoteRecognizedLinePastPending(line.Timestamp);
             return;
         }
+
+        LastLineUnrecognized = line.Timestamp - _lastTypedAt > TypedReplyWindow;
+        if (!capturing) return;
 
         // An unrecognized line that isn't the experience gain — whatever was held
         // can't be death flavour, so stage it.

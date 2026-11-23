@@ -90,12 +90,15 @@ public sealed record RankingCharacter(IReadOnlyDictionary<string, string> Groups
     // A setting the simulation never reads is left out of the hash, so changing it
     // doesn't mark every kept ranking as made for another character. An attack
     // slot's "fire regardless of mana" acts only in a party, and the simulated
-    // character is always solo. The cast-when-full slots aren't played at all.
+    // character is always solo. The cast-when-full slots aren't played at all, and
+    // which combat lines are hidden is a matter of display.
     private static void LeaveOutWhatTheSimulationDoesNotRead(JsonTypeInfo info)
     {
         string[] unread;
         if (info.Type == typeof(Models.Profile.CombatSpellSlot))
             unread = [nameof(Models.Profile.CombatSpellSlot.FireRegardlessOfMana)];
+        else if (info.Type == typeof(Models.Profile.CombatSettings))
+            unread = [nameof(Models.Profile.CombatSettings.HiddenCombatLines)];
         else if (info.Type == typeof(Models.Profile.SpellsSettings))
             unread =
             [

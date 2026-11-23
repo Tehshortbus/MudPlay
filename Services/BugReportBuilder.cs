@@ -182,6 +182,7 @@ public static class BugReportBuilder
             new("Room combat assessment", SafeSection(() => BuildRoomCombatAssessment(svc))),
             new($"Combat rounds (last {Game.Combat.RoundDamageTracker.RingCapacity}, oldest first)", SafeSection(() => BuildCombatRounds(svc))),
             new("Session combat stats", SafeSection(() => BuildSessionCombat(svc))),
+            new("Hidden combat lines", SafeSection(() => svc.CombatLineDisplay.Summary())),
             new("Session activity", SafeSection(() => BuildSessionActivity(svc))),
             new("Monster HP estimates", SafeSection(() => BuildMonsterHpEstimates(svc))),
             new("Spell resolution", SafeSection(() => BuildSpellResolution(svc))),

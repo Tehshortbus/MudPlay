@@ -1,5 +1,9 @@
 # Version history
 
+## 3.209.0
+
+- Settings → Combat can hide any kind of combat line from the terminal, per character; the client still reads every line
+
 ## 3.208.2
 
 - A follower no longer sends a false @comeback when the leader's departure line arrives after the follower has already moved

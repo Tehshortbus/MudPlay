@@ -298,6 +298,11 @@ public sealed class CombatSettings
     // the number the game printed.
     public bool CapRoundTotalsAtMonsterHp { get; set; }
 
+    // The kinds of combat line left off this character's terminal (Game.Combat.
+    // CombatLineDisplayFilter). Null shows them all. Hiding is display only: the client
+    // reads a hidden line like any other.
+    public List<CombatLineCategory>? HiddenCombatLines { get; set; }
+
     // A box missing from settings saved before the boxes existed follows
     // ShowCombatRoundTotals: a table that was on keeps every row, one that was off
     // stays off (user, 2026-09-29).

@@ -5995,6 +5995,24 @@ Settings → Spells. This tab picks *which spell* fills each automated role and 
 
 The **Combat profile** chips at the top switch profiles from here. **Spell type priority** and **Healing / regeneration** swap with the profile while their **Include in combat profile** box is ticked (see *Combat profiles*).
 
+### Hide combat lines
+
+**Settings → Combat**, at the bottom. Each box keeps one kind of fight line off this character's terminal. All are off by default, so everything shows until you tick something.
+
+| Group | Boxes |
+|---|---|
+| Your attacks | Hits · Misses and glances |
+| Party members' attacks | Hits · Misses and glances |
+| Other players' attacks | Hits · Misses and glances |
+| Monsters attacking you | Damage · Misses, dodges and blocks |
+| Monsters attacking others | Damage · Misses, dodges and blocks |
+| Other fight lines | Damage with no attacker · Reflected damage · Moves to attack / cast · `*Combat Engaged*` / `*Combat Off*` · Experience gained · Coins dropped · Unknown lines |
+
+- **It only changes what you see.** The client still reads every hidden line, so auto-combat, round totals, triggers, kill and experience tracking and everything else work exactly the same.
+- **A hidden line isn't in the terminal or Backscroll.** The **Wire Inspector** and a **Bug Report**'s wire sections still have it, and a report lists what was hidden.
+- **Unknown lines** are lines during your fight that the client doesn't recognize, such as a monster's death message. The output of a command you just typed stays visible, even if the client doesn't recognize it.
+- **Never hidden:** your prompt, what you type, chat, room displays and MudPlay's own `[…]` messages.
+
 ### Spell type priority
 
 **Default order (highest priority first):** Emergency heal → Major party heal → Minor party heal → Major self heal → Priority buffs → Minor self heal → Downed-ally heal (rescue) → Curing → Buffing → Debuffing.
