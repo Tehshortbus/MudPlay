@@ -192,6 +192,14 @@ public sealed class TerminalScreen
         fromRow = Math.Clamp(fromRow, 0, Rows - 1);
         toRow = Math.Clamp(toRow, 0, Rows - 1);
         CaptureUpToLastNonBlank(fromRow, toRow);
+        EraseRows(fromRow, toRow, attr);
+    }
+
+    // Blank a block of rows with nothing kept in the scrollback.
+    public void EraseRows(int fromRow, int toRow, CellAttributes attr)
+    {
+        fromRow = Math.Clamp(fromRow, 0, Rows - 1);
+        toRow = Math.Clamp(toRow, 0, Rows - 1);
         var blank = new Cell(' ', attr);
         for (int y = fromRow; y <= toRow; y++)
         {

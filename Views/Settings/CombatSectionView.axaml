@@ -773,6 +773,38 @@
                           IsChecked="{Binding CapRoundTotalsAtMonsterHp, Mode=TwoWay}"
                           ToolTip.Tip="Count a monster's damage taken, and its attacker's damage dealt, only up to the HP it had left, so a killing blow counts just what killed it. Off: every hit counts the number the game printed."/>
 
+
+                <Separator Margin="0,10"/>
+
+                <!-- ===== Hide combat lines: this character's terminal only ===== -->
+                <TextBlock Classes="SettingsSectionBanner" Text="Hide combat lines"/>
+                <TextBlock Classes="SettingsSectionSub" TextWrapping="Wrap"
+                           Text="For this character. A ticked kind of line isn't shown in the terminal or backscroll. The client still reads it, so combat, triggers and everything else work the same."/>
+                <Border Classes="SettingsSectionRule"/>
+                <ItemsControl ItemsSource="{Binding HiddenLineGroups}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:CombatLineToggleGroup">
+                            <Grid ColumnDefinitions="180,*" Margin="0,2">
+                                <TextBlock Grid.Column="0" Text="{Binding Title}" VerticalAlignment="Top" Margin="0,6,0,0"/>
+                                <ItemsControl Grid.Column="1" ItemsSource="{Binding Toggles}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <WrapPanel/>
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:CombatLineToggle">
+                                            <CheckBox Content="{Binding Label}" Margin="0,0,16,0"
+                                                      IsChecked="{Binding IsHidden, Mode=TwoWay}"
+                                                      ToolTip.Tip="{Binding Tip}"/>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
             </StackPanel>
         </Grid>
     </ScrollViewer>

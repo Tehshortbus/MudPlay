@@ -756,6 +756,11 @@ How to keep it current:
 - Checks: colour+wording classes (miss/block/hit/reflect/poison/smash); room titles untagged; captured bytes end to end; ledger tags.
 - Why: report paradigm-20261010-215619 (room title read as a miss).
 
+### CombatLineDisplayFilterTests.cs
+- Covers: Game/Combat/CombatLineDisplayFilter, TerminalEmulator.HideFinishedRow, TerminalScreen.EraseRows, RankingCharacter's settings hash
+- Checks: every kind of fight line is hidden by its own box and no other, and shown with none ticked; a hidden line still reaches every reader; markers and window; damage outside a fight vs a colour alone; unknown lines; the prompt, typed echo, chat and client notices never hide; the next line takes its place, wrapped lines go whole, nothing scrolls or enters history; a painted row stays; a ticked box leaves kept rankings valid.
+- Why: hiding must change the display and nothing the client reads.
+
 ### CombatManagerBreakHoldTests.cs
 - Covers: Game/Combat/CombatManager (user-break hold) + CombatStateTracker, OutboundBreakObserver, HealthManager
 - Checks: what sets the hold (typed, @do, @party); no attack path fires under it; every way it ends; silent-round look-and-judge, the 30 s back-off, and the heartbeat sending a look another re-display's cooldown held back; flee still moves. A hand fight with the engine off names the kill for the floor check only (`HandFoughtTarget`) while `DeathAttributionTarget`, read by the boss timers and the death-spell nudge, stays empty; a handled death and leaving the room forget it, and with the engine on it names nothing.
@@ -2525,7 +2530,7 @@ How to keep it current:
 
 ### MessageCandidateWatcherTests.cs
 - Covers: Game/MessageCandidateWatcher, Game/BenignChatterMatcher
-- Checks: what is and isn't staged (catalogue/templates, router patterns, rosters, room names, echoes, quotes, art, listings, death flavour, menus), burst cap, gates.
+- Checks: what is and isn't staged (catalogue/templates, router patterns, rosters, room names, echoes, quotes, art, listings, death flavour, menus), burst cap, gates. With capture off and the display asking, an unknown line is flagged and not staged; a known line or the reply to a command just typed is not flagged.
 - Why: report paradigm-20261008-125639 and others; keep the queue to real unknowns.
 
 ### MessageEditExporterTests.cs

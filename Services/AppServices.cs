@@ -1294,6 +1294,14 @@ public sealed class AppServices
     // MainWindowViewModel alongside the other line consumers.
     public Game.MessageCandidateWatcher MessageCandidateWatcher { get; private set; } = null!;
 
+    // Which finished rows the terminal leaves off the screen (Settings → Combat, "Hide
+    // combat lines"). Built with the watcher it asks about unknown lines.
+    public Game.Combat.CombatLineDisplayFilter CombatLineDisplay { get; private set; } = null!;
+
+    // Read on a change rather than per line: a section read parses its JSON.
+    private void ReadHiddenCombatLines() => CombatLineDisplay.SetHidden(
+        ReadSection<Models.Profile.CombatSettings>(Profile.Current, "Combat").HiddenCombatLines);
+
     // Per-set editable vocabulary of monster flavor adjectives the room classifier
     // strips to resolve a prefixed display name. Defaults to the built-in stock list;
     // edited in the Game Data Browser's Flavor Prefixes section.
@@ -5603,6 +5611,17 @@ public sealed class AppServices
             // A named exit ("go manhole") prints its own passage flavour, which the
             // game data doesn't carry; the room's exit commands identify the cause.
             isRoomExitCommand: IsExitCommandHere);
+        CombatLineDisplay = new Game.Combat.CombatLineDisplayFilter(Router,
+            partyNames: () => PartyState.Members.Where(m => !m.IsSelf)
+                .Select(m => Models.GameData.PlayerObservation.SplitName(m.Name).Given).ToList(),
+            isPlayer: name => Players.Find(name) is not null,
+            lastLineUnrecognized: () => MessageCandidateWatcher.LastLineUnrecognized,
+            log: Log);
+        MessageCandidateWatcher.ReadsForDisplay = () => CombatLineDisplay.HidesUnknown;
+        Profile.ProfileLoaded += _ => ReadHiddenCombatLines();
+        Profile.ProfileMutated += _ => ReadHiddenCombatLines();
+        Profile.ProfileClosed += ReadHiddenCombatLines;
+        ReadHiddenCombatLines();
         // Subscribed after the message and candidate stores' own loads, so the queue is
         // re-checked against the set's freshly loaded catalogue.
         GameData.ActiveSetChanged += _ => PruneMessageCandidatesWhenIdle();
@@ -7240,6 +7259,8 @@ public sealed class AppServices
                 if (SettingsSection.Write(p, "Party", party, "a combat-profile switch")) Profile.Save();
             });
         CombatProfiles.EnsureSeeded();
+        // Saving Settings → Combat is announced here, not as a profile change.
+        CombatProfiles.Changed += ReadHiddenCombatLines;
         Profile.ProfileLoaded += _ => CombatProfiles.OnProfileLoaded();
         ProfileSwap = new Game.Remote.ProfileSwapHandler(RemoteCommands, CombatProfiles);
 

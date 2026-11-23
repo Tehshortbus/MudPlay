@@ -67,6 +67,69 @@ public sealed class MessageCandidateWatcherTests
         public void GoOn() => Server.Line(LaterKnownLine, DateTimeOffset.UtcNow.AddMinutes(1));
     }
 
+    // ----- the display's question (Settings → Combat, "Unknown lines") -----
+
+    [Fact]
+    public void WithCaptureOff_ALineNothingKnows_IsFlaggedForTheDisplay_AndNotStaged()
+    {
+        Harness h = new();
+        h.Watcher.Enabled = false;
+        h.Watcher.ReadsForDisplay = () => true;
+
+        h.Server.Line("A strange hum fills the cave.", DateTimeOffset.UtcNow);
+        Assert.True(h.Watcher.LastLineUnrecognized);
+
+        h.GoOn();
+        Assert.Empty(h.Candidates.Candidates);
+    }
+
+    [Fact]
+    public void WithCaptureOff_TheDisplayAskingStillStagesNothing_EvenFromTheSimulateButton()
+    {
+        Harness h = new();
+        h.Watcher.Enabled = false;
+        h.Watcher.ReadsForDisplay = () => true;
+
+        h.Watcher.SimulateCapture();
+
+        Assert.Empty(h.Candidates.Candidates);
+    }
+
+    [Fact]
+    public void WithCaptureOff_AndNoDisplayAsking_NothingIsJudged()
+    {
+        Harness h = new();
+        h.Watcher.Enabled = false;
+
+        h.Server.Line("A strange hum fills the cave.", DateTimeOffset.UtcNow);
+
+        Assert.False(h.Watcher.LastLineUnrecognized);
+    }
+
+    [Fact]
+    public void AKnownLine_IsNotFlagged()
+    {
+        Harness h = new();
+        h.Server.Line("A strange hum fills the cave.", DateTimeOffset.UtcNow);
+        h.Server.Line(Harness.LaterKnownLine, DateTimeOffset.UtcNow);
+
+        Assert.False(h.Watcher.LastLineUnrecognized);
+    }
+
+    // A listing a typed command asked for can be any text.
+    [Fact]
+    public void WhatFollowsACommandJustTyped_IsNotFlagged_ButLaterLinesAre()
+    {
+        Harness h = new();
+        h.Watcher.ObserveOutbound(System.Text.Encoding.Latin1.GetBytes("inspect\r"));
+
+        h.Server.Line("A strange hum fills the cave.", DateTimeOffset.UtcNow);
+        Assert.False(h.Watcher.LastLineUnrecognized);
+
+        h.Server.Line("A second strange hum fills the cave.", DateTimeOffset.UtcNow.AddSeconds(5));
+        Assert.True(h.Watcher.LastLineUnrecognized);
+    }
+
     private static MessageRecord MakeRecord(string casterMessage) => new(
         Id: MessageRecord.ComputeId("Test", casterMessage, "", "", "", ""),
         Name: "Test",

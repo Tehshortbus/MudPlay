@@ -593,6 +593,7 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
         // on the same events.
         _session.BuildFullCombat = BuildDto;
         _session.CaptureRequested += CaptureCombatBoxesToActive;
+        HiddenLineGroups = BuildHiddenLineGroups();
         _session.LoadRequested += OnSessionLoadPerProfile;
         _session.ReloadAllRequested += OnSessionReloadAll;
         _session.ChipsChanged += OnChipsChanged;
@@ -776,6 +777,7 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
             ShowCombatRoundTotalsMonsters = ShowCombatRoundTotalsMonsters,
             ShowCombatRoundTotalsEachMonster  = ShowCombatRoundTotalsEachMonster,
             CapRoundTotalsAtMonsterHp = CapRoundTotalsAtMonsterHp,
+            HiddenCombatLines = HiddenLineChoices(),
     };
 
     // Commit the staged edits through the shared session, which folds every tab's
@@ -931,11 +933,69 @@ public sealed partial class CombatSectionViewModel : SettingsSectionViewModel
         ShowCombatRoundTotalsMonsters = dto.ShowsRoundTotalsRow(dto.ShowCombatRoundTotalsMonsters);
         ShowCombatRoundTotalsEachMonster  = dto.ShowCombatRoundTotalsEachMonster;
         CapRoundTotalsAtMonsterHp = dto.CapRoundTotalsAtMonsterHp;
+        foreach (CombatLineToggle toggle in HiddenLineGroups.SelectMany(g => g.Toggles))
+            toggle.IsHidden = dto.HiddenCombatLines?.Contains(toggle.Category) == true;
     }
 
     private CombatSettings ReadOrDefault() => SettingsSection.Read<CombatSettings>(_profile.Current, TabKey);
 
     // ----- IsDirty plumbing -----------------------------------------
+
+    // ----- Hide combat lines ------------------------------------------------
+
+    public IReadOnlyList<CombatLineToggleGroup> HiddenLineGroups { get; }
+
+    private List<CombatLineCategory>? HiddenLineChoices()
+    {
+        List<CombatLineCategory> hidden = HiddenLineGroups.SelectMany(g => g.Toggles)
+            .Where(t => t.IsHidden).Select(t => t.Category).ToList();
+        return hidden.Count == 0 ? null : hidden;
+    }
+
+    private IReadOnlyList<CombatLineToggleGroup> BuildHiddenLineGroups()
+    {
+        CombatLineToggle Box(CombatLineCategory category, string label, string tip) =>
+            new(category, label, tip, MarkDirty);
+        const string Misses = "Misses, dodges and blocks";
+        return new CombatLineToggleGroup[]
+        {
+            new("Your attacks", new[]
+            {
+                Box(CombatLineCategory.YourHits, "Hits", "Your attacks that do damage."),
+                Box(CombatLineCategory.YourMisses, "Misses and glances", "Your attacks that miss or glance off armour."),
+            }),
+            new("Party members' attacks", new[]
+            {
+                Box(CombatLineCategory.PartyHits, "Hits", "A party member's attacks that do damage."),
+                Box(CombatLineCategory.PartyMisses, "Misses and glances", "A party member's attacks that miss or glance off armour."),
+            }),
+            new("Other players' attacks", new[]
+            {
+                Box(CombatLineCategory.PlayerHits, "Hits", "Attacks that do damage from players outside your party."),
+                Box(CombatLineCategory.PlayerMisses, "Misses and glances", "Attacks that miss from players outside your party."),
+            }),
+            new("Monsters attacking you", new[]
+            {
+                Box(CombatLineCategory.MonsterHitsOnYou, "Damage", "A monster's attacks that hurt you."),
+                Box(CombatLineCategory.MonsterMissesOnYou, Misses, "A monster's attacks on you that miss, or that you dodge or your armour turns."),
+            }),
+            new("Monsters attacking others", new[]
+            {
+                Box(CombatLineCategory.MonsterHitsOnOthers, "Damage", "A monster's attacks that hurt someone else."),
+                Box(CombatLineCategory.MonsterMissesOnOthers, Misses, "A monster's attacks on someone else that miss or are turned."),
+            }),
+            new("Other fight lines", new[]
+            {
+                Box(CombatLineCategory.DamageNoAttacker, "Damage with no attacker", "Damage nobody dealt, such as poison."),
+                Box(CombatLineCategory.Reflects, "Reflected damage", "A worn item striking an attacker back."),
+                Box(CombatLineCategory.AttackStarts, "Moves to attack / cast", "\"<name> moves to attack\" and \"moves to cast\" lines."),
+                Box(CombatLineCategory.CombatMarkers, "*Combat Engaged* / *Combat Off*", "The two lines that open and close your fight."),
+                Box(CombatLineCategory.Experience, "Experience gained", "\"You gain N experience.\""),
+                Box(CombatLineCategory.CoinDrops, "Coins dropped", "\"N copper drop to the ground.\""),
+                Box(CombatLineCategory.Unknown, "Unknown lines", "Anything during your fight the client doesn't recognize, such as a monster's death message. What answers a command you just typed stays visible."),
+            }),
+        };
+    }
 
     // Route every box edit into the shared session's single dirty flag (a combat
     // profile spans this tab + the Health tab). The session clears it on Commit /
