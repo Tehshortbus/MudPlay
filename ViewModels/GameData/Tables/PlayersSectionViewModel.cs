@@ -233,8 +233,9 @@ public sealed class PlayersSectionViewModel : GameDataTableSectionViewModel, IEd
         yield return (rc.HasFlag(PlayerRemoteControls.SysopCommands),       "Elevated Commands");
     }
 
-    // Widening hands these settings to more characters, and BBS-wide to a possibly
-    // different person of the same name on another realm, so it asks first.
+    // A realm or BBS choice changes what other characters allow, even when it narrows
+    // this one's, and BBS-wide can reach a different person of the same name on another
+    // realm, so both ask first.
     public async Task ChoosePermissionScopeAsync(int index)
     {
         PlayerPermissionScope scope = (PlayerPermissionScope)index;
@@ -244,18 +245,18 @@ public sealed class PlayersSectionViewModel : GameDataTableSectionViewModel, IEd
             OnPropertyChanged(nameof(PermissionScopeIndex));
             return;
         }
-        if (scope > _db.PermissionScope && _dialogs is not null)
+        if (scope != PlayerPermissionScope.Character && _dialogs is not null)
         {
             string who = scope == PlayerPermissionScope.Bbs
-                ? "every character on this BBS. A name on another realm may be a different person, and they would hold the same permissions and party toggles"
-                : "every character on this realm";
+                ? "Every character on this BBS will use the BBS's list, including any set to their realm's or their own. A name on another realm may be a different person, and they would hold the same permissions and party toggles."
+                : "Every character on this realm will use the realm's list, including any set to the BBS's or their own. Other realms don't change.";
             bool yes;
             _askingScope = true;
             try
             {
                 yes = await AppServices.Current.Confirm.ConfirmAsync(
                     "Share remote settings?",
-                    $"The permissions, party toggles and Don't-delete in this table will apply to {who}. They replace each character's own, which are kept and come back if you return to \"This character only\".",
+                    $"{who} A list used for the first time starts from this table. Every other list is kept and comes back when it is chosen again.",
                     "Share");
             }
             finally { _askingScope = false; }

@@ -137,6 +137,10 @@ public sealed class CharacterProfile
     // character A doesn't leak into character B on the same realm.
     public Dictionary<string, GameData.PlayerCustomization>? PlayerCustomizations { get; set; }
 
+    // Set when this character chose its own list over a shared one. A later realm or
+    // BBS choice outranks it (SharedPlayerGrants).
+    public GameData.PlayerPermissionPick? OwnPermissionPick { get; set; }
+
     // Per-BBS login credentials for this character. Keyed by BBS name (matches
     // Settings.BbsProfile.Name). Username and password live inline on
     // BbsCredentials, both AES-GCM encrypted (PasswordProtector).

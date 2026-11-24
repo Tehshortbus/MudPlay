@@ -28,8 +28,8 @@ namespace MudPlay.Services;
 //
 // Everything but the notes can be shared by the realm or the BBS
 // (SharedPlayerGrants).
-// While they are, the shared list replaces each character's own, which stays parked
-// on the profile and comes back when the scope returns to Character.
+// While a character is on a shared list, it replaces the character's own, which stays
+// parked on the profile and comes back when that character returns to its own.
 public sealed class PlayerDatabase
 {
     private readonly ProfileService _profile;
@@ -77,13 +77,16 @@ public sealed class PlayerDatabase
     // character's stale-alignment flag once our own row is re-observed by a who.
     public event Action<string>? ObservationRecorded;
 
-    // Raised when the permission scope in force changes, by this client, another on
-    // the BBS, or a swap to a different BBS.
+    // Raised when the list this character uses changes, by this client, another on
+    // the BBS, or a swap to a different character or BBS.
     public event Action<PlayerPermissionScope>? PermissionScopeChanged;
 
     public PlayerPermissionScope PermissionScope => _grants.Scope;
 
-    public bool CanSharePermissions => _grants.Available;
+    // A character's own choice is kept on its profile, so one must be loaded.
+    public bool CanSharePermissions => _grants.Available && _profile.Current is not null;
+
+    public string PermissionPickSummary => _grants.PickSummary;
 
     // ----- Construction --------------------------------------------------
 
@@ -250,20 +253,27 @@ public sealed class PlayerDatabase
         return _grants.IsShared ? _grants.Get(given).AppliedTo(own) : own;
     }
 
-    // Switch who shares the permissions. A list used for the first time starts from
-    // the table as it stands.
+    // Choose a list: BBS moves every character on the BBS onto it, Realm every
+    // character on this realm, Character only this one. A list used for the first
+    // time starts from the table as it stands.
     public void SetPermissionScope(PlayerPermissionScope scope)
     {
         TakeInOutsideChanges();
+        if (_profile.Current is not { } profile) return;
         _grants.ChangeScope(scope, _customizations
             .Select(p => KeyValuePair.Create(p.Key, PlayerGrant.Of(p.Value))));
+        if (profile.OwnPermissionPick != _grants.OwnPick)
+        {
+            profile.OwnPermissionPick = _grants.OwnPick;
+            _profile.Save();
+        }
         Rebuild();
         AnnounceScope();
     }
 
     private void AnnounceScope()
     {
-        (PlayerPermissionScope, bool) now = (_grants.Scope, _grants.Available);
+        (PlayerPermissionScope, bool) now = (_grants.Scope, CanSharePermissions);
         if (now == _announcedScope) return;
         _announcedScope = now;
         PermissionScopeChanged?.Invoke(_grants.Scope);
@@ -747,7 +757,7 @@ public sealed class PlayerDatabase
         // observation. The next save rewrites the file in the merged
         // form, so this migration is one-shot.
         LoadObservations();
-        _grants.Attach(_activeBbsFolder?.Invoke(), _realmFolder);
+        _grants.Attach(_activeBbsFolder?.Invoke(), _realmFolder, _profile.Current?.OwnPermissionPick);
 
         // Char layer: pull off the loaded profile (null when no profile).
         // Same migration story: customization dicts written before the

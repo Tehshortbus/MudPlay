@@ -996,6 +996,8 @@ public sealed class ProfileService
             // The source holds those items, not the copy.
             copy.CorpseHandoffs = null;
             copy.StashedCopper = null;
+            // Choosing its own list was the source's choice: the copy follows the realm or BBS.
+            copy.OwnPermissionPick = null;
             copy.StateUnverified = true;
             JsonStore.Save(path, copy);
         }

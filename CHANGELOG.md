@@ -1,5 +1,10 @@
 # Version history
 
+## 3.209.1
+
+- Remote settings: a BBS pick moves every character on the BBS, a realm pick every character on that realm
+- Picking "This character only" now changes only that character
+
 ## 3.209.0
 
 - Settings → Combat can hide any kind of combat line from the terminal, per character; the client still reads every line

@@ -1,9 +1,10 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.209.0**
+> **Version 3.209.1**
 >
-> - Settings → Combat can hide any kind of combat line from the terminal, per character; the client still reads every line
+> - Remote settings: a BBS pick moves every character on the BBS, a realm pick every character on that realm
+> - Picking "This character only" now changes only that character
 <!-- current-version:end -->
 
 A modern Telnet terminal client for **MajorMUD** and other BBS door games, built in C# / .NET 10 with [Avalonia](https://avaloniaui.net/). It renders a faithful CP437 cell grid with full VT100/ANSI parsing, and layers a MegaMUD-style automation suite (combat, party, navigation, healing, and more) on top — all in modeless, dockable windows so the terminal stays live while you configure anything.
