@@ -1129,13 +1129,15 @@ Your client goes through these checks in this order. The first one that stops a 
 7. **The suicide rules,** for a sender who holds the permission: `@do` with the word `suicide`, and the lives rule of `@suicide`. See **Always refused** and **@suicide**.
 8. **The command itself.** It is carried out, or it answers why it couldn't be.
 
-**Permissions** are granted per player. Open **Game Data Browser → Players**, open the player, and tick boxes in the remote-control grid. **Remote settings** at the top of that table picks who shares a player's permissions, party toggles and Don't-delete, for the whole BBS:
+**Permissions** are granted per player. Open **Game Data Browser → Players**, open the player, and tick boxes in the remote-control grid. **Remote settings** at the top of that table picks which list of a player's permissions, party toggles and Don't-delete a character uses. Each pick reaches only the characters it names:
 
-- **This character only** (the default): each character keeps its own list.
-- **Every character on this realm:** each realm has one list, used by all its characters.
-- **Every character on this BBS:** one list for every character on every realm of the BBS. **Careful:** a name on another realm can be a different person, and they would hold the same permissions and party toggles.
+- **This character only** (the default): this character uses its own list. No other character changes.
+- **Every character on this realm:** every character on this realm uses the realm's list, including any that had picked the BBS's or their own. Other realms don't change.
+- **Every character on this BBS:** every character on every realm of the BBS uses the BBS's list, including any that had picked something narrower. **Careful:** a name on another realm can be a different person, and they would hold the same permissions and party toggles.
 
-A shared list **replaces** each character's own while it is on. The first time a list is used it starts from what the table shows; after that it keeps its own contents. On **realm** sharing, another realm's list starts empty until you grant permissions there. Each character's own list is kept and comes back when you return to **This character only**. The permissions, **Invite-if-seen**, **Join-if-invited**, **Don't-delete** and the `@dupe` lock are all shared. Only a player's notes stay with each character.
+The **latest pick that names a character** is the one it follows, whether or not that character was running at the time. After a BBS pick, one character can still go back to its own list, or one realm to its list, without moving anyone else.
+
+A shared list **replaces** a character's own while that character is on it. The first time a list is used it starts from what the picking character's table shows; after that it keeps its own contents. Every list stays saved and comes back when it is picked again. A copied profile starts on whatever its realm or BBS uses, and a profile moved to another BBS follows that BBS. The permissions, **Invite-if-seen**, **Join-if-invited**, **Don't-delete** and the `@dupe` lock are all shared. Only a player's notes stay with each character.
 
 There are seventeen permissions:
 
