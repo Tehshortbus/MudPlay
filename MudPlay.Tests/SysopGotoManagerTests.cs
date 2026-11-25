@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using MudPlay.Game;
 using MudPlay.Game.Map;
 using MudPlay.Models.Profile;
+using MudPlay.Services;
+using MudPlay.Services.Patterns;
 using Xunit;
 
 namespace MudPlay.Tests;
@@ -27,6 +29,16 @@ public sealed class SysopGotoManagerTests
         public string? RoomHere;
         public bool RunStops;
         public readonly List<string> LandedElsewhere = new();
+        public bool MasterSwitchOn = true;
+        public DateTimeOffset Now = new(2026, 11, 24, 18, 0, 0, TimeSpan.Zero);
+        public readonly MessageRouter Router = new();
+        public readonly ServerFeed Feed;
+
+        public Harness()
+        {
+            DefaultPatterns.Seed(Router);
+            Feed = new ServerFeed(Router);
+        }
 
         public SysopGotoManager Build() => new(
             enabled: () => Enabled,
@@ -39,7 +51,10 @@ public sealed class SysopGotoManagerTests
             forceRoomDisplay: () => ForceRoomDisplayCalls++,
             writeStatus: Status.Add,
             commitLocated: Committed.Add,
-            landedElsewhere: why => { LandedElsewhere.Add(why); return RunStops; });
+            landedElsewhere: why => { LandedElsewhere.Add(why); return RunStops; },
+            masterSwitchOn: () => MasterSwitchOn,
+            router: Router,
+            now: () => Now);
     }
 
     // The starter towns the level gate is judged against.
@@ -69,7 +84,7 @@ public sealed class SysopGotoManagerTests
     }
 
     [Fact]
-    public void Fire_WhileInCombat_SendsBreak_Refuses_NoGoto()
+    public void Fire_WhileInCombat_SendsBreak_AndHoldsTheGoto()
     {
         var h = WithNames();
         h.InCombat = true;
@@ -77,9 +92,147 @@ public sealed class SysopGotoManagerTests
 
         var loc = h.Locations.Find(l => l.Name == "newhaven")!;
         Assert.False(mgr.TryFire(loc, out string refusal));
-        Assert.Contains("in combat", refusal);
-        Assert.Equal(new[] { "break" }, h.Sent);        // break only — no sys goto
+        Assert.Contains("goes as soon as combat stops", refusal);
+        Assert.Equal(new[] { "break" }, h.Sent);
         Assert.False(mgr.HasArmedLanding);
+        Assert.NotNull(mgr.AfterBreakSummary);
+    }
+
+    // Report stock-20261124-183300: the break ended the fight, and auto-combat
+    // re-engaged before the goto could be typed again.
+    [Fact]
+    public void TheHeldGoto_GoesWhenTheBreakEndsTheFight()
+    {
+        var h = WithNames();
+        h.InCombat = true;
+        var mgr = h.Build();
+        Assert.True(mgr.TryHandleTypedLine("sys goto newhaven"));
+
+        h.Feed.Line("[HP=149]:break");
+        h.Feed.Line("*Combat Off*");
+
+        Assert.Equal(new[] { "break", "sys goto newhaven" }, h.Sent);
+        Assert.Equal(1, h.ForceRoomDisplayCalls);
+        Assert.True(mgr.HasArmedLanding);
+        Assert.Null(mgr.AfterBreakSummary);
+    }
+
+    // Monsters hitting a character who isn't fighting back don't block a sys goto
+    // (user, 2026-11-24).
+    [Fact]
+    public void TheHeldGoto_GoesWhenTheBreakHadNothingToStop()
+    {
+        var h = WithNames();
+        h.InCombat = true;
+        var mgr = h.Build();
+        mgr.TryHandleTypedLine("sys goto newhaven");
+
+        h.Feed.Line("[HP=109]:break");
+        h.Feed.Line("Your command had no effect.");
+
+        Assert.Equal(new[] { "break", "sys goto newhaven" }, h.Sent);
+    }
+
+    [Fact]
+    public void ANoEffectAnsweringAnotherCommand_DoesNotSendTheGoto()
+    {
+        var h = WithNames();
+        h.InCombat = true;
+        var mgr = h.Build();
+        mgr.TryHandleTypedLine("sys goto newhaven");
+
+        h.Feed.Line("[HP=109]:aa ankheg");
+        h.Feed.Line("Your command had no effect.");
+
+        Assert.Equal(new[] { "break" }, h.Sent);
+        Assert.NotNull(mgr.AfterBreakSummary);
+    }
+
+    [Fact]
+    public void ACombatOffPastTheBreaksRound_DropsTheGoto()
+    {
+        var h = WithNames();
+        h.InCombat = true;
+        var mgr = h.Build();
+        mgr.TryHandleTypedLine("sys goto newhaven");
+
+        h.Now = h.Now.AddSeconds(7);
+        h.Feed.Line("*Combat Off*");
+
+        Assert.Equal(new[] { "break" }, h.Sent);
+        Assert.Null(mgr.AfterBreakSummary);
+    }
+
+    [Fact]
+    public void ACombatOffWithNoGotoHeld_SendsNothing()
+    {
+        var h = WithNames();
+        h.Build();
+
+        h.Feed.Line("*Combat Off*");
+
+        Assert.Empty(h.Sent);
+    }
+
+    // ----- the master switch off: the user's line goes as typed -----
+
+    [Fact]
+    public void MasterSwitchOff_ALineNotInTheTable_GoesAsTyped()
+    {
+        var h = WithNames();
+        h.MasterSwitchOn = false;
+        h.InCombat = true;
+        var mgr = h.Build();
+
+        Assert.False(mgr.TryHandleTypedLine("sys goto nowhere"));   // the caller sends it
+        Assert.Empty(h.Sent);
+        Assert.Empty(h.Status);
+        Assert.False(mgr.HasArmedLanding);
+    }
+
+    [Fact]
+    public void MasterSwitchOff_ATableRow_GoesAsTyped_InCombat_AndIsReAnchored()
+    {
+        var h = WithNames();
+        h.MasterSwitchOn = false;
+        h.InCombat = true;
+        h.Level = 1;
+        var mgr = h.Build();
+
+        Assert.True(mgr.TryHandleTypedLine("  SYS GOTO LostCity "));
+
+        Assert.Equal(new[] { "SYS GOTO LostCity" }, h.Sent);        // no break, no level gate
+        mgr.OnRoomDisplayed("Lost City Gate");
+        Assert.Equal(new[] { Lostcity }, h.Committed);
+    }
+
+    // Report stock-20261124-183300: `sys goto 2863 2` landed in 2/2863.
+    [Fact]
+    public void MasterSwitchOff_TheNumericForm_IsReAnchoredToThatRoom()
+    {
+        var h = WithNames();
+        h.MasterSwitchOn = false;
+        RoomKey stoneTunnel = new(2, 2863);
+        h.RoomNames[stoneTunnel] = "Stone Tunnel";
+        var mgr = h.Build();
+
+        Assert.True(mgr.TryHandleTypedLine("sys goto 2863 2"));
+        mgr.OnRoomDisplayed("Stone Tunnel");
+
+        Assert.Equal(new[] { "sys goto 2863 2" }, h.Sent);
+        Assert.Equal(new[] { stoneTunnel }, h.Committed);
+    }
+
+    [Fact]
+    public void MasterSwitchOn_TheNumericForm_StillNeedsATableRow()
+    {
+        var h = WithNames();
+        var mgr = h.Build();
+
+        Assert.True(mgr.TryHandleTypedLine("sys goto 2863 2"));
+
+        Assert.Empty(h.Sent);
+        Assert.Contains("isn't in your Sys Goto table", Assert.Single(h.Status));
     }
 
     [Fact]

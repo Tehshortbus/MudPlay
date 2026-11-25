@@ -2632,6 +2632,8 @@ public static class BugReportBuilder
             svc.SysopGoto.Enabled ? $"on ({svc.SysopGoto.UsableNow.Count} location(s))" : "off");
         if (svc.SysopGoto.ArmedLandingSummary is { } armed)
             Kv(sb, "Sysop goto landing", $"awaiting {armed}");
+        if (svc.SysopGoto.AfterBreakSummary is { } afterBreak)
+            Kv(sb, "Sysop goto waiting for its break", afterBreak);
         // "Sys goto wimpy instead of hanging" (Health tab) — a low-HP escape that
         // substitutes for the hangup, so a "didn't hang / didn't jump" report needs it.
         var healthCfg = svc.Resolver.Resolve<Models.Profile.HealthSettings>("Health");

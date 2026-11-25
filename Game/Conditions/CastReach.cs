@@ -103,6 +103,41 @@ public sealed class CastReach
         return anySpell && ruledOut ? Verdict.OutOfReach : Verdict.Unknown;
     }
 
+    // The monster on a roster that can be vouched for whom a cast line names, as the
+    // line shows it: "fierce dark priest" for the listed dark priest. Null when the
+    // roster can't be vouched for or doesn't list it.
+    public static string? MonsterNamed(Here here, string shownName)
+    {
+        if (here.Monsters is not { } present) return null;
+        string name = shownName.Trim();
+        string? found = null;
+        foreach (string monster in present)
+            if ((name.Equals(monster, StringComparison.OrdinalIgnoreCase)
+                 || name.EndsWith(" " + monster, StringComparison.OrdinalIgnoreCase))
+                && (found is null || monster.Length > found.Length))
+                found = monster;
+        return found;
+    }
+
+    // Whether the monster a cast line names casts the record's spell: InReach when it
+    // casts one of them, OutOfReach when every spell on the record has known casters
+    // and it is none of them. Items, rooms and players don't matter here: the line
+    // says the monster cast it.
+    public Verdict OfCaster(MessageRecord record, string monster)
+    {
+        if (record.Links is null) return Verdict.Unknown;
+        bool anySpell = false;
+        bool unknown = false;
+        foreach (GameDataLink link in record.Links)
+        {
+            if (!link.Table.Equals("Spells", StringComparison.OrdinalIgnoreCase)) continue;
+            anySpell = true;
+            if (_casters.Of(link.Number) is not { } casters) unknown = true;
+            else if (casters.Monsters.Contains(monster)) return Verdict.InReach;
+        }
+        return anySpell && !unknown ? Verdict.OutOfReach : Verdict.Unknown;
+    }
+
     // Where the character stands, from what the client holds of it; null while the
     // position is not confirmed, and then nothing is ruled out at all. The room's
     // spell is read off the map, so it stands whenever the position does. The

@@ -853,7 +853,7 @@ How to keep it current:
 
 ### ConditionTrackerCastReachTests.cs
 - Covers: Game/Conditions/ConditionTracker + CastReach.
-- Checks: a shared applied line latches only the records whose caster could be here (monsters, room spell, PvP strangers); a cast line decides first; holds and blinds are never left out; logging and the bug-report value.
+- Checks: a shared applied line latches only the records whose caster could be here (monsters, room spell, PvP strangers); a cast line decides first; holds and blinds are never left out, unless a cast line names a listed monster that casts another of the spells (with no caster named, an unlisted one, a stale line or a roster not whole the hold still latches); how a shown name finds its listed monster and how one monster's spells are judged; logging and the bug-report value.
 - Why: false Confused latches (freezing family; user ruling 2026-10-17).
 
 ### ConditionTrackerRosterTests.cs
@@ -4262,7 +4262,7 @@ How to keep it current:
 
 ### SysopGotoManagerTests.cs
 - Covers: Game/SysopGotoManager
-- Checks: the gate order (combat → break, table membership, level), the exact keyword sent, the forced room display, the name-matched landing resync, and the terminal warning and run stop when a jump lands in a room other than its row (not for a refused jump or an unknown starting room). Typed-line interception. The wimpy escape skips the level gate and sends `break` first.
+- Checks: the gate order (table membership, level, then combat → break), the goto held through the break and sent on the `*Combat Off*` or the break's `Your command had no effect.` fed through the router (not on a no-effect answering another command, nor past the break's round); with the master switch off a typed goto goes as typed with no checks, re-anchored for a table row or `sys goto <room> <map>`; the exact keyword sent, the forced room display, the name-matched landing resync, and the terminal warning and run stop when a jump lands in a room other than its row (not for a refused jump or an unknown starting room). Typed-line interception. The wimpy escape skips the level gate and sends `break` first.
 - Why: the risk of jumping mid-fight or below the level a location requires, or of mis-anchoring after the jump.
 
 ### SysopGotoRoutePlannerTests.cs

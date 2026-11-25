@@ -1,5 +1,12 @@
 # Version history
 
+## 3.209.3
+
+- A cast line naming its caster rules out the holds that monster can't cast, so a curse no longer holds you through wrathful curse
+- A sys goto typed mid-fight sends break, then the goto itself once combat stops
+- With Auto-All off, a typed sys goto goes exactly as typed, table or not
+- bug reports addressed: stock-20261124-101930, stock-20261124-183300
+
 ## 3.209.1
 
 - Remote settings: a BBS pick moves every character on the BBS, a realm pick every character on that realm

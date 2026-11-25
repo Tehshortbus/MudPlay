@@ -542,6 +542,94 @@ public sealed class ConditionTrackerCastReachTests : IDisposable
         Assert.False(_tracker.IsConfused);
     }
 
+    // ----- a cast line that names its caster --------------------------
+
+    // One cast line and one applied line for two spells, as the report's dark priest
+    // printed them: the hold is the white queen's alone, the curse the ice sorceress's.
+    private void AddAHoldAndACurseOnOneLine()
+    {
+        _messages.Messages.Add(Record("queen's hold (test)", MessageFlags.MovementPrevented,
+            "{source} casts a spell on you!", "You feel unlucky", "The effects of curse wear off", 1336));
+        _messages.Messages.Add(Record("sorceress curse (test)", MessageFlags.None,
+            "{source} casts a spell on you!", "You feel unlucky", "The effects of curse wear off", 1363));
+    }
+
+    [Fact]
+    public void ACastLineNamingACasterHere_LeavesOutAHoldItDoesNotCast()
+    {
+        AddAHoldAndACurseOnOneLine();
+        Monsters("ice sorceress");
+
+        Feed("fierce ice sorceress casts a spell on you!");
+        Feed("You feel unlucky!");
+
+        Assert.Equal(new[] { "sorceress curse (test)" }, AppliedNames);
+        Assert.Equal(MessageFlags.None, _tracker.ActiveFlags);
+        Assert.Contains(_log.Snapshot(), e =>
+            e.Message.Contains("'sorceress curse (test)' (ice sorceress, named in the cast line)", StringComparison.Ordinal)
+            && e.Message.Contains("not applying what ice sorceress, named in the cast line, doesn't cast: 'queen's hold (test)' (MovementPrevented)", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ACastLineNamingTheHoldsCaster_KeepsTheHold()
+    {
+        AddAHoldAndACurseOnOneLine();
+        Monsters("white queen");
+
+        Feed("fierce white queen casts a spell on you!");
+        Feed("You feel unlucky!");
+
+        Assert.Equal(new[] { "queen's hold (test)" }, AppliedNames);
+        Assert.Equal(MessageFlags.MovementPrevented, _tracker.ActiveFlags);
+    }
+
+    // With no caster named, a caster the roster doesn't list, or the cast line too
+    // long ago, nothing says who cast it and the hold latches as before.
+    [Theory]
+    [InlineData("no cast line")]
+    [InlineData("not listed")]
+    [InlineData("too long ago")]
+    [InlineData("roster not whole")]
+    public void WithoutANamedCasterHere_TheHoldStillLatches(string why)
+    {
+        AddAHoldAndACurseOnOneLine();
+        Monsters("ice sorceress");
+        _rosterIsWhole = why != "roster not whole";
+        DateTimeOffset at = DateTimeOffset.UtcNow;
+
+        if (why != "no cast line")
+            FeedAt(why == "not listed" ? "fierce shadow casts a spell on you!" : "fierce ice sorceress casts a spell on you!",
+                why == "too long ago" ? at.AddSeconds(-4) : at);
+        FeedAt("You feel unlucky!", at);
+
+        Assert.Contains("queen's hold (test)", AppliedNames);
+        Assert.True(_tracker.ActiveFlags.HasFlag(MessageFlags.MovementPrevented));
+    }
+
+    [Fact]
+    public void MonsterNamed_FindsTheListedMonsterAShownNameEndsIn()
+    {
+        CastReach.Here here = new(0, new[] { "priest", "dark priest" }, Nobody);
+
+        Assert.Equal("dark priest", CastReach.MonsterNamed(here, "fierce dark priest"));
+        Assert.Equal("priest", CastReach.MonsterNamed(here, "Priest"));
+        Assert.Null(CastReach.MonsterNamed(here, "priestess"));
+        Assert.Null(CastReach.MonsterNamed(here, "highpriest"));
+        Assert.Null(CastReach.MonsterNamed(new CastReach.Here(0, Monsters: null, Nobody), "dark priest"));
+    }
+
+    [Fact]
+    public void OfCaster_GoesByTheNamedMonsterAlone()
+    {
+        CastReach reach = new(_casters, () => null);
+        MessageRecord queens = Record("r", MessageFlags.None, "", "x", "y", 1336);
+
+        Assert.Equal(CastReach.Verdict.InReach, reach.OfCaster(queens, "white queen"));
+        Assert.Equal(CastReach.Verdict.OutOfReach, reach.OfCaster(queens, "ice sorceress"));
+        Assert.Equal(CastReach.Verdict.Unknown, reach.OfCaster(Record("r", MessageFlags.None, "", "x", "y", 31999), "ice sorceress"));
+        Assert.Equal(CastReach.Verdict.Unknown, reach.OfCaster(Record("r", MessageFlags.None, "", "x", "y", 1336, 31999), "ice sorceress"));
+    }
+
     // ----- CastReach, asked directly ----------------------------------
 
     private CastReach.Verdict VerdictOn(int spell, CastReach.Here here) =>
