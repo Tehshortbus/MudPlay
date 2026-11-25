@@ -5947,6 +5947,8 @@ public sealed class AppServices
                 RoomTracker.NoteJumpedToUnknownRoom(reason);
                 return running;
             },
+            masterSwitchOn: () => !AutoModeController.KillSwitchEngaged,
+            router: Router,
             log: Log);
         // Late-wire HealthManager's "sys goto wimpy instead of hanging" escape now
         // that SysopGoto exists (Health is built earlier). When the emergency low-HP

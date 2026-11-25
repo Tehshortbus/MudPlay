@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using MudPlay.Game.Map;
 using MudPlay.Models.Profile;
 using MudPlay.Services;
+using MudPlay.Services.Patterns;
 
 namespace MudPlay.Game;
 
@@ -39,9 +40,20 @@ public sealed class SysopGotoManager
     private readonly Action<RoomKey> _commitLocated;
     // A jump put us in a room the table doesn't name. Answers whether that stopped a run.
     private readonly Func<string, bool> _landedElsewhere;
+    // False while the master switch (Auto-All) is off: a typed goto is then the
+    // user's alone and goes as typed.
+    private readonly Func<bool> _masterSwitchOn;
+    private readonly MessageRouter _router;
+    private readonly Func<DateTimeOffset> _now;
     private readonly LogService? _log;
 
     private const string LogCat = "SysopGoto";
+
+    // A goto refused for combat, sent once the `break` it sent has ended the fight.
+    // The game answers a `break` in one round, so one not answered by then was not
+    // the fight ending and the goto is dropped.
+    private (SysopGotoLocation Loc, DateTimeOffset BrokeAt)? _afterBreak;
+    private static readonly TimeSpan BreakWindow = TimeSpan.FromSeconds(6);
 
     // A fired jump awaiting its landing: the key we expect to be in, that room's
     // display name (captured at fire time), and when we sent. The next room display
@@ -63,7 +75,10 @@ public sealed class SysopGotoManager
         Action<string> writeStatus,
         Action<RoomKey> commitLocated,
         Func<string, bool> landedElsewhere,
-        LogService? log = null)
+        Func<bool> masterSwitchOn,
+        MessageRouter router,
+        LogService? log = null,
+        Func<DateTimeOffset>? now = null)
     {
         ArgumentNullException.ThrowIfNull(enabled);
         ArgumentNullException.ThrowIfNull(locations);
@@ -76,6 +91,8 @@ public sealed class SysopGotoManager
         ArgumentNullException.ThrowIfNull(writeStatus);
         ArgumentNullException.ThrowIfNull(commitLocated);
         ArgumentNullException.ThrowIfNull(landedElsewhere);
+        ArgumentNullException.ThrowIfNull(masterSwitchOn);
+        ArgumentNullException.ThrowIfNull(router);
         _enabled = enabled;
         _locations = locations;
         _inCombat = inCombat;
@@ -87,7 +104,13 @@ public sealed class SysopGotoManager
         _writeStatus = writeStatus;
         _commitLocated = commitLocated;
         _landedElsewhere = landedElsewhere;
+        _masterSwitchOn = masterSwitchOn;
+        _router = router;
+        _now = now ?? (static () => DateTimeOffset.UtcNow);
         _log = log;
+        // Subscribed for the client's lifetime, as the manager is.
+        _ = router.Subscribe(KnownPatterns.CombatStatus, OnCombatStatus);
+        _ = router.Subscribe(KnownPatterns.CommandNoEffect, OnCommandNoEffect);
     }
 
     // Whether the power is granted on the active BBS.
@@ -118,6 +141,7 @@ public sealed class SysopGotoManager
         string? name = ParseGotoName(line);
         if (name is null) return false;                 // not `sys goto <name>`
         if (!_enabled()) return false;                  // power off — pass through, let the game refuse
+        if (!_masterSwitchOn()) return SendAsTyped(line.Trim(), name);
 
         if (TryFire(name, out string refusal))
             return true;
@@ -134,25 +158,42 @@ public sealed class SysopGotoManager
         return TryFire(loc.Name, out refusal);
     }
 
+    // With the master switch off the user is driving: the line goes as typed, with no
+    // table, combat or level check (user, 2026-11-24). A landing the client can name,
+    // from a table row or the numeric form, is still re-anchored. False when it can
+    // name none, and the caller sends the line like any other.
+    private bool SendAsTyped(string line, string name)
+    {
+        RoomKey? key = FindByName(name) is { } loc ? new RoomKey(loc.Map, loc.Room) : NumericLanding(name);
+        _afterBreak = null;
+        if (key is not { } landing)
+        {
+            _log?.Info(LogCat, $"Master switch off — '{line}' sent as typed; no landing known to re-anchor.");
+            return false;
+        }
+        _log?.Info(LogCat, $"Master switch off — '{line}' sent as typed.");
+        Dispatch(line, landing, name);
+        return true;
+    }
+
+    // `sys goto <room> <map>`, which some boards take (report stock-20261124-183300:
+    // `sys goto 2863 2` landed in 2/2863).
+    private static RoomKey? NumericLanding(string name)
+    {
+        string[] parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length == 2
+            && int.TryParse(parts[0], System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out int room)
+            && int.TryParse(parts[1], System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out int map)
+            ? new RoomKey(map, room)
+            : null;
+    }
+
     // Shared fire path for both the typed keyword and a picked row. Gate order below
     // is first-failure-wins; each failure has its own reason.
     private bool TryFire(string name, out string refusal)
     {
         refusal = string.Empty;
         name = name.Trim();
-
-        // The game refuses a `sys goto` only while ACTIVELY engaged (an attack
-        // announced against a target) — a hostile merely PRESENT in the room is fine,
-        // so there's no hostile-present gate. When engaged, send `break` to disengage
-        // and refuse this attempt; the user re-fires once combat stops. (Confirmed
-        // mechanic, user 2026-09-08.)
-        if (_inCombat())
-        {
-            _send("break");
-            refusal = "Sys goto blocked — you're in combat. Sent 'break'; run it again once combat stops.";
-            _log?.Info(LogCat, $"Refused '{name}': actively in combat — sent 'break' to disengage.");
-            return false;
-        }
 
         SysopGotoLocation? loc = FindByName(name);
         if (loc is null)
@@ -168,8 +209,49 @@ public sealed class SysopGotoManager
             return false;
         }
 
+        // The game refuses a `sys goto` only while ACTIVELY engaged (an attack
+        // announced against a target) — a hostile merely PRESENT in the room is fine,
+        // so there's no hostile-present gate (user 2026-09-08). Engaged, the client
+        // sends `break` and the goto once the break takes (user, 2026-11-24).
+        if (_inCombat())
+        {
+            _send("break");
+            _afterBreak = (loc, _now());
+            refusal = $"Sys goto '{loc.Name}' waits for the break: it goes as soon as combat stops.";
+            _log?.Info(LogCat, $"'{loc.Name}' held: actively in combat — sent 'break'; the goto follows once combat stops.");
+            return false;
+        }
+
         DispatchGoto(loc);
         return true;
+    }
+
+    private void OnCombatStatus(MatchResult m)
+    {
+        if (m.Groups.Count == 0 || !string.Equals(m.Groups[0], "Off", StringComparison.OrdinalIgnoreCase)) return;
+        FireAfterBreak("combat stopped");
+    }
+
+    // The break had nothing to stop: being attacked without fighting back doesn't
+    // block a sys goto (user, 2026-11-24).
+    private void OnCommandNoEffect(MatchResult _)
+    {
+        if (_router.ReplyIsForCommandNotNaming("break")) return;
+        FireAfterBreak("the break had no effect, so we weren't fighting");
+    }
+
+    private void FireAfterBreak(string why)
+    {
+        if (_afterBreak is not { } pending) return;
+        _afterBreak = null;
+        if (_now() - pending.BrokeAt > BreakWindow)
+        {
+            _log?.Info(LogCat, $"'{pending.Loc.Name}' dropped: {why}, but past the break's round.");
+            return;
+        }
+        if (!_enabled()) return;
+        _log?.Info(LogCat, $"'{pending.Loc.Name}' firing after the break: {why}.");
+        DispatchGoto(pending.Loc);
     }
 
     // Wimpy escape (HealthManager's "sys goto wimpy instead of hanging"): break
@@ -214,26 +296,29 @@ public sealed class SysopGotoManager
 
     // Shared fire tail for the gated, wimpy, and router paths: send the verbatim
     // keyword, force the landing room display, and arm the name-matched resync.
-    private void DispatchGoto(SysopGotoLocation loc)
+    private void DispatchGoto(SysopGotoLocation loc) =>
+        Dispatch($"sys goto {loc.Name}", new RoomKey(loc.Map, loc.Room), loc.Name);
+
+    private void Dispatch(string command, RoomKey key, string keyword)
     {
-        var key = new RoomKey(loc.Map, loc.Room);
+        _afterBreak = null;
         string? landingName = _roomName(key);
         string? leftRoom = _roomHere();
-        _send($"sys goto {loc.Name}");
+        _send(command);
         // A sys-goto prints no room on its own — only a statline redisplay — so nudge
         // the game to show the landing room with a bare Enter; that display is what
         // OnRoomDisplayed matches to commit the resync. (Confirmed mechanic.)
         _forceRoomDisplay();
         if (landingName is { Length: > 0 })
         {
-            _armed = (key, landingName, DateTimeOffset.UtcNow, loc.Name, leftRoom);
-            _log?.Info(LogCat, $"Fired 'sys goto {loc.Name}' → landing {key} ('{landingName}'); armed resync.");
+            _armed = (key, landingName, _now(), keyword, leftRoom);
+            _log?.Info(LogCat, $"Fired '{command}' → landing {key} ('{landingName}'); armed resync.");
         }
         else
         {
             _armed = null;
             _log?.Info(LogCat,
-                $"Fired 'sys goto {loc.Name}' → landing {key}, but that room isn't in the active graph — can't arm a resync.");
+                $"Fired '{command}' → landing {key}, but that room isn't in the active graph — can't arm a resync.");
         }
     }
 
@@ -243,7 +328,7 @@ public sealed class SysopGotoManager
     public void OnRoomDisplayed(string roomName)
     {
         if (_armed is not { } armed) return;
-        if (DateTimeOffset.UtcNow - armed.SentAt > LandingWindow)
+        if (_now() - armed.SentAt > LandingWindow)
         {
             _log?.Info(LogCat, $"Landing window elapsed for {armed.Key} ('{armed.ExpectedName}') — dropping resync.");
             _armed = null;
@@ -286,6 +371,9 @@ public sealed class SysopGotoManager
     public bool HasArmedLanding => _armed is not null;
     public string? ArmedLandingSummary =>
         _armed is { } a ? $"{a.Key} ('{a.ExpectedName}'), sent {a.SentAt:HH:mm:ss}Z" : null;
+
+    public string? AfterBreakSummary =>
+        _afterBreak is { } p ? $"'{p.Loc.Name}', break sent {p.BrokeAt:HH:mm:ss}Z" : null;
 
     private SysopGotoLocation? FindByName(string name) =>
         _locations().FirstOrDefault(l => string.Equals(l.Name?.Trim(), name, StringComparison.OrdinalIgnoreCase));

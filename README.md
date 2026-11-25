@@ -1,10 +1,11 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.209.1**
+> **Version 3.209.3**
 >
-> - Remote settings: a BBS pick moves every character on the BBS, a realm pick every character on that realm
-> - Picking "This character only" now changes only that character
+> - A cast line naming its caster rules out the holds that monster can't cast, so a curse no longer holds you through wrathful curse
+> - A sys goto typed mid-fight sends break, then the goto itself once combat stops
+> - With Auto-All off, a typed sys goto goes exactly as typed, table or not
 <!-- current-version:end -->
 
 A modern Telnet terminal client for **MajorMUD** and other BBS door games, built in C# / .NET 10 with [Avalonia](https://avaloniaui.net/). It renders a faithful CP437 cell grid with full VT100/ANSI parsing, and layers a MegaMUD-style automation suite (combat, party, navigation, healing, and more) on top — all in modeless, dockable windows so the terminal stays live while you configure anything.

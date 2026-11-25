@@ -147,6 +147,8 @@ public sealed partial class ConditionTracker : ObservableObject, IDisposable
     private List<(CasterMessageMatcher? Template, string Literal, string RecordId)> _castLineIndex = new();
     private HashSet<string> _ambiguousApplied = new(StringComparer.Ordinal);
     private readonly Dictionary<string, DateTimeOffset> _castSeenAt = new(StringComparer.Ordinal);
+    // The one caster the last such cast line named, as the line shows it.
+    private (string Name, DateTimeOffset At)? _namedCaster;
     // The cast lines and the applied line arrive in one burst.
     private static readonly TimeSpan CastLineWindow = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan NarrowingRepeatWindow = TimeSpan.FromSeconds(60);
@@ -517,6 +519,7 @@ public sealed partial class ConditionTracker : ObservableObject, IDisposable
         _castLineIndex = lines;
         _ambiguousApplied = ambiguous;
         _castSeenAt.Clear();
+        _namedCaster = null;
     }
 
     // The conditions KeepWhatCouldBeCastHere never leaves out on the roster's word.
@@ -599,7 +602,10 @@ public sealed partial class ConditionTracker : ObservableObject, IDisposable
             _castSeenAt[recordId] = line.Timestamp;
         }
         if (casters is not null)
+        {
+            _namedCaster = casters.Count == 1 ? (casters.First(), line.Timestamp) : null;
             foreach (string caster in casters) CasterNamed?.Invoke(caster, text);
+        }
 
         // EndsWith first — if a condition both starts and ends with
         // overlapping text on the same line (rare but possible), the
@@ -1061,6 +1067,13 @@ public sealed partial class ConditionTracker : ObservableObject, IDisposable
     // who is listed. A cast line every one of them shares says nothing of which, so
     // it protects none of them (the three plagues print one line).
     //
+    // A cast line that names its caster narrows further. When the monster it names is
+    // on the roster and casts one of the matched spells, the records it doesn't cast
+    // are left out, holds included: the caster is known, so no silent follower can be
+    // the one who cast it (user, 2026-11-24; report stock-20261124-101930, where "fierce
+    // dark priest casts a spell on you!" held the character through wrathful curse,
+    // which no dark priest casts).
+    //
     // A narrowed line is logged at Info, once for the line: what it leaves out is a
     // condition the client then does not hold, and a report has to show why. The
     // same narrowing again within a minute is logged at Debug.
@@ -1071,9 +1084,26 @@ public sealed partial class ConditionTracker : ObservableObject, IDisposable
 
         bool castLineTellsApart = matched.Exists(r => CastLineJustSeen(r, when))
             && matched.Exists(r => !CastLineJustSeen(r, when));
+        string? named = _namedCaster is { } caster && when - caster.At <= CastLineWindow
+            ? CastReach.MonsterNamed(here, caster.Name) : null;
+        if (named is not null && !matched.Exists(r => reach.OfCaster(r, named) == CastReach.Verdict.InReach))
+            named = null;
         List<string>? castHere = null;
         HashSet<MessageRecord>? outOfReach = null;
         foreach (MessageRecord r in matched)
+        {
+            CastReach.Verdict byNamed = named is null ? CastReach.Verdict.Unknown : reach.OfCaster(r, named);
+            if (byNamed == CastReach.Verdict.InReach)
+            {
+                (castHere ??= new List<string>()).Add($"'{r.Name}' ({named}, named in the cast line)");
+                continue;
+            }
+            if (byNamed == CastReach.Verdict.OutOfReach)
+            {
+                if (castLineTellsApart && CastLineJustSeen(r, when)) continue;
+                (outOfReach ??= new HashSet<MessageRecord>(ReferenceEqualityComparer.Instance)).Add(r);
+                continue;
+            }
             switch (reach.Of(r, here, out string? by))
             {
                 case CastReach.Verdict.InReach:
@@ -1085,6 +1115,7 @@ public sealed partial class ConditionTracker : ObservableObject, IDisposable
                     (outOfReach ??= new HashSet<MessageRecord>(ReferenceEqualityComparer.Instance)).Add(r);
                     break;
             }
+        }
         if (castHere is null || outOfReach is null) return matched;
 
         Narrowing narrowed = new(when, text,
@@ -1097,7 +1128,9 @@ public sealed partial class ConditionTracker : ObservableObject, IDisposable
             && when - last.At < NarrowingRepeatWindow;
         LastNarrowed = narrowed;
         string said = $"applied line '{text}' shared by several spells — cast here: {narrowed.Kept}; "
-            + $"not applying, no monster, room or player outside the party that casts them being here: {narrowed.LeftOut}";
+            + (named is null
+                ? $"not applying, no monster, room or player outside the party that casts them being here: {narrowed.LeftOut}"
+                : $"not applying what {named}, named in the cast line, doesn't cast: {narrowed.LeftOut}");
         if (repeat) _log?.Debug(LogCategory, said);
         else _log?.Info(LogCategory, said);
         return matched.FindAll(r => !outOfReach.Contains(r));
