@@ -1,11 +1,9 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.209.3**
+> **Version 3.209.4**
 >
-> - A cast line naming its caster rules out the holds that monster can't cast, so a curse no longer holds you through wrathful curse
-> - A sys goto typed mid-fight sends break, then the goto itself once combat stops
-> - With Auto-All off, a typed sys goto goes exactly as typed, table or not
+> - A sys goto sent as you die no longer reads the respawn room as its landing and warns that the table row is wrong
 <!-- current-version:end -->
 
 A modern Telnet terminal client for **MajorMUD** and other BBS door games, built in C# / .NET 10 with [Avalonia](https://avaloniaui.net/). It renders a faithful CP437 cell grid with full VT100/ANSI parsing, and layers a MegaMUD-style automation suite (combat, party, navigation, healing, and more) on top — all in modeless, dockable windows so the terminal stays live while you configure anything.

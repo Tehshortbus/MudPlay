@@ -1,5 +1,10 @@
 # Version history
 
+## 3.209.4
+
+- A sys goto sent as you die no longer reads the respawn room as its landing and warns that the table row is wrong
+- bug reports addressed: stock-20261124-183300
+
 ## 3.209.3
 
 - A cast line naming its caster rules out the holds that monster can't cast, so a curse no longer holds you through wrathful curse
