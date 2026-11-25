@@ -5947,6 +5947,9 @@ public sealed class AppServices
                 RoomTracker.NoteJumpedToUnknownRoom(reason);
                 return running;
             },
+            // Read before the tracker takes the display in (RoomParsed fires first),
+            // so the respawn room's own display still finds it awaiting.
+            awaitingRespawn: () => RoomTracker.State.Confidence == Game.Map.RoomConfidence.PendingRespawn,
             masterSwitchOn: () => !AutoModeController.KillSwitchEngaged,
             router: Router,
             log: Log);

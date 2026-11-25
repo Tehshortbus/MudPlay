@@ -40,6 +40,8 @@ public sealed class SysopGotoManager
     private readonly Action<RoomKey> _commitLocated;
     // A jump put us in a room the table doesn't name. Answers whether that stopped a run.
     private readonly Func<string, bool> _landedElsewhere;
+    // The character died and the respawn room hasn't shown yet.
+    private readonly Func<bool> _awaitingRespawn;
     // False while the master switch (Auto-All) is off: a typed goto is then the
     // user's alone and goes as typed.
     private readonly Func<bool> _masterSwitchOn;
@@ -75,6 +77,7 @@ public sealed class SysopGotoManager
         Action<string> writeStatus,
         Action<RoomKey> commitLocated,
         Func<string, bool> landedElsewhere,
+        Func<bool> awaitingRespawn,
         Func<bool> masterSwitchOn,
         MessageRouter router,
         LogService? log = null,
@@ -91,6 +94,7 @@ public sealed class SysopGotoManager
         ArgumentNullException.ThrowIfNull(writeStatus);
         ArgumentNullException.ThrowIfNull(commitLocated);
         ArgumentNullException.ThrowIfNull(landedElsewhere);
+        ArgumentNullException.ThrowIfNull(awaitingRespawn);
         ArgumentNullException.ThrowIfNull(masterSwitchOn);
         ArgumentNullException.ThrowIfNull(router);
         _enabled = enabled;
@@ -104,6 +108,7 @@ public sealed class SysopGotoManager
         _writeStatus = writeStatus;
         _commitLocated = commitLocated;
         _landedElsewhere = landedElsewhere;
+        _awaitingRespawn = awaitingRespawn;
         _masterSwitchOn = masterSwitchOn;
         _router = router;
         _now = now ?? (static () => DateTimeOffset.UtcNow);
@@ -339,6 +344,17 @@ public sealed class SysopGotoManager
             _log?.Info(LogCat, $"Landing confirmed — room '{armed.ExpectedName}' — committing position {armed.Key}.");
             _armed = null;
             _commitLocated(armed.Key);
+        }
+        else if (_awaitingRespawn())
+        {
+            // The character died with the jump in flight (the wimpy escape fires at
+            // the killing blow), so this is the respawn room. The game still runs the
+            // jump from there (report stock-20261124-183300), so the landing stays
+            // armed, now from the respawn room: shown again, it means the jump was
+            // refused.
+            _log?.Info(LogCat,
+                $"'{roomName}' is the respawn room after a death — still awaiting the landing in '{armed.ExpectedName}'.");
+            _armed = armed with { SentAt = _now(), LeftRoom = roomName };
         }
         else
         {

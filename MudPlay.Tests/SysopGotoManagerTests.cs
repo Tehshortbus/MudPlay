@@ -30,6 +30,7 @@ public sealed class SysopGotoManagerTests
         public bool RunStops;
         public readonly List<string> LandedElsewhere = new();
         public bool MasterSwitchOn = true;
+        public bool AwaitingRespawn;
         public DateTimeOffset Now = new(2026, 11, 24, 18, 0, 0, TimeSpan.Zero);
         public readonly MessageRouter Router = new();
         public readonly ServerFeed Feed;
@@ -52,6 +53,7 @@ public sealed class SysopGotoManagerTests
             writeStatus: Status.Add,
             commitLocated: Committed.Add,
             landedElsewhere: why => { LandedElsewhere.Add(why); return RunStops; },
+            awaitingRespawn: () => AwaitingRespawn,
             masterSwitchOn: () => MasterSwitchOn,
             router: Router,
             now: () => Now);
@@ -369,6 +371,48 @@ public sealed class SysopGotoManagerTests
 
         Assert.Empty(h.Status);
         Assert.Empty(h.LandedElsewhere);
+    }
+
+    // Report stock-20261124-183300: the wimpy goto fired at the killing blow; the
+    // respawn room showed first, then the landing.
+    [Fact]
+    public void ADeathWithTheJumpInFlight_TheRespawnRoomIsNotTheLanding()
+    {
+        var h = WithNames();
+        h.RoomHere = "Stone Tunnel";
+        var mgr = h.Build();
+        mgr.TryFire(h.Locations.Find(l => l.Name == "newhaven")!, out _);
+
+        h.AwaitingRespawn = true;
+        h.Now += TimeSpan.FromSeconds(4);
+        mgr.OnRoomDisplayed("Temple, Halls of the Dead");
+        h.AwaitingRespawn = false;
+        Assert.Empty(h.Status);
+        Assert.Empty(h.LandedElsewhere);
+        Assert.True(mgr.HasArmedLanding);
+
+        h.Now += TimeSpan.FromSeconds(4);                        // past the send's window, not the respawn's
+        mgr.OnRoomDisplayed("Town Square");
+        Assert.Equal(new[] { Newhaven }, h.Committed);
+    }
+
+    [Fact]
+    public void ADeathWithTheJumpInFlight_TheRespawnRoomShownAgainIsARefusal()
+    {
+        var h = WithNames();
+        h.RoomHere = "Stone Tunnel";
+        var mgr = h.Build();
+        mgr.TryFire(h.Locations.Find(l => l.Name == "newhaven")!, out _);
+
+        h.AwaitingRespawn = true;
+        mgr.OnRoomDisplayed("Temple, Halls of the Dead");
+        h.AwaitingRespawn = false;
+        mgr.OnRoomDisplayed("Temple, Halls of the Dead");
+
+        Assert.Empty(h.Status);
+        Assert.Empty(h.LandedElsewhere);
+        Assert.Empty(h.Committed);
+        Assert.False(mgr.HasArmedLanding);
     }
 
     [Fact]
