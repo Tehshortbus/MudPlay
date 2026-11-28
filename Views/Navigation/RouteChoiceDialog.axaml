@@ -136,7 +136,7 @@
                 </Button>
 
                 <!-- Non-tinted (safe) cards first — Free / Obtain above, the teleport
-                     fork's fewest-traps card — then Search,
+                     fork's fewest-traps card, the sys goto card — then Search,
                      then the red-tinted risky cards (Cross-unprotected, Route-through-
                      avoided), with the optional Shortcut card at the end, so the safe
                      picks read before the dangerous ones. -->
@@ -154,6 +154,26 @@
                                    TextWrapping="Wrap"
                                    Foreground="{StaticResource ChromeFgBrush}"/>
                         <TextBlock Text="{Binding TrapAvoidDetail}"
+                                   FontSize="11"
+                                   TextWrapping="Wrap"
+                                   Foreground="{StaticResource ChromeFgSecBrush}"/>
+                    </StackPanel>
+                </Button>
+
+                <Button Classes="route"
+                        Classes.selected="{Binding IsSysGotoSelected}"
+                        Command="{Binding SelectSysGotoCommand}"
+                        IsVisible="{Binding ShowSysGotoCard}"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Left"
+                        BorderThickness="1"
+                        Padding="12,10">
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="{Binding SysGotoSummary}"
+                                   FontSize="12"
+                                   TextWrapping="Wrap"
+                                   Foreground="{StaticResource ChromeFgBrush}"/>
+                        <TextBlock Text="{Binding SysGotoDetail}"
                                    FontSize="11"
                                    TextWrapping="Wrap"
                                    Foreground="{StaticResource ChromeFgSecBrush}"/>

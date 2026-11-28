@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using MudPlay.Models.Profile;
 using MudPlay.Services;
 
 namespace MudPlay.Game.Map;
@@ -1023,6 +1024,8 @@ public sealed class AutoWalkManager : IRecoverableEngine
     // arriving or failing ends the journey. Outlives Reset: the failure of a leg is
     // raised on either side of one, and a re-plan keeps the leg it re-plans.
     private bool _legToJourneyGoal;
+    // The sys goto card's jump (WalkTo's sysGotoVia), until the walk's first plan.
+    private SysopGotoLocation? _sysGotoVia;
     public bool LegIsToJourneyGoal => _legToJourneyGoal;
 
     private bool IsJourneyGoal(RoomKey destination) =>
@@ -1171,7 +1174,12 @@ public sealed class AutoWalkManager : IRecoverableEngine
         JourneyFetch? fetch = null,
         // ownedLeg: this walk is one leg of something that ends when its walk is
         // taken; its journey is not reported through Journey (WalkJourney.OwnedLeg).
-        bool ownedLeg = false)
+        bool ownedLeg = false,
+        // sysGotoShortcuts: false for a route picked from a card, which is walked as
+        // shown (WalkJourney.SysGotoShortcuts). sysGotoVia: the sys goto card's jump,
+        // taken as the walk's first step.
+        bool sysGotoShortcuts = true,
+        SysopGotoLocation? sysGotoVia = null)
     {
         // A silent walk while a journey stands is one of its legs, and is planned by
         // the journey's rules where it states none of its own.
@@ -1255,7 +1263,8 @@ public sealed class AutoWalkManager : IRecoverableEngine
                     keepGatesClosedFor is { Count: > 0 } ? keepGatesClosedFor : null,
                     pickedRoute ? agreedHazardRooms : null,
                     fetch,
-                    ownedLeg);
+                    ownedLeg,
+                    sysGotoShortcuts);
                 _journeyStopsAt = null;
                 _abandonedDoors.Clear();
             }
@@ -1265,6 +1274,7 @@ public sealed class AutoWalkManager : IRecoverableEngine
                 _carriedAbandonedDoors = null;
             }
             _legToJourneyGoal = IsJourneyGoal(destination);
+            _sysGotoVia = sysGotoVia;
         }
 
         // In-flight moves still on the wire (typical when the user
@@ -1321,6 +1331,9 @@ public sealed class AutoWalkManager : IRecoverableEngine
         // clean slate — Reset takes us to Idle and clears any stale
         // _destination so failures don't leave the walker stuck.
         Reset();
+        // The sys goto card's jump is this plan's alone: a re-plan never jumps again.
+        SysopGotoLocation? sysGotoVia = _sysGotoVia;
+        _sysGotoVia = null;
         // Innermost, so the teleport and boss-room rules of the walk wrap it as they
         // wrap the movement filter.
         IRoomFilter? doorsRefused = _abandonedDoors.Count == 0 ? null : new AbandonedDoorsFilter(_filter, _abandonedDoors);
@@ -1457,7 +1470,7 @@ public sealed class AutoWalkManager : IRecoverableEngine
             // A sys-goto jump can also beat (or replace) the land route — weigh it
             // the same way. When BOTH a boat and a jump qualify, keep the one with
             // the cheaper weighted land-hop cost so we never build two shortcuts.
-            sysGotoPlan = ChooseSysGotoRoute(source.Key, destination, landHops, legRules);
+            sysGotoPlan = ChooseSysGotoRoute(source.Key, destination, landHops, legRules, sysGotoVia);
             if (boatPlan is { } b && sysGotoPlan is { } s)
             {
                 if (s.LandHops + SysGotoHopWeight < b.LandHops + BoatHopWeight) boatPlan = null;
@@ -1887,18 +1900,56 @@ public sealed class AutoWalkManager : IRecoverableEngine
     // none of them, a picked walk on foot set off through two vortexes from a goto
     // landing, and a walk round two traps took the leg through them (report
     // stock-20261128-014442).
-    private SysopGotoRoutePlan? ChooseSysGotoRoute(RoomKey source, RoomKey destination, int? landHops, LegRules rules)
+    //
+    // A route picked from a card takes none (WalkJourney.SysGotoShortcuts) but the sys
+    // goto card's own jump, via: that row only, however its leg compares, since the
+    // user picked it against the routes beside it.
+    private SysopGotoRoutePlan? ChooseSysGotoRoute(
+        RoomKey source, RoomKey destination, int? landHops, LegRules rules, SysopGotoLocation? via)
     {
         if (_sysGotoPlanner is null || _sysGotoFire is null) return null;
-        SysopGotoRoutePlan? plan = _sysGotoPlanner.TryPlan(source, destination, Filter,
+        if (via is null && _journey is { SysGotoShortcuts: false }) return null;
+        SysopGotoRoutePlan? chosen = PlanSysGoto(source, destination, Filter, rules, via);
+        if (via is not null)
+        {
+            if (chosen is null)
+                _log?.Info("Walker",
+                    $"sys goto '{via.Name}' picked for {destination}: no way on from its landing now — walking instead");
+            return chosen;
+        }
+        if (chosen is not { } plan) return null;
+        if (landHops is { } hops && plan.LandHops + SysGotoHopWeight >= hops) return null;
+        return plan;
+    }
+
+    private SysopGotoRoutePlan? PlanSysGoto(
+        RoomKey source, RoomKey destination, IRoomFilter? filter, LegRules rules, SysopGotoLocation? only)
+    {
+        SysopGotoRoutePlan? plan = _sysGotoPlanner!.TryPlan(source, destination, filter,
             refuseTeleports: rules.AvoidTeleports || rules.PreferTeleportFree,
-            avoidTraps: rules.AvoidTraps, ignoreAvoids: rules.IgnoreAvoids);
+            avoidTraps: rules.AvoidTraps, ignoreAvoids: rules.IgnoreAvoids, only: only);
         if (plan is null && rules.PreferTeleportFree && !rules.AvoidTeleports && !rules.LandWalks)
-            plan = _sysGotoPlanner.TryPlan(source, destination, Filter,
-                refuseTeleports: false, avoidTraps: rules.AvoidTraps, ignoreAvoids: rules.IgnoreAvoids);
-        if (plan is not { } chosen) return null;
-        if (landHops is { } hops && chosen.LandHops + SysGotoHopWeight >= hops) return null;
-        return chosen;
+            plan = _sysGotoPlanner.TryPlan(source, destination, filter,
+                refuseTeleports: false, avoidTraps: rules.AvoidTraps, ignoreAvoids: rules.IgnoreAvoids, only: only);
+        return plan;
+    }
+
+    // The sys goto card the route picker offers beside a fork's routes: the jump and
+    // the walk on from its landing that the card's pick (sysGotoVia) would take, as a
+    // card walks (on foot unless walking is impossible), or null when none beats
+    // stepsToBeat by the margin a plain walk wants. Null stepsToBeat: there is no
+    // route to beat. Reads only the graph, the movement filter and the goto table,
+    // so the picker may ask it off the UI thread.
+    public SysopGotoRoutePlan? SysGotoCardPlan(RoomKey source, RoomKey destination, int? stepsToBeat)
+    {
+        if (_sysGotoPlanner is null || _sysGotoFire is null) return null;
+        bool landWalks = _bfs.FindPath(source, destination, _filter, refuseTeleports: true) is not null;
+        SysopGotoRoutePlan? plan = PlanSysGoto(source, destination, _filter,
+            new LegRules(AvoidTeleports: false, PreferTeleportFree: true, landWalks, AvoidTraps: false, IgnoreAvoids: false),
+            only: null);
+        if (plan is not { } card) return null;
+        if (stepsToBeat is { } steps && card.LandHops + SysGotoHopWeight >= steps) return null;
+        return card;
     }
 
     // The route rules a walk was planned with, for the legs weighed against its land

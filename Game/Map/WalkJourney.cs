@@ -20,6 +20,11 @@ namespace MudPlay.Game.Map;
 // Fetch is what the journey was told to fetch on its way and the trades a route
 // card named for it (JourneyFetch). Being on the journey is its whole lifetime.
 //
+// SysGotoShortcuts false is a route the user picked from a card: the walk keeps to
+// it, and none of its legs or re-plans adds a `sys goto` shortcut the card didn't
+// show. The sys goto card itself says which jump it takes (AutoWalkManager.WalkTo's
+// sysGotoVia), once.
+//
 // OwnedLeg marks a walk that is one leg of something which ends the moment its walk
 // is taken away (a Stock spill sweep's walk to its next stop). The walker runs it
 // like any journey but doesn't report it through AutoWalkManager.Journey: everything
@@ -37,7 +42,8 @@ public sealed record WalkJourney(
     IReadOnlyCollection<int>? ClosedGates = null,
     IReadOnlyCollection<RoomKey>? AgreedHazardRooms = null,
     JourneyFetch? Fetch = null,
-    bool OwnedLeg = false)
+    bool OwnedLeg = false,
+    bool SysGotoShortcuts = true)
 {
     // "on foot unless walking is impossible, going round the gates that need
     // item(s) 815", for the program log and the bug report.
@@ -54,6 +60,7 @@ public sealed record WalkJourney(
             + (ClosedGates is { Count: > 0 } ? $", going round the gates that need item(s) {string.Join("/", ClosedGates)}" : "")
             + (IgnoreAvoids ? ", through avoided rooms" : "")
             + (AvoidTraps ? ", fewest traps" : "")
+            + (SysGotoShortcuts ? "" : ", no sys goto shortcut")
             + (!PickedRoute ? ""
                 : AgreedHazardRooms is not { Count: > 0 } ? ", no hazard room agreed to"
                 : $", hazard room(s) {string.Join(", ", AgreedHazardRooms)} agreed to")

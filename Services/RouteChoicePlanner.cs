@@ -183,7 +183,11 @@ public sealed record RouteChoice(
     // game data ("bloodwood weald temp"), filled in by the caller so the card can
     // say where the room sends you. Null on every other card, which is how the card
     // knows the crossing is not to such a room.
-    string? CrossingGoalSpell = null)
+    string? CrossingGoalSpell = null,
+    // A sys goto shortcut that beats the fork's default route, as a card of its own
+    // beside the fork's cards (RouteChoicePrompt.WithSysGotoCard). Every other card
+    // is walked as shown, with no shortcut added; this one's pick takes the jump.
+    SysGotoRouteCard? SysGoto = null)
 {
     // No gate-free alternative — every path to the destination crosses a hazard,
     // so the direct route is the ONLY way there (empty FreePath is the sentinel).

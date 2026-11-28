@@ -29,6 +29,8 @@ public enum RouteChoiceResult
                       // auto-taken.
     TrapAvoid,        // on the walk-vs-teleport fork: the fewest-traps route the
                       // trap-avoid fork would have offered over the teleport route.
+    SysGoto,          // on any fork: jump with a Sys Goto row, then walk on from its
+                      // landing (RouteChoice.SysGoto).
 }
 
 // Route picker, shown when RouteChoicePlanner found a fork worth a user decision.
@@ -250,6 +252,14 @@ public sealed partial class RouteChoiceDialogViewModel
     public string TrapAvoidDetail { get; private set; } = "";
     public bool IsTrapAvoidSelected => SelectedRoute == RouteChoiceResult.TrapAvoid;
 
+    // The sys goto card, beside any fork's cards (RouteChoice.SysGoto): the jump that
+    // beats the fork's default route, then the walk on from its landing.
+    private SysGotoRouteCard? _sysGoto;
+    public bool ShowSysGotoCard => _sysGoto is not null;
+    public string SysGotoSummary { get; private set; } = "";
+    public string SysGotoDetail { get; private set; } = "";
+    public bool IsSysGotoSelected => SelectedRoute == RouteChoiceResult.SysGoto;
+
     // The Free card is a real, selectable route only when a gate-free route exists.
     // On a sole route it used to render as a disabled "why you can't walk it" note;
     // that's now dropped (the heading + option cards carry it), so hide it entirely
@@ -287,6 +297,7 @@ public sealed partial class RouteChoiceDialogViewModel
     [NotifyPropertyChangedFor(nameof(IsShortcutSelected))]
     [NotifyPropertyChangedFor(nameof(IsTokenSelected))]
     [NotifyPropertyChangedFor(nameof(IsTrapAvoidSelected))]
+    [NotifyPropertyChangedFor(nameof(IsSysGotoSelected))]
     [NotifyCanExecuteChangedFor(nameof(GoCommand))]
     [NotifyCanExecuteChangedFor(nameof(GoCombatOffCommand))]
     [NotifyCanExecuteChangedFor(nameof(GoSprintCommand))]
@@ -381,6 +392,20 @@ public sealed partial class RouteChoiceDialogViewModel
         IsBossRoomChoice = choice.Kind == RouteChoiceKind.BossRoom;
         IsBlockedChoice = choice.Kind == RouteChoiceKind.Blocked;
         HasFreeRoute = choice.HasFreeRoute;
+
+        // Before the blocked early return: a jump can get past a block.
+        _sysGoto = choice.SysGoto;
+        SysGotoSummary = string.Empty;
+        SysGotoDetail = string.Empty;
+        if (_sysGoto is { } jump)
+        {
+            string landing = jump.LandingLabel ?? jump.Landing.ToString();
+            string via = teleportsOn?.Invoke(RouteChoiceResult.SysGoto) is { Length: > 0 } t ? $" — takes {t}" : string.Empty;
+            SysGotoSummary = $"Sys goto {jump.Location.Name.Trim()} — {StepsEta(jump.StepCount, jump.Eta)}{via}";
+            SysGotoDetail = $"Jumps to {landing} with your Sys Goto table, then walks the rest "
+                + $"({(jump.Path.Count - 1 == 1 ? "1 step" : $"{jump.Path.Count - 1} steps")}). "
+                + "The other routes here are walked as shown, with no jump.";
+        }
 
         // The extra avoid-crossing card (offered beside a hazard/gate route that
         // respects the avoids): the ignore-avoids route needs no counter.
@@ -863,6 +888,14 @@ public sealed partial class RouteChoiceDialogViewModel
         if (!ShowTrapAvoidCard) return;
         SelectedRoute = RouteChoiceResult.TrapAvoid;
         PreviewRequested?.Invoke(RouteChoiceResult.TrapAvoid);
+    }
+
+    [RelayCommand]
+    private void SelectSysGoto()
+    {
+        if (!ShowSysGotoCard) return;
+        SelectedRoute = RouteChoiceResult.SysGoto;
+        PreviewRequested?.Invoke(RouteChoiceResult.SysGoto);
     }
 
     [RelayCommand]

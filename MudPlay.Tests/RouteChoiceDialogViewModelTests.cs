@@ -1039,4 +1039,48 @@ public sealed class RouteChoiceDialogViewModelTests
 
         Assert.DoesNotContain("takes the teleport", vm.GatedSummary);
     }
+
+    // Report stock-20261128-014442: the cards never showed a sys goto shortcut, and a
+    // picked route was walked with one swapped in. The jump is a card of its own,
+    // previewed and picked like any other; the walk on from the landing is drawn.
+    private static SysGotoRouteCard RhudaurJump() => new(
+        new MudPlay.Models.Profile.SysopGotoLocation { Name = "rhudaur", Map = 2, Room = 2519 },
+        new RoomKey(2, 2519),
+        new[] { new RoomKey(2, 2519), new RoomKey(2, 2520), new RoomKey(1, 9) },
+        LandingLabel: "Rhudaur, Massive Doors (2/2519)");
+
+    [Fact]
+    public void ASysGotoShortcut_IsACardOfItsOwn()
+    {
+        RouteChoice choice = Choice() with { SysGoto = RhudaurJump() };
+        var vm = new RouteChoiceDialogViewModel(choice, "Dest (1/9)", RouteItem);
+        List<RouteChoiceResult?> previews = new();
+        RouteChoiceResult? closed = null;
+        vm.PreviewRequested += previews.Add;
+        vm.CloseRequested += r => closed = r;
+
+        Assert.True(vm.ShowSysGotoCard);
+        Assert.StartsWith("Sys goto rhudaur — 3 steps", vm.SysGotoSummary);
+        Assert.Contains("Jumps to Rhudaur, Massive Doors (2/2519)", vm.SysGotoDetail);
+        Assert.Contains("then walks the rest (2 steps)", vm.SysGotoDetail);
+
+        vm.SelectSysGotoCommand.Execute(null);
+        Assert.True(vm.IsSysGotoSelected);
+        Assert.Equal(new RouteChoiceResult?[] { RouteChoiceResult.SysGoto }, previews);
+        vm.GoCommand.Execute(null);
+        Assert.Equal(RouteChoiceResult.SysGoto, closed);
+
+        Assert.False(new RouteChoiceDialogViewModel(Choice(), "Dest (1/9)", RouteItem).ShowSysGotoCard);
+    }
+
+    // A jump can get past a block, so the blocked card carries it too, and its route
+    // is the walk on from the landing on any fork.
+    [Fact]
+    public void ABlockedRoute_StillOffersTheJump()
+    {
+        RouteChoice blocked = Choice() with { Kind = RouteChoiceKind.Blocked, SysGoto = RhudaurJump() };
+
+        Assert.True(new RouteChoiceDialogViewModel(blocked, "Dest (1/9)", RouteItem).ShowSysGotoCard);
+        Assert.Same(blocked.SysGoto!.Path, RouteChoicePrompt.RouteACardWalks(blocked, RouteChoiceResult.SysGoto, gatedStopsShort: false));
+    }
 }

@@ -1,5 +1,11 @@
 # Version history
 
+## 3.209.8
+
+- The route picker shows a sys goto shortcut as a card of its own when it beats the walk
+- A route picked from the other cards is walked as shown, with no sys goto added
+- bug reports addressed: stock-20261128-014442
+
 ## 3.209.7
 
 - A walk's boat shortcut keeps the walk's teleport, trap and avoid rules on the way to the dock and from the port
