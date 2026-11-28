@@ -1,5 +1,9 @@
 # Version history
 
+## 3.209.7
+
+- A walk's boat shortcut keeps the walk's teleport, trap and avoid rules on the way to the dock and from the port
+
 ## 3.209.6
 
 - A spell's own line naming a monster ("Your vision returns to normal.") no longer puts a phantom on the roster that stalls combat

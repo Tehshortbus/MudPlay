@@ -616,25 +616,26 @@ public sealed class BfsMapper
     // from the result has no FindPath route at all. Each stops once every room asked
     // about is reached. They let a caller weighing many FindPath answers skip the ones
     // that can't win, which matters on the UI thread: each answer is a search of the
-    // whole map.
+    // whole map. ignoreAvoids is FindPath's, for floors under routes that may pass
+    // through avoided rooms.
 
     // Floors of the routes from source to each of targets.
     public IReadOnlyDictionary<RoomKey, int> HopFloorsFrom(
-        RoomKey source, IReadOnlyCollection<RoomKey> targets, IRoomFilter? filter = null)
+        RoomKey source, IReadOnlyCollection<RoomKey> targets, IRoomFilter? filter = null, bool ignoreAvoids = false)
     {
         ArgumentNullException.ThrowIfNull(targets);
         return HopFloors(source, targets, filter, (here, seen, visit) =>
         {
             if (_graph.GetRoom(here) is not { } room) return;
             foreach (RoomExit exit in room.Exits.Values)
-                if (!seen(exit.Target) && FloorMayCross(here, in exit, filter)) visit(exit.Target);
+                if (!seen(exit.Target) && FloorMayCross(here, in exit, filter, ignoreAvoids)) visit(exit.Target);
         });
     }
 
     // Floors of the routes from each of sources to destination: the same search run
     // backwards, over the exits that lead into each room.
     public IReadOnlyDictionary<RoomKey, int> HopFloorsTo(
-        RoomKey destination, IReadOnlyCollection<RoomKey> sources, IRoomFilter? filter = null)
+        RoomKey destination, IReadOnlyCollection<RoomKey> sources, IRoomFilter? filter = null, bool ignoreAvoids = false)
     {
         ArgumentNullException.ThrowIfNull(sources);
         RoomLists<(RoomKey From, Direction Dir)> into = ExitsInto();
@@ -642,7 +643,7 @@ public sealed class BfsMapper
         {
             foreach ((RoomKey from, Direction dir) in into.Of(here))
                 if (!seen(from) && _graph.GetRoom(from) is { } room && room.Exits.TryGetValue(dir, out RoomExit exit)
-                    && FloorMayCross(from, in exit, filter))
+                    && FloorMayCross(from, in exit, filter, ignoreAvoids))
                     visit(from);
         });
     }
@@ -677,13 +678,13 @@ public sealed class BfsMapper
     }
 
     // Whether any of FindPath's searches could take this exit out of here.
-    private bool FloorMayCross(RoomKey here, in RoomExit exit, IRoomFilter? filter)
+    private bool FloorMayCross(RoomKey here, in RoomExit exit, IRoomFilter? filter, bool ignoreAvoids)
     {
         RoomKey next = exit.Target;
         if (_graph.GetRoom(next) is null || exit.CastTeleportRandom) return false;
         if (exit.Hint == RoomExitHint.MultiActionHidden && exit.MultiAction is not { IsSatisfiable: true }) return false;
         if (filter is null) return true;
-        if (filter.IsExitRefused(here, in exit) || filter.IsAvoided(next)) return false;
+        if (filter.IsExitRefused(here, in exit) || (!ignoreAvoids && filter.IsAvoided(next))) return false;
         return !filter.IsExitBlocked(in exit) || filter.IsExitHeldOpen(here, in exit)
             || (filter.IsClosedToRoutes(next)
                 && (filter.DescribeExitBlock(in exit) & ~ExitBlockReason.Hazard) == ExitBlockReason.None);

@@ -69,8 +69,13 @@ public sealed class BoatRoutePlanner
     // dock and from every port (RouteFloors), two searches in all, leave out a
     // sailing that can't beat the best found or the land route, or can't be reached.
     // The plan is the one weighing every sailing makes.
+    //
+    // refuseTeleports, avoidTraps and ignoreAvoids are the walk's own route rules
+    // (BfsMapper.FindPath), so each leg is planned as the land route it is weighed
+    // against.
     public BoatRoutePlan? TryPlan(
-        RoomKey source, RoomKey destination, IRoomFilter? filter, bool allowGated = false, int? landHopsUnder = null)
+        RoomKey source, RoomKey destination, IRoomFilter? filter, bool allowGated = false, int? landHopsUnder = null,
+        bool refuseTeleports = false, bool avoidTraps = false, bool ignoreAvoids = false)
     {
         if (_graph.GetRoom(source) is null || _graph.GetRoom(destination) is null)
             return null;
@@ -88,15 +93,17 @@ public sealed class BoatRoutePlanner
             bool gated = block != ExitBlockReason.None;
             if (gated && !allowGated) continue;
 
-            floors ??= FloorsFor(source, destination, filter);
+            floors ??= FloorsFor(source, destination, filter, ignoreAvoids);
             if (floors.Bound(passage.DockRoom, passage.ArrivalRoom) is not { } floor) continue;
             if (floor >= landHopsUnder) continue;
             if (((gated ? 1 : 0), floor).CompareTo(bestRank) >= 0) continue;
 
-            IReadOnlyList<Direction>? toDock = LegTo(source, passage.DockRoom, filter);
+            IReadOnlyList<Direction>? toDock = LegTo(
+                source, passage.DockRoom, filter, refuseTeleports, avoidTraps, ignoreAvoids);
             if (toDock is null) continue;
 
-            IReadOnlyList<Direction>? fromArrival = LegTo(passage.ArrivalRoom, destination, filter);
+            IReadOnlyList<Direction>? fromArrival = LegTo(
+                passage.ArrivalRoom, destination, filter, refuseTeleports, avoidTraps, ignoreAvoids);
             if (fromArrival is null) continue;
 
             // Rank boardable-before-gated, then fewest total land hops — so a
@@ -120,7 +127,7 @@ public sealed class BoatRoutePlanner
         return best;
     }
 
-    private RouteFloors FloorsFor(RoomKey source, RoomKey destination, IRoomFilter? filter)
+    private RouteFloors FloorsFor(RoomKey source, RoomKey destination, IRoomFilter? filter, bool ignoreAvoids)
     {
         HashSet<RoomKey> ends = new();
         foreach (BoatPassage passage in _graph.AllBoatPassages)
@@ -128,16 +135,18 @@ public sealed class BoatRoutePlanner
             ends.Add(passage.DockRoom);
             ends.Add(passage.ArrivalRoom);
         }
-        return RouteFloors.Via(_bfs, source, destination, ends, filter);
+        return RouteFloors.Via(_bfs, source, destination, ends, filter, ignoreAvoids);
     }
 
     // A land leg between two rooms; empty when they're the same room. FindPath
     // returns null for source==dest, but a boat route legitimately has a
     // zero-hop leg when the crosser already stands on the dock or the port is
     // itself the goal — so that case is an empty list, not a miss.
-    private IReadOnlyList<Direction>? LegTo(RoomKey from, RoomKey to, IRoomFilter? filter)
+    private IReadOnlyList<Direction>? LegTo(
+        RoomKey from, RoomKey to, IRoomFilter? filter, bool refuseTeleports, bool avoidTraps, bool ignoreAvoids)
     {
         if (from.Equals(to)) return Array.Empty<Direction>();
-        return _bfs.FindPath(from, to, filter);
+        return _bfs.FindPath(from, to, filter,
+            refuseTeleports: refuseTeleports, avoidTraps: avoidTraps, ignoreAvoids: ignoreAvoids);
     }
 }
