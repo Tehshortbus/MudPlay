@@ -60,10 +60,12 @@ public sealed class SysopGotoRoutePlanner
     // plain route — the goto ROOM itself is a safe room needing no weighting, but
     // the landing→destination leg does, so it goes through the normal filter. The
     // other three are the walk's own route rules (BfsMapper.FindPath), so the leg is
-    // planned as the land route it is weighed against.
+    // planned as the land route it is weighed against. only: plan that row alone (the
+    // jump a route card was picked for).
     public SysopGotoRoutePlan? TryPlan(
         RoomKey source, RoomKey destination, IRoomFilter? filter,
-        bool refuseTeleports = false, bool avoidTraps = false, bool ignoreAvoids = false)
+        bool refuseTeleports = false, bool avoidTraps = false, bool ignoreAvoids = false,
+        SysopGotoLocation? only = null)
     {
         if (_graph.GetRoom(destination) is null) return null;
 
@@ -73,6 +75,7 @@ public sealed class SysopGotoRoutePlanner
 
         foreach (SysopGotoLocation loc in _locations())
         {
+            if (only is not null && !Same(loc, only)) continue;
             // Router level gate: an ungated row (MinLevel <= 0) always qualifies; a
             // gated row needs a KNOWN level at or above the floor. Unknown level
             // excludes it — the router won't gamble a shortcut it can't judge safe.
@@ -98,6 +101,10 @@ public sealed class SysopGotoRoutePlanner
                 + $"(land {plan.LandingRoom}): {plan.FromArrival.Count} hop(s) from landing.");
         return best;
     }
+
+    private static bool Same(SysopGotoLocation a, SysopGotoLocation b) =>
+        a.Map == b.Map && a.Room == b.Room
+        && string.Equals(a.Name?.Trim(), b.Name?.Trim(), StringComparison.OrdinalIgnoreCase);
 
     // A land leg between two rooms; empty when they're the same room (FindPath
     // returns null for source==dest, but a zero-hop leg is legitimate when the

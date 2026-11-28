@@ -1,6 +1,7 @@
 using System.Linq;
 using System.Threading.Tasks;
 using MudPlay.Game.Map;
+using MudPlay.Models.Profile;
 using MudPlay.Services;
 
 namespace MudPlay.ViewModels.Navigation;
@@ -150,7 +151,7 @@ public static class RouteChoicePrompt
             // "no known source" failure itself rather than second-guessing here.
             services.Log.Debug(LogCat, $"route pick to {destination}: no confident source room — plain walk");
             ApplyStartMode(services, startMode);
-            CommitWalk(services, destination, gated: false);
+            CommitWalk(services, destination, gated: false, sysGotoShortcuts: true);
             return true;
         }
 
@@ -235,7 +236,8 @@ public static class RouteChoicePrompt
                 services.Log.Info(LogCat,
                     $"route pick {src} -> {destination}: the shortest route crosses {avoid.AvoidedRoomCount} room(s) you marked Avoid "
                     + $"({RouteChoicePlanner.ListAvoided(avoid.AvoidedRoomNames)}); showing picker");
-                return await RunPickerAsync(services, destination, src, avoid, inFlight, previewSink, calcVm, calcDialogTask, startMode);
+                return await RunPickerAsync(services, destination, src, WithSysGotoCard(services, src, destination, avoid),
+                    inFlight, previewSink, calcVm, calcDialogTask, startMode);
             }
             if (TakesDefaultRouteUnasked(plan))
             {
@@ -243,7 +245,7 @@ public static class RouteChoicePrompt
                     $"route pick {src} -> {destination}: {plan.Kind} fork, no avoid on the route — taking the default route");
                 calcVm?.Close();
                 ApplyStartMode(services, startMode);
-                CommitWalk(services, destination, gated: false, stopForBossRooms: stopsForBossRooms);
+                CommitWalk(services, destination, gated: false, stopForBossRooms: stopsForBossRooms, sysGotoShortcuts: true);
                 return true;
             }
         }
@@ -253,7 +255,7 @@ public static class RouteChoicePrompt
             case RoutePlanKind.PlainWalk:
                 calcVm?.Close();   // no picker to show — dismiss any "Calculating…" window
                 ApplyStartMode(services, startMode);
-                CommitWalk(services, destination, gated: false, stopForBossRooms: stopsForBossRooms);
+                CommitWalk(services, destination, gated: false, stopForBossRooms: stopsForBossRooms, sysGotoShortcuts: true);
                 return true;
             case RoutePlanKind.BossRoom when plan.Choice is { BossRoom: { } bossRoom } bossChoice:
                 // Named here, on the UI thread: the plan may have run off it.
@@ -269,7 +271,7 @@ public static class RouteChoicePrompt
                 if (askOnlyOverAvoids)
                 {
                     calcVm?.Close();
-                    CommitWalk(services, destination, gated: false, stopForBossRooms: stopsForBossRooms);
+                    CommitWalk(services, destination, gated: false, stopForBossRooms: stopsForBossRooms, sysGotoShortcuts: true);
                     return true;
                 }
                 // Named here, on the UI thread: the plan may have run off it.
@@ -296,7 +298,7 @@ public static class RouteChoicePrompt
                 // was agreed to: it walks into no hazard room uncountered.
                 CommitWalk(services, destination, gated: true, avoidTraps: true, stopForBossRooms: stopsForBossRooms,
                     pickedRoute: plan.Choice?.GatedPath, closedGates: plan.Choice?.ClosedGateItems,
-                    shownOnCard: false, fetch: soleFetch);
+                    shownOnCard: false, fetch: soleFetch, sysGotoShortcuts: true);
                 return true;
             default:
                 return await RunPickerAsync(services, destination, src, plan.Choice!, inFlight, previewSink, calcVm, calcDialogTask, startMode);
@@ -371,6 +373,35 @@ public static class RouteChoicePrompt
     // rebuilt only when the game-data set is swapped. It does no UI or logging, so
     // it's safe to call from a background thread.
     private static RoutePlan PlanRouteChoice(
+        AppServices services, RoomKey src, RoomKey destination, IReadOnlySet<RoomKey> bossStopRooms)
+    {
+        RoutePlan plan = PlanForks(services, src, destination, bossStopRooms);
+        if (plan.Kind is RoutePlanKind.PlainWalk or RoutePlanKind.AutoObtainSole || plan.Choice is not { } choice)
+            return plan;
+        RouteChoice withCard = WithSysGotoCard(services, src, destination, choice);
+        return withCard.SysGoto is not { } card ? plan
+            : plan with
+            {
+                Choice = withCard,
+                LogMessage = plan.LogMessage + $"; sys goto card: '{card.Location.Name}' to {card.Landing}, then {card.Path.Count - 1} step(s)",
+            };
+    }
+
+    // The sys goto card offered beside a fork's cards, when a jump beats the route
+    // the fork walks by default: the free route, else the sole one, and for a
+    // blocked route any jump that gets there. The cards don't take one on their own
+    // (CommitWalk), so a shortcut the picker leaves out is one nobody walks (report
+    // stock-20261128-014442: a picked route set off with a jump no card showed).
+    private static RouteChoice WithSysGotoCard(AppServices services, RoomKey src, RoomKey destination, RouteChoice choice)
+    {
+        int? toBeat = choice.Kind == RouteChoiceKind.Blocked ? null
+            : choice.HasFreeRoute ? choice.FreeStepCount : choice.GatedStepCount;
+        if (services.Walker.SysGotoCardPlan(src, destination, toBeat) is not { } jump) return choice;
+        IReadOnlyList<RoomKey> path = RouteChoicePlanner.BuildKeyPath(services.RoomGraph, jump.LandingRoom, jump.FromArrival);
+        return choice with { SysGoto = new SysGotoRouteCard(jump.Location, jump.LandingRoom, path) };
+    }
+
+    private static RoutePlan PlanForks(
         AppServices services, RoomKey src, RoomKey destination, IReadOnlySet<RoomKey> bossStopRooms)
     {
         IReadOnlyList<Direction>? baseCache = null; bool baseDone = false;
@@ -568,6 +599,19 @@ public static class RouteChoicePrompt
         Task<RouteChoiceResult?>? calcDialogTask = null,
         RunStartMode startMode = RunStartMode.Normal)
     {
+        if (choice.SysGoto is { } jumpCard)
+            choice = choice with
+            {
+                SysGoto = jumpCard with
+                {
+                    LandingLabel = DestinationLabel(services, jumpCard.Landing),
+                    Eta = RouteEtaEstimator.Estimate(
+                        jumpCard.Path, services.AutoLair.TravelCostModel,
+                        services.RoomGraph.GetRoom, includeLairDwell: services.IsAutoCombatEnabled,
+                        lairWillBeFought: services.LairWillBeFought),
+                },
+            };
+
         // Approximate arrival ETA for each route — realm-aware per-hop travel plus,
         // when auto-combat is on, a dwell for each lair the walker will actually FIGHT
         // through (friendly / passive "lairs" walk straight past — services.LairWillBeFought).
@@ -819,6 +863,8 @@ public static class RouteChoicePrompt
                 // token hop isn't a graph edge).
                 RouteChoiceResult.Token => choice.GatedPath,
                 RouteChoiceResult.TrapAvoid => choice.TrapAvoidPath,
+                // The jump isn't a graph edge: the walk on from its landing is drawn.
+                RouteChoiceResult.SysGoto => choice.SysGoto?.Path,
                 _ => null,
             });
             // A pre-selected route (trap-avoid defaults to the trap-free line) draws
@@ -839,10 +885,11 @@ public static class RouteChoicePrompt
                 RouteChoiceResult.AvoidOverrideAlt when choice.AvoidAlternativePath is { } ap => ap,
                 RouteChoiceResult.Shortcut when choice.ShortcutPath is { } sp => sp,
                 RouteChoiceResult.TrapAvoid when choice.TrapAvoidPath is { } tp => tp,
+                RouteChoiceResult.SysGoto when choice.SysGoto is { } sg => sg.Path,
                 _ => choice.GatedPath,
             },
             r is RouteChoiceResult.Free or RouteChoiceResult.AvoidOverrideAlt or RouteChoiceResult.Shortcut
-                or RouteChoiceResult.TrapAvoid
+                or RouteChoiceResult.TrapAvoid or RouteChoiceResult.SysGoto
                 ? null
                 : choice.GatedWalk);
 
@@ -863,6 +910,15 @@ public static class RouteChoicePrompt
             ApplyStartMode(services, vm.StartMode != RunStartMode.Normal ? vm.StartMode : startMode);
         else
             services.DropCardCounts("the card was closed without a pick");
+
+        if (result == RouteChoiceResult.SysGoto && choice.SysGoto is { } picked)
+        {
+            // The jump, then the walk on from its landing: this card's route, on any fork.
+            services.Log.Info(LogCat,
+                $"route pick -> {destination}: sys goto '{picked.Location.Name}' to {picked.Landing}, then {picked.Path.Count - 1} step(s)");
+            CommitWalk(services, destination, gated: false, sysGotoVia: picked.Location);
+            return true;
+        }
 
         if (choice.Kind == RouteChoiceKind.Blocked)
         {
@@ -1172,7 +1228,13 @@ public static class RouteChoicePrompt
         // hazard room agreed to.
         bool shownOnCard = true,
         // What the walk is to fetch on its way, and the trades its card named.
-        JourneyFetch? fetch = null)
+        JourneyFetch? fetch = null,
+        // A card the user picked is walked as shown, with no sys goto shortcut its
+        // card didn't show (the default). A walk no card showed (a plain walk-to, the
+        // sole route) passes true and may jump as any walk does. sysGotoVia: the sys
+        // goto card's own jump.
+        bool sysGotoShortcuts = false,
+        SysopGotoLocation? sysGotoVia = null)
     {
         // On the UI thread, from the pick to the walker's first step: a freeze report
         // names this scope (and the walker's own inside it) when that holds it.
@@ -1220,7 +1282,9 @@ public static class RouteChoicePrompt
             pickedRoute: shown,
             keepGatesClosedFor: gated ? closedGates : null,
             agreedHazardRooms: agreedHazards,
-            fetch: fetch);
+            fetch: fetch,
+            sysGotoShortcuts: sysGotoShortcuts,
+            sysGotoVia: sysGotoVia);
     }
 
     // Where a card's route teleports, read with the gates stood down that its walk
@@ -1243,7 +1307,8 @@ public static class RouteChoicePrompt
             AvoidTraps: true,
             PreferTeleportFree: RouteChoicePlanner.PickedWalkPrefersTeleportFree(
                 requested: true, avoidTeleports: false, TeleportsOn(services, route, throughGates: true, closedGates)),
-            ClosedGates: closedGates is { Count: > 0 } ? closedGates : null);
+            ClosedGates: closedGates is { Count: > 0 } ? closedGates : null,
+            SysGotoShortcuts: false);
 
     // The route a card's walk follows, or null when its walk follows none of the
     // routes drawn: the base card of a route that stops short (gatedStopsShort)
@@ -1252,6 +1317,7 @@ public static class RouteChoicePrompt
     internal static IReadOnlyList<RoomKey>? RouteACardWalks(
         RouteChoice choice, RouteChoiceResult card, bool gatedStopsShort)
     {
+        if (card == RouteChoiceResult.SysGoto) return choice.SysGoto?.Path;
         if (choice.Kind == RouteChoiceKind.Blocked) return null;
         return card switch
         {

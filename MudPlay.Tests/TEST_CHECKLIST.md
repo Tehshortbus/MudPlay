@@ -307,7 +307,7 @@ How to keep it current:
 
 ### AutoWalkManagerSysGotoTests.cs
 - Covers: Game/Map/AutoWalkManager (SysGotoStep), Game/Map/SysopGotoRoutePlanner
-- Checks: The walker fires a `sys goto` jump when it's the only route, waits for the landing, then walks the land leg. The jump fails at the deadline if the landing never confirms. A jump to an unknown room drops the old position until a display places us. No jump with an empty location table. A walk on foot takes no jump whose leg from the landing teleports, a walk that may teleport still takes it, and a walk on foot with no way there on foot takes the teleporting leg (TBInfo-backed teleport fixture).
+- Checks: The walker fires a `sys goto` jump when it's the only route, waits for the landing, then walks the land leg. The jump fails at the deadline if the landing never confirms. A jump to an unknown room drops the old position until a display places us. No jump with an empty location table. A walk on foot takes no jump whose leg from the landing teleports, a walk that may teleport still takes it, and a walk on foot with no way there on foot takes the teleporting leg (TBInfo-backed teleport fixture). A walk picked from a card takes no shortcut of its own (its journey says so), the sys goto card's pick takes its own row's jump however it compares, and the card plan beats the default route by the walk's 3-step margin, or always when there is none.
 - Why: the sysop jump is a multi-room shortcut with no graph edge, so arrival must be confirmed and a non-landing must not wedge the walk; and its leg must keep the walk's route rules (report stock-20261128-014442).
 
 ### AutoWalkManagerTests.cs
@@ -3714,8 +3714,8 @@ How to keep it current:
 
 ### RouteChoiceDialogViewModelTests.cs
 - Covers: ViewModels/Navigation/RouteChoiceDialogViewModel, RouteChoicePrompt (RouteSubstitutes, RouteACardWalks)
-- Checks: - The requirement line's source tail (ask > buy > dropped-by, only for kinds a walk auto-sources) and the select-to-preview / Go / Cancel flow. - Card wording and visibility per fork: send-it, sole hazard (survivable or grave, obtainable or not), teleport (with its fewest-traps third card, previewed, committed and stating a paid transport's fare), trap-avoid, avoid-override, boss room, blocked, shortcut, and lake crossings. Also ETAs, the calculating-then-Populate state, and teleport notes per card.
-- Why: Reports `paradigm-20261007-192215`, `paradigm-20261007-215302`, `paradigm-20260914-201123`, `paradigm-20261008-173911` / `-174023`.
+- Checks: - The requirement line's source tail (ask > buy > dropped-by, only for kinds a walk auto-sources) and the select-to-preview / Go / Cancel flow. - Card wording and visibility per fork: send-it, sole hazard (survivable or grave, obtainable or not), teleport (with its fewest-traps third card, previewed, committed and stating a paid transport's fare), trap-avoid, avoid-override, boss room, blocked, shortcut, and lake crossings. Also ETAs, the calculating-then-Populate state, and teleport notes per card. The sys goto card (its summary, landing and steps, select-to-preview and Go), shown on a blocked fork too, its route the walk from the landing.
+- Why: Reports `paradigm-20261007-192215`, `paradigm-20261007-215302`, `paradigm-20260914-201123`, `paradigm-20261008-173911` / `-174023`, `stock-20261128-014442` (a picked route walked with a jump no card showed).
 
 ### RouteChoicePlannerTests.cs
 - Covers: Services/RouteChoicePlanner, with Game/Map/BfsMapper, Services/MovementFilter, PathItemShopRouter, LoopExpander, AutoWalkManager (lake crossings)

@@ -1,9 +1,10 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.209.7**
+> **Version 3.209.8**
 >
-> - A walk's boat shortcut keeps the walk's teleport, trap and avoid rules on the way to the dock and from the port
+> - The route picker shows a sys goto shortcut as a card of its own when it beats the walk
+> - A route picked from the other cards is walked as shown, with no sys goto added
 <!-- current-version:end -->
 
 A modern Telnet terminal client for **MajorMUD** and other BBS door games, built in C# / .NET 10 with [Avalonia](https://avaloniaui.net/). It renders a faithful CP437 cell grid with full VT100/ANSI parsing, and layers a MegaMUD-style automation suite (combat, party, navigation, healing, and more) on top — all in modeless, dockable windows so the terminal stays live while you configure anything.

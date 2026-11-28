@@ -228,6 +228,48 @@ public sealed class AutoWalkManagerSysGotoTests : IDisposable
         Assert.Equal("newhaven", h.FiredGoto);
     }
 
+    // Report stock-20261128-014442: a route picked from the cards set off with a jump
+    // no card showed. A picked route is walked as shown where a jump would win
+    // (AWalkThatMayTeleport_StillTakesTheShortcut), and so is every leg of its journey.
+    [Fact]
+    public void APickedRoute_TakesNoShortcutOfItsOwn()
+    {
+        Harness h = NewHarness(new[] { Loc("newhaven", 1, 10) }, rooms: TeleportLegRooms, tbinfo: TeleportLegTbinfo);
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+
+        h.Walker.WalkTo(new RoomKey(1, 6), preferTeleportFree: false, sysGotoShortcuts: false);
+
+        Assert.Null(h.FiredGoto);
+        Assert.Equal("n\r", Encoding.Latin1.GetString(h.Sent[0]));
+        Assert.Contains("no sys goto shortcut", h.Walker.Journey?.Describe());
+    }
+
+    // The sys goto card's pick takes that card's jump, though walking is as short and
+    // newhaven's teleporting leg is shorter still.
+    [Fact]
+    public void TheSysGotoCard_TakesItsJump_HoweverItCompares()
+    {
+        SysopGotoLocation onTheWay = Loc("khazarad", 1, 4);
+        Harness h = NewHarness(new[] { Loc("newhaven", 1, 10), onTheWay }, rooms: TeleportLegRooms, tbinfo: TeleportLegTbinfo);
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+
+        h.Walker.WalkTo(new RoomKey(1, 6), preferTeleportFree: false, sysGotoShortcuts: false, sysGotoVia: onTheWay);
+
+        Assert.Equal("khazarad", h.FiredGoto);
+    }
+
+    // The card is offered when the jump beats the fork's default route by the margin
+    // a plain walk wants (3 steps' worth), and whenever there is no route to beat.
+    [Fact]
+    public void TheCardPlan_BeatsTheDefaultRouteByTheWalksMargin()
+    {
+        Harness h = NewHarness(new[] { Loc("newhaven", 1, 10) });
+
+        Assert.Equal("newhaven", h.Walker.SysGotoCardPlan(new RoomKey(1, 1), new RoomKey(1, 11), stepsToBeat: null)?.Location.Name);
+        Assert.Null(h.Walker.SysGotoCardPlan(new RoomKey(1, 1), new RoomKey(1, 11), stepsToBeat: 4));
+        Assert.NotNull(h.Walker.SysGotoCardPlan(new RoomKey(1, 1), new RoomKey(1, 11), stepsToBeat: 5));
+    }
+
     [Fact]
     public void WalkTo_NoUsableLocation_DoesNotJump()
     {
