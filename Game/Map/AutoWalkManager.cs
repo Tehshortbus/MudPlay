@@ -1429,6 +1429,7 @@ public sealed class AutoWalkManager : IRecoverableEngine
             // still refuses teleports outright with no fallback.
             path = _bfs.FindPath(source.Key, destination, Filter,
                 refuseTeleports: avoidTeleports || preferTeleportFree, avoidTraps: avoidTraps, ignoreAvoids: ignoreAvoids);
+            bool landWalks = path is not null;
             if (path is null && preferTeleportFree && !avoidTeleports)
                 path = _bfs.FindPath(source.Key, destination, Filter,
                     refuseTeleports: false, avoidTraps: avoidTraps, ignoreAvoids: ignoreAvoids);
@@ -1455,7 +1456,8 @@ public sealed class AutoWalkManager : IRecoverableEngine
             // A sys-goto jump can also beat (or replace) the land route — weigh it
             // the same way. When BOTH a boat and a jump qualify, keep the one with
             // the cheaper weighted land-hop cost so we never build two shortcuts.
-            sysGotoPlan = ChooseSysGotoRoute(source.Key, destination, landHops);
+            sysGotoPlan = ChooseSysGotoRoute(source.Key, destination, landHops,
+                new LegRules(avoidTeleports, preferTeleportFree, landWalks, avoidTraps, ignoreAvoids));
             if (boatPlan is { } b && sysGotoPlan is { } s)
             {
                 if (s.LandHops + SysGotoHopWeight < b.LandHops + BoatHopWeight) boatPlan = null;
@@ -1868,13 +1870,31 @@ public sealed class AutoWalkManager : IRecoverableEngine
     // when it beats the land route by the overhead margin — or when there's no land
     // route at all and the jump is the sole crossing. Level-gated locations are
     // already excluded at planning time (unknown level → excluded).
-    private SysopGotoRoutePlan? ChooseSysGotoRoute(RoomKey source, RoomKey destination, int? landHops)
+    //
+    // The leg from the landing keeps the walk's own route rules, teleports as the
+    // land route may: none for a walk that refuses them, and for one that walks
+    // unless it can't, only when the land route can't walk either. Planned with
+    // none of them, a picked walk on foot set off through two vortexes from a goto
+    // landing, and a walk round two traps took the leg through them (report
+    // stock-20261128-014442).
+    private SysopGotoRoutePlan? ChooseSysGotoRoute(RoomKey source, RoomKey destination, int? landHops, LegRules rules)
     {
         if (_sysGotoPlanner is null || _sysGotoFire is null) return null;
-        if (_sysGotoPlanner.TryPlan(source, destination, Filter) is not { } plan) return null;
-        if (landHops is { } hops && plan.LandHops + SysGotoHopWeight >= hops) return null;
-        return plan;
+        SysopGotoRoutePlan? plan = _sysGotoPlanner.TryPlan(source, destination, Filter,
+            refuseTeleports: rules.AvoidTeleports || rules.PreferTeleportFree,
+            avoidTraps: rules.AvoidTraps, ignoreAvoids: rules.IgnoreAvoids);
+        if (plan is null && rules.PreferTeleportFree && !rules.AvoidTeleports && !rules.LandWalks)
+            plan = _sysGotoPlanner.TryPlan(source, destination, Filter,
+                refuseTeleports: false, avoidTraps: rules.AvoidTraps, ignoreAvoids: rules.IgnoreAvoids);
+        if (plan is not { } chosen) return null;
+        if (landHops is { } hops && chosen.LandHops + SysGotoHopWeight >= hops) return null;
+        return chosen;
     }
+
+    // The route rules a walk was planned with, for the legs weighed against its land
+    // route. LandWalks: the land route was found without a teleport.
+    private readonly record struct LegRules(
+        bool AvoidTeleports, bool PreferTeleportFree, bool LandWalks, bool AvoidTraps, bool IgnoreAvoids);
 
     // Expand a sys-goto plan into one ordered step list: the SysGotoStep jump
     // (fired from the current room — no leg before it), then the land leg from the

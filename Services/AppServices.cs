@@ -5515,6 +5515,7 @@ public sealed class AppServices
         // line consumers.
         Conditions = new Game.Conditions.ConditionTracker(Messages, Log);
         Conditions.SetRealmFailureLines(line => RealmEvents.FailureOf(line));
+        RoomEntry.SetConditionLineProbe(Conditions.IsConditionLine);
         if (Router.TryGetPattern(Services.Patterns.KnownPatterns.MobHitsNoDamage, out IMessagePattern onUs)
             && onUs is Services.Patterns.RealmLinePattern hitsOnUs)
             hitsOnUs.SetMatcher(line => RealmEvents.HitOnUs(line));
@@ -9712,19 +9713,10 @@ public sealed class AppServices
         //
         // Nobody pressed Pause, so the pause says what caused it: in the terminal, on
         // the Navigation window's hold chips, and in the bug report.
-        RoomTracker.ManualMoveObserved += command =>
-        {
-            if (!MovementControl.IsActive || MovementControl.IsUserPaused) return;
-            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
-            {
-                if (!MovementControl.IsActive || MovementControl.IsUserPaused) return;
-                Log.Info("Navigation",
-                    $"manual movement command '{command}' — pausing navigation (user override; press Start to resume)");
-                MovementControl.PauseForTypedMove(command);
-                if (MovementControl.PausedByTypedMove is not null)
-                    WriteTerminalNotice($"[Navigation paused: you typed '{command}' - Resume to carry on]");
-            });
-        };
+        RoomTracker.ManualMoveObserved += command => PauseNavigationForUserMove(command, "typed");
+        // A sys goto the user fires is a hand-driven move too, one the tracker can't
+        // see as a move: the walk would take its landing for a lost step.
+        SysopGoto.UserJumped += command => PauseNavigationForUserMove(command, "sent");
 
         // Auto-All kill switch also parks navigation: engaging it suspends any
         // in-flight walk / loop / auto-lair (retaining where it is), and restoring
@@ -16958,6 +16950,21 @@ public sealed class AppServices
 
     // Whether the loaded character has the "Sysop goto" power on the active BBS —
     // gates every `sys goto` surface (typed command, menus).
+    // how: the terminal notice's verb, "typed" or "sent" (a menu pick is typed by nobody).
+    private void PauseNavigationForUserMove(string command, string how)
+    {
+        if (!MovementControl.IsActive || MovementControl.IsUserPaused) return;
+        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        {
+            if (!MovementControl.IsActive || MovementControl.IsUserPaused) return;
+            Log.Info("Navigation",
+                $"manual movement command '{command}' — pausing navigation (user override; press Start to resume)");
+            MovementControl.PauseForTypedMove(command);
+            if (MovementControl.PausedByTypedMove is not null)
+                WriteTerminalNotice($"[Navigation paused: you {how} '{command}' - Resume to carry on]");
+        });
+    }
+
     private bool SysopGotoEnabledHere() => SysopPowerHere(static c => c.SysopGoto);
 
     // The active BBS credential's goto table, or empty when no character / BBS / row

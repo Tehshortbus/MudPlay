@@ -135,6 +135,32 @@ public sealed class SysopGotoManagerTests
         Assert.Equal(new[] { "break", "sys goto newhaven" }, h.Sent);
     }
 
+    // Report stock-20261128-014442: the walk took the user's escape for a lost step
+    // and jumped straight back. A jump the user fires says so, sent or held for its
+    // break; one refused, and the walk's and the wimpy escape's own, don't.
+    [Fact]
+    public void AJumpTheUserFires_IsReported_TheClientsOwnAreNot()
+    {
+        var h = WithNames();
+        h.Level = 10;
+        var mgr = h.Build();
+        List<string> jumped = new();
+        mgr.UserJumped += jumped.Add;
+
+        mgr.TryHandleTypedLine("sys goto newhaven");
+        mgr.TryFire(h.Locations.Find(l => l.Name == "lostcity")!, out _);        // level 40: refused
+        mgr.TryHandleTypedLine("sys goto nosuchplace");                            // not in the table
+        mgr.FireForRoute(h.Locations.Find(l => l.Name == "newhaven")!);
+        mgr.TryFireForWimpy("newhaven");
+        h.InCombat = true;
+        mgr.TryFire(h.Locations.Find(l => l.Name == "newhaven")!, out _);         // held for its break
+        mgr.TryHandleTypedLine("sys goto silvermere");                             // typed, held too
+        h.MasterSwitchOn = false;
+        mgr.TryHandleTypedLine("sys goto anywhere");                               // goes as typed
+
+        Assert.Equal(new[] { "sys goto newhaven", "sys goto newhaven", "sys goto silvermere", "sys goto anywhere" }, jumped);
+    }
+
     [Fact]
     public void ANoEffectAnsweringAnotherCommand_DoesNotSendTheGoto()
     {

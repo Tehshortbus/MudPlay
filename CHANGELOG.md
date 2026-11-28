@@ -1,5 +1,12 @@
 # Version history
 
+## 3.209.6
+
+- A spell's own line naming a monster ("Your vision returns to normal.") no longer puts a phantom on the roster that stalls combat
+- A walk's sys goto shortcut keeps the walk's teleport, trap and avoid rules after the jump
+- A sys goto you fire mid-walk pauses navigation like a typed move instead of the walk jumping you back
+- bug reports addressed: stock-20261127-175832, stock-20261128-014442
+
 ## 3.209.4
 
 - A sys goto sent as you die no longer reads the respawn room as its landing and warns that the table row is wrong

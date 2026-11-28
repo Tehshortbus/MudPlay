@@ -118,6 +118,15 @@ public sealed class SysopGotoManager
         _ = router.Subscribe(KnownPatterns.CommandNoEffect, OnCommandNoEffect);
     }
 
+    // A jump the user fired, typed or picked from a menu, went out or waits for its
+    // break: the command, as sent. Navigation pauses on it as on a typed move, or a
+    // running walk takes the landing for a lost step and jumps straight back (report
+    // stock-20261128-014442: two `sys goto silvermere` escapes, each answered with
+    // the walk's own `sys goto rhudaur`).
+    public event Action<string>? UserJumped;
+
+    private enum FireOutcome { Refused, Sent, HeldForBreak }
+
     // Whether the power is granted on the active BBS.
     public bool Enabled => _enabled();
 
@@ -146,11 +155,16 @@ public sealed class SysopGotoManager
         string? name = ParseGotoName(line);
         if (name is null) return false;                 // not `sys goto <name>`
         if (!_enabled()) return false;                  // power off — pass through, let the game refuse
-        if (!_masterSwitchOn()) return SendAsTyped(line.Trim(), name);
+        if (!_masterSwitchOn())
+        {
+            // Sent either way: by us with a landing to re-anchor, else by the caller.
+            UserJumped?.Invoke(line.Trim());
+            return SendAsTyped(line.Trim(), name);
+        }
 
-        if (TryFire(name, out string refusal))
-            return true;
-        if (!string.IsNullOrEmpty(refusal))
+        FireOutcome outcome = Fire(name, out string refusal);
+        if (outcome != FireOutcome.Refused) UserJumped?.Invoke($"sys goto {name}");
+        if (outcome != FireOutcome.Sent && !string.IsNullOrEmpty(refusal))
             _writeStatus(refusal);
         return true;                                    // ours; swallowed even on refusal
     }
@@ -160,7 +174,9 @@ public sealed class SysopGotoManager
     public bool TryFire(SysopGotoLocation loc, out string refusal)
     {
         ArgumentNullException.ThrowIfNull(loc);
-        return TryFire(loc.Name, out refusal);
+        FireOutcome outcome = Fire(loc.Name, out refusal);
+        if (outcome != FireOutcome.Refused) UserJumped?.Invoke($"sys goto {loc.Name.Trim()}");
+        return outcome == FireOutcome.Sent;
     }
 
     // With the master switch off the user is driving: the line goes as typed, with no
@@ -195,7 +211,7 @@ public sealed class SysopGotoManager
 
     // Shared fire path for both the typed keyword and a picked row. Gate order below
     // is first-failure-wins; each failure has its own reason.
-    private bool TryFire(string name, out string refusal)
+    private FireOutcome Fire(string name, out string refusal)
     {
         refusal = string.Empty;
         name = name.Trim();
@@ -205,13 +221,13 @@ public sealed class SysopGotoManager
         {
             refusal = $"Sys goto blocked — '{name}' isn't in your Sys Goto table (add it in Settings so the client can re-anchor after the jump).";
             _log?.Info(LogCat, $"Refused '{name}': not in the table.");
-            return false;
+            return FireOutcome.Refused;
         }
         if (loc.MinLevel > 0 && _knownLevel() is int lvl && lvl < loc.MinLevel)
         {
             refusal = $"Sys goto blocked — '{name}' needs level {loc.MinLevel} (you're {lvl}).";
             _log?.Info(LogCat, $"Refused '{name}': level {lvl} < required {loc.MinLevel}.");
-            return false;
+            return FireOutcome.Refused;
         }
 
         // The game refuses a `sys goto` only while ACTIVELY engaged (an attack
@@ -224,11 +240,11 @@ public sealed class SysopGotoManager
             _afterBreak = (loc, _now());
             refusal = $"Sys goto '{loc.Name}' waits for the break: it goes as soon as combat stops.";
             _log?.Info(LogCat, $"'{loc.Name}' held: actively in combat — sent 'break'; the goto follows once combat stops.");
-            return false;
+            return FireOutcome.HeldForBreak;
         }
 
         DispatchGoto(loc);
-        return true;
+        return FireOutcome.Sent;
     }
 
     private void OnCombatStatus(MatchResult m)
