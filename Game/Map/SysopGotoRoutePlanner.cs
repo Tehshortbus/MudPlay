@@ -58,8 +58,12 @@ public sealed class SysopGotoRoutePlanner
     // only when it's shorter (or the sole crossing). filter gates the land leg
     // (avoided rooms, level / toll / class / item / hazard gates) exactly as a
     // plain route — the goto ROOM itself is a safe room needing no weighting, but
-    // the landing→destination leg does, so it goes through the normal filter.
-    public SysopGotoRoutePlan? TryPlan(RoomKey source, RoomKey destination, IRoomFilter? filter)
+    // the landing→destination leg does, so it goes through the normal filter. The
+    // other three are the walk's own route rules (BfsMapper.FindPath), so the leg is
+    // planned as the land route it is weighed against.
+    public SysopGotoRoutePlan? TryPlan(
+        RoomKey source, RoomKey destination, IRoomFilter? filter,
+        bool refuseTeleports = false, bool avoidTraps = false, bool ignoreAvoids = false)
     {
         if (_graph.GetRoom(destination) is null) return null;
 
@@ -78,7 +82,7 @@ public sealed class SysopGotoRoutePlanner
             if (_graph.GetRoom(landing) is null) continue;   // landing not in the active graph
             if (landing.Equals(source)) continue;            // already here — the jump saves nothing
 
-            IReadOnlyList<Direction>? leg = LegTo(landing, destination, filter);
+            IReadOnlyList<Direction>? leg = LegTo(landing, destination, filter, refuseTeleports, avoidTraps, ignoreAvoids);
             if (leg is null) continue;
 
             if (leg.Count < bestHops)
@@ -98,9 +102,11 @@ public sealed class SysopGotoRoutePlanner
     // A land leg between two rooms; empty when they're the same room (FindPath
     // returns null for source==dest, but a zero-hop leg is legitimate when the
     // landing room is itself the goal).
-    private IReadOnlyList<Direction>? LegTo(RoomKey from, RoomKey to, IRoomFilter? filter)
+    private IReadOnlyList<Direction>? LegTo(
+        RoomKey from, RoomKey to, IRoomFilter? filter, bool refuseTeleports, bool avoidTraps, bool ignoreAvoids)
     {
         if (from.Equals(to)) return Array.Empty<Direction>();
-        return _bfs.FindPath(from, to, filter);
+        return _bfs.FindPath(from, to, filter,
+            refuseTeleports: refuseTeleports, avoidTraps: avoidTraps, ignoreAvoids: ignoreAvoids);
     }
 }

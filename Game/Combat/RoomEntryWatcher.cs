@@ -58,6 +58,11 @@ public sealed class RoomEntryWatcher : IDisposable
     private readonly IDisposable _sneakArrivalSub;
     private readonly IDisposable _spawnArrivalSub;
     private bool _disposed;
+    // ConditionTracker.IsConditionLine; built after this watcher, so set later.
+    private Func<string, bool>? _isConditionLine;
+
+    public void SetConditionLineProbe(Func<string, bool> isConditionLine)
+        => _isConditionLine = isConditionLine ?? throw new ArgumentNullException(nameof(isConditionLine));
 
     // Fires after each arrival is parsed + classified + appended to the
     // classifier. Independent of RoomEntityClassifier.EntitiesObserved —
@@ -261,6 +266,16 @@ public sealed class RoomEntryWatcher : IDisposable
         // roster and the attack spell went out at "removes shadow" (report
         // paradigm-20261020-203400).
         if (BenignChatterMatcher.IsOtherPlayerGearSwap(text, IsPlayerName)) return;
+
+        // A spell's line on the character can hold a monster's name too: "Your vision
+        // returns to normal." put a 'Your vision' on the roster, whose `a` had no
+        // effect, and the room never read as empty while a real attacker hit us for
+        // 48 minutes (report stock-20261127-175832).
+        if (_isConditionLine?.Invoke(text) == true)
+        {
+            _log?.Debug(LogCategory, $"colour scan: '{text}' is a condition's own line — not an arrival");
+            return;
+        }
 
         if (!TryFindYellowMonster(line, out RoomEntity monster)) return;
 

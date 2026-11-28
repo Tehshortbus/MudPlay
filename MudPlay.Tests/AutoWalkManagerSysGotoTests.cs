@@ -68,13 +68,17 @@ public sealed class AutoWalkManagerSysGotoTests : IDisposable
         }
     }
 
-    private Harness NewHarness(IReadOnlyList<SysopGotoLocation> locations, int? level = 50)
+    private Harness NewHarness(
+        IReadOnlyList<SysopGotoLocation> locations, int? level = 50, string rooms = Rooms, string? tbinfo = null)
     {
         Directory.CreateDirectory(Path.Combine(_root, "alpha"));
-        File.WriteAllText(Path.Combine(_root, "alpha", "Rooms.json"), Rooms);
+        File.WriteAllText(Path.Combine(_root, "alpha", "Rooms.json"), rooms);
+        if (tbinfo is not null) File.WriteAllText(Path.Combine(_root, "alpha", "TBInfo.json"), tbinfo);
         GameDataCache cache = new(_root);
         cache.SwitchSet("alpha");
-        RoomGraphManager graph = new(cache, log: null);
+        TBInfoStore tbinfoStore = new(cache);
+        tbinfoStore.OnActiveSetChanged("alpha");
+        RoomGraphManager graph = new(cache, log: null, tbinfoStore);
         graph.OnActiveSetChanged("alpha");
         BfsMapper bfs = new(graph);
         RoomTracker tracker = new(graph);
@@ -159,6 +163,69 @@ public sealed class AutoWalkManagerSysGotoTests : IDisposable
 
         h.Tracker.NoteRoomObserved(Obs("Goal", Direction.S));
         Assert.Equal(new RoomKey(1, 11), h.Tracker.State.CurrentRoom?.Key);
+    }
+
+    //   Home 1/1 ─N─ 1/2 ─N─ 1/3 ─N─ 1/4 ─N─ 1/5 ─N─ Goal 1/6   (5 steps on foot)
+    //   landing 1/10 (Newhaven) ─ teleport ─ Goal 1/6           (its only way on)
+    private const string TeleportLegRooms = """
+        [
+          { "Map Number": 1, "Room Number": 1, "Name": "Home", "CMD": 0, "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "1/2", "S": "0", "E": "0", "W": "0", "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 2, "Name": "Path", "CMD": 0, "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "1/3", "S": "1/1", "E": "0", "W": "0", "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 3, "Name": "Path", "CMD": 0, "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "1/4", "S": "1/2", "E": "0", "W": "0", "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 4, "Name": "Path", "CMD": 0, "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "1/5", "S": "1/3", "E": "0", "W": "0", "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 5, "Name": "Path", "CMD": 0, "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "1/6", "S": "1/4", "E": "0", "W": "0", "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 6, "Name": "Goal", "CMD": 0, "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "1/5", "E": "0", "W": "0", "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 10, "Name": "Newhaven", "CMD": 100, "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "0", "E": "0", "W": "0", "NE": "0", "NW": "0", "SE": "0", "SW": "1/6 (Item: 474)", "U": "0", "D": "0" }
+        ]
+        """;
+
+    private const string TeleportLegTbinfo = """[ { "Number": 100, "Action": "go arch:teleport 6 1\n" } ]""";
+
+    // Report stock-20261128-014442: a walk on foot set off with `sys goto` because
+    // the leg from the landing went through a vortex, and walked into it.
+    [Fact]
+    public void AWalkOnFoot_TakesNoShortcutWhoseLegTeleports()
+    {
+        Harness h = NewHarness(new[] { Loc("newhaven", 1, 10) }, rooms: TeleportLegRooms, tbinfo: TeleportLegTbinfo);
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+
+        h.Walker.WalkTo(new RoomKey(1, 6), preferTeleportFree: true);
+
+        Assert.Null(h.FiredGoto);
+        Assert.Equal("n\r", Encoding.Latin1.GetString(h.Sent[0]));
+    }
+
+    // The route card's own "Teleport" pick may still jump to a leg that teleports.
+    [Fact]
+    public void AWalkThatMayTeleport_StillTakesTheShortcut()
+    {
+        Harness h = NewHarness(new[] { Loc("newhaven", 1, 10) }, rooms: TeleportLegRooms, tbinfo: TeleportLegTbinfo);
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+
+        h.Walker.WalkTo(new RoomKey(1, 6), preferTeleportFree: false);
+
+        Assert.Equal("newhaven", h.FiredGoto);
+    }
+
+    // On foot unless walking is impossible: with no way there on foot at all, the
+    // shortcut's teleporting leg is the way.
+    [Fact]
+    public void AWalkOnFoot_WithNoWayOnFoot_TakesTheShortcutsTeleport()
+    {
+        Harness h = NewHarness(new[] { Loc("newhaven", 1, 10) },
+            rooms: TeleportLegRooms.Replace("\"N\": \"1/2\"", "\"N\": \"0\""), tbinfo: TeleportLegTbinfo);
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+
+        h.Walker.WalkTo(new RoomKey(1, 6), preferTeleportFree: true);
+
+        Assert.Equal("newhaven", h.FiredGoto);
     }
 
     [Fact]

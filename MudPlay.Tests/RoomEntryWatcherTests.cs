@@ -537,6 +537,34 @@ public sealed class RoomEntryWatcherTests
         Assert.Empty(h.Arrivals);
     }
 
+    // A spell's wear-off on the character can hold a monster's name: "Your vision
+    // returns to normal." put a 'Your vision' on the roster, and the room never read
+    // as empty while an unlisted huntsman hit us for 48 minutes (report
+    // stock-20261127-175832). The line is ConditionTracker's own.
+    [Fact]
+    public void AConditionsOwnLine_NamingAMonster_IsNotAnArrival()
+    {
+        using Harness h = new();
+        h.AddMonster(956, "vision");
+        h.AddMonster(1, "muckworm");
+        MessageStore messages = new();
+        messages.Messages.Add(new MessageRecord(
+            Id: MessageRecord.ComputeId("black curse", "", "", "", "A black curse is upon you", "Your vision returns to normal"),
+            Name: "black curse", Flags: MessageFlags.Blinded, RawFlagsHex: (ushort)MessageFlags.Blinded,
+            CasterMessage: string.Empty, TargetMessage: string.Empty, WitnessMessage: string.Empty,
+            AppliedMessage: "A black curse is upon you", AppliedEndsWith: "Your vision returns to normal"));
+        using MudPlay.Game.Conditions.ConditionTracker conditions = new(messages, h.Log);
+        h.Watcher.SetConditionLineProbe(conditions.IsConditionLine);
+
+        string wearOff = "Your vision returns to normal.";
+        h.Feed(wearOff, h.AttrsWithFg(wearOff, index: 3));
+        Assert.Empty(h.Arrivals);
+
+        string spawn = "A muckworm darts out of the mud!";
+        h.Feed(spawn, h.AttrsWithFg(spawn, index: 3));
+        Assert.Equal("muckworm", Assert.Single(h.Arrivals).Name);
+    }
+
     // A plain room description names a monster but in default colour (all white) —
     // never an arrival, regardless of the room-descriptions-on setting.
     [Fact]

@@ -307,8 +307,8 @@ How to keep it current:
 
 ### AutoWalkManagerSysGotoTests.cs
 - Covers: Game/Map/AutoWalkManager (SysGotoStep), Game/Map/SysopGotoRoutePlanner
-- Checks: The walker fires a `sys goto` jump when it's the only route, waits for the landing, then walks the land leg. The jump fails at the deadline if the landing never confirms. A jump to an unknown room drops the old position until a display places us. No jump with an empty location table.
-- Why: the sysop jump is a multi-room shortcut with no graph edge, so arrival must be confirmed and a non-landing must not wedge the walk.
+- Checks: The walker fires a `sys goto` jump when it's the only route, waits for the landing, then walks the land leg. The jump fails at the deadline if the landing never confirms. A jump to an unknown room drops the old position until a display places us. No jump with an empty location table. A walk on foot takes no jump whose leg from the landing teleports, a walk that may teleport still takes it, and a walk on foot with no way there on foot takes the teleporting leg (TBInfo-backed teleport fixture).
+- Why: the sysop jump is a multi-room shortcut with no graph edge, so arrival must be confirmed and a non-landing must not wedge the walk; and its leg must keep the walk's route rules (report stock-20261128-014442).
 
 ### AutoWalkManagerTests.cs
 - Covers: Game/Map/AutoWalkManager, and through it RoomTracker, MovementCoordinator, EngineRecoveryGate, MovementFilter, SpecialExitDispatch, ParadigmPositionResolver and Game/Health/HealthManager (flee). It also holds tests for Game/Map/LoopRunner, LoopWalkHandoff and TeleportCatalog, and for ViewModels/Settings/TeleportChoiceViewModel.
@@ -3568,8 +3568,8 @@ How to keep it current:
 
 ### RoomEntryWatcherTests.cs
 - Covers: Game/Combat/RoomEntryWatcher
-- Checks: arrival forms (articles, in/into, greet text, directions); sneak notice is a player; colour hints; flavor resolution; colour-scan custom spawns; client notices ignored; a known player's yellow gear-swap line naming a monster's item (`shadow bracelet`) is no arrival, fed as wire bytes through ServerFeed, while the same shape from a non-player is still scanned; a monster's own appear line puts the one monster that prints it on the roster (`A mist of gold appears in front of you!`), while one several monsters share, or one worded as a monster already here coming to life (the idol, statue, frost giant lines), leaves the roster short, all fed through ServerFeed.
-- Why: reports paradigm-20260928-230226, paradigm-20261020-203400 (`elfu removes shadow`) and paradigm-20261025-011825 (the golden mist).
+- Checks: arrival forms (articles, in/into, greet text, directions); sneak notice is a player; colour hints; flavor resolution; colour-scan custom spawns; client notices ignored; a known player's yellow gear-swap line naming a monster's item (`shadow bracelet`) is no arrival, fed as wire bytes through ServerFeed, while the same shape from a non-player is still scanned; a monster's own appear line puts the one monster that prints it on the roster (`A mist of gold appears in front of you!`), while one several monsters share, or one worded as a monster already here coming to life (the idol, statue, frost giant lines), leaves the roster short, all fed through ServerFeed; a condition's own yellow line naming a monster (`Your vision returns to normal.`, black curse's wear-off read by a real ConditionTracker) is no arrival, while a spawn line still is.
+- Why: reports paradigm-20260928-230226, paradigm-20261020-203400 (`elfu removes shadow`), paradigm-20261025-011825 (the golden mist) and stock-20261127-175832 (a phantom 'Your vision' kept the room from ever reading empty).
 
 ### RoomExitParseTests.cs
 - Covers: Game/Map/RoomExit.TryParseWire, FormatLevelGate, CastsOnWalk
@@ -4262,7 +4262,7 @@ How to keep it current:
 
 ### SysopGotoManagerTests.cs
 - Covers: Game/SysopGotoManager
-- Checks: the gate order (table membership, level, then combat → break), the goto held through the break and sent on the `*Combat Off*` or the break's `Your command had no effect.` fed through the router (not on a no-effect answering another command, nor past the break's round); with the master switch off a typed goto goes as typed with no checks, re-anchored for a table row or `sys goto <room> <map>`; the exact keyword sent, the forced room display, the name-matched landing resync, and the terminal warning and run stop when a jump lands in a room other than its row (not for a refused jump or an unknown starting room); a death with the jump in flight takes the respawn room's display as the death's, waiting on for the landing, and that room shown again as a refusal. Typed-line interception. The wimpy escape skips the level gate and sends `break` first.
+- Checks: a jump the user fires (typed, picked, held for its break, or sent as typed with the master switch off) raises UserJumped, and a refused one, the walk's and the wimpy escape's don't; the gate order (table membership, level, then combat → break), the goto held through the break and sent on the `*Combat Off*` or the break's `Your command had no effect.` fed through the router (not on a no-effect answering another command, nor past the break's round); with the master switch off a typed goto goes as typed with no checks, re-anchored for a table row or `sys goto <room> <map>`; the exact keyword sent, the forced room display, the name-matched landing resync, and the terminal warning and run stop when a jump lands in a room other than its row (not for a refused jump or an unknown starting room); a death with the jump in flight takes the respawn room's display as the death's, waiting on for the landing, and that room shown again as a refusal. Typed-line interception. The wimpy escape skips the level gate and sends `break` first.
 - Why: the risk of jumping mid-fight or below the level a location requires, or of mis-anchoring after the jump.
 
 ### SysopGotoRoutePlannerTests.cs

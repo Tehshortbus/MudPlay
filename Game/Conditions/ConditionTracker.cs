@@ -309,6 +309,20 @@ public sealed partial class ConditionTracker : ObservableObject, IDisposable
         return norm.Length > 0 && (MatchConfuseFumble(norm) is not null || _realmFailure?.Invoke(text) is not null);
     }
 
+    // Whether text holds a condition's own applied or wear-off line, matched as
+    // OnLine matches them. Such a line is about the character and can name a monster:
+    // "Your vision returns to normal." holds a 'vision', and RoomEntryWatcher's colour
+    // scan read it as one arriving (report stock-20261127-175832).
+    public bool IsConditionLine(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return false;
+        foreach ((string pattern, _) in _endsIndex)
+            if (text.Contains(pattern, StringComparison.Ordinal)) return true;
+        foreach ((string pattern, _) in _appliedIndex)
+            if (text.Contains(pattern, StringComparison.Ordinal)) return true;
+        return false;
+    }
+
     // The set's own failure lines (RealmEventLines.FailureOf): a set exported with a
     // Messages table names every effect's failure wording ("You are fast asleep.",
     // "You are too afraid to do that!"), where the catalogue's Confused records know
