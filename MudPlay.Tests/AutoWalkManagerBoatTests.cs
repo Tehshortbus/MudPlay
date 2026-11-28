@@ -101,11 +101,11 @@ public sealed class AutoWalkManagerBoatTests : IDisposable
         }
     }
 
-    private Harness NewHarness(bool leaderWithFollowers = false)
+    private Harness NewHarness(bool leaderWithFollowers = false, string rooms = Rooms, string tbinfo = TbInfo)
     {
         Directory.CreateDirectory(Path.Combine(_root, "alpha"));
-        File.WriteAllText(Path.Combine(_root, "alpha", "Rooms.json"), Rooms);
-        File.WriteAllText(Path.Combine(_root, "alpha", "TBInfo.json"), TbInfo);
+        File.WriteAllText(Path.Combine(_root, "alpha", "Rooms.json"), rooms);
+        File.WriteAllText(Path.Combine(_root, "alpha", "TBInfo.json"), tbinfo);
         File.WriteAllText(Path.Combine(_root, "alpha", "Spells.json"), Spells);
         GameDataCache cache = new(_root);
         cache.SwitchSet("alpha");
@@ -318,5 +318,120 @@ public sealed class AutoWalkManagerBoatTests : IDisposable
         Assert.Equal(WalkState.Idle, h.Walker.State);
         Assert.Contains("the boat 'secure passage to islea'", Assert.Single(notices));
         Assert.EndsWith("the party can't all pay it", notices[0]);
+    }
+
+    //   Home 1/1 ─E─ 1/20 ─E─ … ─E─ 1/25 ─E─ Goal 1/30          (7 steps on foot)
+    //   Home 1/1 ─N─ Pier 1/2 ⇒ sail ⇒ Isle Port 1/10 ─ teleport ─ Goal 1/30
+    // The port's only way on is its teleport, so the boat's legs come to 2 hops,
+    // short enough with the sailing's overhead to beat walking.
+    private const string TeleportLegRooms = """
+        [
+          { "Map Number": 1, "Room Number": 1, "Name": "Home", "CMD": 0, "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "1/2", "S": "0", "E": "1/20", "W": "0", "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 2, "Name": "Pier", "CMD": 100, "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "1/1", "E": "0", "W": "0", "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 10, "Name": "Isle Port", "CMD": 300, "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "0", "E": "0", "W": "0", "NE": "0", "NW": "0", "SE": "0", "SW": "1/30 (Item: 474)", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 20, "Name": "Road", "CMD": 0, "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "0", "E": "1/21", "W": "1/1", "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 21, "Name": "Road", "CMD": 0, "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "0", "E": "1/22", "W": "1/20", "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 22, "Name": "Road", "CMD": 0, "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "0", "E": "1/23", "W": "1/21", "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 23, "Name": "Road", "CMD": 0, "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "0", "E": "1/24", "W": "1/22", "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 24, "Name": "Road", "CMD": 0, "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "0", "E": "1/25", "W": "1/23", "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 25, "Name": "Road", "CMD": 0, "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "0", "E": "1/30", "W": "1/24", "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 30, "Name": "Goal", "CMD": 0, "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "0", "E": "0", "W": "1/25", "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+        ]
+        """;
+
+    private const string TeleportLegTbInfo = """
+        [
+          { "Number": 100, "LinkTo": 0,
+            "Action": "secure passage to islea:minlevel 1 0:price 100 0:random 200:text 0\n",
+            "Called From": "Room 1/2" },
+          { "Number": 200, "LinkTo": 0, "Action": "100:cast 600\n", "Called From": "rndm" },
+          { "Number": 300, "LinkTo": 0, "Action": "go arch:teleport 30 1\n", "Called From": "Room 1/10" }
+        ]
+        """;
+
+    // As a goto shortcut's leg does (AutoWalkManagerSysGotoTests): a walk on foot
+    // doesn't sail to a port whose way on is a teleport, but walks.
+    [Fact]
+    public void AWalkOnFoot_TakesNoSailingWhoseLegTeleports()
+    {
+        Harness h = NewHarness(rooms: TeleportLegRooms, tbinfo: TeleportLegTbInfo);
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+
+        Assert.True(h.Walker.WalkTo(new RoomKey(1, 30), preferTeleportFree: true));
+
+        Assert.Equal("e\r", Encoding.Latin1.GetString(h.Sent[0]));
+        Assert.DoesNotContain("secure passage", h.Wire);
+    }
+
+    // The route card's own "Teleport" pick may still sail to a leg that teleports.
+    [Fact]
+    public void AWalkThatMayTeleport_StillSails()
+    {
+        Harness h = NewHarness(rooms: TeleportLegRooms, tbinfo: TeleportLegTbInfo);
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+
+        Assert.True(h.Walker.WalkTo(new RoomKey(1, 30), preferTeleportFree: false));
+        Assert.Equal("n\r", Encoding.Latin1.GetString(h.Sent[0]));
+        h.Tracker.NoteRoomObserved(Obs("Pier", Direction.S));
+
+        Assert.EndsWith("secure passage to islea\r", h.Wire);
+    }
+
+    // On foot unless walking is impossible: with no way there on foot at all, the
+    // sailing's teleporting leg is the way.
+    [Fact]
+    public void AWalkOnFoot_WithNoWayOnFoot_SailsToTheTeleportingLeg()
+    {
+        Harness h = NewHarness(
+            rooms: TeleportLegRooms.Replace("\"E\": \"1/30\"", "\"E\": \"0\""), tbinfo: TeleportLegTbInfo);
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+
+        Assert.True(h.Walker.WalkTo(new RoomKey(1, 30), preferTeleportFree: true));
+        Assert.Equal("n\r", Encoding.Latin1.GetString(h.Sent[0]));
+        h.Tracker.NoteRoomObserved(Obs("Pier", Direction.S));
+
+        Assert.EndsWith("secure passage to islea\r", h.Wire);
+    }
+
+    //   Home 1/1 ─N (Trap)─ Pier 1/2              (the short way to the dock)
+    //   Home 1/1 ─E─ 1/3 ─N─ 1/4 ─W─ Pier 1/2      (the way round the trap)
+    //   Pier ⇒ sail ⇒ Isle Port 1/10 ─N─ Isle Town 1/11   (only by boat)
+    private const string TrapLegRooms = """
+        [
+          { "Map Number": 1, "Room Number": 1, "Name": "Home", "CMD": 0, "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "1/2 (Trap)", "S": "0", "E": "1/3", "W": "0", "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 2, "Name": "Pier", "CMD": 100, "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "1/1", "E": "1/4", "W": "0", "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 3, "Name": "Lane", "CMD": 0, "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "1/4", "S": "0", "E": "0", "W": "1/1", "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 4, "Name": "Lane", "CMD": 0, "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "1/3", "E": "0", "W": "1/2", "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 10, "Name": "Isle Port", "CMD": 0, "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "1/11", "S": "0", "E": "0", "W": "0", "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" },
+          { "Map Number": 1, "Room Number": 11, "Name": "Isle Town", "CMD": 0, "Light": 0, "Shop": 0, "Lair": "", "Delay": 0,
+            "N": "0", "S": "1/10", "E": "0", "W": "0", "NE": "0", "NW": "0", "SE": "0", "SW": "0", "U": "0", "D": "0" }
+        ]
+        """;
+
+    // A walk told to go round traps goes round them to the dock too.
+    [Fact]
+    public void AWalkRoundTraps_TakesNoSailingWhoseLegCrossesATrap()
+    {
+        Harness h = NewHarness(rooms: TrapLegRooms, tbinfo: TbInfo);
+        h.Tracker.SetLocated(new RoomKey(1, 1));
+
+        Assert.True(h.Walker.WalkTo(new RoomKey(1, 11), avoidTraps: true));
+
+        Assert.Equal("e\r", Encoding.Latin1.GetString(h.Sent[0]));
     }
 }

@@ -282,8 +282,8 @@ How to keep it current:
 
 ### AutoWalkManagerBoatTests.cs
 - Covers: Game/Map/AutoWalkManager (BoatStep), Game/Map/BoatRoutePlanner
-- Checks: The walker plans a sea-captain sailing when the boat is the only route: land leg to the dock, passage keyword, wait through transit churn, land leg from the port. The voyage deadline is sized from transit rounds, the backstop fails a voyage that never lands, and the sailing state (IsSailing / ETA / place) feeds the nav label. Party relay as leader. The PartyTollGate sailing check holds or closes boarding.
-- Why: a voyage spans many unmapped rooms and can be silently refused at the dock, so the walk must neither hang nor misfire. The party must all be able to pay the fare.
+- Checks: The walker plans a sea-captain sailing when the boat is the only route: land leg to the dock, passage keyword, wait through transit churn, land leg from the port. The voyage deadline is sized from transit rounds, the backstop fails a voyage that never lands, and the sailing state (IsSailing / ETA / place) feeds the nav label. Party relay as leader. The PartyTollGate sailing check holds or closes boarding. The legs keep the walk's route rules: a walk on foot takes no sailing whose leg from the port teleports, a walk that may teleport still sails, a walk on foot with no way there on foot sails to the teleporting leg (TBInfo-backed teleport fixture), and a walk round traps goes round a trap on the way to the dock.
+- Why: a voyage spans many unmapped rooms and can be silently refused at the dock, so the walk must neither hang nor misfire. The party must all be able to pay the fare. The boat's legs must be planned as the land route they are weighed against, the same as a goto shortcut's leg.
 
 ### AutoWalkManagerBossRoomTests.cs
 - Covers: Game/Map/AutoWalkManager (boss-room rules), Services/RouteChoicePlanner.EvaluateBossRoom
@@ -418,7 +418,7 @@ How to keep it current:
 
 ### BoatRoutePlannerTests.cs
 - Covers: Game/Map/BoatRoutePlanner
-- Checks: picks the sailing with the fewest total land hops; gated sailings with filters and allowGated; null for unreachable source, destination or no docks; with the land route as a bound, only a sailing that can beat it is planned, and one that can't costs only the floor searches.
+- Checks: picks the sailing with the fewest total land hops; gated sailings with filters and allowGated; null for unreachable source, destination or no docks; with ignoreAvoids a leg (and the hop floors that weed out sailings) goes through an avoided room; with the land route as a bound, only a sailing that can beat it is planned, and one that can't costs only the floor searches.
 - Why: the route must stitch both land legs, not pick the nearest pier; report paradigm-20261021-135647 (weighing every sailing held a walk's commit for ten seconds).
 
 ### BossCatalogTests.cs

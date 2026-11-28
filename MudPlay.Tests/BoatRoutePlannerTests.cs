@@ -233,6 +233,22 @@ public sealed class BoatRoutePlannerTests : IDisposable
         Assert.Null(planner.TryPlan(new RoomKey(1, 1), new RoomKey(1, 11), filter));
     }
 
+    // A walk routed through avoided rooms plans its legs through them, the hop
+    // floors that weed out sailings included.
+    [Fact]
+    public void TryPlan_IgnoreAvoids_PlansTheLegThroughTheAvoidedRoom()
+    {
+        var (planner, _, _) = NewPlanner();
+        var filter = new StubFilter();
+        filter.Avoided.Add(new RoomKey(1, 2));
+
+        BoatRoutePlan? plan = planner.TryPlan(new RoomKey(1, 1), new RoomKey(1, 11), filter, ignoreAvoids: true);
+
+        Assert.NotNull(plan);
+        Assert.Equal("islea", plan.Value.Passage.Place);
+        Assert.Equal(new[] { Direction.N, Direction.N }, plan.Value.ToDock);
+    }
+
     [Fact]
     public void TryPlan_SourceNotInGraph_ReturnsNull()
     {

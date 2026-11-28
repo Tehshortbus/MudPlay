@@ -1,11 +1,9 @@
 # MudPlay
 
 <!-- current-version:start -->
-> **Version 3.209.6**
+> **Version 3.209.7**
 >
-> - A spell's own line naming a monster ("Your vision returns to normal.") no longer puts a phantom on the roster that stalls combat
-> - A walk's sys goto shortcut keeps the walk's teleport, trap and avoid rules after the jump
-> - A sys goto you fire mid-walk pauses navigation like a typed move instead of the walk jumping you back
+> - A walk's boat shortcut keeps the walk's teleport, trap and avoid rules on the way to the dock and from the port
 <!-- current-version:end -->
 
 A modern Telnet terminal client for **MajorMUD** and other BBS door games, built in C# / .NET 10 with [Avalonia](https://avaloniaui.net/). It renders a faithful CP437 cell grid with full VT100/ANSI parsing, and layers a MegaMUD-style automation suite (combat, party, navigation, healing, and more) on top — all in modeless, dockable windows so the terminal stays live while you configure anything.

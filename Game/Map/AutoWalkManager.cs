@@ -1440,7 +1440,8 @@ public sealed class AutoWalkManager : IRecoverableEngine
             // margin, or when there's no land route at all and a sail is the
             // sole crossing.
             int? landHops = path is { Count: > 0 } ? path.Count : (int?)null;
-            boatPlan = ChooseBoatRoute(source.Key, destination, landHops);
+            LegRules legRules = new(avoidTeleports, preferTeleportFree, landWalks, avoidTraps, ignoreAvoids);
+            boatPlan = ChooseBoatRoute(source.Key, destination, landHops, legRules);
             // A sailing whose fare our own purse can't pay, or that the party in tow
             // can't all be got aboard (PartyTollGate), is not set out for, sole
             // crossing or not: the captain leaves whoever can't pay on the dock, so
@@ -1456,8 +1457,7 @@ public sealed class AutoWalkManager : IRecoverableEngine
             // A sys-goto jump can also beat (or replace) the land route — weigh it
             // the same way. When BOTH a boat and a jump qualify, keep the one with
             // the cheaper weighted land-hop cost so we never build two shortcuts.
-            sysGotoPlan = ChooseSysGotoRoute(source.Key, destination, landHops,
-                new LegRules(avoidTeleports, preferTeleportFree, landWalks, avoidTraps, ignoreAvoids));
+            sysGotoPlan = ChooseSysGotoRoute(source.Key, destination, landHops, legRules);
             if (boatPlan is { } b && sysGotoPlan is { } s)
             {
                 if (s.LandHops + SysGotoHopWeight < b.LandHops + BoatHopWeight) boatPlan = null;
@@ -1819,7 +1819,11 @@ public sealed class AutoWalkManager : IRecoverableEngine
     // against the land route's hop count, so a boat that saves nothing over
     // walking never splits the party. Null when no planner is bound (realms
     // without docks) or no sailing helps.
-    private BoatRoutePlan? ChooseBoatRoute(RoomKey source, RoomKey destination, int? landHops)
+    //
+    // The legs to the dock and from the port keep the walk's own route rules, as a
+    // goto shortcut's leg does (ChooseSysGotoRoute): no teleport for a walk that
+    // refuses them, or for one that walks unless it can't while its land route walks.
+    private BoatRoutePlan? ChooseBoatRoute(RoomKey source, RoomKey destination, int? landHops, LegRules rules)
     {
         if (_boatPlanner is null) return null;
 
@@ -1830,9 +1834,15 @@ public sealed class AutoWalkManager : IRecoverableEngine
         // names the sailing in the walk's failure. With a land route in hand, a
         // gated boat is skipped so we never split the party for a crossing a member
         // can't make.
-        if (_boatPlanner.TryPlan(source, destination, Filter, allowGated: landHops is null,
-                landHopsUnder: landHops - BoatHopWeight)
-            is not { } plan)
+        bool allowGated = landHops is null;
+        int? landHopsUnder = landHops - BoatHopWeight;
+        BoatRoutePlan? found = _boatPlanner.TryPlan(source, destination, Filter, allowGated, landHopsUnder,
+            refuseTeleports: rules.AvoidTeleports || rules.PreferTeleportFree,
+            avoidTraps: rules.AvoidTraps, ignoreAvoids: rules.IgnoreAvoids);
+        if (found is null && rules.PreferTeleportFree && !rules.AvoidTeleports && !rules.LandWalks)
+            found = _boatPlanner.TryPlan(source, destination, Filter, allowGated, landHopsUnder,
+                refuseTeleports: false, avoidTraps: rules.AvoidTraps, ignoreAvoids: rules.IgnoreAvoids);
+        if (found is not { } plan)
             return null;
 
         // A land route exists — the boat must beat it by the overhead margin.
